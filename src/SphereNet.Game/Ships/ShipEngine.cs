@@ -1692,8 +1692,7 @@ public sealed class ShipEngine
         var parent = _world.FindParentRegion(region, center);
         if (parent != null)
             region.InheritFromParent(parent);
-
-        _world.InvalidateRegionCache();
+        // No region index rebuild: ship regions are matched live on every lookup.
     }
 
     /// <summary>Tear down the ship's region (dry-dock / decommission).</summary>

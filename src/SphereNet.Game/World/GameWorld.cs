@@ -25,9 +25,9 @@ namespace SphereNet.Game.World;
 /// ApplyDecision, world load). Parallel phases (NPC BuildDecision, view-delta
 /// building) may READ them concurrently because the serial phases never run
 /// at the same time as the parallel ones.</item>
-/// <item><c>_dirtyObjects</c> and <c>_regionCache</c> are ConcurrentDictionary
-/// because parallel phases write to them (ObjBase dirty-flag transitions call
-/// <see cref="NotifyDirty"/>; region lookups populate the cache).</item>
+/// <item><c>_dirtyObjects</c> is a ConcurrentDictionary because parallel phases
+/// write to it (ObjBase dirty-flag transitions call <see cref="NotifyDirty"/>).
+/// Region lookups read an immutable <see cref="RegionIndex"/> and write nothing.</item>
 /// <item>When adding a new parallel stage: it must not call CreateItem /
 /// CreateCharacter / PlaceCharacter / MoveCharacter / DeleteObject — collect
 /// intents in the stage and apply them in the serial phase, mirroring how
@@ -46,9 +46,9 @@ public sealed class GameWorld
     private readonly Dictionary<int, Sector[,]> _sectors = [];
     private readonly List<Region> _regions = [];
     private readonly List<Room> _rooms = [];
-    // Only successful (non-null) lookups are cached — see FindRegion for why a
-    // null result must never poison an 8x8 cell.
-    private readonly ConcurrentDictionary<long, (Point3D Point, Region Region)> _regionCache = new();
+    // Built on first lookup after the region set changes; see FindRegion.
+    private volatile RegionIndex? _regionIndex;
+    private readonly object _regionIndexBuildLock = new();
     private readonly ILogger<GameWorld> _logger;
     private readonly List<ObjBase> _timerFSnapshot = [];
 
@@ -1420,7 +1420,7 @@ public sealed class GameWorld
     public void AddRegion(Region region)
     {
         _regions.Add(region);
-        _regionCache.Clear();
+        _regionIndex = null;
     }
 
     /// <summary>Remove a dynamically-created region (e.g. a collapsed house's
@@ -1429,11 +1429,14 @@ public sealed class GameWorld
     {
         int removed = _regions.RemoveAll(r => r.Uid == uid);
         if (removed > 0)
-            _regionCache.Clear();
+            _regionIndex = null;
         return removed > 0;
     }
 
-    public void InvalidateRegionCache() => _regionCache.Clear();
+    /// <summary>Rebuild the region index on the next lookup. Needed only after a
+    /// region's rects or map change once it is registered; ship regions are matched
+    /// live and need no call when they sail.</summary>
+    public void InvalidateRegionCache() => _regionIndex = null;
 
     /// <summary>Source-X region nesting: a region that opted into inheritance (an
     /// InheritParent* flag) pulls its containing parent's flags / tags / events.
@@ -1461,29 +1464,26 @@ public sealed class GameWorld
             if (parent != null)
                 region.InheritFromParent(parent);
         }
-        _regionCache.Clear();
     }
 
     public Region? FindRegion(Point3D pt)
     {
-        // Keep one entry per 8x8 cell, but reuse it only for the exact queried
-        // point. A parent area can contain two tiles while a smaller city/room
-        // wins at only one of them; Contains alone cannot validate a cell hit.
-        long cacheKey = ((long)pt.Map << 40) | ((long)(pt.X >> 3) << 20) | (long)(pt.Y >> 3);
-
-        if (_regionCache.TryGetValue(cacheKey, out var cached) &&
-            cached.Point.Equals(pt) && cached.Region.Contains(pt))
-            return cached.Region;
-
-        var result = FindRegionUncached(pt);
-        // A miss is cheap to leave uncached; moved/added regions invalidate
-        // this table through the existing world region lifecycle hooks.
-        if (result != null)
-            _regionCache[cacheKey] = (pt, result);
-        return result;
+        // Source-X CSectorBase::GetRegion: only the regions linked to the point's
+        // sector are tested, smallest first. The index replaced a per-point cache
+        // that missed on nearly every moving character, fell back to scanning
+        // every region, and serialized the parallel tick phases on its writes.
+        var index = _regionIndex;
+        if (index == null)
+        {
+            lock (_regionIndexBuildLock)
+                index = _regionIndex ??= RegionIndex.Build(_regions);
+        }
+        return index.Find(pt);
     }
 
-    private Region? FindRegionUncached(Point3D pt)
+    /// <summary>Full scan over every region - the reference the index must agree
+    /// with (smallest total area wins, the earliest registered among equals).</summary>
+    internal Region? FindRegionUncached(Point3D pt)
     {
         // Source-X CSector::GetRegion parity: when AREADEFs overlap (a small
         // landmark inside a wider continent definition, e.g. "Britain Castle"

@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-12] - Bolge arama indeksi
+------------------------------------------------------------------------
+PERF - Bolge aramasi yalnizca noktanin 64x64 hucresine bagli bolgeleri, kucukten buyuge
+       dener; Source-X CSectorBase::GetRegion'in sektor bolge baglantilarini dolasmasi
+       gibi. Eski nokta-basi onbellek hareket eden hemen her karakterde iskaliyor, tum
+       bolgeleri (Scripts-X dunyasinda ~1700) tariyor ve yazmalari paralel tick
+       fazlarini bir kilitte siraya sokuyordu. 26 bin NPC'lik dunyada 200 botla, 90
+       saniyede ana thread tick suresi 13.6 sn'den 8.8 sn'ye, kilit beklemesi 5.4 sn'den
+       1.3 sn'ye indi; tekrarlayan 45-50 ms'lik npc_apply yavas tick'leri kayboldu.
+       Sonuc ayni: noktayi iceren en kucuk bolge, esit alanda once tanimlanan kazanir.
+       Gemi bolgeleri canli eslenir; seyreden gemi her adimda bolge tablosunu
+       gecersiz kilmaz.
+
 [2026-10-10] - Save snapshot bellek kullanimi
 ------------------------------------------------------------------------
 DEGISIKLIK - Dunya kaydinin snapshot asamasi (ana dongu bekledigi kisim) kayit degerlerini

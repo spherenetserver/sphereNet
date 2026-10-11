@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-12] - Network input readiness check
+------------------------------------------------------------------------
+PERF - The input pass asks the OS once which connections are readable (Socket.Select
+      over every receiving socket) and reads only those, as Source-X's input thread does
+      (CNetworkInput::checkForData). It made two calls per connection on every loop
+      iteration (Available, then Poll to detect a closed peer). With 200 idle
+      connections a pass costs about 24 microseconds instead of 440. Connections with
+      whole packets still buffered are processed without new data as before; a peer
+      that closes is detected on the same pass. If the select call fails the pass falls
+      back to asking each connection.
+
 [2026-10-12] - Region lookup index
 ------------------------------------------------------------------------
 PERF - Region lookups test only the regions linked to the point's 64x64 cell, smallest

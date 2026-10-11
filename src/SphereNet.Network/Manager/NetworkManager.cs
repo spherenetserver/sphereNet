@@ -524,6 +524,7 @@ public sealed class NetworkManager : IDisposable
         _passPacketCount = 0;
         _passSlowestOpcode = 0;
         _passSlowestUs = 0;
+        bool readinessKnown = SelectReadable();
         foreach (var state in _states)
         {
             if (!state.CanReceive) continue;
@@ -534,7 +535,11 @@ public sealed class NetworkManager : IDisposable
             // Isolate it, log with the remote endpoint, and drop only this one.
             try
             {
-                int read = state.Receive();
+                // A socket select() did not report has no data, no FIN and no error:
+                // the same answer Receive would give, without its two calls.
+                int read = readinessKnown && state.Socket is { } socket && !_readable.Contains(socket)
+                    ? 0
+                    : state.Receive();
                 if (read < 0)
                 {
                     _logger.LogInformation("Connection #{Id} lost; {Traffic}", state.Id, state.DescribeRecentTraffic());
@@ -561,6 +566,41 @@ public sealed class NetworkManager : IDisposable
                 state.MarkClosing();
             }
         }
+    }
+
+    private readonly List<Socket> _selectList = [];
+    private readonly HashSet<Socket> _readable = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Ask the OS once which connections are readable - data waiting, the
+    /// peer's FIN, or an error - instead of two calls (Available, then Poll) per
+    /// connection on every loop iteration. Source-X's input thread does the same
+    /// with one select() over all its sockets (CNetworkInput::checkForData,
+    /// CNetworkInput.cpp:243). False when the call failed (a socket
+    /// closed under it); the pass then asks each connection itself.</summary>
+    private bool SelectReadable()
+    {
+        _selectList.Clear();
+        _readable.Clear();
+        foreach (var state in _states)
+        {
+            if (state.CanReceive && state.Socket is { } socket)
+                _selectList.Add(socket);
+        }
+        if (_selectList.Count == 0)
+            return true;
+
+        try
+        {
+            Socket.Select(_selectList, null, null, 0);
+        }
+        catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
+        {
+            _logger.LogDebug(ex, "Input select failed; polling connections one by one this pass");
+            return false;
+        }
+        foreach (var socket in _selectList)
+            _readable.Add(socket);
+        return true;
     }
 
     /// <summary>Whether the connection holds received bytes that can be processed

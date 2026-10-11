@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-12] - Ag girisi hazirlik kontrolu
+------------------------------------------------------------------------
+PERF - Giris turu hangi baglantilarin okunabilir oldugunu isletim sistemine tek seferde
+       sorar (tum soketler uzerinde Socket.Select) ve yalnizca onlari okur; Source-X
+       input thread'i gibi (CNetworkInput::checkForData). Eskiden her dongu turunda
+       baglanti basina iki cagri yapiliyordu (Available, ardindan kapanan karsi tarafi
+       anlamak icin Poll). 200 bos baglantida bir tur ~440 yerine ~24 mikrosaniye
+       surer. Tamponda butun paket kalan baglantilar eskisi gibi yeni veri olmadan
+       islenir; baglantiyi kapatan karsi taraf ayni turda fark edilir. Select cagrisi
+       basarisiz olursa tur her baglantiyi tek tek sorar.
+
 [2026-10-12] - Bolge arama indeksi
 ------------------------------------------------------------------------
 PERF - Bolge aramasi yalnizca noktanin 64x64 hucresine bagli bolgeleri, kucukten buyuge

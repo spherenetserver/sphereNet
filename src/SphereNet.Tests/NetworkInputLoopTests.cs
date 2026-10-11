@@ -254,6 +254,46 @@ public sealed class NetworkInputLoopTests
         Assert.False(state.IsClosing);
     }
 
+    // ---- one select() over all connections decides who is read -----
+
+    /// <summary>The input pass asks the OS once which sockets are readable. A peer
+    /// that closes its side shows up as readable with nothing to read, and must still
+    /// be seen as lost on that pass.</summary>
+    [Fact]
+    public void APeerThatClosesIsDetectedThroughTheReadinessCheck()
+    {
+        var nm = NoCryptManager();
+        using var lb = new Loopback(nm);
+        var (client, state) = LoggedIn(lb);
+
+        client.Shutdown(SocketShutdown.Both);
+        client.Close();
+        lb.PumpUntil(() => state.IsClosing);
+
+        Assert.True(state.IsClosing);
+    }
+
+    /// <summary>Among many idle connections only the one that sent data is
+    /// dispatched, and the idle ones stay open.</summary>
+    [Fact]
+    public void OnlyTheConnectionThatSentDataIsDispatched()
+    {
+        var nm = new NetworkManager(16, NullLoggerFactory.Instance) { UseNoCrypt = true, UseCrypt = false };
+        var handler = new SequenceHandler();
+        nm.Packets.Register(handler);
+        using var lb = new Loopback(nm);
+        var connections = Enumerable.Range(0, 10).Select(_ => LoggedIn(lb)).ToList();
+
+        var (talker, _) = connections[6];
+        talker.Send(Sequenced(42));
+        lb.PumpUntil(() => handler.Seen.Count >= 1);
+        for (int pass = 0; pass < 5; pass++)
+            nm.ProcessAllInput();
+
+        Assert.Equal([42], handler.Seen);
+        Assert.All(connections, c => Assert.False(c.State.IsClosing));
+    }
+
     // ---- N04: the partial-packet deadline runs while the socket is silent -----
 
     [Theory]

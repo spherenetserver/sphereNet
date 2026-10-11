@@ -94,6 +94,9 @@ public sealed class NetState : IDisposable
     public int PendingSendBytes { get { lock (_sendLock) return _outEnd - _outStart; } }
 
     private Socket? _socket;
+    /// <summary>The connection's socket, for the manager's one-call readiness check
+    /// over every connection (Socket.Select).</summary>
+    internal Socket? Socket => _socket;
     private readonly byte[] _recvBuffer = new byte[65536];
     private int _recvLength;
     private readonly object _sendLock = new();

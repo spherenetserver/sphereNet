@@ -84,6 +84,12 @@ public static partial class Program
         // RES_EVENTS, EVENTSREGION as RES_REGIONTYPE.
         ReportUnknownResources(LoadResourceList(dispatcher.GlobalPlayerEvents, config.EventsPlayer, ResType.Events, _resources), "EVENTS");
         ReportUnknownResources(LoadResourceList(dispatcher.GlobalPetEvents, config.EventsPet, ResType.Events, _resources), "EVENTS");
+        // Sphere 56T custom version's per-kind NPC lists (TriggerDispatcher.RunNpcKindEvents).
+        ReportUnknownResources(LoadResourceList(dispatcher.GlobalNpcEvents, config.EventsNpc, ResType.Events, _resources), "EVENTS");
+        ReportUnknownResources(LoadResourceList(dispatcher.GlobalMonsterEvents, config.EventsMonster, ResType.Events, _resources), "EVENTS");
+        ReportUnknownResources(LoadResourceList(dispatcher.GlobalAnimalEvents, config.EventsAnimal, ResType.Events, _resources), "EVENTS");
+        ReportUnknownResources(LoadResourceList(dispatcher.GlobalMountableEvents, config.EventsMountable, ResType.Events, _resources), "EVENTS");
+        ReportUnknownResources(LoadResourceList(dispatcher.GlobalShopEvents, config.EventsShop, ResType.Events, _resources), "EVENTS");
         ReportUnknownResources(LoadResourceList(dispatcher.GlobalItemEvents, config.EventsItem, ResType.Events, _resources), "EVENTS");
         ReportUnknownResources(LoadResourceList(dispatcher.GlobalRegionEvents, config.EventsRegion, ResType.Events, _resources), "REGIONTYPE");
         ReportUnknownResources(LoadResourceList(dispatcher.SpeechSelfResources, config.SpeechSelf, ResType.Speech, _resources), "SPEECH");

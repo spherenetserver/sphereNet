@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-12] - Sphere 56T NPC turu event listeleri
+------------------------------------------------------------------------
+EKLEME - sphere.ini EventsNpc, EventsMonster, EventsAnimal, EventsMountable ve
+       EventsShop (Sphere 56T ozel surumu): EventsPet'ten sonra calisan EVENTS
+       listeleri; sirasiyla tum NPC'ler, monster/berserk/dragon beyinleri, animal
+       beyni, binilebilen govdeler ve saticilar icin. 56T paketi canavar loot'unu
+       EventsMonster'a baglar (e_npc_monster @DeathCorpse, chardef TAG.LOOT okur);
+       anahtar okunmadigi icin bu canavarlar bos ceset birakiyordu. SERV.EVENTSMONSTER
+       vb. ile okunur.
+
 [2026-10-12] - Tamamlanma tabanli ag alimi, gorus yeniden-kurma gerilemesi
 ------------------------------------------------------------------------
 PERF - Baglantilar veriyi tamamlanmalarla alir (sphere.ini AsyncReceive=1, varsayilan):

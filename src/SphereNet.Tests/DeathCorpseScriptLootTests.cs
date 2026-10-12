@@ -34,8 +34,12 @@ public sealed class DeathCorpseScriptLootTests : IDisposable
         try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
-    [Fact]
-    public void GmKilledMonsterFromA56TRecordGetsItsTemplateLoot()
+    /// <summary>The event comes from EVENTSPET or, as a 56T shard ini has it, from
+    /// EventsMonster - the custom version's monster-only list.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GmKilledMonsterFromA56TRecordGetsItsTemplateLoot(bool fromMonsterList)
     {
         Directory.CreateDirectory(_dir);
         string file = Path.Combine(_dir, "c.scp");
@@ -74,7 +78,8 @@ public sealed class DeathCorpseScriptLootTests : IDisposable
         var interpreter = new ScriptInterpreter(new ExpressionParser(), lf.CreateLogger<ScriptInterpreter>());
         var runner = new TriggerRunner(interpreter, resources, lf.CreateLogger<TriggerRunner>());
         var dispatcher = new TriggerDispatcher { Resources = resources, Runner = runner };
-        dispatcher.GlobalPetEvents.Add(DefinitionLoader.ResolveEventName("e_test_npc_monster", resources));
+        (fromMonsterList ? dispatcher.GlobalMonsterEvents : dispatcher.GlobalPetEvents)
+            .Add(DefinitionLoader.ResolveEventName("e_test_npc_monster", resources));
         dispatcher.BuildUsedTriggerCache();
 
         var world = new GameWorld(lf);

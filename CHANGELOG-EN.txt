@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-12] - Sphere 56T per-kind NPC event lists
+------------------------------------------------------------------------
+ADD - sphere.ini EventsNpc, EventsMonster, EventsAnimal, EventsMountable and EventsShop
+      (Sphere 56T custom version): EVENTS lists that run after EventsPet on every NPC,
+      on monster/berserk/dragon brains, on animal brains, on bodies that can be ridden
+      and on vendors. A 56T pack hangs its monster loot on EventsMonster
+      (e_npc_monster @DeathCorpse reading the chardef's TAG.LOOT); with the key unread
+      those monsters left empty corpses. Readable as SERV.EVENTSMONSTER etc.
+
 [2026-10-12] - Completion-driven network receive, view rebuild regression
 ------------------------------------------------------------------------
 PERF - Connections receive through completions (sphere.ini AsyncReceive=1, default): a

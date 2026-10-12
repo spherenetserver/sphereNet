@@ -652,6 +652,12 @@ public sealed class SphereConfig
     public string SpeechSelf { get; set; } = "";
     public string SpeechPet { get; set; } = "";
     public string EventsPet { get; set; } = "";
+    // Sphere 56T custom version: per-kind NPC event lists, run after EventsPet.
+    public string EventsNpc { get; set; } = "";
+    public string EventsMonster { get; set; } = "";
+    public string EventsAnimal { get; set; } = "";
+    public string EventsMountable { get; set; } = "";
+    public string EventsShop { get; set; } = "";
     public string EventsPlayer { get; set; } = "";
     public string EventsRegion { get; set; } = "";
 
@@ -1304,6 +1310,11 @@ public sealed class SphereConfig
         SpeechSelf = ini.GetValue(section, "SpeechSelf") ?? SpeechSelf;
         SpeechPet = ini.GetValue(section, "SpeechPet") ?? SpeechPet;
         EventsPet = ini.GetValue(section, "EventsPet") ?? EventsPet;
+        EventsNpc = ini.GetValue(section, "EventsNpc") ?? EventsNpc;
+        EventsMonster = ini.GetValue(section, "EventsMonster") ?? EventsMonster;
+        EventsAnimal = ini.GetValue(section, "EventsAnimal") ?? EventsAnimal;
+        EventsMountable = ini.GetValue(section, "EventsMountable") ?? EventsMountable;
+        EventsShop = ini.GetValue(section, "EventsShop") ?? EventsShop;
         EventsPlayer = ini.GetValue(section, "EventsPlayer") ?? EventsPlayer;
         CommandTrigger = ini.GetValue(section, "CommandTrigger") ?? CommandTrigger;
         EventsRegion = ini.GetValue(section, "EventsRegion") ?? EventsRegion;

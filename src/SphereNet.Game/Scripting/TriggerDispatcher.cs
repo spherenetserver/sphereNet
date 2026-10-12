@@ -129,6 +129,14 @@ public sealed class TriggerDispatcher
 
     public List<ResourceId> GlobalPlayerEvents { get; } = [];
     public List<ResourceId> GlobalPetEvents { get; } = [];
+    // Sphere 56T custom version: per-kind NPC event lists (sphere.ini EventsNpc,
+    // EventsMonster, EventsAnimal, EventsMountable, EventsShop). Source-X has only
+    // EVENTSPET; these run after it, see RunNpcKindEvents.
+    public List<ResourceId> GlobalNpcEvents { get; } = [];
+    public List<ResourceId> GlobalMonsterEvents { get; } = [];
+    public List<ResourceId> GlobalAnimalEvents { get; } = [];
+    public List<ResourceId> GlobalMountableEvents { get; } = [];
+    public List<ResourceId> GlobalShopEvents { get; } = [];
     public List<ResourceId> GlobalItemEvents { get; } = [];
     public List<ResourceId> GlobalRegionEvents { get; } = [];
     public List<ResourceId> SpeechSelfResources { get; } = [];
@@ -450,6 +458,8 @@ public sealed class TriggerDispatcher
             }
             if (RunResourceEventHandlers(GlobalPetEvents, "Create", npc, args, executed) == TriggerResult.True)
                 return TriggerResult.True;
+            if (RunNpcKindEvents(npc, "Create", args, executed) == TriggerResult.True)
+                return TriggerResult.True;
         }
         return ChainOutcome(args, priorReturn);
     }
@@ -592,8 +602,37 @@ public sealed class TriggerDispatcher
             ch.IsPlayer ? GlobalPlayerEvents : GlobalPetEvents, trigName, ch, args, executedEvents);
         if (globalEventResult == TriggerResult.True)
             return TriggerResult.True;
+        if (!ch.IsPlayer && RunNpcKindEvents(ch, trigName, args, executedEvents) == TriggerResult.True)
+            return TriggerResult.True;
 
         return RunCharFunctionFallback(ch, trigName, args);
+    }
+
+    /// <summary>The Sphere 56T custom version's per-kind NPC events, after EVENTSPET:
+    /// every NPC (EventsNpc), then the lists its kind falls under - a monster brain
+    /// (monster, berserk, dragon), an animal brain, a body that can be ridden, a
+    /// vendor. A 56T pack hangs its monster loot here (e_npc_monster @DeathCorpse
+    /// reading the chardef's TAG.LOOT). Each resource runs at most once per trigger,
+    /// shared with the lists before it.</summary>
+    private TriggerResult RunNpcKindEvents(Character npc, string trigName, TriggerArgs args,
+        HashSet<ResourceLink> executed)
+    {
+        if (RunResourceEventHandlers(GlobalNpcEvents, trigName, npc, args, executed) == TriggerResult.True)
+            return TriggerResult.True;
+        if (GlobalMonsterEvents.Count > 0 &&
+            npc.NpcBrain is NpcBrainType.Monster or NpcBrainType.Berserk or NpcBrainType.Dragon &&
+            RunResourceEventHandlers(GlobalMonsterEvents, trigName, npc, args, executed) == TriggerResult.True)
+            return TriggerResult.True;
+        if (GlobalAnimalEvents.Count > 0 && npc.NpcBrain == NpcBrainType.Animal &&
+            RunResourceEventHandlers(GlobalAnimalEvents, trigName, npc, args, executed) == TriggerResult.True)
+            return TriggerResult.True;
+        if (GlobalMountableEvents.Count > 0 && Mounts.MountEngine.IsMountable(npc.BodyId) &&
+            RunResourceEventHandlers(GlobalMountableEvents, trigName, npc, args, executed) == TriggerResult.True)
+            return TriggerResult.True;
+        if (GlobalShopEvents.Count > 0 && Trade.VendorEngine.IsVendorLike(npc) &&
+            RunResourceEventHandlers(GlobalShopEvents, trigName, npc, args, executed) == TriggerResult.True)
+            return TriggerResult.True;
+        return TriggerResult.Default;
     }
 
     /// <summary>The f_onchar_&lt;trigger&gt; [FUNCTION] fallback, when one exists.</summary>

@@ -133,9 +133,10 @@ public static partial class Program
     private static AdminCommandProcessor? _consoleProcessor;
 
     // Periodic world jobs run on wall-clock periods, not on a count of ticks, so a
-    // different ServerTickMs does not change how often they happen. The periods are
-    // the ones these jobs had at the default 100 ms tick (120 and 40 ticks).
-    private const long RegionPeriodicMs = 12_000;   // @RegPeriodic / @CliPeriodic
+    // different ServerTickMs does not change how often they happen. Region periodic
+    // follows the Source-X sector tick (CSector.cpp SECTOR_TICKING_PERIOD, 30 s); the
+    // other two keep the periods they had at the default 100 ms tick (40 and 120 ticks).
+    private const long RegionPeriodicMs = 30_000;   // @RegPeriodic / @CliPeriodic
     private const long PartyStatsPeriodMs = 4_000;  // party member health bars
     private const long HouseDecayPeriodMs = 12_000; // house decay check
     private static long _nextRegionPeriodicMs, _nextPartyStatsMs, _nextHouseDecayMs;

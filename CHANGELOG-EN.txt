@@ -24,10 +24,12 @@ FIX - Nearby clients no longer rebuild their whole view for changes that do not 
       now sends its new facing to the viewers that know it (Source-X CChar::UpdateDir).
       200 clustered bots, 2,000 NPCs: tick p50 37 -> 10 ms, step-answer latency p50
       80 -> 4 ms, allocation 71 -> 22 MB/s (the 2026-10-02 level).
-CHANGE - Region @RegPeriodic/@CliPeriodic (12 s), party health bars (4 s) and the house
+CHANGE - Region @RegPeriodic/@CliPeriodic, party health bars (4 s) and the house
       decay check (12 s) run on wall-clock periods instead of every Nth tick, so
       ServerTickMs no longer changes how often they happen. The periods are the ones
       they had at the default 100 ms tick.
+CHANGE - Region @RegPeriodic/@CliPeriodic fire every 30 s instead of every 12 s, the
+      Source-X sector tick period (SECTOR_TICKING_PERIOD).
 CHANGE - SphereNet.LoadTest takes --ini KEY=VALUE (repeatable) to compare sphere.ini
       settings on the same scenario; the overrides are recorded in the result file.
 

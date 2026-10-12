@@ -25,10 +25,12 @@ DUZELTME - Yakindaki istemciler, gorusu degistirmeyen ya da onlara zaten ulasmis
        yeni yonunu onu taniyan izleyicilere gonderir (Source-X CChar::UpdateDir).
        200 kumeli bot, 2.000 NPC: tick p50 37 -> 10 ms, adim cevap gecikmesi p50
        80 -> 4 ms, bellek ayirma 71 -> 22 MB/s (2026-10-02 seviyesi).
-DEGISIKLIK - Bolge @RegPeriodic/@CliPeriodic (12 sn), parti can barlari (4 sn) ve ev
+DEGISIKLIK - Bolge @RegPeriodic/@CliPeriodic, parti can barlari (4 sn) ve ev
        decay kontrolu (12 sn) her N'inci tick yerine duvar saati periyoduyla calisir;
        ServerTickMs artik ne siklikta calistiklarini degistirmez. Periyotlar
        varsayilan 100 ms tick'teki degerleridir.
+DEGISIKLIK - Bolge @RegPeriodic/@CliPeriodic 12 sn yerine 30 sn'de bir tetiklenir;
+       Source-X sektor tick periyodu (SECTOR_TICKING_PERIOD).
 DEGISIKLIK - SphereNet.LoadTest ayni senaryoda sphere.ini ayarlarini karsilastirmak
        icin --ini KEY=VALUE (tekrarlanabilir) alir; degerler sonuc dosyasina yazilir.
 

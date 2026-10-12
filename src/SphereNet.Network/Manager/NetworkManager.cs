@@ -21,6 +21,8 @@ public sealed class NetworkManager : IDisposable
     private const int MaxPacketSize = 65535;
     private const int PartialPacketTimeoutMs = 15_000;
     private Socket? _listenSocket;
+    private readonly AutoResetEvent _inputSignal = new(false);
+    private readonly Action _signalInput;
     private readonly NetState[] _states;
     private readonly PacketManager _packetManager;
     private readonly ILogger<NetworkManager> _logger;
@@ -126,6 +128,7 @@ public sealed class NetworkManager : IDisposable
     public NetworkManager(int maxClients, ILoggerFactory loggerFactory)
     {
         _maxClients = maxClients;
+        _signalInput = SignalInput;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<NetworkManager>();
         _packetManager = new PacketManager();
@@ -278,6 +281,23 @@ public sealed class NetworkManager : IDisposable
                 state.Clear();
             }
         }
+    }
+
+    /// <summary>sphere.ini AsyncReceive: connections receive through completions (a
+    /// receive always outstanding per socket, the main loop woken when data arrives)
+    /// instead of being polled each input pass. Applies to connections accepted after
+    /// it is set. False keeps the polled path (one Socket.Select per pass).</summary>
+    public bool AsyncReceive { get; set; } = true;
+
+    /// <summary>Raised whenever a completion-driven connection receives data, closes
+    /// or fails. The main loop waits on it instead of sleeping, so input is handled as
+    /// soon as it arrives.</summary>
+    public WaitHandle InputWaitHandle => _inputSignal;
+
+    private void SignalInput()
+    {
+        try { _inputSignal.Set(); }
+        catch (ObjectDisposedException) { }
     }
 
     /// <summary>E6: cap accepts per main-loop pass. An accept flood (SYN spam,
@@ -489,6 +509,8 @@ public sealed class NetworkManager : IDisposable
                 }
 
                 slot.Init(clientSocket);
+                if (AsyncReceive)
+                    slot.StartAsyncReceive(_signalInput);
                 OnStateInit(slot.RemoteEndPoint?.Address);
                 slot.DebugPackets = DebugPackets;
                 slot.DebugPacketOpcodeFilter = DebugPacketOpcodeFilter;
@@ -537,7 +559,8 @@ public sealed class NetworkManager : IDisposable
             {
                 // A socket select() did not report has no data, no FIN and no error:
                 // the same answer Receive would give, without its two calls.
-                int read = readinessKnown && state.Socket is { } socket && !_readable.Contains(socket)
+                int read = readinessKnown && !state.ReceivesAsync && state.Socket is { } socket
+                           && !_readable.Contains(socket)
                     ? 0
                     : state.Receive();
                 if (read < 0)
@@ -583,7 +606,7 @@ public sealed class NetworkManager : IDisposable
         _readable.Clear();
         foreach (var state in _states)
         {
-            if (state.CanReceive && state.Socket is { } socket)
+            if (state.CanReceive && !state.ReceivesAsync && state.Socket is { } socket)
                 _selectList.Add(socket);
         }
         if (_selectList.Count == 0)

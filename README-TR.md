@@ -39,6 +39,42 @@ Klasik motorda olmayan yetenekler:
 
 ## Performans
 
+### Güncel ölçüm (2026-10-12)
+
+`SphereNet.LoadTest` ile ölçüldü (repo içinde, tekrarlanabilir): ayrı bir süreçteki gerçek
+TCP bot istemcileri normal akışla giriş yapar, yürür (~450 ms'de bir adım), konuşur ve
+dclick yapar; ortam **2.000 dolaşan NPC ve 4.000 yer eşyası** olan sentetik bir kasabadır,
+botların hepsi **kümelenmiştir** (her bot diğerlerini görür) ve her 45 sn'lik pencerenin
+ortasında bir dünya kaydı alınır. Makine: AMD Ryzen 7 5700X3D (8C/16T), Windows 11, sıradan
+yoğun bir masaüstü; 4 multicore worker. *Adım cevabı*, botun yürüme isteğinden sunucu
+cevabına kadar geçen süredir ve bot tarafında ölçülür.
+
+| Bot | Tick | Tick p50 / p95 | Adım cevabı p50 / p95 | Bellek ayırma |
+|---|---|---|---|---|
+| 50 | 100 ms (varsayılan) | 6,1 / 12,1 ms | 1,4 / 5,0 ms | 6,8 MB/sn |
+| 200 | 100 ms (varsayılan) | 10,7 / 29,5 ms | 3,8 / 15,2 ms | 21 MB/sn |
+| 50 | 50 ms | 2,8 / 10,0 ms | 1,5 / 5,5 ms | 6,8 MB/sn |
+| 200 | 50 ms | 4,8 / 17,3 ms | 3,7 / 14,1 ms | 21 MB/sn |
+
+- **Alım modeli** (`AsyncReceive`): tamamlanma tabanlı alım (varsayılan) ile yoklamalı yol
+  (`AsyncReceive=0`, tur başına tek `Socket.Select`) aynı senaryoda — adım cevabı p50
+  50 botta **1,4 / 4,3 ms**, 200 botta **3,8 / 6,8 ms**; tick süresi aynı.
+- **Tick süresi**: `ServerTickMs=50` rahatça sığar (200 bot: 50 ms bütçede p95 17 ms) ve
+  saniye başına yaklaşık aynı CPU'yu harcar, çünkü her tick işin yarısını yapar. Tick'te
+  kontrol edilen zamanlayıcıları (vuruş, büyü) 100 ms yerine 50 ms hassasiyetle tetikler;
+  NPC eylemleri 100 ms'lik zamanlayıcı çarkında, oyuncu adımları her döngü turunda
+  işlendiği için onlar değişmez. Varsayılan 100 ms kalır (Source-X `MSECS_PER_TICK`).
+- **Sınır**: **tek ekranda** 500 bot bu makineyi her ayarda aşırı yükler (tick p95 ~90 ms,
+  adım cevabı p95 ~0,6 sn): her adım 499 izleyiciye gider. Aynı sayı haritaya dağıldığında
+  çok daha ucuzdur — maliyeti belirleyen, kaç oyuncunun birbirini gördüğüdür.
+- **Gerçek dünya**: canlı bir shard'ın kopyası (86.055 eşya, 26.767 karakter, 10.048
+  spawner, Scripts-X paketi) şehirlere dağılmış 200 botla, giriş patlamasından sonra hiç
+  yavaş tick ve duraklama olmadan çalıştı; 90 sn'lik profilde script yorumlayıcısı sunucu
+  süresinin %0,1'inin altındaydı. 200 eşzamanlı giriş tek seferlik ~1,3 sn'lik bir duraklama
+  yarattı.
+
+### Tarihsel ölçüm (2026-07-20)
+
 **2026-07-20'de güncel build üzerinde**, kod içi araçla (gerçek TCP bot istemcileri, tam üretim script paketi) mütevazı bir **5 vCPU VM, 12 GB RAM** üzerinde ölçüldü. Tick = 100 ms (saniyede 10, Source-X paritesi); botlar aynı process'te — sayılar kötümserdir.
 
 | Senaryo | Ort. tick | p95 | Bütçe |

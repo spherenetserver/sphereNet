@@ -99,6 +99,12 @@ public sealed class NetState : IDisposable
     internal Socket? Socket => _socket;
     private readonly byte[] _recvBuffer = new byte[65536];
     private int _recvLength;
+    // Completion-driven receive (NetworkManager.AsyncReceive); null on the polled path.
+    private AsyncReceiver? _receiver;
+
+    /// <summary>True when this connection receives through completions rather than
+    /// being polled by the input pass.</summary>
+    internal bool ReceivesAsync => _receiver != null;
     private readonly object _sendLock = new();
     // Outbound queues indexed by PacketPriority. FlushOutput drains them
     // Highest → Idle each flush, so latency-critical traffic (movement
@@ -375,6 +381,8 @@ public sealed class NetState : IDisposable
 
     public void Init(Socket socket)
     {
+        _receiver?.Abandon();
+        _receiver = null;
         _socket = socket;
         _socket.NoDelay = true;
         _socket.SendTimeout = 5000;
@@ -462,6 +470,10 @@ public sealed class NetState : IDisposable
         try { FlushOutput(); }
         catch (Exception ex) { _logger.LogDebug(ex, "Final flush error (client #{Id})", Id); }
 
+        // The pending receive completes with an error once the socket closes; the
+        // receiver is dropped first, so nothing it still delivers reaches this slot.
+        _receiver?.Abandon();
+        _receiver = null;
         try { _socket?.Shutdown(SocketShutdown.Both); }
         catch (Exception ex) { _logger.LogDebug(ex, "Socket shutdown error (client #{Id})", Id); }
         try { _socket?.Close(); }
@@ -494,9 +506,19 @@ public sealed class NetState : IDisposable
     /// Try to receive data from the socket into the internal buffer.
     /// Returns number of bytes received, or -1 on error/disconnect.
     /// </summary>
+    /// <summary>Switch this connection to completion-driven receive; <paramref name="signal"/>
+    /// is raised whenever data, a close or an error arrives. Call after <see cref="Init"/>.</summary>
+    internal void StartAsyncReceive(Action signal)
+    {
+        if (_socket == null) return;
+        _receiver = new AsyncReceiver(_socket, signal);
+        _receiver.Start();
+    }
+
     public int Receive()
     {
         if (_socket == null) return -1;
+        if (_receiver != null) return ReceiveFromCompletions(_receiver);
 
         try
         {
@@ -538,6 +560,30 @@ public sealed class NetState : IDisposable
         {
             return -1;
         }
+    }
+
+    /// <summary>Hand what the receiver collected since the last pass to the receive
+    /// buffer. Same answers as the polled path: bytes moved, 0 for nothing new, -1 once
+    /// the peer has closed (after its last bytes were handed out) or the buffer is full.</summary>
+    private int ReceiveFromCompletions(AsyncReceiver receiver)
+    {
+        int free = _recvBuffer.Length - _recvLength;
+        int got = receiver.Drain(_recvBuffer.AsSpan(_recvLength, free), out bool ended, out bool overflow);
+        if (overflow)
+        {
+            _logger.LogWarning("Receive buffer full for #{Id} ({EP}), disconnecting", Id, RemoteEndPoint);
+            MarkClosing();
+            return -1;
+        }
+        if (got > 0)
+        {
+            _recvLength += got;
+            AddInBytes(got);
+            LastActivityTick = Environment.TickCount64;
+            LastReceiveTick = LastActivityTick;
+            return got;
+        }
+        return ended ? -1 : 0;
     }
 
     /// <summary>

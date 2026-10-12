@@ -49,8 +49,13 @@ public static class TickYieldStrategy
     /// milliseconds is not this engine being slow - it is the thread not being given
     /// the CPU back. Logging the requested figure beside the measured one is the
     /// difference between "the loop stalled" and "the machine did not schedule us",
-    /// which are fixed in completely different places.</summary>
-    public static int Yield(int mode, long msUntilNextDeadline = 0)
+    /// which are fixed in completely different places.
+    ///
+    /// <paramref name="wake"/>, when given, ends a sleep early: the network signals it
+    /// when a connection receives data, so input waits for the next iteration only as
+    /// long as the loop is busy, not for the rest of a sleep. The sleep is still capped
+    /// as before - other per-iteration work (the movement queue) runs on that cadence.</summary>
+    public static int Yield(int mode, long msUntilNextDeadline = 0, WaitHandle? wake = null)
     {
         switch (Resolve(mode))
         {
@@ -58,11 +63,11 @@ public static class TickYieldStrategy
                 Thread.SpinWait(100);
                 return 0;
             case TickYieldAction.SleepOne:
-                Thread.Sleep(1);
+                Sleep(1, wake);
                 return 1;
             case TickYieldAction.Adaptive:
                 int ms = ComputeAdaptiveSleepMs(msUntilNextDeadline, AdaptiveMaxSleepMs);
-                if (ms > 0) Thread.Sleep(ms);
+                if (ms > 0) Sleep(ms, wake);
                 else Thread.SpinWait(100);
                 return ms;
             default:
@@ -70,5 +75,21 @@ public static class TickYieldStrategy
                 Thread.Sleep(0);
                 return 0;
         }
+    }
+
+    private static void Sleep(int ms, WaitHandle? wake)
+    {
+        if (wake == null || ms <= 1)
+        {
+            Thread.Sleep(ms);
+            return;
+        }
+        // The first millisecond is always slept: input arriving during it is handled
+        // together on the next iteration. Waking for every packet ran a full
+        // iteration (movement queue, dirty drain, view refreshes) per packet, and in a
+        // crowd those iterations cost more than the slack they ate - the loop fell
+        // behind its own ticks. After that, arriving data ends the wait.
+        Thread.Sleep(1);
+        wake.WaitOne(ms - 1);
     }
 }

@@ -1141,6 +1141,12 @@ public partial class Character : ObjBase
     /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>
     public long LastMoveTick { get; set; }
 
+    /// <summary>Where and facing which way this character was when its last move was
+    /// delivered to the clients around it (the move handler's enter/leave/update).
+    /// A position or direction change that matches it is already on every screen, so
+    /// the dirty drain does not rebuild those viewers' views for it again. Runtime only.</summary>
+    public (Point3D Position, Direction Direction) MoveDelivered { get; set; }
+
     // Last weapon wielded, for the EquipLastWeapon client macro (0xD7 0x1E).
     // Runtime-only (Source-X keeps m_uidWeaponLast in RAM), not persisted.
     private Serial _lastWeaponUid;
@@ -2830,7 +2836,10 @@ public partial class Character : ObjBase
     {
         var oldFlags = _statFlags;
         _statFlags |= flag;
-        MarkDirty(DirtyFlag.StatFlags);
+        // Only a real change is news: movement re-asserts InDoors/Fly on every step,
+        // and each no-op set used to rebuild the view of every client nearby.
+        if (_statFlags != oldFlags)
+            MarkDirty(DirtyFlag.StatFlags);
         if ((oldFlags & StatFlag.Hidden) == 0 && (_statFlags & StatFlag.Hidden) != 0)
             OnClientBuffChanged?.Invoke(this, BuffIcon.Hidden, true, 0, null);
         if ((oldFlags & StatFlag.Meditation) == 0 && (_statFlags & StatFlag.Meditation) != 0)
@@ -2851,7 +2860,8 @@ public partial class Character : ObjBase
     {
         var oldFlags = _statFlags;
         _statFlags &= ~flag;
-        MarkDirty(DirtyFlag.StatFlags);
+        if (_statFlags != oldFlags)
+            MarkDirty(DirtyFlag.StatFlags);
         if ((oldFlags & StatFlag.Hidden) != 0 && (_statFlags & StatFlag.Hidden) == 0)
             OnClientBuffChanged?.Invoke(this, BuffIcon.Hidden, false, 0, null);
         if ((oldFlags & StatFlag.Meditation) != 0 && (_statFlags & StatFlag.Meditation) == 0)

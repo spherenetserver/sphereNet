@@ -3866,6 +3866,7 @@ public static partial class Program
             _network.MaxSizeClientOut = _config.MaxSizeClientOut;
             _network.MaxSizeClientIn = _config.MaxSizeClientIn;
             _network.ClientMaxIP = _config.ClientMaxIP;
+            _network.AsyncReceive = _config.AsyncReceive;
             _network.ConnectingMaxIP = _config.ConnectingMaxIP;
             _network.MaxConnectRequestsPerIP = _config.MaxConnectRequestsPerIP;
             GameClient.LoginSucceededFrom = address => _network.ResetConnectRequests(address);
@@ -4106,5 +4107,6 @@ public static partial class Program
                 actor.X, actor.Y, actor.Z, dirByte,
                 actor.Hue, flags, noto));
         });
+        actor.MoveDelivered = (actor.Position, actor.Direction);
     }
 }

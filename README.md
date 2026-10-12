@@ -39,6 +39,41 @@ Capabilities the classic engine does not have:
 
 ## Performance
 
+### Current measurement (2026-10-12)
+
+Measured with `SphereNet.LoadTest` (in-tree, reproducible): real TCP bot clients in a
+separate process log in through the normal flow, walk (a step every ~450 ms), talk and
+double-click in a synthetic town of **2,000 wandering NPCs and 4,000 ground items**, all
+bots **clustered** so every one of them sees the others; one world save runs in the middle
+of each 45 s window. Machine: AMD Ryzen 7 5700X3D (8C/16T), Windows 11, an ordinary busy
+desktop; 4 multicore workers. *Step answer* is the time from a bot's walk request to the
+server's answer, measured on the bot.
+
+| Bots | Tick | Tick p50 / p95 | Step answer p50 / p95 | Alloc |
+|---|---|---|---|---|
+| 50 | 100 ms (default) | 6.1 / 12.1 ms | 1.4 / 5.0 ms | 6.8 MB/s |
+| 200 | 100 ms (default) | 10.7 / 29.5 ms | 3.8 / 15.2 ms | 21 MB/s |
+| 50 | 50 ms | 2.8 / 10.0 ms | 1.5 / 5.5 ms | 6.8 MB/s |
+| 200 | 50 ms | 4.8 / 17.3 ms | 3.7 / 14.1 ms | 21 MB/s |
+
+- **Receive model** (`AsyncReceive`): completion-driven receive (default) against the polled
+  path (`AsyncReceive=0`, one `Socket.Select` per pass) on the same scenario — step answer
+  p50 **1.4 vs 4.3 ms** at 50 bots and **3.8 vs 6.8 ms** at 200 bots; tick time is the same.
+- **Tick length**: `ServerTickMs=50` fits easily (200 bots: p95 17 ms of a 50 ms budget) and
+  costs about the same CPU per second, since each tick does half the work. It tightens
+  timers checked on the tick (swings, casts) from 100 to 50 ms granularity; NPC actions are
+  scheduled on a 100 ms timer wheel and player steps are handled every loop iteration, so
+  neither changes. The default stays 100 ms (Source-X `MSECS_PER_TICK`).
+- **Limit**: 500 bots on **one screen** overload this machine in every configuration (tick
+  p95 ~90 ms, step answer p95 ~0.6 s): every step goes to 499 viewers. Spread over a map
+  the same count is far cheaper — what costs is how many players see each other.
+- **Real world**: a copy of a live shard (86,055 items, 26,767 characters, 10,048 spawners,
+  Scripts-X pack) with 200 bots spread over the cities ran with no slow tick and no stall
+  after the login burst; the script interpreter was under 0.1 % of server time in a 90 s
+  profile. 200 simultaneous logins caused one ~1.3 s pause.
+
+### Historical measurement (2026-07-20)
+
 Historical measurement: taken **2026-07-20 on the build of that date** with the in-tree harness (real TCP bot clients, full production script pack) on a modest **5-vCPU VM, 12 GB RAM**. Tick = 100 ms (10/s, Source-X parity); bots run in-process, so numbers are pessimistic. The engine has changed since; these figures have not been re-measured on the current build and should be read as that build's results, not as a guarantee for this one.
 
 | Scenario | Avg tick | p95 | Budget |

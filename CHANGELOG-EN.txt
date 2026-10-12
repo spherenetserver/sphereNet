@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-12] - Completion-driven network receive, view rebuild regression
+------------------------------------------------------------------------
+PERF - Connections receive through completions (sphere.ini AsyncReceive=1, default): a
+      receive is always outstanding on each socket, arriving bytes are collected off the
+      main loop into a per-connection staging buffer, and the main loop's sleep ends
+      when data arrives (after a 1 ms batching floor). Parsing, decryption and packet
+      handling stay on the main loop. Each connection has its own receiver; a slot
+      handed to a new connection never sees bytes of the previous one. The old path
+      (one Socket.Select per pass) stays available with AsyncReceive=0. Synthetic town,
+      4 workers: step-answer latency p50 50 bots 4.3 -> 1.4 ms, 200 bots 6.8 -> 3.8 ms.
+FIX - Nearby clients no longer rebuild their whole view for changes that do not change
+      it or that already reached them. Since 2026-10-04 objects loaded from the save
+      report their changes (as they should), which exposed three costs: every player
+      step re-asserted InDoors/Fly and marked the character changed although nothing
+      did; steps and turns already sent to every viewer (move handler, move broadcast,
+      facing broadcast) rebuilt every viewer's view again; and hits/mana/stamina
+      changes, which are no part of anyone's view, did the same. An NPC that only turns
+      now sends its new facing to the viewers that know it (Source-X CChar::UpdateDir).
+      200 clustered bots, 2,000 NPCs: tick p50 37 -> 10 ms, step-answer latency p50
+      80 -> 4 ms, allocation 71 -> 22 MB/s (the 2026-10-02 level).
+CHANGE - Region @RegPeriodic/@CliPeriodic (12 s), party health bars (4 s) and the house
+      decay check (12 s) run on wall-clock periods instead of every Nth tick, so
+      ServerTickMs no longer changes how often they happen. The periods are the ones
+      they had at the default 100 ms tick.
+CHANGE - SphereNet.LoadTest takes --ini KEY=VALUE (repeatable) to compare sphere.ini
+      settings on the same scenario; the overrides are recorded in the result file.
+
 [2026-10-12] - Network input readiness check
 ------------------------------------------------------------------------
 PERF - The input pass asks the OS once which connections are readable (Socket.Select

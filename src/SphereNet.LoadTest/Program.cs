@@ -16,6 +16,9 @@ namespace SphereNet.LoadTest;
 ///
 ///   dotnet bin/Release/SphereNet.LoadTest.dll --workers 1,2,4,8 --bots 50,200
 ///       --duration 45 --warmup 10 --out loadtest-results.json --check
+///
+/// --ini KEY=VALUE (repeatable) adds a sphere.ini line to the generated shard, to
+/// compare settings on the same scenario (e.g. --ini AsyncReceive=0).
 /// </summary>
 internal static class Program
 {
@@ -37,6 +40,7 @@ internal static class Program
         public string? BaselinePath = Path.Combine(AppContext.BaseDirectory, "loadtest-baseline.json");
         public bool Check;
         public int Cpus;
+        public List<string> IniOverrides = [];
         public string? Commit = Environment.GetEnvironmentVariable("GITHUB_SHA");
     }
 
@@ -139,6 +143,7 @@ internal static class Program
                 ["durationSeconds"] = o.DurationSeconds,
                 ["saveAt"] = "half of the measured window",
                 ["botScript"] = "step every 420-480 ms (80% straight), speech ~6 s, double-click ~4 s",
+                ["iniOverrides"] = new JsonArray(o.IniOverrides.Select(v => (JsonNode?)JsonValue.Create(v)).ToArray()),
             },
             ["baseline"] = o.BaselinePath,
             ["runs"] = JsonSerializer.SerializeToNode(runs.Select(r => new
@@ -182,7 +187,7 @@ internal static class Program
         var result = new RunResult { Workers = workers, Bots = botCount };
         string root = Path.Combine(o.WorkDir, $"w{workers}-b{botCount}");
         var layout = SyntheticShard.Create(root, o.Npcs, o.Items, botCount, o.Spread, o.Seed);
-        SyntheticShard.WriteIni(layout, port, workers);
+        SyntheticShard.WriteIni(layout, port, workers, o.IniOverrides);
         result.ScenarioHash = layout.ScenarioHash;
 
         // --trustloopback: the whole fleet connects from 127.0.0.1, which the
@@ -442,6 +447,12 @@ internal static class Program
                 case "--no-baseline": o.BaselinePath = null; break;
                 case "--check": o.Check = true; break;
                 case "--cpus": o.Cpus = int.Parse(Next(), CultureInfo.InvariantCulture); break;
+                case "--ini":
+                    string kv = Next();
+                    if (!kv.Contains('='))
+                        throw new ArgumentException("--ini takes KEY=VALUE");
+                    o.IniOverrides.Add(kv);
+                    break;
                 case "--commit": o.Commit = Next(); break;
                 default: throw new ArgumentException($"unknown argument {args[i]}");
             }

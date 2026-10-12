@@ -720,6 +720,7 @@ public static partial class Program
             c.UpdateKnownCharPosition(movingChar);
         }
         recipients.Clear();
+        movingChar.MoveDelivered = (movingChar.Position, movingChar.Direction);
     }
 
     /// <summary>The widest view any client may have (MAPVIEWSIZEMAX): the sector sweep
@@ -815,6 +816,7 @@ public static partial class Program
         if (crossMap)
             NotifyMovedInSectors(ch, oldPos, isPlayer, oldPos.Map,
                 oldCx - secRadius, oldCx + secRadius, oldCy - secRadius, oldCy + secRadius);
+        ch.MoveDelivered = (ch.Position, ch.Direction);
     }
 
     private static void NotifyMovedInSectors(Character ch, Point3D oldPos, bool isPlayer,
@@ -877,6 +879,25 @@ public static partial class Program
 
     private static void MarkClientsNearDirtyObject(ObjBase obj)
     {
+        // A character whose only change is a step or a turn already delivered to every
+        // viewer (OnCharacterMoved, BroadcastMoveNearby, BroadcastFacingUpdate) needs no
+        // rebuilt view anywhere - Source-X CChar::UpdateMove sends the step, nothing
+        // more. Rebuilding every nearby client's view for every NPC step and every
+        // player step made the view work grow with the square of a crowd.
+        if (obj is Character mover)
+        {
+            if (IsDeliveredMoveOnly(mover))
+                return;
+            // An NPC that only turned: the viewers that know it get the new facing
+            // (Source-X CChar::UpdateDir sends the turn to each viewer), not a rebuilt
+            // view each. NPCs turn constantly while idle and wandering.
+            if (!mover.IsPlayer && mover.LastConsumedDirtyFlags == DirtyFlag.Direction)
+            {
+                DeliverNpcTurn(mover);
+                return;
+            }
+        }
+
         int secRadius = (MaxViewRange / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
 
         // The TOP-LEVEL position, not the object's own: a worn or contained item's
@@ -896,6 +917,12 @@ public static partial class Program
                 DirtyFlag.Hue | DirtyFlag.Body | DirtyFlag.Position)) != DirtyFlag.None;
         bool tooltipChanged = (obj.LastConsumedDirtyFlags &
             ~(DirtyFlag.Position | DirtyFlag.Direction)) != DirtyFlag.None;
+        // Hits, mana and stamina are not part of anyone's view (the view delta tracks
+        // position, body, hue, facing, visibility and notoriety): a character whose
+        // only change is its stats leaves every viewer's view as it was, so it is not
+        // rebuilt. Regeneration ticks every few seconds for everyone in a crowd.
+        bool viewChanged = !(obj is Character &&
+            (obj.LastConsumedDirtyFlags & ~DirtyFlag.Stats) == DirtyFlag.None);
 
         // The status window is the character's own, and nothing refreshed it: upstream
         // flushes one addStatusWindow per client cycle for a character whose stats
@@ -921,7 +948,8 @@ public static partial class Program
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying &&
                     InViewOf(c, ch, pos))
                 {
-                    c.ViewNeedsRefresh = true;
+                    if (viewChanged)
+                        c.ViewNeedsRefresh = true;
                     if (tooltipChanged)
                         c.SendAosTooltip(obj, requested: false, invalidate: true);
                     // A WORN item's look is in neither of the delta's two tables: the
@@ -935,6 +963,33 @@ public static partial class Program
                 }
             }
         }
+    }
+
+    private static void DeliverNpcTurn(Character npc)
+    {
+        uint uid = npc.Uid.Value;
+        byte dirByte = (byte)((byte)npc.Direction & 0x07);
+        ForEachClientInRange(npc.Position, MaxViewRange, uid, (viewer, c) =>
+        {
+            if (!c.HasKnownChar(uid) || !InViewOf(c, viewer, npc.Position))
+                return;
+            byte noto = GameClient.ComputeNotorietyColor(_world, viewer, npc);
+            byte flags = GameClient.BuildMobileFlagsFor(npc, c.NetState);
+            c.Send(new PacketMobileMoving(uid, npc.BodyId, npc.X, npc.Y, npc.Z, dirByte,
+                npc.Hue, flags, noto));
+            c.UpdateKnownCharPosition(npc);
+        });
+        npc.MoveDelivered = (npc.Position, npc.Direction);
+    }
+
+    internal static bool IsDeliveredMoveOnly(Character ch)
+    {
+        var flags = ch.LastConsumedDirtyFlags;
+        const DirtyFlag moveFlags = DirtyFlag.Position | DirtyFlag.Direction;
+        return flags != DirtyFlag.None &&
+               (flags & ~moveFlags) == DirtyFlag.None &&
+               ch.MoveDelivered.Position.Equals(ch.Position) &&
+               ch.MoveDelivered.Direction == ch.Direction;
     }
 
     /// <summary>Send a packet to a specific character by UID.</summary>

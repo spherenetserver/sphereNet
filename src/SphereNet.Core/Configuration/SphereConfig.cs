@@ -827,6 +827,13 @@ public sealed class SphereConfig
     //              gauge to confirm the drop before/after switching. (default)
     public int TickSleepMode { get; set; } = 3;
 
+    // Network receive model.
+    // 1 = completions (default): every connection keeps a receive outstanding; data is
+    //     collected off the main loop and the loop's sleep ends as soon as it arrives.
+    // 0 = polled: the main loop asks the OS each pass which connections have data
+    //     (one Socket.Select over all of them). Kept as a fallback.
+    public bool AsyncReceive { get; set; } = true;
+
     // Sentry
     public string SentryDsn { get; set; } = "";
 
@@ -1372,6 +1379,7 @@ public sealed class SphereConfig
         MaxNpcsPerTick = Math.Max(1, ini.GetInt(section, "MaxNpcsPerTick", MaxNpcsPerTick));
         NpcPathPrestagePerTick = Math.Max(0, ini.GetInt(section, "NpcPathPrestagePerTick", NpcPathPrestagePerTick));
         TickSleepMode = ini.GetInt(section, "TickSleepMode", TickSleepMode);
+        AsyncReceive = ini.GetBool(section, "AsyncReceive", AsyncReceive);
         // ServerTickMs is canonical. TICKPERIOD is accepted when ServerTickMs is absent,
         // in the unit Source-X reports it in: ticks per SECOND (RC_TICKPERIOD answers
         // TICKS_PER_SEC), so 10 means a 100 ms tick. It used to be taken as the tick

@@ -4,6 +4,34 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-12] - Tamamlanma tabanli ag alimi, gorus yeniden-kurma gerilemesi
+------------------------------------------------------------------------
+PERF - Baglantilar veriyi tamamlanmalarla alir (sphere.ini AsyncReceive=1, varsayilan):
+       her sokette her zaman bekleyen bir alim vardir, gelen baytlar ana dongu disinda
+       baglanti basina bir ara tampona toplanir ve veri gelince ana dongunun uykusu
+       biter (1 ms toplama tabani ile). Ayristirma, sifre cozme ve paket isleme ana
+       dongude kalir. Her baglantinin kendi alicisi vardir; yeni baglantiya verilen
+       slot onceki baglantinin baytlarini gormez. Eski yol (tur basina tek
+       Socket.Select) AsyncReceive=0 ile secilebilir. Sentetik kasaba, 4 worker: adim
+       cevap gecikmesi p50 50 botta 4.3 -> 1.4 ms, 200 botta 6.8 -> 3.8 ms.
+DUZELTME - Yakindaki istemciler, gorusu degistirmeyen ya da onlara zaten ulasmis
+       degisiklikler icin tum gorusunu yeniden kurmaz. 2026-10-04'ten beri save'den
+       yuklenen nesneler degisikliklerini bildiriyor (dogrusu bu); bu uc maliyeti
+       ortaya cikardi: her oyuncu adimi InDoors/Fly'i yeniden atayip hicbir sey
+       degismedigi halde karakteri degismis isaretliyordu; tum izleyicilere zaten
+       gonderilmis adim ve donusler (hareket isleyicisi, hareket yayini, yon yayini)
+       her izleyicinin gorusunu yeniden kurduruyordu; kimsenin gorusunde olmayan
+       can/mana/stamina degisiklikleri de ayni seyi yapiyordu. Sadece donen NPC artik
+       yeni yonunu onu taniyan izleyicilere gonderir (Source-X CChar::UpdateDir).
+       200 kumeli bot, 2.000 NPC: tick p50 37 -> 10 ms, adim cevap gecikmesi p50
+       80 -> 4 ms, bellek ayirma 71 -> 22 MB/s (2026-10-02 seviyesi).
+DEGISIKLIK - Bolge @RegPeriodic/@CliPeriodic (12 sn), parti can barlari (4 sn) ve ev
+       decay kontrolu (12 sn) her N'inci tick yerine duvar saati periyoduyla calisir;
+       ServerTickMs artik ne siklikta calistiklarini degistirmez. Periyotlar
+       varsayilan 100 ms tick'teki degerleridir.
+DEGISIKLIK - SphereNet.LoadTest ayni senaryoda sphere.ini ayarlarini karsilastirmak
+       icin --ini KEY=VALUE (tekrarlanabilir) alir; degerler sonuc dosyasina yazilir.
+
 [2026-10-12] - Ag girisi hazirlik kontrolu
 ------------------------------------------------------------------------
 PERF - Giris turu hangi baglantilarin okunabilir oldugunu isletim sistemine tek seferde

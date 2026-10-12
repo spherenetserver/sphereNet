@@ -72,7 +72,7 @@ public static class SyntheticShard
         return layout;
     }
 
-    public static void WriteIni(Layout layout, int port, int workerCount)
+    public static void WriteIni(Layout layout, int port, int workerCount, IReadOnlyList<string>? overrides = null)
     {
         static string Dir(string p) => p.Replace('\\', '/').TrimEnd('/') + "/";
         var sb = new StringBuilder();
@@ -104,6 +104,9 @@ public static class SyntheticShard
         sb.AppendLine("BackupLevels=0");
         sb.AppendLine($"MulticoreWorkerCount={workerCount}");
         sb.AppendLine("LogFileLevel=Warning");
+        // --ini KEY=VALUE: later lines win, so an override replaces a default above.
+        foreach (var line in overrides ?? [])
+            sb.AppendLine(line);
         File.WriteAllText(layout.IniPath, sb.ToString(), new UTF8Encoding(false));
     }
 

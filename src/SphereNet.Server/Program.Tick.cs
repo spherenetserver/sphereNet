@@ -263,7 +263,8 @@ public static partial class Program
                 // (TickSleepMode=3) can sleep out an idle window without ever
                 // overrunning the tick cadence. Other modes ignore the argument.
                 int yieldAskedMs = TickYieldStrategy.Yield(
-                    _config.TickSleepMode, nextTickMs - sw.ElapsedMilliseconds);
+                    _config.TickSleepMode, nextTickMs - sw.ElapsedMilliseconds,
+                    _network.AsyncReceive ? _network.InputWaitHandle : null);
 
                 long iterTs6 = Stopwatch.GetTimestamp();
                 long iterTotalUs = ToMicroseconds(iterTs6 - iterTs0);
@@ -1523,7 +1524,8 @@ public static partial class Program
         // @RegPeriodic once per region that holds at least one player (a
         // representative player is the SRC, mirroring iRegionPeriodic). Only
         // regions with players present tick — uninhabited regions never fire.
-        if (_world.TickCount % RegionPeriodicTicks == 0 && _triggerDispatcher != null)
+        long periodicNowMs = Environment.TickCount64;
+        if (PeriodDue(ref _nextRegionPeriodicMs, periodicNowMs, RegionPeriodicMs) && _triggerDispatcher != null)
         {
             _regPeriodicFired.Clear();
             foreach (var client in _clients.Values)
@@ -1547,15 +1549,15 @@ public static partial class Program
 
         // Party member HP bars (Source-X CPartyDef::AddStatsUpdate): push every
         // member's health to every OTHER online member so the party gump bars
-        // track them beyond visual range. ~2s cadence (40 ticks at 50ms).
-        if (_world.TickCount % 40 == 0 && _partyManager != null)
+        // track them beyond visual range.
+        if (PeriodDue(ref _nextPartyStatsMs, periodicNowMs, PartyStatsPeriodMs) && _partyManager != null)
             FlushStep("party", PushPartyStats);
 
         // Ship movement ticks
         FlushStep("ships", () => _shipEngine?.OnTickAll());
 
-        // House decay (check every ~120 ticks = ~6s at 50ms tick)
-        if (_world.TickCount % 120 == 0 && _housingEngine != null)
+        // House decay check.
+        if (PeriodDue(ref _nextHouseDecayMs, periodicNowMs, HouseDecayPeriodMs) && _housingEngine != null)
         {
             var collapsed = _housingEngine.OnTickDecay();
             foreach (var house in collapsed)

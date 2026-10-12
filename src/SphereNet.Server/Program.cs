@@ -132,10 +132,29 @@ public static partial class Program
     private static long _lastLightWorldMinute = long.MinValue;
     private static AdminCommandProcessor? _consoleProcessor;
 
-    // Region @RegPeriodic/@CliPeriodic firing cadence (~6s at the 50ms tick)
-    // and the per-tick set used to fire @RegPeriodic once per inhabited region.
-    private const int RegionPeriodicTicks = 120;
+    // Periodic world jobs run on wall-clock periods, not on a count of ticks, so a
+    // different ServerTickMs does not change how often they happen. The periods are
+    // the ones these jobs had at the default 100 ms tick (120 and 40 ticks).
+    private const long RegionPeriodicMs = 12_000;   // @RegPeriodic / @CliPeriodic
+    private const long PartyStatsPeriodMs = 4_000;  // party member health bars
+    private const long HouseDecayPeriodMs = 12_000; // house decay check
+    private static long _nextRegionPeriodicMs, _nextPartyStatsMs, _nextHouseDecayMs;
+    // The per-tick set used to fire @RegPeriodic once per inhabited region.
     private static readonly HashSet<uint> _regPeriodicFired = [];
+
+    /// <summary>True once per <paramref name="periodMs"/>; the first call only arms it.</summary>
+    internal static bool PeriodDue(ref long nextDueMs, long nowMs, long periodMs)
+    {
+        if (nextDueMs == 0)
+        {
+            nextDueMs = nowMs + periodMs;
+            return false;
+        }
+        if (nowMs < nextDueMs)
+            return false;
+        nextDueMs = nowMs + periodMs;
+        return true;
+    }
 
     // Written from several threads (Console.CancelKeyPress signal handler, the
     // telnet accept thread, the WinForms UI thread, the IPC/panel callback) and

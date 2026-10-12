@@ -123,8 +123,8 @@ public sealed class NetworkInputLoopTests
     private static byte[] Repeat(byte[] packet, int times) =>
         Enumerable.Range(0, times).SelectMany(_ => packet).ToArray();
 
-    private static NetworkManager NoCryptManager() =>
-        new(2, NullLoggerFactory.Instance) { UseNoCrypt = true, UseCrypt = false };
+    private static NetworkManager NoCryptManager(bool asyncReceive = true, int slots = 2) =>
+        new(slots, NullLoggerFactory.Instance) { UseNoCrypt = true, UseCrypt = false, AsyncReceive = asyncReceive };
 
     private static (Socket Client, NetState State) LoggedIn(Loopback lb)
     {
@@ -155,10 +155,12 @@ public sealed class NetworkInputLoopTests
     /// Here a client sends bursts of 1000 valid small packets plus pings, burst after
     /// burst over the real socket path: it stays connected and every packet is
     /// dispatched exactly once, in order.</summary>
-    [Fact]
-    public void RepeatedBurstsOfAThousandPacketsAreAllDispatchedInOrderAndNeverDropped()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RepeatedBurstsOfAThousandPacketsAreAllDispatchedInOrderAndNeverDropped(bool asyncReceive)
     {
-        var nm = NoCryptManager();
+        var nm = NoCryptManager(asyncReceive);
         var handler = new SequenceHandler();
         nm.Packets.Register(handler);
         using var lb = new Loopback(nm);
@@ -259,10 +261,12 @@ public sealed class NetworkInputLoopTests
     /// <summary>The input pass asks the OS once which sockets are readable. A peer
     /// that closes its side shows up as readable with nothing to read, and must still
     /// be seen as lost on that pass.</summary>
-    [Fact]
-    public void APeerThatClosesIsDetectedThroughTheReadinessCheck()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void APeerThatClosesIsDetectedThroughTheReadinessCheck(bool asyncReceive)
     {
-        var nm = NoCryptManager();
+        var nm = NoCryptManager(asyncReceive);
         using var lb = new Loopback(nm);
         var (client, state) = LoggedIn(lb);
 
@@ -275,10 +279,12 @@ public sealed class NetworkInputLoopTests
 
     /// <summary>Among many idle connections only the one that sent data is
     /// dispatched, and the idle ones stay open.</summary>
-    [Fact]
-    public void OnlyTheConnectionThatSentDataIsDispatched()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void OnlyTheConnectionThatSentDataIsDispatched(bool asyncReceive)
     {
-        var nm = new NetworkManager(16, NullLoggerFactory.Instance) { UseNoCrypt = true, UseCrypt = false };
+        var nm = NoCryptManager(asyncReceive, slots: 16);
         var handler = new SequenceHandler();
         nm.Packets.Register(handler);
         using var lb = new Loopback(nm);
@@ -292,6 +298,112 @@ public sealed class NetworkInputLoopTests
 
         Assert.Equal([42], handler.Seen);
         Assert.All(connections, c => Assert.False(c.State.IsClosing));
+    }
+
+    // ---- completion-driven receive (AsyncReceive) -----
+
+    /// <summary>Data arriving on a connection wakes the main loop: the wait handle it
+    /// sleeps on is signalled without anyone polling.</summary>
+    [Fact]
+    public void ArrivingDataSignalsTheInputWaitHandle()
+    {
+        var nm = NoCryptManager();
+        using var lb = new Loopback(nm);
+        var (client, state) = LoggedIn(lb);
+        Assert.True(state.ReceivesAsync);
+
+        nm.InputWaitHandle.WaitOne(0); // drop a signal left over from the login
+        nm.ProcessAllInput();
+        client.Send(TestPacket);
+
+        Assert.True(nm.InputWaitHandle.WaitOne(5000), "no wake-up after data arrived");
+    }
+
+    /// <summary>A slot handed to a new connection starts from an empty buffer and a
+    /// receiver of its own: nothing of the previous connection reaches it.</summary>
+    [Fact]
+    public void AReusedSlotReceivesOnlyItsNewConnectionsBytes()
+    {
+        var nm = NoCryptManager(slots: 1);
+        var handler = new SequenceHandler();
+        nm.Packets.Register(handler);
+        using var lb = new Loopback(nm);
+
+        var (first, firstState) = LoggedIn(lb);
+        int slotId = firstState.Id;
+        first.Send(TestPacket[..3]); // a partial packet left behind
+        lb.PumpUntil(() => firstState.ReceivedData.Length > 0);
+        firstState.MarkClosing();
+        nm.Tick(); // clears the slot and closes the socket
+
+        var (second, secondState) = LoggedIn(lb);
+        Assert.Equal(slotId, secondState.Id);
+        second.Send(Sequenced(7));
+        lb.PumpUntil(() => handler.Seen.Count >= 1);
+
+        Assert.Equal([7], handler.Seen);
+        Assert.False(secondState.IsClosing);
+    }
+
+    /// <summary>More than one receive buffer of data between two drains is the
+    /// synchronous path's "receive buffer full": the connection is dropped.</summary>
+    [Fact]
+    public void MoreThanTheStagingCapacityBetweenDrainsOverflows()
+    {
+        using var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        listener.Listen(1);
+        using var client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        client.Connect((IPEndPoint)listener.LocalEndPoint!);
+        using var server = listener.Accept();
+
+        var receiver = new AsyncReceiver(server, () => { });
+        receiver.Start();
+        client.Send(new byte[AsyncReceiver.StagingCapacity + 4096]);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!receiver.HasOverflowed && sw.ElapsedMilliseconds < 5000)
+            Thread.Sleep(1);
+
+        var dest = new byte[AsyncReceiver.StagingCapacity];
+        receiver.Drain(dest, out _, out bool overflow);
+        Assert.True(overflow);
+    }
+
+    /// <summary>Bytes that do not fit a partly full receive buffer wait for the next
+    /// drain instead of being lost, and the peer's close is reported only after the
+    /// last of them was handed out.</summary>
+    [Fact]
+    public void DrainHandsOutEverythingBeforeReportingTheClose()
+    {
+        using var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        listener.Listen(1);
+        var client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        client.Connect((IPEndPoint)listener.LocalEndPoint!);
+        using var server = listener.Accept();
+
+        var receiver = new AsyncReceiver(server, () => { });
+        receiver.Start();
+        var payload = Enumerable.Range(0, 100).Select(i => (byte)i).ToArray();
+        client.Send(payload);
+        client.Shutdown(SocketShutdown.Both);
+        client.Close();
+
+        var received = new List<byte>();
+        bool ended = false;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!ended && sw.ElapsedMilliseconds < 5000)
+        {
+            var dest = new byte[30]; // smaller than what arrived
+            int n = receiver.Drain(dest, out ended, out bool overflow);
+            Assert.False(overflow);
+            received.AddRange(dest[..n]);
+            if (n == 0 && !ended) Thread.Sleep(1);
+        }
+
+        Assert.True(ended);
+        Assert.Equal(payload, received);
     }
 
     // ---- N04: the partial-packet deadline runs while the socket is silent -----

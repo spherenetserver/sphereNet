@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-13] - sphere.ini aciklamalari docs/CONFIG-EN.md ve docs/CONFIG-TR.md'ye tasindi
+------------------------------------------------------------------------
+DEGISIKLIK - config/sphere.ini her anahtar icin uzun iki dilli yorum blogu yerine tek
+       satirlik Ingilizce ozet (varsayilan ve durum etiketiyle) tasir; 3964 -> 1374
+       satir. Her anahtarin tam aciklamasi (tur, varsayilan, ornek, notlar)
+       docs/CONFIG-EN.md ve docs/CONFIG-TR.md'dedir. Ayar satirlari ve degerler
+       degismedi. Mevcut kurulumlar kendi sphere.ini'sini korur (guncelleme ustune
+       yazmaz); sonradan eklenen anahtarlar icin bakilacak yer bu belgelerdir.
+
 [2026-10-13] - SQLite baglantilarinda DB.ESCAPEDATA
 ------------------------------------------------------------------------
 DUZELTME - SQLite baglantisinda DB.ESCAPEDATA MySQL ters bolu kacisi yerine iki tirnak

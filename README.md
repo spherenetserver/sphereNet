@@ -106,7 +106,7 @@ dotnet build
 dotnet run --project src/SphereNet.Server   # headless (or SphereNet.Host for the web panel)
 ```
 
-Edit `config/sphere.ini`: point `MULFILES` at your UO client data, put scripts under `SCPFILES`. Key settings: `SAVEFORMAT` (`Text`…`BinaryGz`), `SAVESHARDS` (0–16), `SAVEBACKGROUND`, `[MYSQL <name>]` / `[PGSQL <name>]` blocks.
+Edit `config/sphere.ini`: point `MULFILES` at your UO client data, put scripts under `SCPFILES`. Key settings: `SAVEFORMAT` (`Text`…`BinaryGz`), `SAVESHARDS` (0–16), `SAVEBACKGROUND`, `[MYSQL <name>]` / `[PGSQL <name>]` blocks. Every key is described in [docs/CONFIG-EN.md](docs/CONFIG-EN.md) ([Turkish](docs/CONFIG-TR.md)).
 
 Ports: **2593** UO client · **2594** Telnet admin · **2595** HTTP status · **9999** web panel (`ADMINPANELPORT`).
 

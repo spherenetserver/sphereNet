@@ -1,11 +1,13 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using SphereNet.Core.Configuration;
 using Xunit.Abstractions;
 
 namespace SphereNet.Tests;
 
 /// <summary>
-/// A note in sphere.ini that says a setting has no effect must be telling the truth.
+/// A note in sphere.ini or the configuration reference (docs/CONFIG-EN.md,
+/// docs/CONFIG-TR.md) that says a setting has no effect must be telling the truth.
 ///
 /// Three of them were not. CLIENTMAXIP said NetworkManager does not check per-IP
 /// connections, and it does. DEADCANNOTSEELIVING said the filter is not applied, and it
@@ -19,17 +21,17 @@ namespace SphereNet.Tests;
 /// </summary>
 public sealed class IniNoteAccuracyTests
 {
-    /// <summary>Phrases the file uses to say "this value is read but does nothing".</summary>
+    /// <summary>Phrases the files use to say "this value is read but does nothing".</summary>
     private static readonly string[] InertClaims =
     [
-        "yapm\u0131yor", "uygulam\u0131yor", "etkilemiyor",
+        "yapmıyor", "uygulamıyor", "etkilemiyor",
+        "has no effect", "nothing reads", "does not affect",
     ];
 
     [Fact]
     public void NoSettingIsDocumentedAsInertWhileTheEngineUsesIt()
     {
         string root = TestRepo.Root;
-        string ini = TestRepo.Tracked("config/sphere.ini");
 
         var props = typeof(SphereConfig).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
@@ -45,35 +47,86 @@ public sealed class IniNoteAccuracyTests
             .Select(File.ReadAllText)
             .ToList();
 
-        var lines = File.ReadAllLines(ini);
-        var wrong = new List<string>();
+        var claims = new List<(string Key, string Where)>();
+        claims.AddRange(IniClaims(TestRepo.Tracked("config/sphere.ini")));
+        claims.AddRange(DocClaims(TestRepo.Tracked("docs/CONFIG-EN.md")));
+        claims.AddRange(DocClaims(TestRepo.Tracked("docs/CONFIG-TR.md")));
 
+        // A setting copied into an engine static that nothing reads is inert although
+        // "_config.X" appears in source. Each entry names that static, and stays only
+        // while the static has no reader besides its declaration and that assignment.
+        foreach (var (key, member) in ForwardedButUnused)
+        {
+            int uses = sources.Sum(src => Regex.Matches(src, @"\b" + member + @"\b").Count);
+            Assert.True(uses <= 2, $"{key}: {member} is now read by the engine; its inert note is wrong");
+        }
+
+        var wrong = new List<string>();
+        foreach (var (key, where) in claims)
+        {
+            if (ForwardedButUnused.ContainsKey(key)) continue;
+            if (!props.TryGetValue(key, out var prop)) continue;
+            string usage = "_config." + prop.Name;
+            if (sources.Any(src => src.Contains(usage, StringComparison.Ordinal)))
+                wrong.Add($"{key} ({where}): the note says it has no effect, but {usage} is read by the engine");
+        }
+
+        Assert.True(wrong.Count == 0,
+            "these notes claim a setting does nothing, and the engine uses it: " +
+            string.Join(" ; ", wrong.Distinct()));
+    }
+
+    /// <summary>Key -> the engine static it is copied into. ITEMDEFAULTHITS is assigned
+    /// to CombatEngine.DefaultHits at wiring time and nothing reads that.</summary>
+    private static readonly Dictionary<string, string> ForwardedButUnused =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ITEMDEFAULTHITS"] = "DefaultHits",
+        };
+
+    private static bool IsClaim(string text) =>
+        InertClaims.Any(c => text.Contains(c, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>In the ini a note belongs to the next non-comment assignment.</summary>
+    private static IEnumerable<(string, string)> IniClaims(string ini)
+    {
+        var lines = File.ReadAllLines(ini);
         for (int i = 0; i < lines.Length; i++)
         {
             string note = lines[i].Trim();
-            if (!note.StartsWith("//", StringComparison.Ordinal)) continue;
-            if (!InertClaims.Any(c => note.Contains(c, StringComparison.OrdinalIgnoreCase)))
+            if (!note.StartsWith("//", StringComparison.Ordinal) || !IsClaim(note))
                 continue;
-
-            // The key this note belongs to is the next non-comment assignment.
-            string? key = null;
             for (int j = i + 1; j < lines.Length && j < i + 8; j++)
             {
                 string t = lines[j].Trim();
                 if (t.StartsWith("//", StringComparison.Ordinal) || t.Length == 0) continue;
                 int eq = t.IndexOf('=');
-                if (eq > 0) key = t[..eq].Trim();
+                if (eq > 0) yield return (t[..eq].Trim(), "sphere.ini");
                 break;
             }
-            if (key == null || !props.TryGetValue(key, out var prop)) continue;
-
-            string usage = "_config." + prop.Name;
-            if (sources.Any(src => src.Contains(usage, StringComparison.Ordinal)))
-                wrong.Add($"{key}: the note says it has no effect, but {usage} is read by the engine");
         }
+    }
 
-        Assert.True(wrong.Count == 0,
-            "sphere.ini claims these do nothing, and the engine uses them: " +
-            string.Join(" ; ", wrong));
+    /// <summary>In the reference a note belongs to every key its "### KEY" heading names.</summary>
+    private static IEnumerable<(string, string)> DocClaims(string doc)
+    {
+        string name = Path.GetFileName(doc);
+        string[] keys = [];
+        foreach (string raw in File.ReadAllLines(doc))
+        {
+            if (raw.StartsWith("### ", StringComparison.Ordinal))
+            {
+                keys = ConfigReferenceDocsTests.HeadingKeys(raw[4..]).ToArray();
+                continue;
+            }
+            if (raw.StartsWith("## ", StringComparison.Ordinal))
+            {
+                keys = [];
+                continue;
+            }
+            if (!IsClaim(raw)) continue;
+            foreach (string key in keys)
+                yield return (key, name);
+        }
     }
 }

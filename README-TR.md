@@ -107,7 +107,7 @@ dotnet build
 dotnet run --project src/SphereNet.Server   # headless (web panel için SphereNet.Host)
 ```
 
-`config/sphere.ini` düzenleyin: `MULFILES` UO istemci verinize, scriptler `SCPFILES` altına. Önemli anahtarlar: `SAVEFORMAT` (`Text`…`BinaryGz`), `SAVESHARDS` (0–16), `SAVEBACKGROUND`, `[MYSQL <isim>]` blokları.
+`config/sphere.ini` düzenleyin: `MULFILES` UO istemci verinize, scriptler `SCPFILES` altına. Önemli anahtarlar: `SAVEFORMAT` (`Text`…`BinaryGz`), `SAVESHARDS` (0–16), `SAVEBACKGROUND`, `[MYSQL <isim>]` / `[PGSQL <isim>]` blokları. Tüm anahtarlar [docs/CONFIG-TR.md](docs/CONFIG-TR.md) içinde açıklanır ([İngilizce](docs/CONFIG-EN.md)).
 
 Portlar: **2593** UO istemci · **2594** Telnet yönetim · **2595** HTTP durum · **9999** web panel (`ADMINPANELPORT`).
 

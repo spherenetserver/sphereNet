@@ -135,8 +135,7 @@ public sealed class IniUnreadKeyReportTests : IDisposable
         // never wired up.
         string text = File.ReadAllText(repoIni);
         var undocumented = unread
-            .Where(k => !text.Contains("[UYGULANMADI]", StringComparison.Ordinal) ||
-                        !IsMarkedUnsupported(text, k))
+            .Where(k => !IsMarkedUnsupported(text, k))
             .ToArray();
         foreach (string k in undocumented) _out.WriteLine("  undocumented: " + k);
 
@@ -155,7 +154,8 @@ public sealed class IniUnreadKeyReportTests : IDisposable
             if (t.Length == 0) { block.Clear(); continue; }
             int eq = t.IndexOf('=');
             if (eq > 0 && t[..eq].Trim().Equals(key, StringComparison.OrdinalIgnoreCase))
-                return block.Any(c => c.Contains("[UYGULANMADI]", StringComparison.Ordinal));
+                return block.Any(c => c.Contains("[UYGULANMADI]", StringComparison.Ordinal) ||
+                                      c.Contains("[NOT IMPLEMENTED]", StringComparison.Ordinal));
             block.Clear();
         }
         return false;

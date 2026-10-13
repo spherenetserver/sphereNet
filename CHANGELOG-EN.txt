@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-13] - sphere.ini reference moved to docs/CONFIG-EN.md and docs/CONFIG-TR.md
+------------------------------------------------------------------------
+CHANGE - config/sphere.ini carries one English summary line per key (with its default
+      and status tag) instead of a long bilingual comment block; 3964 -> 1374 lines.
+      The full description of every key - type, default, examples, notes - is in
+      docs/CONFIG-EN.md and docs/CONFIG-TR.md. Every setting line and value is
+      unchanged. Existing installations keep their own sphere.ini (updates never
+      overwrite it); the reference is the place to look for keys added later.
+
 [2026-10-13] - DB.ESCAPEDATA on SQLite connections
 ------------------------------------------------------------------------
 FIX - DB.ESCAPEDATA on a SQLite connection doubles both quote marks instead of writing

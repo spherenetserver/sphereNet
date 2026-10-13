@@ -40,7 +40,7 @@ public sealed class IniKeyClassificationGuardrailTests
     }
 
     private static readonly string[] WorkingMarkers =
-        ["[ÇALIŞIYOR]", "[CALISIYOR]", "[UYGULANIYOR]", "[AKTİF]"];
+        ["[WORKING]", "[ÇALIŞIYOR]", "[CALISIYOR]", "[UYGULANIYOR]", "[AKTİF]"];
 
     /// <summary>Each assignment in the ini paired with the status marker that governs
     /// it: the one in the contiguous comment block directly above. A blank line ends
@@ -63,9 +63,9 @@ public sealed class IniKeyClassificationGuardrailTests
                 foreach (string c in block)
                 {
                     if (WorkingMarkers.Any(c.Contains)) marker = "CALISIYOR";
-                    else if (c.Contains("[UYGULANMADI]")) marker = "UYGULANMADI";
+                    else if (c.Contains("[UYGULANMADI]") || c.Contains("[NOT IMPLEMENTED]")) marker = "UYGULANMADI";
                     else if (c.Contains("[UYUMLULUK NO-OP]")) marker = "NOOP";
-                    else if (c.Contains("[OKUNUYOR]")) marker = "OKUNUYOR";
+                    else if (c.Contains("[OKUNUYOR]") || c.Contains("[READ ONLY]")) marker = "OKUNUYOR";
                     else if (c.Contains("[DOKUMAN")) marker = "DOKUMAN";
                 }
                 rows.Add((m.Groups[1].Value.ToUpperInvariant(), marker, i + 1));

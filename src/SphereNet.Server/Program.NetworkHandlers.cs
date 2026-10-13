@@ -277,6 +277,13 @@ public static partial class Program
             _log?.LogDebug("Registered MySQL database provider");
         }
 
+        // ...and PostgreSQL, for [PGSQL name] connections.
+        if (!DbProviderFactories.TryGetFactory(DbConnectionConfig.PostgreSqlProvider, out _))
+        {
+            DbProviderFactories.RegisterFactory(DbConnectionConfig.PostgreSqlProvider, Npgsql.NpgsqlFactory.Instance);
+            _log?.LogDebug("Registered PostgreSQL database provider");
+        }
+
         // Classic Sphere packs write SQL string literals in DOUBLE quotes
         // (INSERT ... VALUES ("<LOCAL.ID>", ...)). Microsoft.Data.Sqlite's
         // bundled sqlite disables that legacy quirk (DQS), so every such

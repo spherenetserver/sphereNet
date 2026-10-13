@@ -648,14 +648,32 @@ public static partial class Program
                         db.Close();
                     ok = db.Connect(out error);
                 }
+                else if (arg.Split('|', 2, StringSplitOptions.TrimEntries) is [var provider, var connStr])
+                {
+                    // DB.CONNECT provider|connection string, as on the client console.
+                    ok = db.Connect(provider, connStr, out error);
+                }
                 else
                 {
                     ok = db.Connect(arg, out error);
                 }
                 break;
             case "CLOSE":
-                db.Close();
+                // Named sessions: DB.CLOSE closes the active one, DB.CLOSE name that
+                // session, DB.CLOSE * every one - as the client console does.
+                if (arg.Length == 0)
+                    db.Close();
+                else if (arg == "*")
+                    db.CloseAll();
+                else
+                    db.Close(arg);
                 return "1";
+            case "SELECT":
+                // DB.SELECT name makes a configured [MYSQL name]/[SQLITE name] session
+                // the one QUERY/EXECUTE use. Only the client console handled it, so in a
+                // trigger it fell to the default arm and did nothing.
+                ok = db.Select(arg, out error);
+                break;
             case "QUERY":
                 ok = db.Query(UnwrapDbStatement(arg), out _, out error);
                 break;

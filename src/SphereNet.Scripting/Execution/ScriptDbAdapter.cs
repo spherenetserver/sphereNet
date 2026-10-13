@@ -136,11 +136,16 @@ public sealed class ScriptDbAdapter : IDisposable
         return Connect("default", out error);
     }
 
-    /// <summary>Escape a string for safe SQL use (MySQL-specific, returns input as-is for non-MySQL).</summary>
+    /// <summary>Escape a string for safe SQL use on the active connection: MySQL's
+    /// backslash escapes (mysql_real_escape_string, which Source-X ESCAPEDATA calls),
+    /// or for PostgreSQL - whose standard_conforming_strings keeps a backslash literal -
+    /// the quote doubled and NUL dropped, since a text value cannot hold it.</summary>
     public string EscapeData(string input)
     {
         if (string.IsNullOrEmpty(input))
             return "";
+        if (DbConnectionConfig.IsPostgreSqlProvider(GetActiveSession()?.ProviderName))
+            return input.Replace("\0", "").Replace("'", "''");
         return input
             .Replace("\\", "\\\\")
             .Replace("'", "\\'")
@@ -449,6 +454,10 @@ public sealed class ScriptDbAdapter : IDisposable
         }
 
         public DbConnectionConfig? Config { get; private set; }
+
+        /// <summary>The provider the session is (or will be) opened with: the one a
+        /// script named in DB.CONNECT provider|connstr, else the configured one.</summary>
+        public string? ProviderName => _explicitProvider ?? Config?.Provider;
         public string? LegacyConnectionString { get; set; }
 
         public void UpdateConfig(DbConnectionConfig config) => Config = config;
@@ -631,6 +640,14 @@ public sealed class ScriptDbAdapter : IDisposable
             if (charSet.Length == 0 ||
                 providerInvariantName.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
                 return;
+            // Npgsql decodes text as UTF-8 and breaks if client_encoding is changed
+            // under it; a PostgreSQL server converts from the column's encoding itself.
+            if (DbConnectionConfig.IsPostgreSqlProvider(providerInvariantName))
+            {
+                _logger.LogWarning("DB session '{Name}': CHARSET is MySQL-only, ignored for PostgreSQL",
+                    Config?.Name ?? "?");
+                return;
+            }
             if (!DbConnectionConfig.IsValidCharSetName(charSet))
             {
                 _logger.LogWarning("DB session '{Name}': ignoring invalid CHARSET '{CharSet}'",

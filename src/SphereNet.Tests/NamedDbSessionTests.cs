@@ -118,6 +118,41 @@ public sealed class NamedDbSessionTests : IDisposable
         Assert.Equal("b", Marks(_betaPath));
     }
 
+    /// <summary>DB.SELECT / DB.CLOSE name from a trigger go through the server's
+    /// script DB verb, not the client console; SELECT fell to its default arm there and
+    /// left the active session unchanged.</summary>
+    [Fact]
+    public void ATriggersDbSelectSwitchesTheActiveSession()
+    {
+        using var db = TwoSessions();
+        var program = typeof(SphereNet.Server.Program);
+        var field = program.GetField("_scriptDb",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var verb = program.GetMethod("HandleScriptDbVerb",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        object? previous = field.GetValue(null);
+        field.SetValue(null, db);
+        try
+        {
+            Assert.Equal("1", verb.Invoke(null, ["DB|SELECT|beta"]));
+            Assert.Equal("beta", db.ActiveSessionName);
+            Assert.Equal("1", verb.Invoke(null, ["DB|EXECUTE|INSERT INTO marks(who) VALUES('b')"]));
+            Assert.Equal("", Marks(_alphaPath));
+            Assert.Equal("b", Marks(_betaPath));
+
+            Assert.Equal("0", verb.Invoke(null, ["DB|SELECT|nosuch"]));
+            Assert.Equal("beta", db.ActiveSessionName);
+
+            Assert.Equal("1", verb.Invoke(null, ["DB|CLOSE|alpha"]));
+            Assert.False(db.IsConnected_Named("alpha"));
+            Assert.True(db.IsConnected_Named("beta"));
+        }
+        finally
+        {
+            field.SetValue(null, previous);
+        }
+    }
+
     [Fact]
     public void ANamedWriteIgnoresWhichSessionIsActive()
     {

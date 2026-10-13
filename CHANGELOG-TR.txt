@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-13] - PostgreSQL script veritabani baglantilari
+------------------------------------------------------------------------
+EKLEME - sphere.ini'deki [PGSQL <isim>] bolumleri [MYSQL <isim>] ve [SQLITE <isim>]
+       yaninda bir PostgreSQL baglantisi acar (Npgsql saglayicisi, varsayilan port
+       5432). Anahtarlar ayni (HOST, PORT, USER, PASSWORD, DATABASE, KEEPALIVE,
+       CONNECTTIMEOUT, READTIMEOUT, USETHREAD, AUTOCONNECT); scriptler DB.CONNECT/
+       DB.SELECT <isim>, DB.QUERY, DB.EXECUTE ve async verb'lerle kullanir.
+       DB.ESCAPEDATA PostgreSQL baglantisinda MySQL ters bolu kacisi yerine tek
+       tirnagi ikiler; CHARSET yalnizca MySQL icindir ve orada yok sayilir.
+       DB.CONNECT Npgsql|<baglanti dizesi> de calisir.
+
+[2026-10-13] - Trigger icinde DB.SELECT ve isimli DB.CLOSE
+------------------------------------------------------------------------
+DUZELTME - DB.SELECT <isim> script icinde calisir: tanimli [MYSQL isim]/[SQLITE isim]
+       baglantisini DB.QUERY/DB.EXECUTE'un kullandigi baglanti yapar. Yalnizca client
+       konsol yolu isliyordu; trigger icinde satir hicbir sey yapmiyor, sorgular onceki
+       aktif baglantiya gitmeye devam ediyordu. DB.CLOSE <isim> ve DB.CLOSE * da trigger
+       icinden her zaman aktif olani kapatmak yerine o oturumu / tum oturumlari kapatir.
+
 [2026-10-13] - Konusarak verilen pet komutlari ve komut oneki
 ------------------------------------------------------------------------
 DUZELTME - Size ait hicbir petin cevap vermedigi satir normal konusmadir: yakinda sahip

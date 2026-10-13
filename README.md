@@ -16,7 +16,7 @@ SphereNet runs existing Sphere/Source-X `.scp` scripts and legacy save data unch
 | **NPC AI** | Monster/pet/healer/guard/vendor brains, A\* pathfinding, aggro & home-leash |
 | **World** | Housing (client-rendered multis, sign gump, lockdown/secure), ships (speech commands, dry-dock), guilds & towns, parties, weather, plant growth |
 | **Networking** | Full UO login flow, T2A→TOL packets, Blowfish/Twofish/Huffman |
-| **Persistence** | 4 save formats (`Text`→`BinaryGz`, ~8–10% size), parallel sharded saves, background save mode, MySQL multi-DB |
+| **Persistence** | 4 save formats (`Text`→`BinaryGz`, ~8–10% size), parallel sharded saves, background save mode, MySQL/PostgreSQL multi-DB |
 | **Multicore engine** | Parallel tick pipeline with serial apply, sector sleeping (idle world ≈ free), field-level delta views, memory-mapped maps |
 | **Operations** | SignalR web dashboard, Telnet admin console, in-process bot stress tests (`STRESS`/`BOT`), SQLite record/replay |
 
@@ -27,7 +27,7 @@ Capabilities the classic engine does not have:
 | | |
 |---|---|
 | **4 save formats + live switching** | `Text` (100%) / `TextGz` (~15%) / `Binary` (~50%) / `BinaryGz` (~8–10%); `.SAVEFORMAT BinaryGz 4` migrates format + shard count at runtime; `SAVESHARDS=2–16` writes parallel hash shards; `SAVEBACKGROUND=1` moves the write off the main loop |
-| **Multi-database MySQL** | Several named `[MYSQL <name>]` connections at once; scripts switch with `db.select <name>` |
+| **Multi-database** | Several named `[MYSQL <name>]` / `[PGSQL <name>]` / `[SQLITE <name>]` connections at once; scripts switch with `db.select <name>` |
 | **Multicore tick pipeline** | NPC decision prestage and client view-delta build run on worker threads; sector ticks, script callbacks and Apply stay serial & deterministic; auto-fallback to single-thread on error or (cooperative) phase timeout |
 | **Sector sleeping** | Only sectors near online players tick — a 30k-NPC idle world costs 0.1 ms. What sleeps is character work (AI, regen, poison); item deadlines are exact wherever the item lies, from world-level due queues ([contract](docs/ARCHITECTURE.md#sectors-and-sector-sleeping)) |
 | **Delta views** | Field-level change tracking (`DirtyFlag`) sends only what changed, not full object resends |
@@ -106,7 +106,7 @@ dotnet build
 dotnet run --project src/SphereNet.Server   # headless (or SphereNet.Host for the web panel)
 ```
 
-Edit `config/sphere.ini`: point `MULFILES` at your UO client data, put scripts under `SCPFILES`. Key settings: `SAVEFORMAT` (`Text`…`BinaryGz`), `SAVESHARDS` (0–16), `SAVEBACKGROUND`, `[MYSQL <name>]` blocks.
+Edit `config/sphere.ini`: point `MULFILES` at your UO client data, put scripts under `SCPFILES`. Key settings: `SAVEFORMAT` (`Text`…`BinaryGz`), `SAVESHARDS` (0–16), `SAVEBACKGROUND`, `[MYSQL <name>]` / `[PGSQL <name>]` blocks.
 
 Ports: **2593** UO client · **2594** Telnet admin · **2595** HTTP status · **9999** web panel (`ADMINPANELPORT`).
 

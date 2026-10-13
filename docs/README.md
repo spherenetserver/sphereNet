@@ -66,7 +66,7 @@ modern .NET:
 - **Scripting** runs Sphere-style `.scp` content: an expression engine, flow control, object queries, and the trigger system documented in [TRIGGERS.md](TRIGGERS.md).
 - **The world** is partitioned into sectors; only sectors near online players tick, and changes are tracked per-field so clients receive deltas, not full resends.
 - **The tick loop** is split into parallel and serial phases that scale across cores, with automatic single-threaded fallback.
-- **Persistence** offers four save formats (text/binary, optionally GZip) with parallel sharding, plus multi-database MySQL support.
+- **Persistence** offers four save formats (text/binary, optionally GZip) with parallel sharding, plus multi-database MySQL, PostgreSQL and SQLite support.
 - **Operations** are first-class: a SignalR web panel, a Telnet console, IP/account management, bot-driven stress tests, and a record/replay engine.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the details behind each of these.

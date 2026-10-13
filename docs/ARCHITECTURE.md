@@ -287,7 +287,8 @@ The world saves through `SphereNet.Persistence`:
   which performs a one-shot migration.
 - **Sharding** — `SAVESHARDS` of `0` (single file), `1` (size-based rolling), or
   `2–16` (parallel hash shards by `UID % N`) for concurrent I/O.
-- **Multi-database** — multiple named MySQL connections, each with its own host,
+- **Multi-database** — multiple named MySQL, PostgreSQL (`[PGSQL <name>]`, Npgsql)
+  and SQLite connections, each with its own host,
   threading mode, and timeouts; scripts switch with `db.select <name>`.
 - **Unplaced objects are not saved** — an item created after the world load
   and never put in a sector or a container (a script's `NEW.P` on a map the

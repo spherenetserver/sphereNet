@@ -1,8 +1,8 @@
 namespace SphereNet.Core.Configuration;
 
 /// <summary>
-/// Per-connection database settings. Loaded from [MYSQL name] INI sections
-/// or synthesized from legacy [SPHERE] MySQL* keys.
+/// Per-connection database settings. Loaded from [MYSQL name], [SQLITE name] and
+/// [PGSQL name] INI sections or synthesized from legacy [SPHERE] MySQL* keys.
 /// </summary>
 public sealed class DbConnectionConfig
 {
@@ -58,15 +58,51 @@ public sealed class DbConnectionConfig
         return true;
     }
 
+    /// <summary>The ADO.NET invariant name a [PGSQL name] section connects with.</summary>
+    public const string PostgreSqlProvider = "Npgsql";
+
+    /// <summary>PostgreSQL's default port, the one a [PGSQL name] section starts from.</summary>
+    public const int PostgreSqlDefaultPort = 5432;
+
     /// <summary>True if this is a SQLite provider.</summary>
     public bool IsSqlite => Provider.Contains("Sqlite", System.StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>True if this is a PostgreSQL provider.</summary>
+    public bool IsPostgreSql => IsPostgreSqlProvider(Provider);
+
+    public static bool IsPostgreSqlProvider(string? provider) =>
+        provider != null &&
+        (provider.Contains("Npgsql", System.StringComparison.OrdinalIgnoreCase) ||
+         provider.Contains("Postgre", System.StringComparison.OrdinalIgnoreCase));
 
     public string BuildConnectionString()
     {
         if (IsSqlite)
             return BuildSqliteConnectionString();
+        if (IsPostgreSql)
+            return BuildPostgreSqlConnectionString();
 
         return BuildMySqlConnectionString();
+    }
+
+    /// <summary>Npgsql keywords. Values go through the connection-string builder, which
+    /// quotes a password or name holding ';' or '=' instead of letting it split the
+    /// string. Npgsql caps Timeout at 1024 s.</summary>
+    private string BuildPostgreSqlConnectionString()
+    {
+        var b = new System.Data.Common.DbConnectionStringBuilder
+        {
+            ["Host"] = Host,
+            ["Port"] = Port,
+            ["Username"] = User,
+            ["Password"] = Password,
+            ["Database"] = Database,
+            ["Timeout"] = System.Math.Clamp(ConnectTimeout, 0, 1024),
+            ["Command Timeout"] = System.Math.Max(0, ReadTimeout),
+        };
+        if (KeepAlive)
+            b["Keepalive"] = 60;
+        return b.ConnectionString;
     }
 
     private string BuildMySqlConnectionString()

@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-13] - PostgreSQL script database connections
+------------------------------------------------------------------------
+ADD - [PGSQL <name>] sections in sphere.ini open a PostgreSQL connection (Npgsql provider,
+      port 5432 by default) beside [MYSQL <name>] and [SQLITE <name>]. Same keys (HOST,
+      PORT, USER, PASSWORD, DATABASE, KEEPALIVE, CONNECTTIMEOUT, READTIMEOUT, USETHREAD,
+      AUTOCONNECT); scripts reach it with DB.CONNECT/DB.SELECT <name>, DB.QUERY,
+      DB.EXECUTE and the async verbs. DB.ESCAPEDATA doubles single quotes on a PostgreSQL
+      connection instead of MySQL backslash escapes; CHARSET is MySQL-only and ignored
+      there. DB.CONNECT Npgsql|<connection string> also works.
+
+[2026-10-13] - DB.SELECT and named DB.CLOSE in triggers
+------------------------------------------------------------------------
+FIX - DB.SELECT <name> works in scripts: it makes a configured [MYSQL name]/[SQLITE name]
+      connection the one DB.QUERY/DB.EXECUTE use. Only the client console path handled
+      it; in a trigger the line did nothing and statements kept going to the previously
+      active connection. DB.CLOSE <name> and DB.CLOSE * also close that session / every
+      session from a trigger instead of always closing the active one.
+
 [2026-10-13] - Spoken pet commands and command-prefix speech
 ------------------------------------------------------------------------
 FIX - A line no pet of yours answers is plain speech: "all stop", "ok stop" and the like

@@ -1633,15 +1633,16 @@ public sealed class SphereConfig
             });
         }
 
-        // Parse [MYSQL name] and [SQLITE name] sections
+        // Parse [MYSQL name], [SQLITE name] and [PGSQL name] sections
         foreach (var kvp in ini.Sections)
         {
             bool isMySql = kvp.Key.StartsWith("MYSQL ", StringComparison.OrdinalIgnoreCase);
             bool isSqlite = kvp.Key.StartsWith("SQLITE ", StringComparison.OrdinalIgnoreCase);
-            if (!isMySql && !isSqlite)
+            bool isPgSql = kvp.Key.StartsWith("PGSQL ", StringComparison.OrdinalIgnoreCase);
+            if (!isMySql && !isSqlite && !isPgSql)
                 continue;
 
-            string connName = kvp.Key[(isMySql ? 6 : 7)..].Trim();
+            string connName = kvp.Key[(isSqlite ? 7 : 6)..].Trim();
             if (string.IsNullOrWhiteSpace(connName)) continue;
 
             // Skip if legacy default already added with same name
@@ -1649,6 +1650,11 @@ public sealed class SphereConfig
                 DbConnections.Count > 0 && DbConnections[0].Name == "default")
             {
                 // Override the legacy one with explicit section values
+                if (isPgSql)
+                {
+                    DbConnections[0].Provider = DbConnectionConfig.PostgreSqlProvider;
+                    DbConnections[0].Port = DbConnectionConfig.PostgreSqlDefaultPort;
+                }
                 ApplyDbSectionValues(DbConnections[0], ini, kvp.Key);
                 if (isSqlite)
                     DbConnections[0].Provider = "Microsoft.Data.Sqlite";
@@ -1658,6 +1664,11 @@ public sealed class SphereConfig
             var cfg = new DbConnectionConfig { Name = connName };
             if (isSqlite)
                 cfg.Provider = "Microsoft.Data.Sqlite";
+            else if (isPgSql)
+            {
+                cfg.Provider = DbConnectionConfig.PostgreSqlProvider;
+                cfg.Port = DbConnectionConfig.PostgreSqlDefaultPort;
+            }
             ApplyDbSectionValues(cfg, ini, kvp.Key);
             DbConnections.Add(cfg);
         }

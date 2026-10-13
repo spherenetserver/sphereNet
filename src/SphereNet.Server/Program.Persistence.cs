@@ -545,6 +545,7 @@ public static partial class Program
         }
 
         _log.LogInformation("Saving world...");
+        PluginEvent("save.started", () => new { forced = forceImmediate });
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
@@ -828,6 +829,7 @@ public static partial class Program
         }
         _systemHooks.DispatchServer("save_finished", _serverHookContext,
             sw.Elapsed.TotalSeconds.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
+        PluginEvent("save.completed", () => new { ok = true, seconds = sw.Elapsed.TotalSeconds, message = "" });
     }
 
     /// <summary>The world generation committed and the account file did not. Counted
@@ -843,6 +845,7 @@ public static partial class Program
         SphereNet.Game.Diagnostics.LoadProfile.CountSave(sw.ElapsedMilliseconds);
         RecordSaveOutcome(sw, ok: false);
         _log.LogError("World saved, but the account file did not: {Message}", message);
+        PluginEvent("save.completed", () => new { ok = false, seconds = sw.Elapsed.TotalSeconds, message });
         BroadcastToAllPlayers(
             ServerMessages.GetFormatted("worldsave_partial", message),
             SaveHue);
@@ -857,6 +860,7 @@ public static partial class Program
         RecordSaveOutcome(sw, ok: false);
         _systemHooks.DispatchServer("save_fail", _serverHookContext, message);
         _log.LogError("World save failed: {Message}", message);
+        PluginEvent("save.completed", () => new { ok = false, seconds = sw.Elapsed.TotalSeconds, message });
         BroadcastToAllPlayers(
             ServerMessages.GetFormatted("worldsave_failed", message),
             SaveHue);

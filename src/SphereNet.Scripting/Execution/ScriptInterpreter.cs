@@ -520,6 +520,14 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // SERV.PLUGINEVENT name[,text] — a SphereNet extension: the script sends its
+        // own event (custom.<name>) to the plugin bridge.
+        if (cmd.Equals("SERV.PLUGINEVENT", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_PLUGINEVENT={resolvedArg}");
+            return;
+        }
+
         // SERV.BLOCKIP <ip>[,seconds] / SERV.UNBLOCKIP <ip> — Source-X gates
         // these at PLEVEL_Admin; srcUid is carried so the host can verify the
         // caller's privilege (0 = server/hook context).

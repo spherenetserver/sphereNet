@@ -349,6 +349,7 @@ public static partial class Program
             _ when upper.StartsWith("_CONSOLE=") => HandleServConsole(property[9..]),
             _ when upper.StartsWith("_LOG=") => HandleServLog(property[5..]),
             _ when upper.StartsWith("_GMPAGE=") => HandleServGmPage(property[8..]),
+            _ when upper.StartsWith("_PLUGINEVENT=") => HandleServPluginEvent(property[13..]),
             _ when upper.StartsWith("_VARLIST=") => HandleServVarListToCaller(property[9..]),
             _ when upper.StartsWith("_PRINTLISTS=") => HandleServPrintListsToCaller(property[12..]),
             _ when upper.StartsWith("_BROADCAST=") => HandleServBroadcast(property[11..]),

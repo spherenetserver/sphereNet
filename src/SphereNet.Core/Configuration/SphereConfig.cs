@@ -929,6 +929,16 @@ public sealed class SphereConfig
 
     // Admin Panel
     public string AdminPassword { get; set; } = "1234";
+
+    /// <summary>PLUGINBRIDGEPORT: TCP port of the plugin bridge (0 = off).</summary>
+    public int PluginBridgePort { get; set; }
+
+    /// <summary>PLUGINBRIDGETOKEN: the secret a plugin sends to connect. The bridge
+    /// does not start without one.</summary>
+    public string PluginBridgeToken { get; set; } = "";
+
+    /// <summary>PLUGINBRIDGEADDRESS: address the bridge listens on (loopback by default).</summary>
+    public string PluginBridgeAddress { get; set; } = "127.0.0.1";
     public int AdminPanelPort { get; set; } = 0; // 0 = ServPort + 3
 
     // --- Source-X CServerConfig keys (defaults from CServerConfig.cpp ctor) ---
@@ -1447,6 +1457,9 @@ public sealed class SphereConfig
         UseHttpMode = ini.GetInt(section, "UseHttp", UseHttpMode);
 
         AdminPassword = ini.GetValue(section, "AdminPassword") ?? AdminPassword;
+        PluginBridgePort = ini.GetInt(section, "PluginBridgePort", PluginBridgePort);
+        PluginBridgeToken = ini.GetValue(section, "PluginBridgeToken") ?? PluginBridgeToken;
+        PluginBridgeAddress = ini.GetValue(section, "PluginBridgeAddress") ?? PluginBridgeAddress;
         AdminPanelPort = ini.GetInt(section, "AdminPanelPort", AdminPanelPort);
 
         // "//" starts a comment anywhere in an ini line (as in Source-X), so a DSN is

@@ -125,6 +125,10 @@ public sealed class NetworkManager : IDisposable
     public event Action<NetState, byte, byte[]>? OnUnknownPacket;
     public event Action<NetState>? OnConnectionClosedState;
 
+    /// <summary>A connection refused before it got a slot: address and reason
+    /// (filter, ip_history, ip_limit, no_slot).</summary>
+    public event Action<IPAddress?, string>? OnConnectionRejected;
+
     public NetworkManager(int maxClients, ILoggerFactory loggerFactory)
     {
         _maxClients = maxClients;
@@ -480,6 +484,7 @@ public sealed class NetworkManager : IDisposable
                     ConnectionAcceptFilter(filterEp.Address))
                 {
                     _logger.LogWarning("Connection from {IP} rejected by accept filter", filterEp.Address);
+                    OnConnectionRejected?.Invoke(filterEp.Address, "filter");
                     clientSocket.Close();
                     continue;
                 }
@@ -488,6 +493,7 @@ public sealed class NetworkManager : IDisposable
                     RejectByIpHistory(histEp.Address, out string histReason))
                 {
                     _logger.LogWarning("Connection from {IP} rejected: {Reason}", histEp.Address, histReason);
+                    OnConnectionRejected?.Invoke(histEp.Address, "ip_history");
                     clientSocket.Close();
                     continue;
                 }
@@ -496,6 +502,7 @@ public sealed class NetworkManager : IDisposable
                     _ipTally.GetValueOrDefault(ep.Address) >= ClientMaxIP)
                 {
                     _logger.LogWarning("IP limit ({Limit}) reached for {IP}, rejecting", ClientMaxIP, ep.Address);
+                    OnConnectionRejected?.Invoke(ep.Address, "ip_limit");
                     clientSocket.Close();
                     continue;
                 }
@@ -504,6 +511,7 @@ public sealed class NetworkManager : IDisposable
                 if (slot == null)
                 {
                     _logger.LogWarning("No free slots, rejecting connection from {EP}", clientSocket.RemoteEndPoint);
+                    OnConnectionRejected?.Invoke((clientSocket.RemoteEndPoint as IPEndPoint)?.Address, "no_slot");
                     clientSocket.Close();
                     continue;
                 }

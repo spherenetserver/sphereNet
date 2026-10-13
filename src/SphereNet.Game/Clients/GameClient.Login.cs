@@ -115,6 +115,7 @@ public sealed partial class GameClient
 
     public void HandleLoginRequest(string account, string password)
     {
+        _loginAccount = account;
         if (IsLoginLimited(account))
             return;
         if (ExceedsLoginTries(account))
@@ -187,6 +188,7 @@ public sealed partial class GameClient
 
     public void HandleGameLogin(string account, string password, uint authId)
     {
+        _loginAccount = account;
         if (IsLoginLimited(account))
             return;
         if (ExceedsLoginTries(account))
@@ -434,7 +436,21 @@ public sealed partial class GameClient
     {
         _netState.Send(new PacketLoginDenied(reason));
         _netState.MarkClosing();
+        LoginRejected?.Invoke(_loginAccount, _netState.RemoteEndPoint?.Address, reason switch
+        {
+            LoginDenyInvalid => "no_account",
+            LoginDenyBlocked => "blocked",
+            LoginDenyBadPass => "bad_password",
+            _ => "too_many_tries",
+        });
     }
+
+    /// <summary>The account name of the login being handled, for <see cref="LoginRejected"/>.</summary>
+    private string _loginAccount = "";
+
+    /// <summary>A login was refused: account name, address, reason
+    /// (no_account, blocked, bad_password, too_many_tries). Wired by the server.</summary>
+    public static Action<string, System.Net.IPAddress?, string>? LoginRejected;
 
     private void RegisterLoginFailure(string account) =>
         s_loginRateLimiter.RegisterFailure(LoginRateLimitKey(account));

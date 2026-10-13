@@ -2714,13 +2714,26 @@ public static partial class Program
             SphereNet.Game.Clients.GameClient.OnCharacterOnline = (ch, client) =>
             {
                 _clientsByCharUid[ch.Uid] = client;
+                PluginEvent("player.login", () => new
+                {
+                    account = client.Account?.Name ?? "",
+                    name = ch.Name,
+                    serial = ch.Uid.Value,
+                    ip = client.NetState.RemoteEndPoint?.Address.ToString() ?? "",
+                });
                 var weather = _weatherEngine.GetWeatherAt(ch.Position).Type;
                 ch.UpdateEnvironment(ch.IsDead ? 0 : _world.GetLightLevel(ch.Position),
                     (byte)weather,
                     ch.IsDead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
             };
-            SphereNet.Game.Clients.GameClient.OnCharacterOffline =
-                ch => { _clientsByCharUid.Remove(ch.Uid); _macroEngine?.OnCharDisconnect(ch.Uid.Value); };
+            SphereNet.Game.Clients.GameClient.OnCharacterOffline = ch =>
+            {
+                // OnDisconnect runs this for a client that never entered the world too;
+                // only one that was online leaves it.
+                if (_clientsByCharUid.Remove(ch.Uid))
+                    PluginEvent("player.logout", () => new { name = ch.Name, serial = ch.Uid.Value });
+                _macroEngine?.OnCharDisconnect(ch.Uid.Value);
+            };
             SphereNet.Game.Objects.Characters.Character.ResolveSpellDef = spell => _spellEngine?.GetSpellDef(spell);
             SphereNet.Game.Objects.Characters.Character.BreakParalyzeHook = ch => _spellEngine?.BreakParalyze(ch);
             SphereNet.Game.Objects.Characters.Character.OnDamageActionInterrupt = ch =>

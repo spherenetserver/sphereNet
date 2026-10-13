@@ -13,6 +13,7 @@ For the project overview, features, and quick start, see the top-level
 ### Reference
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — How the engine is put together: the tick pipeline, sectors, persistence, scripting, networking.
 - **[CONFIG-EN.md](CONFIG-EN.md)** / **[CONFIG-TR.md](CONFIG-TR.md)** — Every `sphere.ini` key: type, default, examples and notes (the ini itself carries one line per key; `ConfigReferenceDocsTests` keeps the three in step).
+- **[PLUGINS.md](PLUGINS.md)** — The plugin bridge: connecting an outside program, the events it receives and the commands it can send.
 - **[STAFF_COMMANDS.md](STAFF_COMMANDS.md)** — Every in-game staff/GM command and server-console command, by privilege level.
 - **[TRIGGERS.md](TRIGGERS.md)** — Every script trigger that fires, with the `<src>`/`<argo>`/`<argn>`/`<args>` values available inside it.
 - **[PROTOCOL_MATRIX.md](PROTOCOL_MATRIX.md)** — Incoming client opcodes routed through `PacketManager` (pinned by `PacketManagerTests`).

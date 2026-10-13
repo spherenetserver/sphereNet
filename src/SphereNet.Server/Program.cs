@@ -667,6 +667,11 @@ public static partial class Program
                 flushToDiskInterval: firehose ? TimeSpan.FromSeconds(1) : null);
         });
 
+        // Warning and above reach the plugin bridge's "log" event (off the logging
+        // thread; nothing is built while no plugin is connected).
+        serilogConfig = serilogConfig.WriteTo.Sink(new Logging.NonBlockingSink(PublishLogToPlugins),
+            restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Warning);
+
         Log.Logger = serilogConfig.CreateLogger();
         _loggerFactory = LoggerFactory.Create(builder =>
         {
@@ -1285,6 +1290,10 @@ public static partial class Program
             return;
 
         InitializeAdminSurfaces();
+
+        StartPluginBridge();
+        WirePluginEvents();
+        PluginEvent("server.started", () => new { name = _config.ServName, port = _config.ServPort });
 
         RunMainLoop();
     }

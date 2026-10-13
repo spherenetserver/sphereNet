@@ -1544,6 +1544,10 @@ public sealed class PanelHost : IDisposable
         return sb.ToString();
     }
 
+    /// <summary>The same check for a caller outside the panel (the plugin bridge).</summary>
+    public static bool IsValidServerFunction(string? name, string? args, out string? error) =>
+        TryValidateServerFunction(new ServerFunctionRequest(name, args), out _, out _, out error);
+
     /// <summary>A function or SERV verb name (letters, digits, '_' and '.', not
     /// starting with a digit or '.') and a one-line argument string.</summary>
     internal static bool TryValidateServerFunction(ServerFunctionRequest? req,

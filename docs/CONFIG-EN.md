@@ -267,6 +267,29 @@ Host names the panel answers to (comma separated), checked against the request's
 - **Default:** `""` (only `localhost`, `127.0.0.1`, `::1`)
 - **Note:** The panel listens on localhost only. Behind a reverse proxy put the public name the proxy forwards here (e.g. `panel.myshard.com`). A request with a Host not on the list gets 400: this stops a malicious page from pointing its own domain at 127.0.0.1 and using the panel (DNS rebinding). `*` disables the check.
 
+### PLUGINBRIDGEPORT
+
+TCP port of the plugin bridge, which lets programs outside the server (in any language) receive server events and send commands. The protocol is in [PLUGINS.md](PLUGINS.md).
+
+- **Type:** integer (`0` = off)
+- **Default:** `0`
+
+### PLUGINBRIDGETOKEN
+
+The secret a plugin sends in its first message. Anyone holding it can run console commands through the bridge, so treat it like the admin password.
+
+- **Type:** string
+- **Default:** `""`
+- **Note:** With no token the bridge does not start, even with a port set. The value cannot contain `//` (the rest of the line would be a comment).
+
+### PLUGINBRIDGEADDRESS
+
+The address the plugin bridge listens on.
+
+- **Type:** IP address
+- **Default:** `127.0.0.1` (this machine only)
+- **Note:** Any other address makes the bridge reachable from the network, and a warning is logged at startup. Keep it on loopback unless the plugin runs on another machine behind a firewall.
+
 ### PUBLICPAPERDOLL
 
 Serve character paperdoll image and info without login: `/public/paperdoll/<serial>.png` and `/public/paperdoll/<serial>.json`.

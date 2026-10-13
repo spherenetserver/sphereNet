@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-13] - Surec disi eklentiler icin eklenti koprusu
+------------------------------------------------------------------------
+EKLEME - Eklenti koprusu (sphere.ini PLUGINBRIDGEPORT / PLUGINBRIDGETOKEN /
+       PLUGINBRIDGEADDRESS; varsayilan kapali, varsayilan loopback): her satirda bir
+       JSON nesnesi konusan bir TCP dinleyici; herhangi bir dildeki bir program
+       sunucuyu izleyip ona komut verebilir. Istemci token ile girer ve olaylara abone
+       olur: server.started/stopping, save.started/completed, player.login/logout,
+       char.death, login.failed, connection.rejected, log (warning ve ustu), crash ve
+       scriptlerin SERV.PLUGINEVENT isim,metin ile gonderdigi custom.<isim>. Komutlar:
+       ping, status, players, broadcast, kick, save, function (script fonksiyonu ya da
+       SERV verb'u, panelle ayni kurallar) ve command (konsol satiri); her biri ana
+       dongude calisir ve log'a "Plugin audit" olarak yazilir. Oyun dongusu hicbir
+       eklentiyi beklemez: olaylar kuyruga alinir, okumayan istemci dusurulur.
+       Protokol docs/PLUGINS.md, ornek tools/plugins/discord_webhook.py.
+
 [2026-10-13] - USEPACKETPRIORITY, MAXQUEUESIZE ve [PACKETPRIORITY] ayarlari
 ------------------------------------------------------------------------
 EKLEME - USEPACKETPRIORITY okunur (Source-X m_fUsePacketPriorities, varsayilan 0).

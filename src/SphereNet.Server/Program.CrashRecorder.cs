@@ -100,6 +100,15 @@ public static partial class Program
         try { _log?.LogCritical(ex, "FATAL ({Source}) - recorded to {Path}", source, _crashLogPath); }
         catch { }
 
+        try
+        {
+            PluginEvent("crash", () => new
+            {
+                source, terminating, type = ex.GetType().FullName, message = ex.Message,
+            });
+        }
+        catch { }
+
         try { Console.Error.WriteLine($"[server] FATAL ({source}) -> {_crashLogPath}: {ex.Message}"); }
         catch { }
     }

@@ -266,6 +266,29 @@ Panelin cevap verdiği Host adları (virgülle); isteğin Host başlığına gö
 - **Varsayılan:** `""` (yalnızca `localhost`, `127.0.0.1`, `::1`)
 - **Not:** Panel yalnızca localhost'u dinler. Reverse proxy arkasında proxy'nin ilettiği genel adı buraya yazın (örn. `panel.sunucum.com`). Listede olmayan Host adıyla gelen istek 400 alır: kötü niyetli bir sayfanın kendi alan adını 127.0.0.1'e yönlendirip paneli kullanmasını (DNS rebinding) engeller. `*` kontrolü kapatır.
 
+### PLUGINBRIDGEPORT
+
+Eklenti köprüsünün TCP portu. Sunucu dışındaki programlar (herhangi bir dilde) bu köprüden sunucu olaylarını alır ve komut gönderir. Protokol [PLUGINS.md](PLUGINS.md) içindedir.
+
+- **Tür:** integer (`0` = kapalı)
+- **Varsayılan:** `0`
+
+### PLUGINBRIDGETOKEN
+
+Eklentinin ilk mesajında gönderdiği gizli anahtar. Ona sahip olan köprü üzerinden konsol komutu çalıştırabilir; yönetici şifresi gibi saklayın.
+
+- **Tür:** string
+- **Varsayılan:** `""`
+- **Not:** Token yoksa port ayarlı olsa da köprü başlamaz. Değer `//` içeremez (satırın gerisi yorum olur).
+
+### PLUGINBRIDGEADDRESS
+
+Eklenti köprüsünün dinlediği adres.
+
+- **Tür:** IP adresi
+- **Varsayılan:** `127.0.0.1` (yalnızca bu makine)
+- **Not:** Başka bir adres köprüyü ağdan erişilebilir yapar ve açılışta uyarı loglanır. Eklenti güvenlik duvarı arkasında başka bir makinede çalışmıyorsa loopback'te bırakın.
+
 ### PUBLICPAPERDOLL
 
 Karakter paperdoll resmini ve bilgisini girişsiz sunar: `/public/paperdoll/<serial>.png` ve `/public/paperdoll/<serial>.json`.

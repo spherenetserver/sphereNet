@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-13] - Plugin bridge for out-of-process plugins
+------------------------------------------------------------------------
+ADD - Plugin bridge (sphere.ini PLUGINBRIDGEPORT / PLUGINBRIDGETOKEN /
+      PLUGINBRIDGEADDRESS, off by default, loopback by default): a TCP listener
+      speaking one JSON object per line, so a program in any language can follow the
+      server and act on it. A client authenticates with the token and subscribes to
+      events: server.started/stopping, save.started/completed, player.login/logout,
+      char.death, login.failed, connection.rejected, log (warning and above), crash,
+      and custom.<name> sent by scripts with SERV.PLUGINEVENT name,text. Commands:
+      ping, status, players, broadcast, kick, save, function (script function or SERV
+      verb, same rules as the panel) and command (console line); each runs on the
+      main loop and is written to the log as "Plugin audit". The game loop never
+      waits on a plugin: events are queued and a client that does not read is dropped.
+      Protocol in docs/PLUGINS.md, example tools/plugins/discord_webhook.py.
+
 [2026-10-13] - USEPACKETPRIORITY, MAXQUEUESIZE and [PACKETPRIORITY] overrides
 ------------------------------------------------------------------------
 ADD - USEPACKETPRIORITY is read (Source-X m_fUsePacketPriorities, default 0). Off,

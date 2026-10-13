@@ -322,6 +322,7 @@ public static partial class Program
 
             // --- 10. Shutdown ---
             _log.LogInformation("Shutting down...");
+            PluginEvent("server.stopping", () => null);
             HostTimerResolution.Disable();
             try { _systemHooks.DispatchServer("exit", _serverHookContext); }
             catch (Exception ex) { _log.LogError(ex, "Exit hook dispatch failed"); }
@@ -370,6 +371,7 @@ public static partial class Program
             _mainLoopThreadId = 0;
 
             _log.LogInformation("SphereNet stopped.");
+            StopPluginBridge();
             Log.CloseAndFlush();
 
     #if WINFORMS

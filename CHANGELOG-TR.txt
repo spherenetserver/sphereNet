@@ -4,6 +4,14 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-13] - SQLite baglantilarinda DB.ESCAPEDATA
+------------------------------------------------------------------------
+DUZELTME - SQLite baglantisinda DB.ESCAPEDATA MySQL ters bolu kacisi yerine iki tirnak
+       isaretini de ikiler. SQLite ters boluyu oldugu gibi okur; \' literal'i bitiriyor
+       ve kacislanan degerin geri kalani SQL olarak calisiyordu. Paketler SQLite
+       literal'lerini tek ve (DQS ile) cift tirnakla yazar, bu yuzden ikisi de ikilenir;
+       literal'in kullanmadigi tirnak isareti veride cift saklanir.
+
 [2026-10-13] - PostgreSQL script veritabani baglantilari
 ------------------------------------------------------------------------
 EKLEME - sphere.ini'deki [PGSQL <isim>] bolumleri [MYSQL <isim>] ve [SQLITE <isim>]

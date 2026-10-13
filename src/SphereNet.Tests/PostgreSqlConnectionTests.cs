@@ -114,6 +114,42 @@ public sealed class PostgreSqlConnectionTests
         Assert.Equal("ab", db.EscapeData("a\0b"));
     }
 
+    /// <summary>SQLite reads a backslash literally, so the MySQL escape let a quote end
+    /// the literal. Both quote styles a pack writes (the double-quoted one through DQS)
+    /// must keep an injected value inside its literal.</summary>
+    [Theory]
+    [InlineData("'")]
+    [InlineData("\"")]
+    public void SqliteEscapeDataKeepsAQuotedValueInsideItsLiteral(string quote)
+    {
+        SphereNet.Server.Program.RegisterDbProvidersForTests();
+        // LDB files are relative to the working directory (absolute paths are refused).
+        string file = $"sphnet_esc_{Guid.NewGuid():N}.db";
+        try
+        {
+            using var db = new ScriptDbAdapter(LoggerFactory.Create(_ => { }).CreateLogger<ScriptDbAdapter>());
+            Assert.True(db.ConnectFile(file, out string e1), e1);
+            Assert.True(db.Execute("CREATE TABLE t (v TEXT)", out _, out string e2), e2);
+            Assert.True(db.Execute("CREATE TABLE victim (x INT)", out _, out string e3), e3);
+
+            string attack = $"x{quote}); DROP TABLE victim; --";
+            string sql = $"INSERT INTO t VALUES ({quote}{db.EscapeData(attack)}{quote})";
+            Assert.True(db.Execute(sql, out _, out string e4), e4);
+
+            Assert.True(db.Query("SELECT name FROM sqlite_master WHERE name='victim'", out int tables, out string e5), e5);
+            Assert.Equal(1, tables);
+            Assert.True(db.Query("SELECT v FROM t", out int rows, out string e6), e6);
+            Assert.Equal(1, rows);
+            Assert.True(db.TryResolveRowValue("DB.ROW.0.v", out string stored));
+            Assert.Equal(attack, stored);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try { File.Delete(file); } catch { }
+        }
+    }
+
     [Fact]
     public void ALiveServerRoundTrip()
     {

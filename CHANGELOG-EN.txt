@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-13] - DB.ESCAPEDATA on SQLite connections
+------------------------------------------------------------------------
+FIX - DB.ESCAPEDATA on a SQLite connection doubles both quote marks instead of writing
+      MySQL backslash escapes. SQLite reads a backslash literally, so \' ended the
+      literal and the rest of an escaped value ran as SQL. Packs write SQLite literals
+      in single and (through DQS) double quotes, so both are doubled; the quote mark a
+      literal does not use is stored doubled.
+
 [2026-10-13] - PostgreSQL script database connections
 ------------------------------------------------------------------------
 ADD - [PGSQL <name>] sections in sphere.ini open a PostgreSQL connection (Npgsql provider,

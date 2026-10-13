@@ -139,13 +139,22 @@ public sealed class ScriptDbAdapter : IDisposable
     /// <summary>Escape a string for safe SQL use on the active connection: MySQL's
     /// backslash escapes (mysql_real_escape_string, which Source-X ESCAPEDATA calls),
     /// or for PostgreSQL - whose standard_conforming_strings keeps a backslash literal -
-    /// the quote doubled and NUL dropped, since a text value cannot hold it.</summary>
+    /// the quote doubled and NUL dropped, since a text value cannot hold it.
+    ///
+    /// SQLite reads a backslash literally too, so the MySQL form ("\'") ended the
+    /// literal early and let the rest of the value run as SQL. Packs write SQLite
+    /// literals in both quote styles (the double-quoted one through DQS), so BOTH
+    /// quotes are doubled: safe whichever the script used, at the cost of the other
+    /// quote mark being stored doubled.</summary>
     public string EscapeData(string input)
     {
         if (string.IsNullOrEmpty(input))
             return "";
-        if (DbConnectionConfig.IsPostgreSqlProvider(GetActiveSession()?.ProviderName))
+        string? provider = GetActiveSession()?.ProviderName;
+        if (DbConnectionConfig.IsPostgreSqlProvider(provider))
             return input.Replace("\0", "").Replace("'", "''");
+        if (provider != null && provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+            return input.Replace("\0", "").Replace("'", "''").Replace("\"", "\"\"");
         return input
             .Replace("\\", "\\\\")
             .Replace("'", "\\'")

@@ -251,6 +251,7 @@ public sealed class IpcServer : IDisposable
         "server_function" => _ctx?.ExecuteServerFunction?.Invoke(
             root.GetRequiredStr("name"), root.GetStr("args") ?? "") ?? [],
         "ipblocks" => (object?)(_ctx?.GetIpBlocks?.Invoke() ?? []),
+        "plugins" => _ctx?.GetPlugins?.Invoke(),
         "ipblock_add" => _ctx?.AddIpBlock?.Invoke(root.GetRequiredStr("ip")) ?? false,
         "ipblock_remove" => _ctx?.RemoveIpBlock?.Invoke(root.GetRequiredStr("ip")) ?? false,
         "account_set_plevel" =>

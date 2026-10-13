@@ -2314,6 +2314,17 @@ A few packets have a fixed priority either way: login denied `0x82` and kick `0x
 - **Default:** `0`
 - **Note:** The `[PACKETPRIORITY]` section moves single opcodes while this is on; see below.
 
+### [PLUGINS]
+
+A section of its own (after the `[SPHERE]` keys, before `[EOF]`) listing in-process .NET plugins as `name=path`, the path relative to the server folder. They load in file order when the server opens. See [PLUGINS.md](PLUGINS.md).
+
+```
+[PLUGINS]
+Welcome=plugins/Welcome/SphereNet.Plugins.Sample.dll
+```
+
+- **Note:** A missing file or a plugin whose `OnLoad` fails is logged and skipped; the server still starts.
+
 ### [PACKETPRIORITY]
 
 A section of its own (after the `[SPHERE]` keys, before `[EOF]`) that overrides the priority of single packets while `USEPACKETPRIORITY=1`. A key is an opcode in hex (`0x6C`) or an extended `0xBF` subcommand (`0xBF.0x26`); a value is `Idle`, `Low`, `Normal`, `High`, `Highest` or `0`-`4`. Opcodes not listed keep the built-in table.

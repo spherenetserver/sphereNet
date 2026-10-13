@@ -55,6 +55,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.ObjBase.EmoteHue = 0x0022;
         SphereNet.Game.Clients.GameClient.LoginSucceededFrom = null;
         SphereNet.Game.Clients.GameClient.LoginRejected = null;
+        SphereNet.Game.Clients.GameClient.LoginCheck = null;
         SphereNet.Game.Objects.Items.Item.FlipDroppedItems = true;
         SphereNet.Game.Objects.Items.Item.BackpackOverload = 40;
         // Source-X CServerConfig keys (sphere.ini defaults).

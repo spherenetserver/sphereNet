@@ -138,6 +138,8 @@ public sealed partial class GameClient
                 return;
             }
             _account = guest;
+            if (RefusedByLoginCheck(account))
+                return;
             RegisterLoginSuccess(account);
             CompleteLoginRequest();
             return;
@@ -158,6 +160,8 @@ public sealed partial class GameClient
             return;
         }
 
+        if (RefusedByLoginCheck(account))
+            return;
         RegisterLoginSuccess(account);
         CompleteLoginRequest();
     }
@@ -229,6 +233,8 @@ public sealed partial class GameClient
             }
         }
 
+        if (RefusedByLoginCheck(account))
+            return;
         RegisterLoginSuccess(account);
         _account.RecordLogin(_netState.RemoteEndPoint?.Address.ToString() ?? "");
         // Adopt the version the login connection detected BEFORE any capability
@@ -432,11 +438,11 @@ public sealed partial class GameClient
         _ => LoginDenyBadPass,
     };
 
-    private void DenyLogin(byte reason)
+    private void DenyLogin(byte reason, string? why = null)
     {
         _netState.Send(new PacketLoginDenied(reason));
         _netState.MarkClosing();
-        LoginRejected?.Invoke(_loginAccount, _netState.RemoteEndPoint?.Address, reason switch
+        LoginRejected?.Invoke(_loginAccount, _netState.RemoteEndPoint?.Address, why ?? reason switch
         {
             LoginDenyInvalid => "no_account",
             LoginDenyBlocked => "blocked",
@@ -444,6 +450,22 @@ public sealed partial class GameClient
             _ => "too_many_tries",
         });
     }
+
+    /// <summary>A login whose password checked out, refused by a plugin's login check:
+    /// the client is told the account is blocked. True when refused.</summary>
+    private bool RefusedByLoginCheck(string account)
+    {
+        if (LoginCheck?.Invoke(account, _netState.RemoteEndPoint?.Address) is not { } reason)
+            return false;
+        _logger.LogWarning("Login of '{Account}' refused by plugin: {Reason}", account, reason);
+        _account = null;
+        DenyLogin(LoginDenyBlocked, "plugin: " + reason);
+        return true;
+    }
+
+    /// <summary>Plugin login checks: account and address of a login whose password was
+    /// accepted; a non-null reason refuses it. Wired by the server.</summary>
+    public static Func<string, System.Net.IPAddress?, string?>? LoginCheck;
 
     /// <summary>The account name of the login being handled, for <see cref="LoginRejected"/>.</summary>
     private string _loginAccount = "";

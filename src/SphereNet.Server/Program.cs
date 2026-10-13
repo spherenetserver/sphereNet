@@ -1292,6 +1292,7 @@ public static partial class Program
         InitializeAdminSurfaces();
 
         StartPluginBridge();
+        LoadInProcessPlugins();
         WirePluginEvents();
         PluginEvent("server.started", () => new { name = _config.ServName, port = _config.ServPort });
 

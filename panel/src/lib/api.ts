@@ -68,6 +68,28 @@ export interface MapStats {
   onlinePlayers: number
 }
 
+/** One row of the plugin page: an outside program on the bridge, or an in-process DLL. */
+export interface PluginInfo {
+  kind: 'bridge' | 'dll'
+  name: string
+  enabled: boolean
+  detail: string
+  subscriptions: number
+  packetFilters: number
+  loginChecks: number
+  faults: number
+  slowHooks: number
+  droppedEvents: number
+  queued: number
+  connectedUtc: string | null
+}
+
+export interface PluginOverview {
+  bridgeListening: boolean
+  bridgeEndpoint: string
+  plugins: PluginInfo[]
+}
+
 export interface PlayerInfo {
   serial: number
   charName: string
@@ -328,6 +350,10 @@ export const serverApi = {
     api.post<ShutdownSchedule>('/server/schedule', message ? { seconds, restart, message } : { seconds, restart }),
   getSchedule:    () => api.get<ShutdownSchedule>('/server/schedule'),
   cancelSchedule: () => api.post<ShutdownSchedule>('/server/schedule/cancel'),
+}
+
+export const pluginsApi = {
+  overview: () => api.get<PluginOverview>('/plugins'),
 }
 
 // Runtime-only block list: the server forgets it on restart.

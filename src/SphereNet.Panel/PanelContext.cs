@@ -48,6 +48,9 @@ public sealed class PanelContext
     // server as its object and the panel as its source. Returns output lines.
     public Func<string, string, string[]>? ExecuteServerFunction { get; set; }
 
+    // Plugins: the bridge's connected clients and the in-process plugins (read only)
+    public Func<PluginOverview>? GetPlugins { get; set; }
+
     // IP block list (runtime; the server keeps it in memory)
     public Func<IReadOnlyList<string>>? GetIpBlocks { get; set; }
     public Func<string, bool>? AddIpBlock { get; set; }
@@ -147,6 +150,26 @@ public record MapStats(
     int ActiveSectors,
     int OnlinePlayers
 );
+
+/// <summary>The plugin page: whether the bridge listens (and where), and one row per
+/// bridge client or in-process plugin.</summary>
+public record PluginOverview(bool BridgeListening, string BridgeEndpoint, IReadOnlyList<PluginInfo> Plugins);
+
+/// <summary>Kind is "bridge" (an outside program connected over TCP) or "dll" (an
+/// in-process plugin).</summary>
+public record PluginInfo(
+    string Kind,
+    string Name,
+    bool Enabled,
+    string Detail,
+    int Subscriptions,
+    int PacketFilters,
+    int LoginChecks,
+    int Faults,
+    int SlowHooks,
+    long DroppedEvents,
+    int Queued,
+    DateTime? ConnectedUtc);
 
 public record PlayerInfo(
     string CharName,

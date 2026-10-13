@@ -80,6 +80,7 @@ public static class HostPanelContext
             ExecuteServerFunction = (name, args) =>
                 Run(() => ipc.MutateAsync<string[]>("server_function", new { name, args })) ?? [],
             GetIpBlocks = () => Run(() => ipc.QueryAsync<List<string>>("ipblocks")) ?? [],
+            GetPlugins = () => Run(() => ipc.QueryAsync<PluginOverview>("plugins")) ?? new PluginOverview(false, "", []),
             AddIpBlock = ip => Run(() => ipc.MutateAsync("ipblock_add", new { ip })),
             RemoveIpBlock = ip => Run(() => ipc.MutateAsync("ipblock_remove", new { ip })),
 

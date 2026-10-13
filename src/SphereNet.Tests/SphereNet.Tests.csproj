@@ -36,6 +36,7 @@
     <ProjectReference Include="..\SphereNet.Server\SphereNet.Server.csproj" />
     <ProjectReference Include="..\SphereNet.Host\SphereNet.Host.csproj" />
     <ProjectReference Include="..\SphereNet.Updater\SphereNet.Updater.csproj" />
+    <ProjectReference Include="..\SphereNet.Plugins.Sample\SphereNet.Plugins.Sample.csproj" />
   </ItemGroup>
 
 </Project>

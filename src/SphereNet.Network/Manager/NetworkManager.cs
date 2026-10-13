@@ -91,6 +91,16 @@ public sealed class NetworkManager : IDisposable
     /// hooks nothing pays nothing per packet.</summary>
     public Func<byte, bool>? PacketScriptHookGate { get; set; }
 
+    /// <summary>A plugin filter for an incoming framed packet (opcode, whole frame);
+    /// returns false to drop it. Asked before the script filter and the ping shortcut.</summary>
+    public delegate bool IncomingPacketFilter(NetState state, byte opcode, ReadOnlySpan<byte> frame);
+
+    /// <summary>The plugin packet filter, or null when no plugin filters packets.</summary>
+    public IncomingPacketFilter? PluginPacketFilter { get; set; }
+
+    /// <summary>Which opcodes a plugin filters; checked before <see cref="PluginPacketFilter"/>.</summary>
+    public Func<byte, bool>? PluginPacketGate { get; set; }
+
     /// <summary>Outgoing script packet filter (Source-X CClient::xOutPacketFilter),
     /// installed on every connection.</summary>
     public Func<NetState, byte[], bool>? OutPacketScriptHook
@@ -770,6 +780,13 @@ public sealed class NetworkManager : IDisposable
                 }
 
                 state.ClearPendingPacket();
+
+            if (PluginPacketFilter != null && (PluginPacketGate == null || PluginPacketGate(opcode)) &&
+                !PluginPacketFilter(state, opcode, data.Slice(consumed, packetLen)))
+            {
+                consumed += packetLen;
+                continue;
+            }
 
             bool scriptFiltered = PacketScriptHook != null &&
                 (PacketScriptHookGate == null || PacketScriptHookGate(opcode));

@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-14] - Plugin hooks and plugins page
+------------------------------------------------------------------------
+ADD - In-process plugins can filter incoming client packets
+      (IPluginHost.AddIncomingPacketFilter, for the opcodes they name; false drops the
+      packet before the handler, the PACKETx script filter and the ping shortcut) and
+      refuse logins whose password was accepted (AddLoginCheck; the client is told the
+      account is blocked, login.failed carries "plugin: <name>: <reason>"). Both run on
+      the game loop and are timed: over 5 ms is reported, over 100 ms or a throw
+      counts as a failure (the packet/login is let through), 10 failures switch the
+      plugin off. Plugin API version 2.
+ADD - Panel "Plugins" page (GET /api/plugins, also over the Host IPC): the bridge's
+      listening address and each bridge client and DLL plugin with subscriptions,
+      hooks, failures, slow hooks, dropped events and queue length.
+
+[2026-10-14] - In-process .NET plugins
+------------------------------------------------------------------------
+ADD - [PLUGINS] section in sphere.ini (name=path) loads .NET plugin DLLs at startup.
+      A plugin implements ISpherePlugin from the new SphereNet.Plugins.Abstractions
+      assembly and gets the same events and commands as a plugin bridge client
+      (Subscribe / ExecuteAsync / Logger / OnUnload). Each DLL loads into its own
+      AssemblyLoadContext (its dependencies from its own folder; only the contract and
+      logging abstractions shared). Handlers run on the plugin's own thread from a
+      bounded queue, never on the game loop; a plugin that throws 10 times, or whose
+      OnLoad throws, is switched off. Example: src/SphereNet.Plugins.Sample.
+
 [2026-10-13] - Plugin bridge for out-of-process plugins
 ------------------------------------------------------------------------
 ADD - Plugin bridge (sphere.ini PLUGINBRIDGEPORT / PLUGINBRIDGETOKEN /

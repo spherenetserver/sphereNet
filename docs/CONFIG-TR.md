@@ -2313,6 +2313,17 @@ Birkaç paketin önceliği her iki durumda da sabittir: giriş reddi `0x82` ve k
 - **Varsayılan:** `0`
 - **Not:** Bu açıkken `[PACKETPRIORITY]` bölümü tek tek opcode'ları taşır; aşağıya bakın.
 
+### [PLUGINS]
+
+Süreç içi .NET eklentilerini `isim=yol` olarak listeleyen ayrı bir bölüm (`[SPHERE]` anahtarlarından sonra, `[EOF]`'tan önce); yol sunucu klasörüne göredir. Sunucu açılırken dosyadaki sırayla yüklenirler. Bkz. [PLUGINS.md](PLUGINS.md).
+
+```
+[PLUGINS]
+Welcome=plugins/Welcome/SphereNet.Plugins.Sample.dll
+```
+
+- **Not:** Bulunamayan dosya ya da `OnLoad`'u başarısız olan eklenti loglanır ve atlanır; sunucu yine açılır.
+
 ### [PACKETPRIORITY]
 
 `USEPACKETPRIORITY=1` iken tek tek paketlerin önceliğini değiştiren ayrı bir bölüm (`[SPHERE]` anahtarlarından sonra, `[EOF]`'tan önce). Anahtar onaltılık bir opcode (`0x6C`) ya da genişletilmiş bir `0xBF` alt komutudur (`0xBF.0x26`); değer `Idle`, `Low`, `Normal`, `High`, `Highest` ya da `0`-`4`. Listelenmeyen opcode'lar yerleşik tabloyu kullanır.

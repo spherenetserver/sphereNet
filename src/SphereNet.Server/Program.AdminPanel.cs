@@ -359,6 +359,7 @@ public static partial class Program
                     () => RunPanelServerFunction(name, args), "server function"),
 
                 GetIpBlocks = () => _ipBlockList?.GetAll().OrderBy(ip => ip).ToList() ?? [],
+                GetPlugins = DescribePlugins,
                 AddIpBlock = ip => _ipBlockList?.Add(ip) ?? false,
                 RemoveIpBlock = ip => _ipBlockList?.Remove(ip) ?? false,
 

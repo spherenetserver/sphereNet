@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-14] - Eklenti kancalari ve eklentiler sayfasi
+------------------------------------------------------------------------
+EKLEME - Surec ici eklentiler gelen istemci paketlerini suzebilir
+       (IPluginHost.AddIncomingPacketFilter, belirttikleri opcode'lar icin; false
+       paketi handler'dan, PACKETx script filtresinden ve ping kisayolundan once
+       dusurur) ve sifresi dogru girisleri reddedebilir (AddLoginCheck; istemciye hesap
+       engelli denir, login.failed "plugin: <isim>: <sebep>" tasir). Ikisi de oyun
+       dongusunde calisir ve olculur: 5 ms ustu bildirilir, 100 ms ustu ya da hata
+       arizasi sayilir (paket/giris gecer), 10 ariza eklentiyi kapatir. Eklenti API
+       surumu 2.
+EKLEME - Panelde "Eklentiler" sayfasi (GET /api/plugins, Host IPC uzerinden de):
+       koprunun dinledigi adres ve her kopru istemcisi ile DLL eklentisi icin
+       abonelik, kanca, ariza, yavas kanca, dusurulen olay ve kuyruk uzunlugu.
+
+[2026-10-14] - Surec ici .NET eklentileri
+------------------------------------------------------------------------
+EKLEME - sphere.ini'deki [PLUGINS] bolumu (isim=yol) acilista .NET eklenti DLL'lerini
+       yukler. Eklenti yeni SphereNet.Plugins.Abstractions assembly'sindeki
+       ISpherePlugin'i uygular ve eklenti koprusu istemcisiyle ayni olaylari ve
+       komutlari alir (Subscribe / ExecuteAsync / Logger / OnUnload). Her DLL kendi
+       AssemblyLoadContext'ine yuklenir (bagimliliklari kendi klasorunden; yalnizca
+       sozlesme ve logging soyutlamalari paylasilir). Olay isleyicileri oyun
+       dongusunde degil, eklentinin kendi thread'inde sinirli bir kuyruktan calisir;
+       10 kez hata veren ya da OnLoad'u hata veren eklenti kapatilir. Ornek:
+       src/SphereNet.Plugins.Sample.
+
 [2026-10-13] - Surec disi eklentiler icin eklenti koprusu
 ------------------------------------------------------------------------
 EKLEME - Eklenti koprusu (sphere.ini PLUGINBRIDGEPORT / PLUGINBRIDGETOKEN /

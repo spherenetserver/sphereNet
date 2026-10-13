@@ -27,6 +27,7 @@
     <ProjectReference Include="..\SphereNet.Game\SphereNet.Game.csproj" />
     <ProjectReference Include="..\SphereNet.Persistence\SphereNet.Persistence.csproj" />
     <ProjectReference Include="..\SphereNet.Panel\SphereNet.Panel.csproj" />
+    <ProjectReference Include="..\SphereNet.Plugins.Abstractions\SphereNet.Plugins.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

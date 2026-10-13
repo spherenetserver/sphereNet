@@ -41,6 +41,11 @@ const router = createRouter({
           component: () => import('@/pages/PlayersPage.vue'),
         },
         {
+          path: 'plugins',
+          name: 'plugins',
+          component: () => import('@/pages/PluginsPage.vue'),
+        },
+        {
           path: 'accounts',
           name: 'accounts',
           component: () => import('@/pages/AccountsPage.vue'),

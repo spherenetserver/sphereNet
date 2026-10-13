@@ -33,7 +33,7 @@ import { onMounted, onUnmounted, type Component } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   LayoutDashboard, Terminal, Users, UserCog, Server, LogOut, ScrollText, Settings,
-  PanelTop, ArrowUpCircle,
+  PanelTop, ArrowUpCircle, Puzzle,
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useUpdateStore } from '@/stores/update'
@@ -57,6 +57,7 @@ const navItems: { to: string; label: MessageKey; icon: Component }[] = [
   { to: '/accounts',  label: 'nav.accounts',  icon: UserCog         },
   { to: '/server',    label: 'nav.server',    icon: Server          },
   { to: '/scripts',   label: 'nav.scripts',   icon: ScrollText      },
+  { to: '/plugins',   label: 'nav.plugins',   icon: Puzzle          },
   { to: '/gumps',     label: 'nav.gumps',     icon: PanelTop        },
   { to: '/updates',   label: 'nav.updates',   icon: ArrowUpCircle   },
   { to: '/settings',  label: 'nav.settings',  icon: Settings        },

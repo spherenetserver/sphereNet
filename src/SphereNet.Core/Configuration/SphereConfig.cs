@@ -883,6 +883,10 @@ public sealed class SphereConfig
     /// subcommand) to priority name or number, overriding the built-in table.</summary>
     public List<KeyValuePair<string, string>> PacketPriorityOverrides { get; } = [];
 
+    /// <summary>[PLUGINS] section: plugin name to DLL path (relative to the server
+    /// folder), loaded as in-process plugins in file order.</summary>
+    public List<KeyValuePair<string, string>> Plugins { get; } = [];
+
     /// <summary>DEBUGPACKETCATEGORIES. Which kinds of packet the debug log keeps:
     /// any of <c>player</c>, <c>npc</c>, <c>item</c>, <c>packet</c>, comma separated.
     /// Empty keeps all of them.
@@ -1472,6 +1476,11 @@ public sealed class SphereConfig
 
         LoadDbConnections(ini);
         LoadPacketPriorities(ini, section);
+
+        Plugins.Clear();
+        if (ini.Sections.TryGetValue("PLUGINS", out var plugins))
+            foreach (string key in plugins.Keys.ToList())
+                Plugins.Add(new(key, ini.GetValue("PLUGINS", key) ?? ""));
     }
 
     private void LoadPacketPriorities(IniParser ini, string section)

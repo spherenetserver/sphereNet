@@ -13,6 +13,7 @@ namespace SphereNet.Server;
 public static partial class Program
 {
     private static PluginBridge? _pluginBridge;
+    private static PluginRuntime? _pluginRuntime;
 
     /// <summary>Start the bridge when PLUGINBRIDGEPORT is set. Without a token it
     /// stays off: an open port that runs console commands needs a secret.</summary>
@@ -49,18 +50,43 @@ public static partial class Program
         }
     }
 
+    /// <summary>Load the in-process plugins listed under [PLUGINS]. Runs before the
+    /// main loop, so their OnLoad sees server.started arrive afterwards.</summary>
+    private static void LoadInProcessPlugins()
+    {
+        if (_config.Plugins.Count == 0)
+            return;
+        var runtime = new PluginRuntime(ExecutePluginCommand, _loggerFactory);
+        string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        foreach (var (name, path) in _config.Plugins)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                continue;
+            runtime.Load(name, ResolvePath(baseDir, path.Trim()));
+        }
+        _pluginRuntime = runtime;
+    }
+
     private static void StopPluginBridge()
     {
+        _pluginRuntime?.Dispose();
+        _pluginRuntime = null;
         _pluginBridge?.Dispose();
         _pluginBridge = null;
     }
 
-    /// <summary>Publish an event to the plugins. The payload is built only when a
-    /// plugin is connected, so an idle bridge costs one field read.</summary>
+    /// <summary>Publish an event to the bridge clients and the in-process plugins. The
+    /// payload is built only when one of them listens, so with none it costs two field
+    /// reads.</summary>
     private static void PluginEvent(string name, Func<object?> data)
     {
-        if (_pluginBridge is { HasClients: true } bridge)
-            bridge.Publish(name, data());
+        var bridge = _pluginBridge is { HasClients: true } b ? b : null;
+        var runtime = _pluginRuntime is { HasSubscribers: true } r ? r : null;
+        if (bridge == null && runtime == null)
+            return;
+        object? payload = data();
+        bridge?.Publish(name, payload);
+        runtime?.Publish(name, payload);
     }
 
     private static object CharPayload(Character ch) => new
@@ -81,6 +107,19 @@ public static partial class Program
             victim = CharPayload(victim),
             killer = killer == null ? null : CharPayload(killer),
         });
+
+        if (_pluginRuntime is { } runtime)
+        {
+            _network.PluginPacketGate = runtime.WantsPacket;
+            _network.PluginPacketFilter = (state, opcode, frame) =>
+            {
+                _clients.TryGetValue(state.Id, out var client);
+                return runtime.AllowIncomingPacket(opcode, frame,
+                    state.RemoteEndPoint?.Address.ToString() ?? "", client?.Account?.Name);
+            };
+            SphereNet.Game.Clients.GameClient.LoginCheck = (account, ip) =>
+                runtime.HasLoginChecks ? runtime.CheckLogin(account, ip?.ToString() ?? "") : null;
+        }
 
         SphereNet.Game.Clients.GameClient.LoginRejected = (account, ip, reason) =>
             PluginEvent("login.failed", () => new { account, ip = ip?.ToString(), reason });
@@ -202,17 +241,40 @@ public static partial class Program
     /// left out, so a warning about a plugin client is not sent back to the plugins.</summary>
     private static void PublishLogToPlugins(Serilog.Events.LogEvent e)
     {
-        if (_pluginBridge is not { HasClients: true } bridge)
-            return;
+        // Lines from the bridge, the runtime and the plugins themselves stay out:
+        // a plugin warning about a log event must not make another log event.
         if (e.Properties.TryGetValue("SourceContext", out var ctx) &&
-            ctx.ToString().Contains("PluginBridge", StringComparison.Ordinal))
+            ctx.ToString().StartsWith("\"Plugin", StringComparison.Ordinal))
             return;
-        bridge.Publish("log", new
+        PluginEvent("log", () => new
         {
             level = e.Level.ToString(),
             message = e.RenderMessage(System.Globalization.CultureInfo.InvariantCulture),
             exception = e.Exception?.Message,
         });
+    }
+
+    /// <summary>The panel's plugin page. Reads only thread-safe counters, so it does
+    /// not go through the main loop.</summary>
+    private static SphereNet.Panel.PluginOverview DescribePlugins()
+    {
+        var rows = new List<SphereNet.Panel.PluginInfo>();
+        if (_pluginRuntime is { } runtime)
+        {
+            foreach (var p in runtime.Describe())
+                rows.Add(new SphereNet.Panel.PluginInfo("dll", p.Name, p.Enabled, p.Type,
+                    p.Subscriptions, p.PacketFilters, p.LoginChecks, p.Faults, p.SlowHooks,
+                    0, p.QueuedEvents, null));
+        }
+        if (_pluginBridge is { } bridge)
+        {
+            foreach (var c in bridge.Describe())
+                rows.Add(new SphereNet.Panel.PluginInfo("bridge", c.Remote, true, c.Subscriptions,
+                    c.Subscriptions.Length == 0 ? 0 : c.Subscriptions.Split(',').Length, 0, 0, 0, 0,
+                    c.DroppedEvents, c.QueuedLines, c.ConnectedUtc));
+        }
+        string endpoint = _pluginBridge is { } b ? $"{_config.PluginBridgeAddress}:{b.Port}" : "";
+        return new SphereNet.Panel.PluginOverview(_pluginBridge != null, endpoint, rows);
     }
 
     private static void PluginAudit(string op, string detail) =>

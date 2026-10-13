@@ -1078,6 +1078,10 @@ public sealed class PanelHost : IDisposable
                 : Results.Ok(detail);
         });
 
+        // --- Plugins (read only) ---
+        app.MapGet("/api/plugins", () =>
+            Results.Ok(_ctx.GetPlugins?.Invoke() ?? new PluginOverview(false, "", [])));
+
         // --- IP blocks (the server keeps them in memory: gone after a restart) ---
         app.MapGet("/api/ipblocks", () =>
             Results.Ok(_ctx.GetIpBlocks?.Invoke() ?? (IReadOnlyList<string>)[]));

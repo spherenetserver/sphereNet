@@ -35,10 +35,7 @@ public sealed class PluginBridge : IDisposable
     private const int MaxConsecutiveDrops = 1024;
     private static readonly TimeSpan AuthTimeout = TimeSpan.FromSeconds(5);
 
-    private static readonly JsonSerializerOptions s_json = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+    private static readonly JsonSerializerOptions s_json = PluginJson.Options;
 
     private readonly IPAddress _address;
     private readonly int _requestedPort;
@@ -90,6 +87,14 @@ public sealed class PluginBridge : IDisposable
         _listener.Start();
         _acceptLoop = Task.Run(AcceptLoopAsync);
         _pump = Task.Run(PumpAsync);
+    }
+
+    /// <summary>One row per connected client, for the panel.</summary>
+    public IReadOnlyList<BridgeClientStatus> Describe()
+    {
+        lock (_clients)
+            return _clients.Select(c => new BridgeClientStatus(
+                c.Remote, c.ConnectedUtc, string.Join(",", c.Subscriptions), c.Dropped, c.Queued)).ToList();
     }
 
     /// <summary>Queue an event for every client subscribed to <paramref name="name"/>.
@@ -157,7 +162,7 @@ public sealed class PluginBridge : IDisposable
                 }
                 else
                 {
-                    client = new Client(stream, subscriptions);
+                    client = new Client(stream, subscriptions, remote);
                     _clients.Add(client);
                     Interlocked.Increment(ref _clientCount);
                 }
@@ -343,8 +348,15 @@ public sealed class PluginBridge : IDisposable
     }
 
     /// <summary>One authenticated connection: its subscriptions and its outgoing queue.</summary>
-    private sealed class Client(Stream stream, string[] subscriptions)
+    private sealed class Client(Stream stream, string[] subscriptions, string remote)
     {
+        public string Remote => remote;
+        public string[] Subscriptions => subscriptions;
+        public DateTime ConnectedUtc { get; } = DateTime.UtcNow;
+        private long _dropped;
+        public long Dropped => Interlocked.Read(ref _dropped);
+        public int Queued => _out.Reader.Count;
+
         private readonly Channel<string> _out = Channel.CreateBounded<string>(
             new BoundedChannelOptions(ClientQueueSize) { SingleReader = true });
         private int _consecutiveDrops;
@@ -363,6 +375,7 @@ public sealed class PluginBridge : IDisposable
                 return;
             }
             // Not reading: lose this line, and give up on a client that never catches up.
+            Interlocked.Increment(ref _dropped);
             // Closing the stream also ends its reader, which may be waiting for input.
             if (Interlocked.Increment(ref _consecutiveDrops) >= MaxConsecutiveDrops)
             {
@@ -427,3 +440,7 @@ public sealed class PluginBridge : IDisposable
         }
     }
 }
+
+/// <summary>A connected bridge client as the panel shows it.</summary>
+public sealed record BridgeClientStatus(string Remote, DateTime ConnectedUtc, string Subscriptions,
+    long DroppedEvents, int QueuedLines);

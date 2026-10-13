@@ -107,9 +107,8 @@ public sealed class NetState : IDisposable
     internal bool ReceivesAsync => _receiver != null;
     private readonly object _sendLock = new();
     // Outbound queues indexed by PacketPriority. FlushOutput drains them
-    // Highest → Idle each flush, so latency-critical traffic (movement
-    // ack/reject 0x21/0x22, auth) never waits behind bulk world/UI updates.
-    // Source-X PacketSend priority parity.
+    // Highest → Idle each flush. With USEPACKETPRIORITY off nearly everything
+    // goes to Normal and leaves in send order (PacketPriorityClassifier).
     private readonly Queue<PacketBuffer>[] _queues =
     [
         new Queue<PacketBuffer>(), // Idle
@@ -124,6 +123,19 @@ public sealed class NetState : IDisposable
         int n = 0;
         for (int i = 0; i < _queues.Length; i++) n += _queues[i].Count;
         return n;
+    }
+
+    /// <summary>MAXQUEUESIZE (Source-X CNetworkOutput::QueuePacketTransaction): while
+    /// the chosen queue already holds that many packets, the new one moves down a level,
+    /// stopping at Idle, which has no limit. Caller must hold <see cref="_sendLock"/>.</summary>
+    private PacketPriority DemoteWhenFullLocked(PacketPriority priority)
+    {
+        int max = PacketPriorityClassifier.MaxQueueSize;
+        if (max <= 0)
+            return priority;
+        while (priority > PacketPriority.Idle && _queues[(int)priority].Count >= max)
+            priority--;
+        return priority;
     }
 
     private bool AnyQueued()
@@ -663,10 +675,7 @@ public sealed class NetState : IDisposable
 
         LogSend(packet);
 
-        var priority = packet.Length > 0
-            ? PacketPriorityClassifier.Classify(packet.Data[0])
-            : PacketPriority.Normal;
-        EnqueueAt(packet, priority);
+        EnqueueAt(packet, PacketPriorityClassifier.Resolve(packet.Span));
     }
 
     /// <summary>Send a pre-built PacketWriter (priority classified by opcode).</summary>
@@ -676,12 +685,13 @@ public sealed class NetState : IDisposable
     }
 
     /// <summary>Send a PacketWriter at an explicit priority, overriding the
-    /// opcode-based classification (rarely needed).</summary>
+    /// opcode-based classification (rarely needed). Like every non-fixed priority it
+    /// applies only while USEPACKETPRIORITY is on.</summary>
     public void Send(PacketWriter writer, PacketPriority priority)
     {
         var built = writer.Build();
         LogSend(built);
-        EnqueueAt(built, priority);
+        EnqueueAt(built, PacketPriorityClassifier.Effective(priority));
     }
 
     /// <summary>Enqueue a latency-critical packet (movement ack/reject) at
@@ -691,7 +701,7 @@ public sealed class NetState : IDisposable
     {
         var built = writer.Build();
         LogSend(built);
-        EnqueueAt(built, PacketPriority.Highest);
+        EnqueueAt(built, PacketPriorityClassifier.Effective(PacketPriority.Highest));
     }
 
     /// <summary>Write one outgoing packet to the debug log.
@@ -797,9 +807,9 @@ public sealed class NetState : IDisposable
 
         lock (_sendLock)
         {
-            // No depth limit: a burst stays queued and drains as the socket
-            // accepts it (see DroppableSoftCap). A dead peer is caught at flush.
-            _queues[(int)priority].Enqueue(packet);
+            // A burst stays queued and drains as the socket accepts it (see
+            // DroppableSoftCap); a dead peer is caught at flush.
+            _queues[(int)DemoteWhenFullLocked(priority)].Enqueue(packet);
             RecordOutgoing(packet);
         }
     }
@@ -835,9 +845,7 @@ public sealed class NetState : IDisposable
                 return;
             }
 
-            var priority = packet.Length > 0
-                ? PacketPriorityClassifier.Classify(packet.Data[0])
-                : PacketPriority.Normal;
+            var priority = DemoteWhenFullLocked(PacketPriorityClassifier.Resolve(packet.Span));
             _queues[(int)priority].Enqueue(packet);
             RecordOutgoing(packet);
         }

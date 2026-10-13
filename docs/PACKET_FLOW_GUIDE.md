@@ -965,8 +965,10 @@ Outgoing:
 | `0x21 PacketMoveReject` | movement rejected/resync |
 | `0x77` / `0x78` / `0x20` | update/draw mobile for observers or self |
 
-Movement ack/reject uses high priority queues in `NetState`, so it does not wait
-behind lower-priority world/UI traffic.
+Movement ack/reject goes out through `SendPriority`. With `USEPACKETPRIORITY=1` that
+is the Highest queue in `NetState`, so it does not wait behind world/UI traffic; with
+it off (the Source-X default) every packet shares one queue and leaves in send order.
+See `PacketPriorityClassifier` and `docs/CONFIG-EN.md`.
 
 New movement (`0xF0`) is routed separately for newer clients and then normalized
 into the same movement handling.

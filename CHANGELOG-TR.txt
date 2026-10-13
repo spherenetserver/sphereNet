@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-13] - USEPACKETPRIORITY, MAXQUEUESIZE ve [PACKETPRIORITY] ayarlari
+------------------------------------------------------------------------
+EKLEME - USEPACKETPRIORITY okunur (Source-X m_fUsePacketPriorities, varsayilan 0).
+       Kapaliyken her paket tek kuyruga girer ve gonderim sirasiyla gider; Source-X'teki
+       gibi yalnizca giris reddi 0x82, kick 0x26 (Highest), zaman esitleme 0xF2 (High)
+       ve ozellik listesi 0xD6 (Idle) sabit onceligini korur. Daha once anahtar ne
+       derse desin giden paketler hep onceliklendiriliyordu.
+DEGISIKLIK - USEPACKETPRIORITY=1 iken paket oncelikleri Source-X send.cpp ile aynidir,
+       0xBF alt komutlari dahil (hiz modu High; popup, gump degisimi vb. Low). Konteyner
+       acma 0x24, satici listeleri 0x74/0x9E, haritalar 0x90/0xF5 ile 0x56 pinleri ve
+       kitap icerigi 0xD4 oradaki gibi Low kuyrugunu paylasir; bu diziler ozel istisna
+       olmadan sirasini korur.
+EKLEME - MAXQUEUESIZE okunur (Source-X m_iNetMaxQueueSize, varsayilan 75, 0 = sinirsiz):
+       o kadar paket tutan kuyruga gelen paket bir alt seviyeye iner. Dagitilan
+       sphere.ini Source-X ornek degeri 500'u kullanir.
+EKLEME - sphere.ini'de [PACKETPRIORITY] bolumu: "0x6C=High", "0xBF.0x26=High", degerler
+       Idle/Low/Normal/High/Highest ya da 0-4; USEPACKETPRIORITY=1 iken uygulanir.
+       Dagitilan sphere.ini orada tum giden paketleri yerlesik oncelikleriyle yorum
+       satiri olarak listeler; degistirmek icin satirin yorumunu kaldirin. Hatali
+       satirlar ve paket dizisini bolen tasimalar acilista uyarilir.
+       SERV.USEPACKETPRIORITY ve SERV.MAXQUEUESIZE degerleri geri okur.
+
 [2026-10-13] - sphere.ini aciklamalari docs/CONFIG-EN.md ve docs/CONFIG-TR.md'ye tasindi
 ------------------------------------------------------------------------
 DEGISIKLIK - config/sphere.ini her anahtar icin uzun iki dilli yorum blogu yerine tek

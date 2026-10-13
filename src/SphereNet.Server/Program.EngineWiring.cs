@@ -3858,6 +3858,9 @@ public static partial class Program
             _network.DefaultClientEra = _config.ClientEra;
             _network.DebugPackets = _config.DebugPackets;
             _network.DebugPacketOpcodeFilter = ParseDebugPacketOpcodes(_config.DebugPacketOpcodes);
+            SphereNet.Network.Packets.PacketPriorityClassifier.Configure(_config.UsePacketPriority,
+                _config.MaxQueueSize, _config.PacketPriorityOverrides,
+                msg => _log.LogWarning("{Message}", msg));
             _network.DebugPacketCategoryFilter = ParseDebugPacketCategories(_config.DebugPacketCategories);
             // A decay deadline armed with no world to register it with would sit unqueued
             // until the audit swept it up - a minute of not decaying, reported by a

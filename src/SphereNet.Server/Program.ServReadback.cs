@@ -135,6 +135,7 @@ public static partial class Program
         ["MAXLOOPTIMES"] = c => I(c.MaxLoopTimes),
         ["MAXPACKETSPERTICK"] = c => I(c.MaxPacketsPerTick),
         ["MAXPOLYSTATS"] = c => I(c.MaxPolyStats),
+        ["MAXQUEUESIZE"] = c => I(c.MaxQueueSize),
         ["MAXSHIPPLANKTELEPORT"] = c => I(c.MaxShipPlankTeleport),
         ["MAXSHIPSACCOUNT"] = c => I(c.MaxShipsAccount),
         ["MAXSHIPSPLAYER"] = c => I(c.MaxShipsPlayer),
@@ -209,6 +210,7 @@ public static partial class Program
         ["USEHTTP"] = c => I(c.UseHttpMode),
         ["USEMAPDIFFS"] = c => B(c.UseMapDiffs),
         ["USENOCRYPT"] = c => B(c.UseNoCrypt),
+        ["USEPACKETPRIORITY"] = c => B(c.UsePacketPriority),
         ["VENDORMARKUP"] = c => I(c.VendorMarkup),
         ["VENDORMAXSELL"] = c => I(c.VendorMaxSell),
         // Loaded * MSECS_PER_TENTH and written back raw (FormatLLVal(m_iWalkBuffer)).

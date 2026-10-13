@@ -2207,11 +2207,12 @@ Tick başına toplam ağ G/Ç sınırı (byte).
 
 ### MAXQUEUESIZE
 
-Öncelik kuyruğu başına paket sayısı; aşılınca yeni paketler bir alt önceliğe kaydırılır. Paket atmaz, bağlantıyı da kesmez.
+Bir öncelik kuyruğunun tutacağı paket sayısı; dolunca o kuyruğa gelen sonraki paket bir alt seviyeye kaydırılır (Normal'den Low'a, Low'dan Idle'a; Idle'ın sınırı yoktur). Source-X `CNetworkOutput::QueuePacketTransaction` ile aynı. Paket atmaz, bağlantıyı da kesmez.
 
-- **Tür:** integer
-- **Varsayılan:** `75`
-- **Not:** Sunucu yapılandırmasında tanımlı değil. SphereNet her gönderimde tüm öncelik kuyruklarını boşaltır; kaydırmanın kısacağı bir şey yoktur, yalnızca paket sırasını bozardı. Gönderim kuyruğunun derinlik sınırı yoktur: bir patlama (ALLSHOW ile kalabalık ekran) kuyrukta kalır ve istemci okudukça gider. 1024 paket / 256 KB üstünde önce paylaşılan konuşma ve ses yayınları atılır. İstemci yalnızca soketi veri beklerken 60 saniye hiç veri almazsa ya da 64 MB gönderilmemiş veri birikirse düşürülür.
+- **Tür:** integer (`0` = sınırsız)
+- **Varsayılan:** `75` (Source-X örnek sphere.ini dosyası `500` ile gelir)
+- **Not:** Kuyruklar normalde her gönderimde boşalır ve boşaldıkça kaydırılan paket de gönderim sırasıyla gider. Yalnızca istemci bir patlamayı alamadığında (soketi dolu), boşalmış bir kuyruğa gelen sonraki paket daha önce kaydırılmış bir paketi geçebilir; küçük değer bunu olasılaştırır, bu yüzden giriş ya da ışınlanma patlamasının epey üstünde tutun.
+- **Not:** Gönderim kuyruğunun başka bir derinlik sınırı yoktur: bir patlama (ALLSHOW ile kalabalık ekran) kuyrukta kalır ve istemci okudukça gider. 1024 paket / 256 KB üstünde önce paylaşılan konuşma ve ses yayınları atılır. İstemci yalnızca soketi veri beklerken 60 saniye hiç veri almazsa ya da 64 MB gönderilmemiş veri birikirse düşürülür.
 
 ### NETTTL
 
@@ -2281,11 +2282,28 @@ Bağlantı başına ek çıktı tamponu ayır.
 
 ### USEPACKETPRIORITY
 
-Giden paketler için öncelik kuyruğu.
+Giden paketleri önceliğe göre gönder. Kapalıyken (Source-X varsayılanı) her paket tek kuyruğa girer ve gönderildiği sırayla gider. Açıkken her paket Source-X'in `send.cpp` içinde verdiği önceliği alır ve yüksek öncelik önce gider: hareket onayı/reddi Highest; oyuncu başlangıcı, sürükleme iptali ve hız modu High; durum, can çubukları, gump'lar, konteyner açma, satıcı listeleri, haritalar, kitaplar, hedef imleçleri ve benzerleri Low; oyun saati, hava, müzik, ping ve tooltip'ler Idle; geri kalan her şey Normal. Birlikte giden paketler aynı kuyruktadır (satıcı listesi ile konteyner açma, harita ile pinleri, kitap ile gump'ı), bu yüzden sıraları korunur.
+
+Birkaç paketin önceliği her iki durumda da sabittir: giriş reddi `0x82` ve kick `0x26` Highest, zaman eşitleme `0xF2` High, özellik listesi `0xD6` Idle.
 
 - **Tür:** boolean (`0`/`1`)
 - **Varsayılan:** `0`
-- **Not:** Sunucu yapılandırmasında tanımlı değil. Giden paketler her zaman bağlantı başına öncelik kuyruklarından geçer; bu anahtar onları ne açar ne kapatır.
+- **Not:** Bu açıkken `[PACKETPRIORITY]` bölümü tek tek opcode'ları taşır; aşağıya bakın.
+
+### [PACKETPRIORITY]
+
+`USEPACKETPRIORITY=1` iken tek tek paketlerin önceliğini değiştiren ayrı bir bölüm (`[SPHERE]` anahtarlarından sonra, `[EOF]`'tan önce). Anahtar onaltılık bir opcode (`0x6C`) ya da genişletilmiş bir `0xBF` alt komutudur (`0xBF.0x26`); değer `Idle`, `Low`, `Normal`, `High`, `Highest` ya da `0`-`4`. Listelenmeyen opcode'lar yerleşik tabloyu kullanır.
+
+Dağıtılan `sphere.ini` tablonun tamamıyla biter: her paket için yerleşik önceliği ve paket adıyla bir yorum satırı (`// 0x24=Low     // PacketOpenContainer`). Değiştirmek için `[PACKETPRIORITY]` satırının ve o paketin satırının yorumunu kaldırın. Yorumda kalan satır motorun değerini izler, böylece tablodaki sonraki bir düzeltme sunucuya yine ulaşır; bir test listeyi tabloyla aynı tutar.
+
+```
+[PACKETPRIORITY]
+0x6C=High
+0x54=Low
+0xBF.0x26=High
+```
+
+- **Not:** Hatalı satır açılışta uyarıyla atlanır. Yukarıdaki sabit öncelikli paketler taşınamaz. Bir paket dizisinin üyesini (`0x3C`, `0x74`, `0x9E`, `0x24`, `0xD4`, `0x90`, `0xF5`, `0x56`) eşlerinden ayırmaya izin verilir ama uyarılır: istemci diziyi bozuk sırayla alır (örneğin dükkan gump'ı fiyatlar gelmeden açılır).
 
 ## KOMUTLAR, GÖREVLİLER & YÖNETİM
 

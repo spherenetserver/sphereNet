@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-13] - USEPACKETPRIORITY, MAXQUEUESIZE and [PACKETPRIORITY] overrides
+------------------------------------------------------------------------
+ADD - USEPACKETPRIORITY is read (Source-X m_fUsePacketPriorities, default 0). Off,
+      every packet goes to one queue and leaves in send order; only login denied 0x82,
+      kick 0x26 (Highest), time sync 0xF2 (High) and the property list 0xD6 (Idle) keep
+      their fixed priority, as in Source-X. Outgoing packets were always prioritized
+      before, whatever the key said.
+CHANGE - With USEPACKETPRIORITY=1 the per-packet priorities follow Source-X send.cpp,
+      including 0xBF subcommands (speed mode High; popup, gump change and others Low).
+      Container open 0x24, vendor lists 0x74/0x9E, maps 0x90/0xF5 with their 0x56 pins
+      and book content 0xD4 now share the Low queue as there, so those sequences keep
+      their order without special cases.
+ADD - MAXQUEUESIZE is read (Source-X m_iNetMaxQueueSize, default 75, 0 = no limit): a
+      packet for a queue already holding that many moves down one level. The shipped
+      sphere.ini sets 500, the Source-X sample value.
+ADD - [PACKETPRIORITY] section in sphere.ini: "0x6C=High", "0xBF.0x26=High", values
+      Idle/Low/Normal/High/Highest or 0-4, applied while USEPACKETPRIORITY=1. The shipped
+      sphere.ini lists every outgoing packet there, commented out, with its built-in
+      priority; uncomment a line to change it. Bad lines and moves that split a packet
+      sequence are warned about at startup.
+      SERV.USEPACKETPRIORITY and SERV.MAXQUEUESIZE read the values back.
+
 [2026-10-13] - sphere.ini reference moved to docs/CONFIG-EN.md and docs/CONFIG-TR.md
 ------------------------------------------------------------------------
 CHANGE - config/sphere.ini carries one English summary line per key (with its default

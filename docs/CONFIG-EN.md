@@ -2208,11 +2208,12 @@ Total network I/O limit per tick (bytes).
 
 ### MAXQUEUESIZE
 
-Packets per priority queue before new packets are moved to the next lower priority. It never drops a packet and never drops the connection.
+Packets a priority queue holds before the next packet for it is moved down one level (Normal to Low, Low to Idle; Idle has no limit), as Source-X `CNetworkOutput::QueuePacketTransaction` does. It never drops a packet and never drops the connection.
 
-- **Type:** integer
-- **Default:** `75`
-- **Note:** Not defined in the server config. SphereNet drains every priority queue on each flush, so the demotion has nothing to throttle and would only reorder packets. The send queue has no depth limit: a burst (a crowded screen seen with ALLSHOW) stays queued and drains as the client reads it. Past 1024 queued packets / 256 KB unsent, shared speech and sound broadcasts are shed first. A client is dropped only when its socket accepts nothing for 60 seconds while data is pending, or when 64 MB is left unsent.
+- **Type:** integer (`0` = no limit)
+- **Default:** `75` (the Source-X sample sphere.ini ships `500`)
+- **Note:** The queues normally empty on every flush, and while they do a demoted packet still leaves in send order. Only when the client cannot take a burst (its socket is full) can a later packet into an emptied queue overtake an earlier, demoted one; a small value makes that likelier, so keep it well above a login or teleport burst.
+- **Note:** The send queue has no other depth limit: a burst (a crowded screen seen with ALLSHOW) stays queued and drains as the client reads it. Past 1024 queued packets / 256 KB unsent, shared speech and sound broadcasts are shed first. A client is dropped only when its socket accepts nothing for 60 seconds while data is pending, or when 64 MB is left unsent.
 
 ### NETTTL
 
@@ -2282,11 +2283,28 @@ Allocate an extra output buffer per connection.
 
 ### USEPACKETPRIORITY
 
-Priority queue for outgoing packets.
+Send outgoing packets by priority. Off (the Source-X default), every packet goes to one queue and leaves in the order it was sent. On, each packet gets the priority Source-X gives it in `send.cpp`, and higher priorities leave first: movement ack/reject Highest; player start, drag cancel and the speed mode High; status, health bars, gumps, container open, vendor lists, maps, books, target cursors and the like Low; game time, weather, music, ping and tooltips Idle; everything else Normal. Packets that travel together share a queue (vendor list with the container open, a map with its pins, a book with its gump), so their order holds.
+
+A few packets have a fixed priority either way: login denied `0x82` and kick `0x26` Highest, time sync `0xF2` High, the property list `0xD6` Idle.
 
 - **Type:** boolean (`0`/`1`)
 - **Default:** `0`
-- **Note:** Not defined in the server config. Outgoing packets always go through per-connection priority queues; this key neither turns them on nor off.
+- **Note:** The `[PACKETPRIORITY]` section moves single opcodes while this is on; see below.
+
+### [PACKETPRIORITY]
+
+A section of its own (after the `[SPHERE]` keys, before `[EOF]`) that overrides the priority of single packets while `USEPACKETPRIORITY=1`. A key is an opcode in hex (`0x6C`) or an extended `0xBF` subcommand (`0xBF.0x26`); a value is `Idle`, `Low`, `Normal`, `High`, `Highest` or `0`-`4`. Opcodes not listed keep the built-in table.
+
+The shipped `sphere.ini` ends with the whole table as commented lines, one per packet with its built-in priority and packet name (`// 0x24=Low     // PacketOpenContainer`). To change one, uncomment `[PACKETPRIORITY]` and that line. A line left commented follows the engine's value, so a later correction of the table still reaches the shard; a test keeps the list equal to the table.
+
+```
+[PACKETPRIORITY]
+0x6C=High
+0x54=Low
+0xBF.0x26=High
+```
+
+- **Note:** A bad line is skipped with a warning at startup. The fixed-priority packets above cannot be moved. Moving a member of a packet sequence (`0x3C`, `0x74`, `0x9E`, `0x24`, `0xD4`, `0x90`, `0xF5`, `0x56`) away from its partners is allowed but warned about: the client then receives the sequence out of order (for example a shop gump that opens before its prices arrive).
 
 ## Commands, staff & administration
 

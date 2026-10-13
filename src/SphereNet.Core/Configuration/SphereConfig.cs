@@ -871,6 +871,18 @@ public sealed class SphereConfig
     public string LogFileLevel { get; set; } = "Warning";
     public string DebugPacketOpcodes { get; set; } = "";
 
+    /// <summary>USEPACKETPRIORITY (Source-X m_fUsePacketPriorities, default off): send
+    /// packets through priority queues instead of one queue in send order.</summary>
+    public bool UsePacketPriority { get; set; }
+
+    /// <summary>MAXQUEUESIZE (Source-X m_iNetMaxQueueSize, default 75): packets a
+    /// priority queue holds before a new one is moved down a level. 0 = no limit.</summary>
+    public int MaxQueueSize { get; set; } = 75;
+
+    /// <summary>[PACKETPRIORITY] section: opcode (0x54, or 0xBF.0x26 for an extended
+    /// subcommand) to priority name or number, overriding the built-in table.</summary>
+    public List<KeyValuePair<string, string>> PacketPriorityOverrides { get; } = [];
+
     /// <summary>DEBUGPACKETCATEGORIES. Which kinds of packet the debug log keeps:
     /// any of <c>player</c>, <c>npc</c>, <c>item</c>, <c>packet</c>, comma separated.
     /// Empty keeps all of them.
@@ -1446,6 +1458,19 @@ public sealed class SphereConfig
         LoadPacketFilters(ini, section);
 
         LoadDbConnections(ini);
+        LoadPacketPriorities(ini, section);
+    }
+
+    private void LoadPacketPriorities(IniParser ini, string section)
+    {
+        UsePacketPriority = ini.GetBool(section, "UsePacketPriority", UsePacketPriority);
+        MaxQueueSize = Math.Max(0, ini.GetInt(section, "MaxQueueSize", MaxQueueSize));
+
+        PacketPriorityOverrides.Clear();
+        if (!ini.Sections.TryGetValue("PACKETPRIORITY", out var entries))
+            return;
+        foreach (string key in entries.Keys.ToList())
+            PacketPriorityOverrides.Add(new(key, ini.GetValue("PACKETPRIORITY", key) ?? ""));
     }
 
     /// <summary>PACKETx=function: the script function run for each incoming packet with

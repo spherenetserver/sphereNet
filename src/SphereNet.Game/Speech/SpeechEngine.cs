@@ -261,8 +261,12 @@ public sealed class SpeechEngine
 
     /// <summary>Speech routing that also reports <paramref name="finalText"/> — the
     /// utterance after the speaker's @Speech trigger may have rewritten it — so the
-    /// caller broadcasts the rewritten words.</summary>
-    public bool ProcessSpeech(Character speaker, string text, TalkMode mode, ushort hue, ushort font, out string finalText)
+    /// caller broadcasts the rewritten words. <paramref name="hearPetCommand"/> is the
+    /// speaker's pet-command pass (Source-X Event_Talk_Common runs it inside the NPC
+    /// walk, after the @Speech trigger); when it reports the line consumed, no NPC
+    /// hears it (CClientEvent.cpp:1989-1993).</summary>
+    public bool ProcessSpeech(Character speaker, string text, TalkMode mode, ushort hue, ushort font, out string finalText,
+        Func<string, bool>? hearPetCommand = null)
     {
         finalText = text;
         if (string.IsNullOrEmpty(text))
@@ -304,6 +308,8 @@ public sealed class SpeechEngine
             RouteChannelMessage(speaker, text, mode);
             return true;
         }
+
+        bool petCommandTaken = hearPetCommand?.Invoke(text) == true;
 
         // Get hearing distance based on mode
         int hearRange = mode switch
@@ -358,7 +364,7 @@ public sealed class SpeechEngine
             }
         }
 
-        if (chosen != null)
+        if (chosen != null && !petCommandTaken)
             OnNpcHear?.Invoke(speaker, chosen, text, mode);
 
         // Items within hearing range receive @Hear (Source-X item/multi OnHear).

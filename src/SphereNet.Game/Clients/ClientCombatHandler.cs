@@ -722,12 +722,6 @@ public sealed class ClientCombatHandler
 
         _character.ClearHiddenState();
 
-        // Pet commands — "all follow", "all guard", "petname follow" etc.
-        if (!isGhost && TryHandlePetCommand(text))
-        {
-            // Still broadcast the speech so others hear it
-        }
-
         // ProcessSpeech returns true when the utterance must NOT be broadcast —
         // either the speaker's @Speech self-trigger cancelled it (Source-X
         // Event_Talk RETURN 1) or it was routed as guild/alliance chat. finalText is
@@ -735,8 +729,17 @@ public sealed class ClientCombatHandler
         string finalText = routeText;
         if (_speech != null)
         {
-            if (_speech.ProcessSpeech(_character, routeText, (TalkMode)type, hue, font, out finalText))
+            // Pet commands ("all follow", "rex stop") are heard after the @Speech
+            // trigger, on the words it left, and never hide the line itself: Source-X
+            // speaks it first and runs the pet pass in Event_Talk_Common
+            // (CClientEvent.cpp:2123-2128). A ghost's pets cannot understand it.
+            if (_speech.ProcessSpeech(_character, routeText, (TalkMode)type, hue, font, out finalText,
+                    isGhost ? null : TryHandlePetCommand))
                 return;
+        }
+        else if (!isGhost)
+        {
+            TryHandlePetCommand(routeText);
         }
         // A living speaker's rewritten text becomes what is broadcast. Ghost speech
         // stays garbled per-recipient (the rewrite ran on the scrambled copy), so its

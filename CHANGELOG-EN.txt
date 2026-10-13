@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-13] - Spoken pet commands and command-prefix speech
+------------------------------------------------------------------------
+FIX - A line no pet of yours answers is plain speech: "all stop", "ok stop" and the like
+      no longer print "Sorry" when no owned pet is near, and a stranger's pet ignores an
+      order without a word (Source-X NPC_OnHearPetCmd stays silent for a non-owner).
+FIX - A pet is named the Source-X way (NPC_OnHearName): its whole name as a word anywhere
+      in the line, its creature type at the start ("horse stop" to "a horse"), or
+      "GUARD "/"VENDOR " for guards and vendors. The first typed word used to be matched
+      as a prefix of the name, so "a stop" ordered "a horse".
+FIX - Staff count as the owner of every NPC only while GM mode is on and only over an NPC
+      of a lower plevel (NPC_IsOwnedBy). A GM account with GM mode off commanded other
+      players' pets and vendors in earshot.
+FIX - Pet commands are heard after the speaker's @Speech trigger, on the text it left, and
+      not at all when it cancels the line. A named pet command, or one that opens the pet
+      target cursor, is no longer also handed to an NPC as speech.
+FIX - Only the configured COMMANDPREFIX opens a command; '.' and '/' were both always
+      taken. A player's prefixed line that is no command they may use ("...ok", ".hi") is
+      said normally instead of vanishing behind an error (Source-X Event_Command
+      fAllowSay). Staff still get the privilege message.
+
 [2026-10-12] - Sphere 56T per-kind NPC event lists
 ------------------------------------------------------------------------
 ADD - sphere.ini EventsNpc, EventsMonster, EventsAnimal, EventsMountable and EventsShop

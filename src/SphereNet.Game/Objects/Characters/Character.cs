@@ -3067,8 +3067,11 @@ public partial class Character : ObjBase
     {
         if (issuer == null || issuer.IsDead)
             return false;
-        if (issuer.PrivLevel >= Core.Enums.PrivLevel.GM)
-            return true;
+        // Source-X NPC_IsOwnedBy(fAllowGM) (CCharNPCStatus.cpp:462): staff count as
+        // the owner of every NPC only while in GM mode and only over an NPC of a
+        // lower plevel - a GM account with GM mode off is just a player here.
+        if (issuer.IsGmMode)
+            return issuer.PrivLevel > PrivLevel;
         if (HasController(issuer.Uid) || HasOwner(issuer.Uid))
             return true;
         if (allowFriends && IsFriendOf(issuer.Uid))

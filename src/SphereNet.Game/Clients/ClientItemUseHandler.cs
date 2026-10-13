@@ -4306,52 +4306,97 @@ public sealed class ClientItemUseHandler
     }
 
     /// <summary>
-    /// Source-X CChar::NPC_OnHearPetCmd parity. Recognises every PC_* verb
-    /// from upstream (FOLLOW/GUARD/STAY/STOP/COME/ATTACK/KILL/FRIEND/UNFRIEND/
-    /// TRANSFER/RELEASE/DROP/DROP ALL/EQUIP/STATUS/CASH/BOUGHT/SAMPLES/STOCK/
-    /// PRICE/GO/SPEAK/GUARD ME/FOLLOW ME) and routes pets through the matching
-    /// PetAIMode + DEFMSG_NPC_PET_* output. Returns true when the input was a
-    /// pet command -- caller then suppresses normal speech broadcast.
+    /// Source-X CClient::Event_Talk_Common pet pass (CClientEvent.cpp:1973-2000) and
+    /// CChar::NPC_OnHearPetCmd. A line is a pet command when it starts with "ALL " or
+    /// names a nearby NPC (NPC_OnHearName) and the rest is a PC_* verb; only an NPC
+    /// that takes orders from the speaker acts on it. Anything else is ordinary
+    /// speech and nothing is said about it - Source-X has no "Sorry" for a line no
+    /// pet of yours answered.
+    ///
+    /// Returns true when no NPC should hear the line afterwards: a named pet took
+    /// the command, or a command opened the pet target cursor (:1989-1993).
     /// </summary>
     internal bool TryHandlePetCommand(string text)
     {
         if (_character == null) return false;
-        string lower = text.ToLowerInvariant().Trim().TrimEnd('.', '!', '?');
+        string line = text.Trim();
 
-        // Pet command vocabulary table mirrors sm_Pet_table in Source-X.
-        // Order matters because we longest-prefix match (e.g. "follow me" before "follow").
-        ReadOnlySpan<string> vocab =
-        [
-            "all follow", "all guard", "all stay", "all stop", "all come",
-            "all attack", "all kill", "all friend", "all unfriend", "all transfer",
-            "all release", "all drop all", "all drop", "all equip", "all status",
-            "all guard me", "all follow me", "all go", "all speak",
-            "follow me", "guard me", "drop all"
-        ];
-
-        // "all <verb>" path.
-        if (lower.StartsWith("all ", StringComparison.Ordinal))
+        if (line.StartsWith("all ", StringComparison.OrdinalIgnoreCase))
         {
-            string verb = NormalizePetVerb(lower[4..], allMode: true);
-            string allArgs = "";
-            if (!IsPetCommandVerb(verb) && !TrySplitPriceArgs(verb, out verb, out allArgs))
+            if (!TryParsePetVerb(line[4..], out string allVerb, out string allArgs))
                 return false;
             _petCommandArgs = allArgs;
-            try { return DispatchAllPets(verb); }
+            try { return DispatchAllPets(allVerb); }
             finally { _petCommandArgs = ""; }
         }
 
-        // "<petname> <verb>" path -- longest-match verb.
-        int spaceIdx = lower.IndexOf(' ');
-        if (spaceIdx <= 0) return false;
-        string name = lower[..spaceIdx];
-        string rest = NormalizePetVerb(lower[(spaceIdx + 1)..], allMode: false);
-        string args = "";
-        if (!IsPetCommandVerb(rest) && !TrySplitPriceArgs(rest, out rest, out args))
+        Character? named = null;
+        string verb = "", args = "";
+        int bestDist = int.MaxValue;
+        foreach (var pet in _world.GetCharsInRange(_character.Position, 12))
+        {
+            if (!IsPetCommandCandidate(pet))
+                continue;
+            int at = HeardNameAt(pet, line);
+            if (at <= 0 || !TryParsePetVerb(line[at..], out string petVerb, out string petArgs))
+                continue;
+            if (!pet.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(petVerb)))
+                continue;
+            int dist = _character.Position.GetDistanceTo(pet.Position);
+            if (dist >= bestDist)
+                continue;
+            named = pet;
+            verb = petVerb;
+            args = petArgs;
+            bestDist = dist;
+        }
+        if (named == null)
             return false;
+
         _petCommandArgs = args;
-        try { return DispatchNamedPet(name, rest); }
+        try { ApplyPetVerb(named, verb); }
         finally { _petCommandArgs = ""; }
+        return true;
+    }
+
+    /// <summary>The PC_* verb in what followed the pet's name or "ALL ".</summary>
+    private static bool TryParsePetVerb(string phrase, out string verb, out string args)
+    {
+        verb = NormalizePetVerb(phrase, allMode: false);
+        args = "";
+        return IsPetCommandVerb(verb) || TrySplitPriceArgs(verb, out verb, out args);
+    }
+
+    /// <summary>Source-X CChar::NPC_OnHearName (CCharNPCStatus.cpp:369): the index
+    /// just past the NPC's name in <paramref name="text"/>, or 0 when the NPC was not
+    /// named. The full name as a whole word anywhere in the line, a guard's "GUARD "
+    /// or a vendor's "VENDOR " title, or the line opening with the creature's trade
+    /// name ("horse stop" to a pet called "a horse").</summary>
+    internal static int HeardNameAt(Character npc, string text)
+    {
+        int at = SpeechWords.FindStrWord(text, npc.Name);
+        if (at > 0)
+            return at;
+
+        if (npc.NpcBrain == NpcBrainType.Guard)
+        {
+            if (text.StartsWith("guard ", StringComparison.OrdinalIgnoreCase))
+                return 6;
+        }
+        else if (VendorEngine.IsVendorLike(npc))
+        {
+            if (text.StartsWith("vendor ", StringComparison.OrdinalIgnoreCase))
+                return 7;
+        }
+
+        string trade = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.TradeName ?? "";
+        if (trade.Length == 0 || text.Length <= trade.Length ||
+            !text.StartsWith(trade, StringComparison.OrdinalIgnoreCase))
+            return 0;
+        at = trade.Length;
+        while (at < text.Length && char.IsWhiteSpace(text[at]))
+            at++;
+        return at;
     }
 
     /// <summary>The text that followed the verb in the pet command being handled
@@ -4487,30 +4532,15 @@ public sealed class ClientItemUseHandler
         return ApplyPetVerb(pet, verb);
     }
 
-    /// <summary>Source-X PC_*: target a single pet by name prefix.</summary>
-    private bool DispatchNamedPet(string namePrefix, string verb)
-    {
-        if (_character == null) return false;
-        var pet = CollectCommandablePets(namePrefix, verb).FirstOrDefault();
-        if (pet == null)
-        {
-            SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
-            return false;
-        }
-
-        return ApplyPetVerb(pet, verb);
-    }
-
-    /// <summary>Source-X PC_*: broadcast verb to every nearby pet of mine.</summary>
+    /// <summary>Source-X "ALL &lt;verb&gt;": every nearby pet of mine hears it. Returns
+    /// true only when the verb opened the target cursor - the other NPCs in earshot
+    /// still hear an untargeted ALL command (CClientEvent.cpp:1989-1996).</summary>
     private bool DispatchAllPets(string verb)
     {
         if (_character == null) return false;
-        var pets = CollectCommandablePets(null, verb).ToList();
+        var pets = CollectCommandablePets(verb).ToList();
         if (pets.Count == 0)
-        {
-            SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
             return false;
-        }
 
         if (IsPetTargetVerb(verb))
         {
@@ -4518,10 +4548,9 @@ public sealed class ClientItemUseHandler
             return true;
         }
 
-        bool any = false;
         foreach (var pet in pets)
-            if (ApplyPetVerb(pet, verb)) any = true;
-        return any;
+            ApplyPetVerb(pet, verb);
+        return false;
     }
 
     private static bool IsPetTargetVerb(string verb) => verb switch
@@ -4543,11 +4572,10 @@ public sealed class ClientItemUseHandler
     private bool ApplyPetVerb(Character pet, string verb)
     {
         if (_character == null) return false;
+        // Someone the pet does not obey is ignored without a word: NPC_OnHearPetCmd
+        // returns true and does nothing (CCharNPCPet.cpp:146-151).
         if (!pet.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(verb)))
-        {
-            SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
             return false;
-        }
 
         // Source-X: conjured/summoned NPCs can't be transferred or friended
         if (pet.IsSummoned && verb is "transfer" or "friend" or "unfriend")
@@ -5222,21 +5250,23 @@ public sealed class ClientItemUseHandler
         return layer;
     }
 
-    private IEnumerable<Character> CollectCommandablePets(string? namePrefix, string verb)
+    private IEnumerable<Character> CollectCommandablePets(string verb)
     {
         if (_character == null)
             return Enumerable.Empty<Character>();
 
         return _world.GetCharsInRange(_character.Position, 12)
             .Where(p =>
-                !p.IsPlayer &&
-                !p.IsDeleted &&
-                PetListensTo(p, _character) &&
-                !p.IsStatFlag(StatFlag.Ridden) &&
-                p.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(verb)) &&
-                (string.IsNullOrEmpty(namePrefix) ||
-                 p.Name.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase)));
+                IsPetCommandCandidate(p) &&
+                p.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(verb)));
     }
+
+    private bool IsPetCommandCandidate(Character p) =>
+        _character != null &&
+        !p.IsPlayer &&
+        !p.IsDeleted &&
+        PetListensTo(p, _character) &&
+        !p.IsStatFlag(StatFlag.Ridden);
 
     /// <summary>
     /// Source-X CClient::Cmd_VendorBuy parity. Public entry used when the

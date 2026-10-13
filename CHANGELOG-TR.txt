@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-13] - Konusarak verilen pet komutlari ve komut oneki
+------------------------------------------------------------------------
+DUZELTME - Size ait hicbir petin cevap vermedigi satir normal konusmadir: yakinda sahip
+       olunan pet yokken "all stop", "ok stop" vb. artik "Sorry" yazmaz; baskasinin peti
+       emri sessizce yok sayar (Source-X NPC_OnHearPetCmd sahip olmayana sessiz kalir).
+DUZELTME - Pet Source-X usulu adlandirilir (NPC_OnHearName): tam adi satirin herhangi bir
+       yerinde kelime olarak, satir basinda yaratik turu ("a horse" icin "horse stop")
+       ya da muhafiz/satici icin "GUARD "/"VENDOR ". Eskiden yazilan ilk kelime adin
+       oneki olarak eslesiyordu; "a stop" "a horse"a emir veriyordu.
+DUZELTME - Staff yalnizca GM modu acikken ve yalnizca daha dusuk plevel'li NPC uzerinde
+       sahip sayilir (NPC_IsOwnedBy). GM modu kapali bir GM hesabi yakindaki baska
+       oyuncularin petlerine ve saticilarina emir verebiliyordu.
+DUZELTME - Pet komutlari konusanin @Speech trigger'indan sonra, onun biraktigi metin
+       uzerinden duyulur; trigger satiri iptal ederse hic duyulmaz. Adla verilen ya da
+       pet hedef imlecini acan komut artik ayrica bir NPC'ye konusma olarak gitmez.
+DUZELTME - Komutu yalnizca ayarli COMMANDPREFIX acar; '.' ve '/' her zaman kabul
+       ediliyordu. Oyuncunun kullanamayacagi onekli satir ("...tamam", ".selam") hata
+       arkasinda kaybolmak yerine normal soylenir (Source-X Event_Command fAllowSay).
+       Staff yetki mesajini almaya devam eder.
+
 [2026-10-12] - Sphere 56T NPC turu event listeleri
 ------------------------------------------------------------------------
 EKLEME - sphere.ini EventsNpc, EventsMonster, EventsAnimal, EventsMountable ve

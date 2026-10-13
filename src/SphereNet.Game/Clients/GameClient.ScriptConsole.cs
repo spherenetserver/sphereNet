@@ -286,7 +286,7 @@ public sealed partial class GameClient
     /// command prefix (the admin panel's "run as the character"): the player's own
     /// plevel gates it and its output reaches this client.</summary>
     public bool RunCommandAsPlayer(string commandLine) =>
-        TryHandleCommandSpeech("." + commandLine.TrimStart('.', '/'));
+        TryHandleCommandSpeech((_commands?.CommandPrefix ?? '.') + commandLine.TrimStart('.', '/'));
 
     internal bool TryHandleCommandSpeech(string text)
     {
@@ -301,9 +301,10 @@ public sealed partial class GameClient
         if (normalized.Length <= 1)
             return false;
 
+        // Only the configured COMMANDPREFIX opens a command (Source-X Event_Command,
+        // CClientEvent.cpp:1067-1073); a line starting with any other mark is speech.
         char prefix = _commands.CommandPrefix;
-        // Accept '.' and '/' regardless of configured prefix for Source-X compatibility.
-        if (normalized[0] != prefix && normalized[0] != '.' && normalized[0] != '/')
+        if (normalized[0] != prefix)
             return false;
 
         string commandLine = normalized[1..]
@@ -341,6 +342,11 @@ public sealed partial class GameClient
                 return true;
 
             case CommandResult.InsufficientPriv:
+                // A player's line that is no command they may use is simply said
+                // (Source-X fAllowSay = plevel <= Player, CClientEvent.cpp:1088-1089):
+                // "...ok" or ".hi" from a player shows over their head like any line.
+                if (_character.PrivLevel <= PrivLevel.Player)
+                    return false;
                 var required = _commands.GetRequiredPrivLevel(commandLine) ?? PrivLevel.Counsel;
                 SysMessage(ServerMessages.GetFormatted("gm_insuf_priv", required, _character.PrivLevel));
                 _logger.LogDebug("[command_priv_reject] account={Account} accountPLEVEL={AccLvl} char=0x{Char:X8} charPrivLevel={ChLvl} cmd='{Cmd}' required={Req}",

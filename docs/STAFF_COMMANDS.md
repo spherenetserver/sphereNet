@@ -126,6 +126,8 @@ These are **not** in-game `.` commands. They are handled by `AdminCommandProcess
 | `RESYNC` / `RY` | — | Reload changed script files. |
 | `DEBUG` | — | Toggle DebugPackets. |
 | `SCRIPTDEBUG` | — | Toggle ScriptDebug. |
+| `P` / `P#` | — | Script profiler report (Source-X `CServer::ProfileDump`), needs `EXPERIMENTAL` bit `0x400`. `P#` also writes it to `profiler_dump.txt`. |
+| `E` | — | Clear the script profiler. |
 | `BROADCAST` | `<message>` | Message all players. |
 | `WHO` | — | Online connection count. |
 | `LOG` | `<message>` | Write a line to the server log. |

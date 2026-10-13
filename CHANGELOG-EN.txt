@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-14] - Script profiler
+------------------------------------------------------------------------
+ADD - Script profiler (Source-X EF_Script_Profiler, EXPERIMENTAL 0x400): every
+      [FUNCTION] and @trigger is timed - calls, total, min, max, average. The console's
+      P prints the Source-X report (entries above the overall average; P# also writes
+      profiler_dump.txt), E clears it. Added over Source-X: self time (without nested
+      calls) and the script files with the most self time, so the report names what to
+      optimize. Off, it costs one field read per call.
+
 [2026-10-14] - Plugin hooks and plugins page
 ------------------------------------------------------------------------
 ADD - In-process plugins can filter incoming client packets

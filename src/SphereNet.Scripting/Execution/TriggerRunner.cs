@@ -24,6 +24,10 @@ public sealed class TriggerRunner
     private int _triggerDepth;
     private const int MaxTriggerDepth = 32;
 
+    /// <summary>Source-X script profiler (EF_Script_Profiler); off unless the server
+    /// turns it on.</summary>
+    public ScriptProfiler Profiler { get; } = new();
+
     public TriggerRunner(ScriptInterpreter interpreter, ResourceHolder resources, ILogger<TriggerRunner> logger)
     {
         _interpreter = interpreter;
@@ -50,9 +54,12 @@ public sealed class TriggerRunner
     /// negative ones). Keeps the ordinary TriggerResult as the method's result.</summary>
     private TriggerResult ExecuteTriggerBody(
         IReadOnlyList<Parsing.ScriptKey> body, IScriptObj target, ITextConsole? source,
-        ITriggerArgs? args, ScriptScope scope)
+        ITriggerArgs? args, ScriptScope scope, ResourceLink link)
     {
-        var result = _interpreter.Execute(body, target, source, args, scope);
+        TriggerResult result;
+        bool profiled = Profiler.Begin(scope.TriggerName ?? "", isTrigger: true, link.ScriptFilePath);
+        try { result = _interpreter.Execute(body, target, source, args, scope); }
+        finally { if (profiled) Profiler.End(); }
         if (args is TriggerArgs ta)
         {
             ta.ReturnValue = scope.ReturnValue;
@@ -101,7 +108,7 @@ public sealed class TriggerRunner
             if (link.TryGetTriggerBody(triggerName, out var cachedTriggerLines))
             {
                 var cachedScope = CreateTriggerScope("@" + triggerName, args);
-                return ExecuteTriggerBody(cachedTriggerLines, target, source, args, cachedScope);
+                return ExecuteTriggerBody(cachedTriggerLines, target, source, args, cachedScope, link);
             }
 
             if (link.StoredKeys != null) return TriggerResult.Default;
@@ -128,7 +135,7 @@ public sealed class TriggerRunner
                         var triggerLines = CollectTriggerBody(section.Keys, startIdx);
 
                         var scope = CreateTriggerScope("@" + triggerName, args);
-                        return ExecuteTriggerBody(triggerLines, target, source, args, scope);
+                        return ExecuteTriggerBody(triggerLines, target, source, args, scope, link);
                     }
                 }
             }
@@ -168,7 +175,7 @@ public sealed class TriggerRunner
                     _logger.LogDebug("[trig_runner] {Trig} matched cached body lines={N}",
                         triggerName, cachedTriggerLines.Count);
                 var cachedScope = CreateTriggerScope("@" + triggerName, args);
-                return ExecuteTriggerBody(cachedTriggerLines, target, source, args, cachedScope);
+                return ExecuteTriggerBody(cachedTriggerLines, target, source, args, cachedScope, link);
             }
 
             if (link.StoredKeys != null) return TriggerResult.Default;
@@ -211,7 +218,7 @@ public sealed class TriggerRunner
                         }
 
                         var scope = CreateTriggerScope("@" + triggerName, args);
-                        return ExecuteTriggerBody(triggerLines, target, source, args, scope);
+                        return ExecuteTriggerBody(triggerLines, target, source, args, scope, link);
                     }
                 }
             }
@@ -436,7 +443,9 @@ public sealed class TriggerRunner
                 // fresh arguments, so this does not share their caller's pool.
                 LocalVars = (args as TriggerArgs)?.SharedLocals ?? new()
             };
-        result = _interpreter.Execute(functionLines, target, source, args, scope);
+        bool profiled = Profiler.Begin(funcName, isTrigger: false, link.ScriptFilePath);
+        try { result = _interpreter.Execute(functionLines, target, source, args, scope); }
+        finally { if (profiled) Profiler.End(); }
         returnValue = scope.ReturnValue;
         numericReturn = scope.IsReturning ? scope.NumericReturnValue : null;
         return true;

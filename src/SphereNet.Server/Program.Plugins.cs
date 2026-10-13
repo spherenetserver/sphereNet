@@ -12,6 +12,9 @@ namespace SphereNet.Server;
 /// </summary>
 public static partial class Program
 {
+    /// <summary>Source-X EF_Script_Profiler (CServerConfig.h:52, EXPERIMENTAL 0x400).</summary>
+    private const int EfScriptProfiler = 0x0000400;
+
     private static PluginBridge? _pluginBridge;
     private static PluginRuntime? _pluginRuntime;
 

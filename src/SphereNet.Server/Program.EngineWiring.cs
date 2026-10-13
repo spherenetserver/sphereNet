@@ -245,6 +245,10 @@ public static partial class Program
             };
             var scriptInterpreter = new ScriptInterpreter(exprParser, _loggerFactory.CreateLogger<ScriptInterpreter>());
             _triggerRunner = new TriggerRunner(scriptInterpreter, _resources, _loggerFactory.CreateLogger<TriggerRunner>());
+            // EF_Script_Profiler (EXPERIMENTAL 0x400): time every function and trigger;
+            // the console's P prints the report, E clears it.
+            _triggerRunner.Profiler.BaseDirectory = _resources.ScpBaseDir;
+            _triggerRunner.Profiler.Enabled = (_config.Experimental & EfScriptProfiler) != 0;
             _triggerRunner.ScriptDebug = _config.ScriptDebug;
             _triggerDispatcher.ScriptDebug = _config.ScriptDebug;
             _triggerDispatcher.DebugLog = msg => _log?.LogDebug("{Msg}", msg);

@@ -2398,6 +2398,7 @@ Bits SphereNet reads:
 | Bit | Name | Effect |
 |---|---|---|
 | `0x0000040` | `EF_Item_Strict_Comparison` | Boards/logs and leather/hides no longer stand in for each other in resource matching. |
+| `0x0000400` | `EF_Script_Profiler` | Time every script function and trigger. The console's `P` prints the report (`P#` also writes `profiler_dump.txt`), `E` clears it. See PERFORMANCE.md. |
 | `0x0002000` | `EF_DamageTools` | Tools take wear damage when used. |
 | `0x0080000` | `EF_WalkBypassMonsters` | Every mobile is sent with the "ignore mobiles" mode bit (`0x10`), so players can step over NPCs without full stamina; normally the client allows this to staff only. WARNING: the server walk check is unchanged, so it can cost resources and cause movement flicker on clients. |
 

@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-14] - Script profiler
+------------------------------------------------------------------------
+EKLEME - Script profiler (Source-X EF_Script_Profiler, EXPERIMENTAL 0x400): her
+       [FUNCTION] ve @trigger olculur - cagri sayisi, toplam, min, maks, ortalama.
+       Konsolda P Source-X raporunu yazar (ortalamasi genel ortalamanin ustunde
+       olanlar; P# ayrica profiler_dump.txt'ye yazar), E sifirlar. Source-X'e ek:
+       kendi suresi (ic ice cagrilar haric) ve en cok kendi suresi harcanan script
+       dosyalari; rapor neyin optimize edilecegini gosterir. Kapaliyken cagri basina
+       maliyeti tek alan okumasi.
+
 [2026-10-14] - Eklenti kancalari ve eklentiler sayfasi
 ------------------------------------------------------------------------
 EKLEME - Surec ici eklentiler gelen istemci paketlerini suzebilir

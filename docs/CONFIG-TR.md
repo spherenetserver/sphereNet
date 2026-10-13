@@ -2397,6 +2397,7 @@ SphereNet'in okuduğu bitler:
 | Bit | Ad | Etki |
 |---|---|---|
 | `0x0000040` | `EF_Item_Strict_Comparison` | Kaynak eşleştirmede tahta/kütük ve deri/post birbirinin yerine geçmez. |
+| `0x0000400` | `EF_Script_Profiler` | Her script fonksiyonunun ve trigger'ının süresini ölçer. Konsolda `P` raporu yazar (`P#` ayrıca `profiler_dump.txt` dosyasına), `E` sıfırlar. Bkz. PERFORMANCE.md. |
 | `0x0002000` | `EF_DamageTools` | Aletler kullanıldıkça aşınma hasarı alır. |
 | `0x0080000` | `EF_WalkBypassMonsters` | Her mobile "mobile'ları yok say" mod biti (`0x10`) ile gönderilir; oyuncular tam stamina olmadan NPC'lerin üstünden geçebilir (normalde istemci bunu yalnızca görevlilere izin verir). UYARI: sunucu yürüme kontrolü değişmez; kaynak tüketebilir ve istemcide hareket titremesine yol açabilir. |
 

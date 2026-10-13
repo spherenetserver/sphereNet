@@ -45,6 +45,9 @@ public sealed class AdminCommandProcessor
     // Load-test measurement window (PERF MARK / REPORT / STOP), driven by the
     // external load runner over the headless console.
     public event Action<string, Action<string>>? OnPerfRequested;
+
+    /// <summary>The script profiler the P / P# / E commands read (Source-X console).</summary>
+    public SphereNet.Scripting.Execution.ScriptProfiler? Profiler { get; set; }
     /// <summary>Runs a line this processor does not know as a server verb; null = not a verb.</summary>
     public Func<string, string?>? ServerVerbFallback { get; set; }
 
@@ -102,6 +105,8 @@ public sealed class AdminCommandProcessor
                 output("  GARBAGE                    - Force garbage collection");
                 output("  SHRINKMEM                  - Trim the process working set");
                 output("  PERF MARK|REPORT|STOP      - Load-test measurement window");
+                output("  P / P#                     - Script profiler report (P# also to profiler_dump.txt)");
+                output("  E                          - Clear the script profiler");
                 output("  CALCCRYPT <ver>[,type][,enc] - Login keys for a client version");
                 output("  BLOCKIP <ip>               - Block an IP address");
                 output("  UNBLOCKIP <ip>             - Unblock an IP address");
@@ -242,6 +247,45 @@ public sealed class AdminCommandProcessor
                 OnStressRequested?.Invoke(stItems, stNpcs, stHostile);
                 break;
             }
+
+            // Source-X console P (CServer::ProfileDump): the script profiler report;
+            // P# also writes it to profiler_dump.txt. E clears it (EF_Script_Profiler).
+            case "P":
+            case "P#":
+            {
+                if (Profiler == null)
+                {
+                    output("The script profiler is not available.");
+                    break;
+                }
+                var report = Profiler.Report();
+                foreach (string line in report)
+                    output(line);
+                if (cmd == "P#")
+                {
+                    try
+                    {
+                        string path = Path.Combine(AppContext.BaseDirectory, "profiler_dump.txt");
+                        File.WriteAllLines(path, report);
+                        output($"Written to {path}");
+                    }
+                    catch (Exception ex)
+                    {
+                        output($"Could not write profiler_dump.txt: {ex.Message}");
+                    }
+                }
+                break;
+            }
+
+            case "E":
+                if (Profiler == null)
+                {
+                    output("The script profiler is not available.");
+                    break;
+                }
+                Profiler.Clear();
+                output("Script profiler cleared.");
+                break;
 
             case "PERF":
                 if (OnPerfRequested == null)

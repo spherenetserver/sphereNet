@@ -18,6 +18,14 @@ before/after numbers.
   for whether recent lag is mostly `npc_apply`, `view_build`, `flush`, or
   another phase.
 - `TickSleepMode`: controls main-loop yield strategy.
+- Script profiler (`EXPERIMENTAL` bit `0x400`, Source-X `EF_Script_Profiler`): every
+  `[FUNCTION]` and `@trigger` is timed. The console's `P` prints, as Source-X does,
+  the entries whose average is above the overall average (calls, average, min, max,
+  total), then the ten with the most **self** time - their own time without the
+  functions and triggers they called - and the ten script files with the most self
+  time. `E` clears it, so measure a window: `E`, reproduce the lag, `P`. When the
+  slow phase in `[slow_tick]` is a scripted one, this names the script. Off, it costs
+  one field read per call; on, two timestamps and a dictionary update.
 
 ## Manual Benchmark Recipe
 

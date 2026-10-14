@@ -71,23 +71,11 @@ server's answer, measured on the bot.
   Scripts-X pack) with 200 bots spread over the cities ran with no slow tick and no stall
   after the login burst; the script interpreter was under 0.1 % of server time in a 90 s
   profile. 200 simultaneous logins caused one ~1.3 s pause.
-
-### Historical measurement (2026-07-20)
-
-Historical measurement: taken **2026-07-20 on the build of that date** with the in-tree harness (real TCP bot clients, full production script pack) on a modest **5-vCPU VM, 12 GB RAM**. Tick = 100 ms (10/s, Source-X parity); bots run in-process, so numbers are pessimistic. The engine has changed since; these figures have not been re-measured on the current build and should be read as that build's results, not as a guarantee for this one.
-
-| Scenario | Avg tick | p95 | Budget |
-|---|---|---|---|
-| 30,000 NPCs, no players | 0.1 ms | <2 ms | <1 % |
-| 30,000 NPCs + 300 players walking | ~8 ms | ~13 ms | 8 % |
-| 2,000 hostiles + 300 players fighting | ~3.5 ms | ~7 ms | 4 % |
-| 1,000 live clients roaming | ~2.5 ms | ~5 ms | 3 % |
-| 1,000 clients + 2,000 hostiles | ~15 ms | ~30 ms | 15 % |
-| 100k items + 50k NPCs + 300 players, all active | ~31 ms | ~58 ms | 31 % |
-
-- Logins: 300 clients in 7.4 s, 1,000 in 18.1 s — zero failures. Cold boot < 2 s.
-- Save: 102,400 items + 50,440 chars → **1.08 s** while the world kept running (BinaryGz, 3 shards, parallel capture).
-- GC: blocking Gen2 ≈ 0–1 per 30 s window in every scenario; RSS ~450–700 MB.
+- **Soak** (2026-10-14): the same live-shard copy with 100 in-process bots of the `Soak`
+  scenario (walking, fighting, casting, looting, vendor buying, trading) for 3 hours: tick
+  p50 0.23-0.35 ms, p99 2.2-4.1 ms, worst tick 40 ms; 12 world saves (0.45-0.72 s pause
+  each, synchronous), 13 world audits with no anomaly; working set flat at ~1 GB after a
+  40-minute warm-up (-7.7 MB/h over the run); 0.13 cores on average.
 
 The dominant cost is simultaneously-active AI, not population or client count. A sleeping
 sector costs nothing to tick, and an awake one costs what is *due* rather than what it

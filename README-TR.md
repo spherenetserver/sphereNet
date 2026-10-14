@@ -72,23 +72,11 @@ cevabına kadar geçen süredir ve bot tarafında ölçülür.
   yavaş tick ve duraklama olmadan çalıştı; 90 sn'lik profilde script yorumlayıcısı sunucu
   süresinin %0,1'inin altındaydı. 200 eşzamanlı giriş tek seferlik ~1,3 sn'lik bir duraklama
   yarattı.
-
-### Tarihsel ölçüm (2026-07-20)
-
-**2026-07-20'de güncel build üzerinde**, kod içi araçla (gerçek TCP bot istemcileri, tam üretim script paketi) mütevazı bir **5 vCPU VM, 12 GB RAM** üzerinde ölçüldü. Tick = 100 ms (saniyede 10, Source-X paritesi); botlar aynı process'te — sayılar kötümserdir.
-
-| Senaryo | Ort. tick | p95 | Bütçe |
-|---|---|---|---|
-| 30.000 NPC, oyuncu yok | 0.1 ms | <2 ms | <%1 |
-| 30.000 NPC + yürüyen 300 oyuncu | ~8 ms | ~13 ms | %8 |
-| 2.000 saldırgan + savaşan 300 oyuncu | ~3.5 ms | ~7 ms | %4 |
-| Gezinen 1.000 canlı istemci | ~2.5 ms | ~5 ms | %3 |
-| 1.000 istemci + 2.000 saldırgan | ~15 ms | ~30 ms | %15 |
-| 100 bin item + 50 bin NPC + 300 oyuncu, hepsi aktif | ~31 ms | ~58 ms | %31 |
-
-- Login: 300 istemci 7.4 sn, 1.000 istemci 18.1 sn — sıfır hata. Soğuk açılış < 2 sn.
-- Kayıt: 102.400 item + 50.440 karakter → **1.08 sn**, dünya çalışmaya devam ederken (BinaryGz, 3 shard, paralel yakalama).
-- GC: bloklayan Gen2 her senaryoda 30 sn'lik pencere başına ≈ 0–1; RSS ~450–700 MB.
+- **Soak** (2026-10-14): aynı canlı shard kopyasında `Soak` senaryosunun 100 botu (aynı
+  process'te; yürüme, dövüş, büyü, loot, vendor alışverişi, takas) 3 saat: tick p50
+  0,23-0,35 ms, p99 2,2-4,1 ms, en kötü tick 40 ms; 12 dünya kaydı (her biri 0,45-0,72 sn
+  senkron duraklama), 13 dünya denetiminde hiç anomali yok; working set 40 dakikalık
+  ısınmadan sonra ~1 GB'ta yatay (koşu boyunca -7,7 MB/saat); ortalama 0,13 çekirdek.
 
 Baskın maliyet, popülasyon veya istemci sayısı değil **aynı anda aktif olan AI'dır**. Uyuyan
 sektör tick maliyeti taşımaz; uyanık sektör ise tuttuğu kadar değil **vadesi gelen kadar**

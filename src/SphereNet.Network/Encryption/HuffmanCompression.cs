@@ -202,8 +202,19 @@ public static class HuffmanCompression
     /// Returns number of input bytes consumed (for handling multiple compressed packets).
     /// </summary>
     public static byte[] DecompressFromServer(byte[] input, int offset, int length, out int bytesConsumed)
+        => DecompressFromServer(input, offset, length, out bytesConsumed, out _);
+
+    /// <summary>
+    /// As above, and says whether a whole packet was decoded: <paramref name="complete"/>
+    /// is false when the input ran out before the packet's terminator. A reader that
+    /// gets its bytes in TCP-sized pieces must then keep them and wait for more - the
+    /// bits of a code cut at the end of the input are otherwise lost and the rest of
+    /// the packet decodes from the wrong bit.
+    /// </summary>
+    public static byte[] DecompressFromServer(byte[] input, int offset, int length, out int bytesConsumed, out bool complete)
     {
         bytesConsumed = length;
+        complete = true;
 
         if (_serverDecompTree == null)
         {
@@ -233,6 +244,7 @@ public static class HuffmanCompression
                     if (bitPos >= totalBits)
                     {
                         bytesConsumed = length;
+                        complete = false;
                         return output.AsSpan(0, outLen).ToArray();
                     }
 
@@ -240,6 +252,7 @@ public static class HuffmanCompression
                     if (byteIdx >= offset + length)
                     {
                         bytesConsumed = length;
+                        complete = false;
                         return output.AsSpan(0, outLen).ToArray();
                     }
 
@@ -280,6 +293,9 @@ public static class HuffmanCompression
             }
 
             bytesConsumed = length;
+            // Out of input on a symbol boundary but without the terminator.
+            if (bitPos >= totalBits)
+                complete = false;
             return output.AsSpan(0, outLen).ToArray();
         }
         finally

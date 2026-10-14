@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-14] - Bot akis cozumu
+------------------------------------------------------------------------
+DUZELTME - Bot istemcisinin Huffman cozumu: bir paketin ortasinda biten TCP okumasi cozulup
+       tamami tuketiliyor, sonunda kesilen kodun bitleri kayboluyordu; paketin kalani
+       yanlis bitten cozuluyor ve akis paket sinirlarini kaybediyordu (15 dakikalik
+       soak'ta 20 framing hatasi ve yuzlerce 0x00/0x05 "paketi"; hic tamamlanmayan takas
+       pencereleri). HuffmanCompression.DecompressFromServer artik paketin bitis koduna
+       ulasip ulasmadigini soyleyebiliyor; bot yarim paketi kalani gelene kadar tutuyor.
+       Ayni soak'ta framing hatasi: 0.
+
 [2026-10-14] - Bot test araci: engeller, container durumu, takas onayi
 ------------------------------------------------------------------------
 DUZELTME - Bot hareketi: bot, adim atmasi reddedilen kareyi 5 dakika hatirliyor ve oraya

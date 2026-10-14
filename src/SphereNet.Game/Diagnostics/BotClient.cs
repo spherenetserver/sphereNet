@@ -1419,6 +1419,9 @@ public sealed class BotClient : IDisposable
         if (_stream == null || _tcp == null || !_tcp.Connected) return null;
 
         var timeoutTime = DateTime.UtcNow.AddMilliseconds(timeout);
+        // The compressed buffer ends partway through a packet: wait for the rest
+        // rather than decode it again.
+        bool partial = false;
 
         while (DateTime.UtcNow < timeoutTime)
         {
@@ -1430,34 +1433,30 @@ public sealed class BotClient : IDisposable
                 return packet;
             }
 
-            // Try to decompress more from the compressed buffer
-            if (_compressedBuffer.Count > 0)
+            // Try to decompress more from the compressed buffer. Each packet carries
+            // its own terminator; only a packet decoded up to it is taken. TCP hands
+            // the bytes over in arbitrary pieces, and decoding a piece that stops
+            // mid-packet threw away the bits of the code cut at its end - the rest of
+            // the packet then decoded from the wrong bit and the stream lost its
+            // packet boundaries (0x00/0x05 "packets", framing errors).
+            if (_compressedBuffer.Count > 0 && !partial)
             {
                 var compressedArray = _compressedBuffer.ToArray();
                 var decompressed = HuffmanCompression.DecompressFromServer(
-                    compressedArray, 0, compressedArray.Length, out int bytesConsumed);
-                
-                if (decompressed.Length > 0)
+                    compressedArray, 0, compressedArray.Length, out int bytesConsumed, out bool complete);
+
+                if (complete)
                 {
                     _decompressedBuffer.AddRange(decompressed);
+                    if (bytesConsumed > 0 && bytesConsumed <= _compressedBuffer.Count)
+                        _compressedBuffer.RemoveRange(0, bytesConsumed);
+                    continue; // Try to extract packet again
                 }
-                
-                // Remove consumed bytes from compressed buffer
-                if (bytesConsumed > 0 && bytesConsumed <= _compressedBuffer.Count)
-                {
-                    _compressedBuffer.RemoveRange(0, bytesConsumed);
-                }
-                else if (decompressed.Length == 0)
-                {
-                    // No progress and no output - need more data
-                    // Don't clear buffer, we need more bytes
-                }
-                
-                continue; // Try to extract packet again
+                partial = true;
             }
 
             // Read more compressed data from network
-            if (_stream.DataAvailable || (_compressedBuffer.Count == 0 && _decompressedBuffer.Count == 0))
+            if (partial || _stream.DataAvailable || (_compressedBuffer.Count == 0 && _decompressedBuffer.Count == 0))
             {
                 var rawBuffer = new byte[4096];
                 using var readCts = new CancellationTokenSource(500);
@@ -1475,6 +1474,7 @@ public sealed class BotClient : IDisposable
                     // Add to compressed buffer for decompression
                     for (int i = 0; i < read; i++)
                         _compressedBuffer.Add(rawBuffer[i]);
+                    partial = false;
                 }
                 catch (OperationCanceledException)
                 {

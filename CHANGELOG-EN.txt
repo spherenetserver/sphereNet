@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-14] - Bot stream decoding
+------------------------------------------------------------------------
+FIX - Bot client Huffman decoding: a TCP read that ended partway through a packet was
+      decoded and taken whole, losing the bits of the code cut at its end; the rest of
+      the packet then decoded from the wrong bit and the stream lost its packet
+      boundaries (20 framing errors and hundreds of 0x00/0x05 "packets" in a 15-minute
+      soak; trade windows that never completed). HuffmanCompression.DecompressFromServer
+      can now say whether it reached the packet's terminator, and the bot keeps a
+      partial packet until the rest arrives. Framing errors in the same soak: 0.
+
 [2026-10-14] - Bot harness: obstacles, container state, trade acceptance
 ------------------------------------------------------------------------
 FIX - Bot movement: a bot remembers a tile a step into was refused (5 minutes) and no

@@ -52,7 +52,84 @@ public sealed class BotEngine : IDisposable
     {
         _liveBotChars.Clear();
         _liveBotAccounts.Clear();
+        _liveBotSerials.Clear();
+        _traders.Clear();
     }
+
+    /// <summary>Characters of the running bots, by serial: what a trading bot looks
+    /// for, so it hands items to another bot and never to a player or an NPC.</summary>
+    private static readonly ConcurrentDictionary<uint, byte> _liveBotSerials = new();
+
+    internal static void RegisterBotSerial(uint serial)
+    {
+        if (serial != 0) _liveBotSerials[serial] = 0;
+    }
+
+    public static bool IsLiveBotSerial(uint serial) => _liveBotSerials.ContainsKey(serial);
+
+    /// <summary>The bots running the trade behaviour, so a trader can walk to another
+    /// trader instead of waiting for one to wander into view.</summary>
+    private static readonly ConcurrentDictionary<int, BotClient> _traders = new();
+
+    internal static void RegisterTrader(BotClient bot) => _traders[bot.BotId] = bot;
+    internal static void ForgetTrader(BotClient bot) => _traders.TryRemove(bot.BotId, out _);
+
+    /// <summary>The nearest other trader that is in the world.</summary>
+    internal static BotClient? NearestTrader(BotClient self)
+    {
+        BotClient? best = null;
+        int bestDist = int.MaxValue;
+        foreach (var other in _traders.Values)
+        {
+            if (other == self || other.State != BotState.Playing || other.World.CharUid == 0)
+                continue;
+            int d = self.World.DistanceTo(other.World.X, other.World.Y);
+            if (d < bestDist) { bestDist = d; best = other; }
+        }
+        return best;
+    }
+
+    private static long _tradesOffered, _tradesOpened, _tradesClosed;
+    internal static void CountTradeOffered() => Interlocked.Increment(ref _tradesOffered);
+
+    private static long _tradeNoPartner, _tradeNoBackpack, _tradeNoItem, _tradeTooFar;
+    /// <summary>Why a trading bot's turn ended without an offer.</summary>
+    internal static void CountTradeSkip(string reason)
+    {
+        switch (reason)
+        {
+            case "partner": Interlocked.Increment(ref _tradeNoPartner); break;
+            case "backpack": Interlocked.Increment(ref _tradeNoBackpack); break;
+            case "item": Interlocked.Increment(ref _tradeNoItem); break;
+            default: Interlocked.Increment(ref _tradeTooFar); break;
+        }
+    }
+
+    public static string TradeSkipSummary =>
+        $"no partner {Interlocked.Read(ref _tradeNoPartner)}, no backpack {Interlocked.Read(ref _tradeNoBackpack)}, " +
+        $"no item {Interlocked.Read(ref _tradeNoItem)}, too far {Interlocked.Read(ref _tradeTooFar)}";
+    internal static void CountTradeOpened() => Interlocked.Increment(ref _tradesOpened);
+    internal static void CountTradeClosed() => Interlocked.Increment(ref _tradesClosed);
+    /// <summary>Trade windows bots saw open and close (both sides count).</summary>
+    public static (long Offered, long Opened, long Closed) TradeCounts =>
+        (Interlocked.Read(ref _tradesOffered), Interlocked.Read(ref _tradesOpened), Interlocked.Read(ref _tradesClosed));
+
+    // --- soak hooks, wired by the server ---
+
+    /// <summary>Run the world consistency audit on the main loop; one line per anomaly.</summary>
+    public Func<IReadOnlyList<string>>? WorldAudit { get; set; }
+
+    /// <summary>Ask the server for a world save.</summary>
+    public Action? RequestSave { get; set; }
+
+    /// <summary>Saves finished and saves failed since the server started.</summary>
+    public Func<(int Saves, int Failures)>? SaveStats { get; set; }
+
+    /// <summary>Where the soak CSV goes (the server's log folder).</summary>
+    public string? LogDirectory { get; set; }
+
+    private SoakMonitor? _soak;
+    public SoakResult? LastSoakResult { get; private set; }
 
     /// <summary>Accounts the server made for the bots it is running.</summary>
     private static readonly ConcurrentDictionary<string, byte> _liveBotAccounts =
@@ -152,6 +229,7 @@ public sealed class BotEngine : IDisposable
         new VendorCycleScenario(),
         new CombatSoakScenario(),
         new MixedLoadScenario(),
+        new SoakScenario(),
         new LoginStormScenario(),
     ];
 
@@ -468,6 +546,16 @@ public sealed class BotEngine : IDisposable
         _spawnCity = scenario.SpawnCity;
         BeginScenarioWindow(scenario, botCount);
 
+        // As SpawnBotsAsync: bot mode exempts the loopback connections from the
+        // connection-flood filter, and the bots' accounts and characters must be
+        // registered before they log in or the login refuses them. Scenarios skipped
+        // both, so every scenario bot was turned away at the door.
+        if (!BotModeActive)
+        {
+            BotModeActive = true;
+            OnBotModeChanged?.Invoke(true);
+        }
+
         _logger.LogInformation("[BOT] Starting scenario '{Name}': {Count} bots, {Duration} min, {City}",
             scenario.Name, botCount, durationMin, scenario.SpawnCity);
 
@@ -479,9 +567,11 @@ public sealed class BotEngine : IDisposable
             for (int i = 0; i < count && !ct.IsCancellationRequested; i++)
             {
                 int botId = Interlocked.Increment(ref _nextBotId);
-                var bot = new BotClient(botId, _logger);
+                var bot = new BotClient(botId, _logger, _sessionPassword);
                 bot.SetAnomalySink(Anomalies);
                 _bots[botId] = bot;
+                RegisterBotCharacter(bot.CharName);
+                RegisterBotAccount(bot.AccountName);
 
                 var localBehavior = behavior;
                 _ = Task.Run(async () =>
@@ -498,6 +588,15 @@ public sealed class BotEngine : IDisposable
 
         _logger.LogInformation("[BOT] Scenario '{Name}' spawning complete. Running for {Duration} min...",
             scenario.Name, durationMin);
+
+        if (scenario is ISoakScenario soak)
+        {
+            _soak = new SoakMonitor(_logger, TimeSpan.FromMinutes(soak.SaveIntervalMinutes),
+                TimeSpan.FromMinutes(1), WorldAudit, RequestSave, SaveStats);
+            _soak.Start(LogDirectory, ct);
+            _logger.LogInformation("[soak] saving every {Save} min, auditing after each save; trend in {Csv}",
+                soak.SaveIntervalMinutes, _soak.CsvPath);
+        }
 
         _ = Task.Run(async () =>
         {
@@ -547,6 +646,29 @@ public sealed class BotEngine : IDisposable
         {
             foreach (var reason in LastScenarioReport.FailReasons)
                 _logger.LogWarning("[BOT] GATE {Reason}", reason);
+        }
+        foreach (var group in LastScenarioReport.Anomalies.GroupBy(a => a.Type).OrderByDescending(g => g.Count()))
+            _logger.LogWarning("[BOT] {Count} x {Type}, e.g. {Detail}", group.Count(), group.Key, group.First().Detail);
+
+        var soakMonitor = Interlocked.Exchange(ref _soak, null);
+        if (soakMonitor != null && scenario is ISoakScenario soakScenario)
+        {
+            var r = LastSoakResult = soakMonitor.Finish(soakScenario.MaxHeapGrowthMbPerHour);
+            var (offered, opened, closed) = TradeCounts;
+            // Warning, so the verdict reaches the file log as well as the console.
+            _logger.LogWarning("[soak] {Verdict}: {Min:F0} min, heap {Start:F0}->{End:F0} MB ({Slope:+0.0;-0.0} MB/h), " +
+                "working set {Ws:+0.0;-0.0} MB/h, saves {Saves} ({Failed} failed), audits {Audits} ({Anomalies} anomalies), " +
+                "trades {Offered} offered, windows {Opened} opened / {Closed} closed, CSV {Csv}",
+                r.Passed ? "PASSED" : "FAILED", r.DurationMinutes, r.HeapStartMb, r.HeapEndMb, r.HeapGrowthMbPerHour,
+                r.WorkingSetGrowthMbPerHour, r.Saves, r.SaveFailures, r.Audits, r.TotalAnomalies,
+                offered, opened, closed, r.CsvPath);
+            _logger.LogWarning("[soak] trade turns without an offer: {Skips}", TradeSkipSummary);
+            var playing = _bots.Values.Where(b => b.State == BotState.Playing).ToList();
+            _logger.LogWarning("[soak] bots knowing their backpack {Packs}/{Bots}, worn items seen {Worn}",
+                playing.Count(b => b.World.BackpackSerial != 0), playing.Count,
+                playing.Sum(b => b.World.Equipment.Count));
+            foreach (var reason in r.FailReasons)
+                _logger.LogWarning("[soak] GATE {Reason}", reason);
         }
     }
 

@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-14] - Soak scenario and SCENARIO command
+------------------------------------------------------------------------
+ADD - Soak bot scenario: hours of mixed play (walkers, melee, mages, vendor buyers,
+      looters, skill users and bots trading items to each other through secure trade)
+      with a world save every 15 minutes, WorldInvariantAuditor after each save and
+      memory sampled every minute into logs/soak-<date>.csv. The end report gives heap
+      and working-set growth in MB/h (least-squares over the post-warm-up samples) and
+      fails on growth above 64 MB/h, any audit anomaly or any failed save.
+ADD - Server console SCENARIO [name [bots [minutes]]] / SCENARIO STOP. The bot
+      scenarios (WalkTalk, VendorCycle, CombatSoak, MixedLoad, LoginStorm) existed
+      but nothing could start them.
+ADD - Bots accept a secure trade window shortly after it opens (0x6F action 2), and
+      a TradeBot behaviour drops an item from its backpack on a nearby bot.
+FIX - A vendor's stock and extra boxes are created as IT_EQ_VENDOR_BOX whatever the
+      pack's 0x408D definition says (Source-X CItem::FixWeirdness).
+FIX - Restocked vendor items take their whole item definition (TYPE included); they
+      were created with a bare graphic and no type.
+
 [2026-10-14] - Packet path allocation
 ------------------------------------------------------------------------
 CHANGE - Packet path allocation: incoming packets are read from a pooled array returned

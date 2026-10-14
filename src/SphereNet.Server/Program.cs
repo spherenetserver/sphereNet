@@ -171,6 +171,8 @@ public static partial class Program
     private static int _tickCounter;
     private static DateTime _serverStartTime;
     private static int _saveCount;
+    /// <summary>The log folder the file log writes to (soak CSVs go there too).</summary>
+    private static string? _resolvedLogDir;
     private static readonly List<GameClient> _reusableClientSnapshot = [];
     // Reuse compute-phase buffers across ticks to keep gen-0 GC pressure
     // low. The dictionary/bag allocations were measurable on low-core
@@ -633,6 +635,7 @@ public static partial class Program
         ParseLogFileLevel(_config.LogFileLevel, out var fileLogMinLevel,
             out var fileLogWhitelist);
         string resolvedLogDir = ResolvePath(basePath, _config.LogDir);
+        _resolvedLogDir = resolvedLogDir;
         string filePath = Path.Combine(resolvedLogDir, "spherenet-.log");
 
         // Before anything else that can fail: from here on, a fault on any thread and a

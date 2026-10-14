@@ -753,6 +753,54 @@ public static partial class Program
             client.SysMessage(text);
     }
 
+    /// <summary>SCENARIO: list the bot scenarios and the running one; start one by
+    /// name with an optional bot count and duration (minutes); STOP ends it early and
+    /// reports.</summary>
+    private static void HandleScenarioCommand(string args, Action<string> output)
+    {
+        if (_botEngine == null)
+        {
+            output("The bot engine is not running.");
+            return;
+        }
+        var toks = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (toks.Length == 0)
+        {
+            foreach (var s in SphereNet.Game.Diagnostics.BotEngine.AvailableScenarios)
+                output($"  {s.Name,-12} {s.DefaultBotCount,4} bots {s.DefaultDurationMinutes,4} min  {s.Description}");
+            output(_botEngine.IsScenarioRunning
+                ? $"Running: {_botEngine.ActiveScenario?.Name}"
+                : "No scenario is running.");
+            if (_botEngine.LastSoakResult is { } soak)
+                output($"Last soak: {(soak.Passed ? "PASSED" : "FAILED")}, heap {soak.HeapGrowthMbPerHour:+0.0;-0.0} MB/h, " +
+                       $"{soak.TotalAnomalies} anomalies, {soak.SaveFailures} failed saves");
+            return;
+        }
+        if (toks[0].Equals("STOP", StringComparison.OrdinalIgnoreCase))
+        {
+            _botEngine.StopScenario();
+            output("Scenario stopped; the report is in the server log.");
+            return;
+        }
+        var scenario = SphereNet.Game.Diagnostics.BotEngine.AvailableScenarios
+            .FirstOrDefault(s => s.Name.Equals(toks[0], StringComparison.OrdinalIgnoreCase));
+        if (scenario == null)
+        {
+            output($"Unknown scenario '{toks[0]}'. SCENARIO lists them.");
+            return;
+        }
+        int? bots = toks.Length > 1 && int.TryParse(toks[1], out int b) && b > 0 ? b : null;
+        int? minutes = toks.Length > 2 && int.TryParse(toks[2], out int m) && m > 0 ? m : null;
+        int port = _config?.ServPort ?? 2593;
+        output($"Starting {scenario.Name}: {bots ?? scenario.DefaultBotCount} bots, " +
+               $"{minutes ?? scenario.DefaultDurationMinutes} min (watch the server log).");
+        _ = Task.Run(async () =>
+        {
+            try { await _botEngine.RunScenarioAsync(scenario, "127.0.0.1", port, bots, minutes); }
+            catch (Exception ex) { _log.LogError(ex, "[BOT] Scenario {Name} failed to start", scenario.Name); }
+        });
+    }
+
     private static void HandleBotCommand(int count, string behavior, bool isStop)
     {
         if (_botEngine == null) return;
@@ -884,6 +932,7 @@ public static partial class Program
             {
                 var sword = _world.CreateItem();
                 sword.BaseId = 0x0F5E; // broadsword
+                SphereNet.Game.Definitions.ItemDefHelper.ApplyInstanceMetadata(sword, 0x0F5E);
                 sword.Name = "Broadsword";
                 ch.Equip(sword, Layer.TwoHanded);
             }
@@ -928,6 +977,9 @@ public static partial class Program
         if (toAdd <= 0) return;
         var newItem = _world.CreateItem();
         newItem.BaseId = baseId;
+        // From the definition, like any created item: a bare BaseId leaves the item
+        // with no TYPE, which the soak scenario's world audit reports.
+        SphereNet.Game.Definitions.ItemDefHelper.ApplyInstanceMetadata(newItem, baseId);
         newItem.Name = name;
         newItem.Amount = (ushort)toAdd;
         if (!pack.TryAddItem(newItem))

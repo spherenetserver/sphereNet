@@ -46,6 +46,9 @@ public sealed class AdminCommandProcessor
     // external load runner over the headless console.
     public event Action<string, Action<string>>? OnPerfRequested;
 
+    /// <summary>SCENARIO [name [bots [minutes]] | STOP]: the bot scenarios.</summary>
+    public event Action<string, Action<string>>? OnScenarioRequested;
+
     /// <summary>The script profiler the P / P# / E commands read (Source-X console).</summary>
     public SphereNet.Scripting.Execution.ScriptProfiler? Profiler { get; set; }
     /// <summary>Runs a line this processor does not know as a server verb; null = not a verb.</summary>
@@ -106,6 +109,7 @@ public sealed class AdminCommandProcessor
                 output("  SHRINKMEM                  - Trim the process working set");
                 output("  PERF MARK|REPORT|STOP      - Load-test measurement window");
                 output("  P / P#                     - Script profiler report (P# also to profiler_dump.txt)");
+                output("  SCENARIO [name [bots [min]]] - Bot scenarios (no name = list/status); SCENARIO STOP");
                 output("  E                          - Clear the script profiler");
                 output("  CALCCRYPT <ver>[,type][,enc] - Login keys for a client version");
                 output("  BLOCKIP <ip>               - Block an IP address");
@@ -285,6 +289,13 @@ public sealed class AdminCommandProcessor
                 }
                 Profiler.Clear();
                 output("Script profiler cleared.");
+                break;
+
+            case "SCENARIO":
+                if (OnScenarioRequested == null)
+                    output("SCENARIO is only available on the server console.");
+                else
+                    OnScenarioRequested(args, output);
                 break;
 
             case "PERF":

@@ -195,6 +195,19 @@ public static class BotPacketBuilder
     }
 
     /// <summary>Build 0x08 Drop Item to World packet (15 bytes, 6.0.1.7+).</summary>
+    /// <summary>Build 0x6F action 2: check (or uncheck) this side of a trade window,
+    /// as ClassicUO writes it - [0x6F][len][2][own container][u32 state].</summary>
+    public static byte[] BuildTradeAccept(uint myContainerSerial, bool accept)
+    {
+        var packet = new byte[12];
+        packet[0] = 0x6F;
+        WriteUInt16BE(packet, 1, 12);
+        packet[3] = 2;
+        WriteUInt32BE(packet, 4, myContainerSerial);
+        WriteUInt32BE(packet, 8, accept ? 1u : 0u);
+        return packet;
+    }
+
     public static byte[] BuildDropToWorld(uint itemSerial, short x, short y, sbyte z)
     {
         return BuildDropToContainer(itemSerial, 0xFFFFFFFF, x, y, z);

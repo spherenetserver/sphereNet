@@ -5398,6 +5398,9 @@ public sealed class ClientItemUseHandler
         {
             extraContainer = _world.CreateItem();
             extraContainer.BaseId = 0x408D; // i_vendor_box (Source-X stock graphic)
+            // An equipped vendor box is IT_EQ_VENDOR_BOX whatever the pack's 0x408D
+            // definition says (Source-X CItem::FixWeirdness, CItem.cpp:958-967).
+            extraContainer.ItemType = ItemType.EqVendorBox;
             vendor.Equip(extraContainer, Layer.VendorExtra);
         }
         _netState.Send(new PacketWornItem(

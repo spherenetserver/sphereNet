@@ -128,6 +128,7 @@ These are **not** in-game `.` commands. They are handled by `AdminCommandProcess
 | `SCRIPTDEBUG` | — | Toggle ScriptDebug. |
 | `P` / `P#` | — | Script profiler report (Source-X `CServer::ProfileDump`), needs `EXPERIMENTAL` bit `0x400`. `P#` also writes it to `profiler_dump.txt`. |
 | `E` | — | Clear the script profiler. |
+| `SCENARIO` | `[name [bots [minutes]]]` / `STOP` | Bot load scenarios (`WalkTalk`, `VendorCycle`, `CombatSoak`, `MixedLoad`, `LoginStorm`, `Soak`). No argument lists them and the running one; a name starts it with optional bot count and duration; `STOP` ends it and writes the report to the log. `Soak` also saves every 15 min, audits the world after each save and reports memory growth (PERFORMANCE.md). |
 | `BROADCAST` | `<message>` | Message all players. |
 | `WHO` | — | Online connection count. |
 | `LOG` | `<message>` | Write a line to the server log. |

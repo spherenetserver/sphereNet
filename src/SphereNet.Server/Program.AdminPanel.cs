@@ -184,6 +184,7 @@ public static partial class Program
             // Load-test window: console only (the console queue runs on the main loop,
             // which is the thread that records into the window).
             _consoleProcessor.OnPerfRequested += HandlePerfCommand;
+            _consoleProcessor.OnScenarioRequested += HandleScenarioCommand;
             _consoleProcessor.Profiler = _triggerRunner?.Profiler;
             // Global RESPAWN/RESTOCK — run on the main loop (they mutate world state).
             _consoleProcessor.OnRespawnRequested += RequestRespawnOnMainLoop;

@@ -840,6 +840,7 @@ public static partial class Program
     {
         const ushort SaveHue = 0x0040;
         _saveCount++;
+        Interlocked.Increment(ref _saveFailCount);
         _systemHooks.DispatchServer("save_fail", _serverHookContext, message);
         sw.Stop();
         SphereNet.Game.Diagnostics.LoadProfile.CountSave(sw.ElapsedMilliseconds);
@@ -853,9 +854,14 @@ public static partial class Program
             sw.Elapsed.TotalSeconds.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    /// <summary>Saves that failed (or wrote the world but not the accounts) since
+    /// startup; the soak scenario fails on any.</summary>
+    private static int _saveFailCount;
+
     private static void FinishSaveFailure(System.Diagnostics.Stopwatch sw, string message)
     {
         const ushort SaveHue = 0x0040;
+        Interlocked.Increment(ref _saveFailCount);
         sw.Stop();
         RecordSaveOutcome(sw, ok: false);
         _systemHooks.DispatchServer("save_fail", _serverHookContext, message);

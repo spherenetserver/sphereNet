@@ -251,6 +251,7 @@ public sealed class BotClient : IDisposable
                 State = BotState.Playing;
                 LastActivityMs = Environment.TickCount64;
                 _world.CharUid = _charUid;
+                BotEngine.RegisterBotSerial(_charUid);
                 _world.X = _x;
                 _world.Y = _y;
                 _world.Z = _z;
@@ -448,7 +449,12 @@ public sealed class BotClient : IDisposable
                 if (packet.Length >= 19)
                 {
                     uint serial78 = ReadUInt32BE(packet, 3);
-                    if (serial78 == _charUid || (serial78 & 0x40000000) != 0) break;
+                    if (serial78 == _charUid)
+                    {
+                        ReadOwnEquipment(packet, now);
+                        break;
+                    }
+                    if ((serial78 & 0x40000000) != 0) break;
                     _world.Mobiles[serial78] = new KnownMobile
                     {
                         Serial = serial78,
@@ -687,8 +693,14 @@ public sealed class BotClient : IDisposable
                         };
                         _world.Equipment[eqLayer] = eqItem;
                         _world.KnownItems[eqSerial] = eqItem;
+                        if (eqLayer == BackpackLayer)
+                            _world.BackpackSerial = eqSerial;
                     }
                 }
+                break;
+
+            case 0x6F: // Secure Trade (variable)
+                HandleSecureTrade(packet);
                 break;
 
             case 0x27: // Reject Move Item (2 bytes)
@@ -1013,6 +1025,67 @@ public sealed class BotClient : IDisposable
             case BotAIActionType.None:
                 await Task.Delay(200, ct);
                 break;
+        }
+    }
+
+    private const byte BackpackLayer = 0x15;
+
+    /// <summary>This bot's own 0x78: the equipment list after the 19-byte header,
+    /// each [serial][item id][layer] plus a hue when the id carries 0x8000 (the form
+    /// sent to a pre-7.0.33 client, which the bot announces), ended by a zero serial.
+    /// It is where the bot learns its backpack: nothing set BackpackSerial before,
+    /// so the looting and trading bots never had a pack to use.</summary>
+    private void ReadOwnEquipment(byte[] packet, long now)
+    {
+        int pos = 19;
+        while (pos + 4 <= packet.Length)
+        {
+            uint serial = ReadUInt32BE(packet, pos);
+            pos += 4;
+            if (serial == 0 || pos + 3 > packet.Length)
+                break;
+            ushort itemId = ReadUInt16BE(packet, pos);
+            byte layer = packet[pos + 2];
+            pos += 3;
+            ushort hue = 0;
+            if ((itemId & 0x8000) != 0)
+            {
+                if (pos + 2 > packet.Length)
+                    break;
+                hue = ReadUInt16BE(packet, pos);
+                pos += 2;
+                itemId &= 0x7FFF;
+            }
+            var item = new BotKnownItem { Serial = serial, ItemId = itemId, Layer = layer, Hue = hue, LastSeenMs = now };
+            _world.Equipment[layer] = item;
+            _world.KnownItems[serial] = item;
+            if (layer == BackpackLayer)
+                _world.BackpackSerial = serial;
+        }
+    }
+
+    /// <summary>A trade window opened with this bot: accept it after a moment, as a
+    /// player would once both offers are in. Every bot accepts, so the bot that
+    /// started the trade completes it with whichever bot it dropped the item on.</summary>
+    private void HandleSecureTrade(byte[] packet)
+    {
+        if (packet.Length < 4)
+            return;
+        byte action = packet[3];
+        if (action == 0 && packet.Length >= 12)
+        {
+            uint myContainer = ReadUInt32BE(packet, 8);
+            BotEngine.CountTradeOpened();
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(1000);
+                if (State == BotState.Playing)
+                    SendRawPacket(BotPacketBuilder.BuildTradeAccept(myContainer, accept: true));
+            });
+        }
+        else if (action == 1)
+        {
+            BotEngine.CountTradeClosed();
         }
     }
 

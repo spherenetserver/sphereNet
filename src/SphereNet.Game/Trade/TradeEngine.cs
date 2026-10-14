@@ -1559,6 +1559,9 @@ public static class VendorEngine
         {
             stock = World.CreateItem();
             stock.BaseId = 0x408D; // i_vendor_box (vendor stock graphic)
+            // An equipped vendor box is IT_EQ_VENDOR_BOX whatever the pack's 0x408D
+            // definition says (Source-X CItem::FixWeirdness, CItem.cpp:958-967).
+            stock.ItemType = Core.Enums.ItemType.EqVendorBox;
             vendor.Equip(stock, Core.Enums.Layer.VendorStock);
         }
 
@@ -1597,6 +1600,10 @@ public static class VendorEngine
             // Create restocked items
             var newItem = World.CreateItem();
             newItem.BaseId = itemId;
+            // The whole definition, as Source-X restocks from the template: a bought
+            // copy inherits this item's state, and a bare BaseId left it with no TYPE
+            // (a bandage that was not a bandage to anything reading the raw type).
+            Definitions.ItemDefHelper.ApplyInstanceMetadata(newItem, itemId);
             newItem.Amount = (ushort)Math.Min(deficit, 60000);
 
             // Ordinary stock reads ITEMDEF VALUE when quoted; do not freeze PRICE.

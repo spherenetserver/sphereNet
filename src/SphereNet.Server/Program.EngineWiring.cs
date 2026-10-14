@@ -3613,6 +3613,13 @@ public static partial class Program
             }
             if (_botSpawnCluster)
                 _botEngine.SetClusterSpawn(true);
+            // Soak scenario: save on its schedule, audit the world on the main loop.
+            _botEngine.RequestSave = RequestSaveOnMainLoop;
+            _botEngine.SaveStats = () => (Volatile.Read(ref _saveCount), Volatile.Read(ref _saveFailCount));
+            _botEngine.WorldAudit = () => InvokePanelOnMainLoop<IReadOnlyList<string>>(() =>
+                SphereNet.Game.Diagnostics.WorldInvariantAuditor.Audit(_world, _accounts)
+                    .Select(a => a.ToString()).ToList(), "soak audit");
+            _botEngine.LogDirectory = _resolvedLogDir;
             _commands.OnBotCommandRequested += HandleBotCommand;
             _commands.OnBotMenuRequested += ShowBotManagerDialog;
             _commands.OnSectorListRequested += ShowSectorListDialog;

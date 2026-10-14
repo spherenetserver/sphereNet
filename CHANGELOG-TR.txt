@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-14] - Soak senaryosu ve SCENARIO komutu
+------------------------------------------------------------------------
+EKLEME - Soak bot senaryosu: saatlerce karisik oyun (yuruyen, yakin dovus, buyucu,
+       saticidan alan, loot toplayan, skill kullanan ve birbirine secure trade ile esya
+       veren botlar); 15 dakikada bir world save, her save'den sonra
+       WorldInvariantAuditor, dakikada bir bellek ornegi logs/soak-<tarih>.csv'ye.
+       Sonuc raporu heap ve working set buyumesini MB/saat olarak verir (isinma
+       sonrasi orneklere en kucuk kareler) ve 64 MB/saat ustu buyumede, herhangi bir
+       denetim anomalisinde ya da basarisiz save'de basarisiz sayilir.
+EKLEME - Sunucu konsolunda SCENARIO [ad [bot [dakika]]] / SCENARIO STOP. Bot
+       senaryolari (WalkTalk, VendorCycle, CombatSoak, MixedLoad, LoginStorm) vardi ama
+       hicbir sey onlari baslatamiyordu.
+EKLEME - Botlar acilan secure trade penceresini kisa sure sonra onaylar (0x6F action
+       2); TradeBot davranisi cantasindan bir esyayi yakindaki bir botun uzerine birakir.
+DUZELTME - Saticinin stok ve ek kutulari, paketteki 0x408D tanimi ne derse desin
+       IT_EQ_VENDOR_BOX olarak olusturulur (Source-X CItem::FixWeirdness).
+DUZELTME - Yeniden stoklanan satici esyalari tum item tanimini (TYPE dahil) alir;
+       onceden sadece grafikle, tipsiz olusturuluyordu.
+
 [2026-10-14] - Paket yolu bellek ayirmasi
 ------------------------------------------------------------------------
 DEGISIKLIK - Paket yolu bellek ayirmasi: gelen paketler havuzdan kiralanan diziden

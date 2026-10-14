@@ -39,6 +39,41 @@ before/after numbers.
    - packet send/receive rate
 6. Repeat the same run after code changes.
 
+## Soak Run
+
+The nightly benchmark runs for under a minute; what grows slowly - memory, state that
+drifts out of step, saves that start failing under load - needs hours. The in-process
+bot scenarios run from the server console:
+
+```
+SCENARIO                      list the scenarios and the running one
+SCENARIO Soak 100 240         100 bots for 240 minutes
+SCENARIO STOP                 end early and report
+```
+
+`Soak` mixes walkers, melee, mages, vendor buyers, looters, skill users and traders
+(bots that hand items to each other through secure trade). While it runs:
+
+- memory is sampled every minute (the managed heap as the last collection left it,
+  and the working set);
+- the world is saved every 15 minutes, and `WorldInvariantAuditor` checks it after each
+  save (container index vs contents, orphaned contained items, item types against their
+  definitions, spawners over their cap);
+- every sample and audit is appended to `logs/soak-<date>.csv` as it happens, so a run
+  that is stopped or crashes still leaves its trend.
+
+At the end the server logs (at Warning, so it reaches the file log) a `[soak] PASSED` or
+`[soak] FAILED` line: heap and working-set growth in MB per hour - a least-squares line
+through the samples after the warm-up (the first fifth of the run, at least 5 minutes) -
+saves and failed saves, audits and anomalies, trade windows opened and closed. The run
+fails on heap growth above 64 MB/h, on any anomaly and on any failed save; a run too
+short to fit a trend says `NOT MEASURED` rather than passing. The other scenarios
+(`WalkTalk`, `VendorCycle`, `CombatSoak`, `MixedLoad`, `LoginStorm`) report through the
+same bot gate, without the save/audit/memory checks.
+
+Combine with the script profiler: `E` before the run, `P#` after, and the report names
+the scripts that cost the most under that load.
+
 ## Baseline Artifact
 
 Store benchmark results as JSON so nightly jobs and reviewers compare the same

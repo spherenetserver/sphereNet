@@ -10,10 +10,27 @@ FIX - A memory the engine made and later forgot (a fight memory that was never h
       to a script, so never given a UID) stayed in the world's container index under
       its owner for good: it was taken off the memory list but kept CONT. NPCs that
       were fought collected them (about 1500 in an hour of soak on a live world).
+FIX - Bot client packet framing: the bots split the server stream with a partial length
+      table that read every unknown opcode as variable-length, so a fixed-size packet
+      (weather, game time, sound) misaligned the stream for good, and 0x24 was read as 9
+      bytes while the server sends 7 to the 7.0.0 client the bots announce. The full
+      table for that version replaces it: bots now see their own equipment and
+      backpack, so the loot and trade bots actually loot and trade.
 FIX - WorldInvariantAuditor reported an open secure trade window as an item its owner
       neither wears, remembers nor drags (CharacterLimboItem). The window is worn on
       LAYER_SPECIAL but kept out of the equipment slots, which memories share; an audit
       that ran mid-trade failed the soak on every open window.
+FIX - Bot movement: an accepted step (0x22) never moved the bot's own position, so a
+      bot believed all session that it stood where it logged in; every path was planned
+      from there, and each reject's correction was reported as a jump across the map.
+      The bot now applies its accepted steps (a request facing another way is a turn,
+      one along the facing a step), restarts its walk sequence at 0 after a 0x20 and
+      goes from 255 to 1 like the server. PositionSnap and ZJump are reported once per
+      correction, and only when the server and the bot really disagree.
+FIX - Trade bots: a trade window the server would not complete (weight, full pack, a
+      script) stayed open, leaving both bots "already trading" for the rest of the run.
+      A bot now closes its window 15 s after accepting, and the soak report lists offers
+      that opened no window and windows left open, with the server's message.
 
 [2026-10-14] - Soak scenario and SCENARIO command
 ------------------------------------------------------------------------

@@ -208,6 +208,18 @@ public static class BotPacketBuilder
         return packet;
     }
 
+    /// <summary>Build 0x6F action 1: close this side's trade window, which cancels
+    /// the trade for both.</summary>
+    public static byte[] BuildTradeClose(uint myContainerSerial)
+    {
+        var packet = new byte[12];
+        packet[0] = 0x6F;
+        WriteUInt16BE(packet, 1, 12);
+        packet[3] = 1;
+        WriteUInt32BE(packet, 4, myContainerSerial);
+        return packet;
+    }
+
     public static byte[] BuildDropToWorld(uint itemSerial, short x, short y, sbyte z)
     {
         return BuildDropToContainer(itemSerial, 0xFFFFFFFF, x, y, z);

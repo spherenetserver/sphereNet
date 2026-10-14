@@ -118,37 +118,40 @@ public sealed class BotAnomalyScanner
 
     private void CheckZJump(long nowMs, ConcurrentQueue<BotAnomaly> anomalies)
     {
-        int dz = Math.Abs(_world.Z - _world.PrevZ);
-        if (dz > 20)
+        string? detail;
+        lock (_world.SyncRoot)
         {
-            anomalies.Enqueue(new BotAnomaly
-            {
-                Type = BotAnomalyType.ZJump,
-                BotId = _botId,
-                TimestampMs = nowMs,
-                Detail = $"Z jumped {dz} tiles ({_world.PrevZ} -> {_world.Z})",
-                Severity = BotAnomalySeverity.Warning,
-            });
+            detail = _world.PendingZJump;
+            _world.PendingZJump = null;
         }
+        if (detail == null) return;
+        anomalies.Enqueue(new BotAnomaly
+        {
+            Type = BotAnomalyType.ZJump,
+            BotId = _botId,
+            TimestampMs = nowMs,
+            Detail = detail,
+            Severity = BotAnomalySeverity.Warning,
+        });
     }
 
     private void CheckPositionSnap(long nowMs, ConcurrentQueue<BotAnomaly> anomalies)
     {
-        int dx = Math.Abs(_world.X - _world.PrevX);
-        int dy = Math.Abs(_world.Y - _world.PrevY);
-        int dist = Math.Max(dx, dy);
-
-        if (dist > 10 && _world.PrevX != 0)
+        string? detail;
+        lock (_world.SyncRoot)
         {
-            anomalies.Enqueue(new BotAnomaly
-            {
-                Type = BotAnomalyType.PositionSnap,
-                BotId = _botId,
-                TimestampMs = nowMs,
-                Detail = $"Position snapped {dist} tiles ({_world.PrevX},{_world.PrevY} -> {_world.X},{_world.Y})",
-                Severity = BotAnomalySeverity.Warning,
-            });
+            detail = _world.PendingSnap;
+            _world.PendingSnap = null;
         }
+        if (detail == null) return;
+        anomalies.Enqueue(new BotAnomaly
+        {
+            Type = BotAnomalyType.PositionSnap,
+            BotId = _botId,
+            TimestampMs = nowMs,
+            Detail = detail,
+            Severity = BotAnomalySeverity.Warning,
+        });
     }
 
     private void CheckPickupRejects(long nowMs, ConcurrentQueue<BotAnomaly> anomalies)

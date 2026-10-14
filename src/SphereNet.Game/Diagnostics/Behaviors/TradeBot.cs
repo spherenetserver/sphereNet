@@ -62,10 +62,22 @@ public sealed class TradeBot : IBotBehavior
                 BotEngine.CountTradeSkip("far");
             else
             {
-                await actions.PickUp(offer.Serial, 1, 2000, ct);
+                long offeredMs = Environment.TickCount64;
+                var picked = await actions.PickUp(offer.Serial, 1, 2000, ct);
                 await Task.Delay(200, ct);
                 await actions.DropToContainer(offer.Serial, partner.Serial, 2000, ct);
                 BotEngine.CountTradeOffered();
+
+                await Task.Delay(2000, ct);
+                string? refused = null;
+                lock (world.SyncRoot)
+                {
+                    if (world.TradeOpenedMs < offeredMs)
+                        refused = world.LastSystemMessage(offeredMs)
+                            ?? (picked == BotActionResult.Rejected ? "pickup rejected" : "no message");
+                }
+                if (refused != null)
+                    BotEngine.CountTradeOutcome("no window: " + refused);
             }
 
             await Task.Delay(_rng.Next(5000, 10000), ct);

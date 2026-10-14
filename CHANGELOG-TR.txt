@@ -10,11 +10,28 @@ DUZELTME - Motorun olusturup sonra unuttugu memory (hic script'e verilmedigi ici
        olmayan bir dovus memory'si) sahibinin altinda world container index'inde
        kaliyordu: memory listesinden cikiyor ama CONT degeri kaliyordu. Dovusulen
        NPC'lerde birikiyordu (canli dunyada bir saatlik soak'ta yaklasik 1500).
+DUZELTME - Bot istemcisinin paket cercevesi: botlar sunucu akisini eksik bir uzunluk
+       tablosuyla boluyor ve bilinmeyen her opcode'u degisken uzunluklu sayiyordu;
+       sabit boyutlu bir paket (hava, oyun saati, ses) akisi kalici olarak kaydiriyordu.
+       0x24 de 9 byte okunuyordu, oysa sunucu botlarin bildirdigi 7.0.0 istemcisine 7
+       byte gonderir. Yerine o surumun tam tablosu geldi: botlar artik kendi
+       ekipmanini ve cantasini goruyor, loot ve trade botlari gercekten calisiyor.
 DUZELTME - WorldInvariantAuditor acik bir secure trade penceresini sahibinin ne giydigi,
        ne hatirladigi ne de surukledigi bir item (CharacterLimboItem) olarak
        raporluyordu. Pencere LAYER_SPECIAL'da giyili ama memory'lerle paylasilan bu
        katman yuzunden ekipman slotlarina yazilmiyor; takas sirasinda calisan bir
        denetim her acik pencere icin soak'i basarisiz sayiyordu.
+DUZELTME - Bot hareketi: kabul edilen adim (0x22) botun kendi konumunu hic ilerletmiyordu;
+       bot oturum boyunca giris yaptigi yerde durdugunu saniyordu, her yol oradan
+       planlaniyor ve her reddin duzeltmesi haritada sicrama olarak raporlaniyordu.
+       Bot artik kabul edilen adimlari uyguluyor (baska yone bakan istek donus,
+       baktigi yondeki istek adim), 0x20'den sonra yuruyus sirasini 0'dan baslatiyor
+       ve sunucu gibi 255'ten 1'e geciyor. PositionSnap ve ZJump her duzeltme icin bir
+       kez ve yalnizca sunucu ile bot gercekten ayristiginda raporlaniyor.
+DUZELTME - Trade botlari: sunucunun tamamlamadigi bir takas penceresi (agirlik, dolu
+       canta, script) acik kaliyor, iki bot da kosunun sonuna kadar "zaten takasta"
+       oluyordu. Bot artik kabulden 15 sn sonra penceresini kapatiyor; soak raporu
+       pencere acmayan teklifleri ve acik kalan pencereleri sunucu mesajiyla listeliyor.
 
 [2026-10-14] - Soak senaryosu ve SCENARIO komutu
 ------------------------------------------------------------------------

@@ -24,6 +24,9 @@ public sealed class BotClient : IDisposable
     private readonly int _botId;
     
     private byte _moveSequence;
+    // The direction each in-flight move went out with, by sequence. 0x22 carries
+    // only the sequence and the client applies the step itself.
+    private readonly byte[] _stepDirBySeq = new byte[256];
     private uint _authId;
     private uint _charUid;
     private short _x, _y;
@@ -242,6 +245,7 @@ public sealed class BotClient : IDisposable
                     _x = (short)ReadUInt16BE(response, 11);
                     _y = (short)ReadUInt16BE(response, 13);
                     _z = (sbyte)response[16];
+                    _world.Direction = (byte)(response[17] & 0x07);
                     loggedIn = true;
                 }
             }
@@ -255,6 +259,7 @@ public sealed class BotClient : IDisposable
                 _world.X = _x;
                 _world.Y = _y;
                 _world.Z = _z;
+                _world.NoteServerPosition(_x, _y, _z);
                 _world.MaxHits = 100;
                 _world.Hits = 100;
                 return true;
@@ -434,14 +439,17 @@ public sealed class BotClient : IDisposable
             case 0x20: // Draw Game Player (19 bytes)
                 if (packet.Length >= 19)
                 {
-                    _world.PrevX = _world.X;
-                    _world.PrevY = _world.Y;
-                    _world.PrevZ = _world.Z;
+                    // A redraw resets the walk sequence on both sides (the server
+                    // pins its own to 0 when it sends one). It is also how the server
+                    // places the character after a teleport, so the jump it carries is
+                    // not an anomaly.
+                    _moveSequence = 0;
                     _world.Body = ReadUInt16BE(packet, 5);
                     _world.X = _x = (short)ReadUInt16BE(packet, 11);
                     _world.Y = _y = (short)ReadUInt16BE(packet, 13);
-                    _world.Direction = packet[17];
+                    _world.Direction = (byte)(packet[17] & 0x07);
                     _world.Z = _z = (sbyte)packet[18];
+                    _world.NoteServerPosition(_x, _y, _z);
                 }
                 break;
 
@@ -548,6 +556,8 @@ public sealed class BotClient : IDisposable
                 break;
 
             case 0x22: // Move Ack (3 bytes)
+                if (packet.Length >= 2)
+                    ApplyAcceptedStep(packet[1]);
                 // packet[1] is the sequence of the move being answered. Without
                 // comparing it, a late ack for a move that already timed out was
                 // applied to whatever move is in flight now.
@@ -572,13 +582,12 @@ public sealed class BotClient : IDisposable
                     // is saying where this character really is.
                     _world.MoveRejectCount++;
                     _world.TotalMoveRejects++;
-                    _world.PrevX = _world.X;
-                    _world.PrevY = _world.Y;
-                    _world.PrevZ = _world.Z;
+                    short predictedX = _world.X, predictedY = _world.Y;
                     _world.X = _x = (short)ReadUInt16BE(packet, 2);
                     _world.Y = _y = (short)ReadUInt16BE(packet, 4);
-                    _world.Direction = packet[6];
+                    _world.Direction = (byte)(packet[6] & 0x07);
                     _world.Z = _z = (sbyte)packet[7];
+                    _world.NoteCorrection(predictedX, predictedY, _x, _y, _z);
                     _world.LastActionTimeMs = now;
 
                     // The server pins its walk sequence to 0 on a reject and ignores
@@ -623,8 +632,8 @@ public sealed class BotClient : IDisposable
                     HandleContainerItemAdd(packet, now);
                 break;
 
-            case 0x24: // Open Container (9 bytes)
-                if (packet.Length >= 9)
+            case 0x24: // Open Container (7 bytes to the 7.0.0 client the bot announces)
+                if (packet.Length >= 7)
                 {
                     uint contSerial24 = ReadUInt32BE(packet, 1);
                     ushort gumpId24 = ReadUInt16BE(packet, 5);
@@ -936,7 +945,7 @@ public sealed class BotClient : IDisposable
     {
         byte dir = (byte)_rng.Next(0, 8);
         _world.TotalMoveRequests++;
-        await SendPacketAsync(BotPacketBuilder.BuildMoveRequest(dir, _moveSequence++), ct);
+        await SendPacketAsync(BotPacketBuilder.BuildMoveRequest(dir, NextMoveSequence(dir)), ct);
         await Task.Delay(_rng.Next(300, 700), ct);
     }
 
@@ -991,7 +1000,7 @@ public sealed class BotClient : IDisposable
         {
             case BotAIActionType.Move:
                 _world.TotalMoveRequests++;
-                await SendPacketAsync(BotPacketBuilder.BuildMoveRequest(action.Direction, _moveSequence++), ct);
+                await SendPacketAsync(BotPacketBuilder.BuildMoveRequest(action.Direction, NextMoveSequence(action.Direction)), ct);
                 bool isRunning = (action.Direction & 0x80) != 0;
                 int moveDelay = isRunning ? _rng.Next(100, 250) : _rng.Next(200, 450);
                 await Task.Delay(moveDelay, ct);
@@ -1075,18 +1084,56 @@ public sealed class BotClient : IDisposable
         if (action == 0 && packet.Length >= 12)
         {
             uint myContainer = ReadUInt32BE(packet, 8);
+            long openedMs = Environment.TickCount64;
+            _world.TradeContainer = myContainer;
+            _world.TradeOpenedMs = openedMs;
             BotEngine.CountTradeOpened();
             _ = Task.Run(async () =>
             {
                 await Task.Delay(1000);
                 if (State == BotState.Playing)
                     SendRawPacket(BotPacketBuilder.BuildTradeAccept(myContainer, accept: true));
+
+                // Both sides accepted and the window is still there: the server
+                // refused to complete (weight, pack full, a script). A player would
+                // close it; left open, both bots stay "already trading" for good.
+                await Task.Delay(15_000);
+                string? reason;
+                lock (_world.SyncRoot)
+                {
+                    if (_world.TradeContainer != myContainer)
+                        return;
+                    reason = _world.LastSystemMessage(openedMs);
+                }
+                BotEngine.CountTradeOutcome("left open: " + (reason ?? "no message"));
+                if (State == BotState.Playing)
+                    SendRawPacket(BotPacketBuilder.BuildTradeClose(myContainer));
             });
         }
         else if (action == 1)
         {
+            if (packet.Length >= 8 && ReadUInt32BE(packet, 4) == _world.TradeContainer)
+                _world.TradeContainer = 0;
             BotEngine.CountTradeClosed();
         }
+    }
+
+    /// <summary>Split already-decompressed server bytes into packets the way the
+    /// receive loop does and handle each; returns how many came out. For tests that
+    /// check the framing against packets the server really builds.</summary>
+    internal int ProcessDecompressed(ReadOnlySpan<byte> bytes, uint charUid)
+    {
+        _charUid = charUid;
+        _world.CharUid = charUid;
+        foreach (byte b in bytes)
+            _decompressedBuffer.Add(b);
+        int count = 0;
+        while (ExtractPacketFromBuffer() is { } packet)
+        {
+            ProcessIncomingPacket(packet);
+            count++;
+        }
+        return count;
     }
 
     internal void SendRawPacket(byte[] packet)
@@ -1105,9 +1152,49 @@ public sealed class BotClient : IDisposable
     /// the caller can tell this move's answer from an earlier one's.</summary>
     internal byte SendMovePacket(byte dir)
     {
-        byte seq = _moveSequence++;
+        byte seq = NextMoveSequence(dir);
         SendRawPacket(BotPacketBuilder.BuildMoveRequest(dir, seq));
         return seq;
+    }
+
+    /// <summary>Take the next walk sequence for a step in <paramref name="dir"/>. After
+    /// 255 the sequence goes on at 1: 0 only ever opens a fresh run after a reset, and
+    /// a 0 in mid-run is refused as out of order.</summary>
+    private byte NextMoveSequence(byte dir)
+    {
+        byte seq = _moveSequence;
+        _stepDirBySeq[seq] = dir;
+        _moveSequence = seq == 255 ? (byte)1 : (byte)(seq + 1);
+        return seq;
+    }
+
+    /// <summary>The server accepted the move with this sequence. 0x22 says nothing of
+    /// where the character now stands - the client works it out the way the server
+    /// did: a request facing another way is a turn in place, one along the current
+    /// facing is a step. Without this the bot's position stayed where it logged in,
+    /// so every path it walked was planned from there, and each reject's correction
+    /// read as a jump across the map.</summary>
+    private void ApplyAcceptedStep(byte seq)
+    {
+        byte dir = (byte)(_stepDirBySeq[seq] & 0x07);
+        if (dir != (_world.Direction & 0x07))
+        {
+            _world.Direction = dir;
+            return;
+        }
+        (short dx, short dy) = dir switch
+        {
+            0 => ((short)0, (short)-1),
+            1 => ((short)1, (short)-1),
+            2 => ((short)1, (short)0),
+            3 => ((short)1, (short)1),
+            4 => ((short)0, (short)1),
+            5 => ((short)-1, (short)1),
+            6 => ((short)-1, (short)0),
+            _ => ((short)-1, (short)-1),
+        };
+        _world.X = _x = (short)(_x + dx);
+        _world.Y = _y = (short)(_y + dy);
     }
 
     private async Task SendPacketAsync(byte[] packet, CancellationToken ct)
@@ -1199,60 +1286,34 @@ public sealed class BotClient : IDisposable
         }
     }
 
-    private static int GetPacketLength(byte opcode)
-    {
-        // Packet lengths based on server's PacketDefinitions.cs
-        // -1 = variable length (has 2-byte length field after opcode)
-        return opcode switch
-        {
-            0x11 => 91,  // Status bar info
-            0x1B => 37,  // Login confirm
-            0x1A => -1,  // World item (variable)
-            0x1C => -1,  // ASCII speech (variable)
-            0x1D => 5,   // Delete object
-            0x20 => 19,  // Update mobile
-            0x21 => 8,   // Move reject
-            0x22 => 3,   // Move ack
-            0x24 => 9,   // Container display
-            0x25 => 21,  // Add item to container
-            0x27 => 2,   // Reject move item
-            0x2E => 15,  // Equip item
-            0x3C => -1,  // Container content (variable)
-            0x3A => -1,  // Skills list (variable)
-            0x4E => 6,   // Personal light level
-            0x4F => 2,   // Global light level
-            0x55 => 1,   // Login complete
-            0x5D => 73,  // Char select
-            0x6C => 19,  // Target cursor
-            0x6D => 3,   // Play music
-            0x6E => 14,  // Char animation
-            0x6F => -1,  // Secure trade (variable)
-            0x73 => 2,   // Ping
-            0x74 => -1,  // Buy list (variable)
-            0x77 => 17,  // Mobile moving
-            0x78 => -1,  // Draw object (variable)
-            0x82 => 2,   // Login denied
-            0x88 => 66,  // Open paperdoll
-            0x8C => 11,  // Relay
-            0x9E => -1,  // Sell list (variable)
-            0xA1 => 9,   // Health bar update
-            0xA2 => 9,   // Mana bar update
-            0xA3 => 9,   // Stamina bar update
-            0xA8 => -1,  // Server list (variable)
-            0xA9 => -1,  // Char list (variable)
-            0xAE => -1,  // Unicode speech (variable)
-            0xB9 => 5,   // Enable features (extended, 5 bytes)
-            0xBC => 3,   // Season
-            0xBF => -1,  // Extended command (variable)
-            0xC1 => -1,  // Localized message (variable)
-            0xCC => -1,  // Localized message affix (variable)
-            0xD6 => -1,  // Mega cliloc (variable)
-            0xDC => 9,   // Object cache
-            0xDD => -1,  // Compressed gump (variable)
-            0xF3 => 26,  // Object info (SA+)
-            _ => -1      // Assume variable for unknown
-        };
-    }
+    /// <summary>Server-to-client packet lengths for the client the bot announces in its
+    /// login seed (7.0.0.0); -1 = variable, a 2-byte length follows the opcode. The
+    /// server picks some sizes by client version (0x24 is 7 bytes before 7.0.9, 9
+    /// after), so the table has to be the one for that version, and it has to cover
+    /// every opcode: an unknown fixed-size packet read as variable took two payload
+    /// bytes for a length and the stream never lined up again. Base table and version
+    /// calibration from the ClassicUO client (PacketsTable).</summary>
+    private static readonly short[] s_serverPacketLengths =
+    [
+         104,    5,    7,   -1,    2,    5,    5,    7,   15,    5,   11,    7,   -1,    3,   -1,   61, // 0x00
+         215,   -1,   -1,   10,    6,    9,   -1,   -1,   -1,   -1,   -1,   37,   -1,    5,    4,    8, // 0x10
+          19,    8,    3,   26,    7,   21,    5,    2,    5,    1,    5,    2,    2,   17,   15,   10, // 0x20
+           5,   -1,    2,    2,   10,  653,   -1,    8,    7,    9,   -1,   -1,   -1,    2,   37,   -1, // 0x30
+         201,   -1,   -1,  553,  713,    5,   -1,   11,   73,   93,    5,    9,   -1,   -1,    6,    2, // 0x40
+          -1,   -1,   -1,    2,   12,    1,   11,  110,  106,   -1,   -1,    4,    2,   73,   -1,   49, // 0x50
+           5,    9,   15,   13,    1,    4,   -1,   21,   -1,   -1,    3,    9,   19,    3,   14,   -1, // 0x60
+          28,   -1,    5,    2,   -1,   35,   16,   17,   -1,    9,   -1,    2,   -1,   13,    2,   -1, // 0x70
+          62,   -1,    2,   39,   69,    2,   -1,   -1,   66,   -1,   -1,   -1,   11,   -1,   -1,   -1, // 0x80
+          19,   65,   -1,   99,   -1,    9,   -1,    2,   -1,   26,   -1,  258,  309,   51,   -1,   -1, // 0x90
+           3,    9,    9,    9,  149,   -1,   -1,    4,   -1,   -1,    5,   -1,   -1,   -1,   -1,   13, // 0xA0
+          -1,   -1,   -1,   -1,   -1,   64,    9,   -1,   -1,    5,    6,    9,    3,   -1,   -1,   -1, // 0xB0
+          36,   -1,   -1,   -1,    6,  203,    1,   49,    2,    6,    6,    7,   -1,    1,   -1,   78, // 0xC0
+          -1,    2,   25,   -1,   -1,   -1,   -1,   -1,   -1,  268,   -1,   -1,    9,   -1,   -1,   -1, // 0xD0
+          -1,   -1,   10,   -1,   -1,   -1,    5,   12,   13,   75,    3,   -1,   -1,   -1,   10,   21, // 0xE0
+          -1,   -1,   -1,   24,   -1,   21,   -1,   -1,  106,   -1,   -1,   -1,   -1,   -1,   -1,   -1, // 0xF0
+    ];
+
+    private static int GetPacketLength(byte opcode) => s_serverPacketLengths[opcode];
 
     private static uint ReadUInt32BE(byte[] buf, int offset)
     {

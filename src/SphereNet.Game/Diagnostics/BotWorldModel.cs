@@ -72,11 +72,60 @@ public sealed class BotWorldModel
     public long LastActionTimeMs;
 
     // Anomaly tracking
-    public short PrevX, PrevY;
-    public sbyte PrevZ;
+    // Last position the server itself reported (login, 0x20, 0x21); the bot works
+    // out X/Y between those from its accepted steps, but never Z.
+    public short ServerX, ServerY;
+    public sbyte ServerZ;
+    // Set by a 0x21 that put the bot far from where its steps said it was, or that
+    // moved Z on the same tile; the anomaly scanner reports each one once.
+    public string? PendingSnap;
+    public string? PendingZJump;
+
+    // This bot's own window in the secure trade it is in, 0 when none, and when it
+    // opened.
+    public uint TradeContainer;
+    public long TradeOpenedMs;
+
+    /// <summary>The newest system message the server sent since
+    /// <paramref name="sinceMs"/> - why a drop or a trade went nowhere. Call with
+    /// <see cref="SyncRoot"/> held.</summary>
+    public string? LastSystemMessage(long sinceMs)
+    {
+        var entries = Journal.ToArray();
+        for (int i = entries.Length - 1; i >= 0; i--)
+        {
+            var e = entries[i];
+            if (e.TimestampMs < sinceMs) break;
+            if (e.SpeakerSerial == 0xFFFFFFFF || e.SpeakerSerial == 0)
+                return e.Text;
+        }
+        return null;
+    }
     public int ConsecutivePickupRejects;
     public int PendingPacketCount;
     public long LastAnomalyScanMs;
+
+    public void NoteServerPosition(short x, short y, sbyte z)
+    {
+        ServerX = x;
+        ServerY = y;
+        ServerZ = z;
+    }
+
+    /// <summary>A 0x21 moved the bot from (<paramref name="predictedX"/>,
+    /// <paramref name="predictedY"/>) to the position given. Taking back a step or
+    /// two is what a reject is for; more than ten tiles means the bot and the server
+    /// disagreed about where it was. Z is compared only against a server-reported Z
+    /// on the same tile, as the bot has no map to follow it over hills.</summary>
+    public void NoteCorrection(short predictedX, short predictedY, short x, short y, sbyte z)
+    {
+        int dist = Math.Max(Math.Abs(x - predictedX), Math.Abs(y - predictedY));
+        if (dist > 10 && (predictedX != 0 || predictedY != 0))
+            PendingSnap = $"Position snapped {dist} tiles ({predictedX},{predictedY} -> {x},{y})";
+        if (x == ServerX && y == ServerY && Math.Abs(z - ServerZ) > 20)
+            PendingZJump = $"Z jumped {Math.Abs(z - ServerZ)} on the spot ({ServerZ} -> {z}) at {x},{y}";
+        NoteServerPosition(x, y, z);
+    }
 
     public int DistanceTo(short tx, short ty)
     {

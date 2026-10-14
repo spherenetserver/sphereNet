@@ -147,13 +147,16 @@ public sealed class BotAckCorrelationTests
         var (bot, api) = Playing();
 
         // Walk the sequence right round the byte. Each move is answered with the
-        // sequence it went out with, so every one of them must complete.
+        // sequence it went out with, so every one of them must complete. Like the
+        // server, it goes from 255 to 1: 0 only opens a run after a reset.
+        byte seq = 0;
         for (int i = 0; i < 300; i++)
         {
             var move = api.MoveDirection(0, CancellationToken.None);
             await Task.Delay(1);
-            bot.ProcessIncomingPacket(MoveAck((byte)(i & 0xFF)));
+            bot.ProcessIncomingPacket(MoveAck(seq));
             Assert.Equal(BotActionResult.Success, await move);
+            seq = seq == 255 ? (byte)1 : (byte)(seq + 1);
         }
 
         _out.WriteLine($"300 moves across the wrap: acks={bot.World.TotalMoveAcks} " +

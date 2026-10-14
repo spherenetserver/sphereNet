@@ -108,6 +108,14 @@ public sealed class BotEngine : IDisposable
     public static string TradeSkipSummary =>
         $"no partner {Interlocked.Read(ref _tradeNoPartner)}, no backpack {Interlocked.Read(ref _tradeNoBackpack)}, " +
         $"no item {Interlocked.Read(ref _tradeNoItem)}, too far {Interlocked.Read(ref _tradeTooFar)}";
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _tradeOutcomes = new();
+    /// <summary>An offer that opened no window, or a window that never closed, with
+    /// the server's message where it gave one.</summary>
+    internal static void CountTradeOutcome(string outcome) =>
+        _tradeOutcomes.AddOrUpdate(outcome, 1, (_, n) => n + 1);
+    public static string TradeOutcomeSummary =>
+        _tradeOutcomes.IsEmpty ? "none" : string.Join(", ",
+            _tradeOutcomes.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {kv.Value}"));
     internal static void CountTradeOpened() => Interlocked.Increment(ref _tradesOpened);
     internal static void CountTradeClosed() => Interlocked.Increment(ref _tradesClosed);
     /// <summary>Trade windows bots saw open and close (both sides count).</summary>
@@ -663,6 +671,7 @@ public sealed class BotEngine : IDisposable
                 r.WorkingSetGrowthMbPerHour, r.Saves, r.SaveFailures, r.Audits, r.TotalAnomalies,
                 offered, opened, closed, r.CsvPath);
             _logger.LogWarning("[soak] trade turns without an offer: {Skips}", TradeSkipSummary);
+            _logger.LogWarning("[soak] offers that opened no window / windows left open: {Outcomes}", TradeOutcomeSummary);
             var playing = _bots.Values.Where(b => b.State == BotState.Playing).ToList();
             _logger.LogWarning("[soak] bots knowing their backpack {Packs}/{Bots}, worn items seen {Worn}",
                 playing.Count(b => b.World.BackpackSerial != 0), playing.Count,

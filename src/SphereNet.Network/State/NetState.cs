@@ -953,11 +953,21 @@ public sealed class NetState : IDisposable
                         }
                         else
                         {
-                            // Unicast — unchanged: private compress + in-place encrypt.
-                            var compressed = HuffmanCompression.Compress(packet.Data, 0, packet.Length);
-                            Crypto.Encrypt(compressed, 0, compressed.Length);
-                            payload = compressed;
-                            payloadLen = compressed.Length;
+                            // Unicast: compress straight into the send buffer and
+                            // encrypt it there - no array per packet.
+                            int room = _outEnd + HuffmanCompression.MaxCompressedLength(packet.Length);
+                            if (room > buf.Length)
+                            {
+                                var bigger = new byte[Math.Max(buf.Length * 2, room)];
+                                Buffer.BlockCopy(buf, 0, bigger, 0, _outEnd);
+                                _sendBatchBuffer = bigger;
+                                buf = bigger;
+                            }
+                            int written = HuffmanCompression.CompressInto(packet.Span, buf.AsSpan(_outEnd));
+                            Crypto.Encrypt(buf, _outEnd, written);
+                            _outEnd += written;
+                            packet.ReturnToPool();
+                            continue;
                         }
 
                         int needed = _outEnd + payloadLen;

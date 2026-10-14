@@ -86,6 +86,24 @@ public sealed class PacketBuffer
         _pooled = false;
     }
 
+    /// <summary>Incoming packet over an array rented from the shared pool, of which
+    /// only the first <paramref name="length"/> bytes are the payload. The receiver
+    /// returns it with <see cref="ReturnToPool"/> once the handler is done: no handler
+    /// keeps the buffer past OnReceive (values are read out, ReadBytes copies).</summary>
+    public static PacketBuffer RentIncoming(ReadOnlySpan<byte> payload)
+    {
+        byte[] data = ArrayPool<byte>.Shared.Rent(Math.Max(1, payload.Length));
+        payload.CopyTo(data);
+        return new PacketBuffer(data, payload.Length);
+    }
+
+    private PacketBuffer(byte[] rented, int length)
+    {
+        _data = rented;
+        _length = length;
+        _pooled = true;
+    }
+
     public int Position { get => _position; set => _position = value; }
     public int Length => _length;
     public byte[] Data => _data;

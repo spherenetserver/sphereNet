@@ -830,7 +830,9 @@ public sealed class NetworkManager : IDisposable
                     break;
                 }
 
-                var buffer = new PacketBuffer(data.Slice(consumed + payloadOffset, payloadLength).ToArray());
+                // Rented, and returned below once the handler is done with it: one
+                // array per incoming packet was most of the receive path's garbage.
+                var buffer = PacketBuffer.RentIncoming(data.Slice(consumed + payloadOffset, payloadLength));
                 long handlerStart = System.Diagnostics.Stopwatch.GetTimestamp();
                 try
                 {
@@ -861,6 +863,7 @@ public sealed class NetworkManager : IDisposable
                     // budget on one bad packet. The rest of this read is left for the
                     // next pass, as upstream abandons the rest of its own.
                     consumed += packetLen;
+                    buffer.ReturnToPool();
                     break;
                 }
                 long handlerUs = (System.Diagnostics.Stopwatch.GetTimestamp() - handlerStart)
@@ -877,7 +880,9 @@ public sealed class NetworkManager : IDisposable
                         state.Id, opcode, handler.GetType().Name, packetLen,
                         (handlerUs / 1000.0).ToString("F1"));
                 }
-                if (buffer.IsUnderrun)
+                bool underrun = buffer.IsUnderrun;
+                buffer.ReturnToPool();
+                if (underrun)
                 {
                     _logger.LogWarning("Malformed packet underrun #{Id} 0x{Op:X2}: payload={PayloadLen}",
                         state.Id, opcode, payloadLength);

@@ -4,6 +4,12 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-14] - Paket yolu bellek ayirmasi
+------------------------------------------------------------------------
+DEGISIKLIK - Paket yolu bellek ayirmasi: gelen paketler havuzdan kiralanan diziden
+       okunur ve handler sonrasi iade edilir; unicast paketler her paket icin yeni dizi
+       yerine dogrudan baglantinin gonderim tamponuna Huffman ile sikistirilip sifrelenir.
+
 [2026-10-14] - Script profiler
 ------------------------------------------------------------------------
 EKLEME - Script profiler (Source-X EF_Script_Profiler, EXPERIMENTAL 0x400): her

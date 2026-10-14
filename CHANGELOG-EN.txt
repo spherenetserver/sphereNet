@@ -4,6 +4,12 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-14] - Packet path allocation
+------------------------------------------------------------------------
+CHANGE - Packet path allocation: incoming packets are read from a pooled array returned
+      after the handler, and unicast packets are Huffman-compressed and encrypted
+      straight into the connection's send buffer instead of a new array per packet.
+
 [2026-10-14] - Script profiler
 ------------------------------------------------------------------------
 ADD - Script profiler (Source-X EF_Script_Profiler, EXPERIMENTAL 0x400): every

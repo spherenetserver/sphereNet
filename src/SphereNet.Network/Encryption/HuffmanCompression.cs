@@ -288,62 +288,67 @@ public static class HuffmanCompression
         }
     }
 
+    /// <summary>The longest code in <see cref="CompressBase"/> is 11 bits, so a packet
+    /// of <paramref name="length"/> bytes plus its terminator never compresses to more
+    /// than this.</summary>
+    public static int MaxCompressedLength(int length) => ((length + 1) * 11 + 7) / 8;
+
     /// <summary>
     /// Compress data for sending to the client (outgoing packets).
     /// Direct port of Source-X CHuffman::Compress using kxCompress_Base table.
+    /// Returns a new array; the send path uses <see cref="CompressInto"/> instead.
     /// </summary>
     public static byte[] Compress(byte[] input, int offset, int length)
     {
-        int initialSize = length * 2 + 4;
         var pool = ArrayPool<byte>.Shared;
-        var output = pool.Rent(initialSize);
+        var output = pool.Rent(MaxCompressedLength(length));
         try
         {
-            uint iLen = 0;
-            byte bitIdx = 0;
-            byte xOutVal = 0;
-
-            for (int i = 0; i <= length; i++)
-            {
-                ushort value = CompressBase[i == length ? 256 : input[offset + i]];
-                byte nBits = (byte)(value & 0xF);
-                value >>= 4;
-
-                while (nBits > 0)
-                {
-                    if (iLen >= (uint)output.Length)
-                    {
-                        var bigger = pool.Rent(output.Length * 2);
-                        Array.Copy(output, bigger, output.Length);
-                        pool.Return(output);
-                        output = bigger;
-                    }
-
-                    nBits--;
-                    xOutVal = (byte)((uint)xOutVal << 1);
-                    xOutVal |= (byte)(((uint)value >> nBits) & 0x1u);
-
-                    if (++bitIdx == 8)
-                    {
-                        bitIdx = 0;
-                        output[iLen++] = xOutVal;
-                    }
-                }
-            }
-
-            if (bitIdx > 0)
-            {
-                if (iLen < (uint)output.Length)
-                    output[iLen++] = (byte)((uint)xOutVal << (8 - bitIdx));
-            }
-
-            var result = new byte[iLen];
-            Array.Copy(output, result, (int)iLen);
-            return result;
+            int written = CompressInto(input.AsSpan(offset, length), output);
+            return output.AsSpan(0, written).ToArray();
         }
         finally
         {
             pool.Return(output);
         }
+    }
+
+    /// <summary>Compress <paramref name="input"/> straight into <paramref name="output"/>,
+    /// which must hold at least <see cref="MaxCompressedLength"/> bytes, and return how
+    /// many were written. No allocation: the send path compresses each packet into its
+    /// connection's send buffer.</summary>
+    public static int CompressInto(ReadOnlySpan<byte> input, Span<byte> output)
+    {
+        if (output.Length < MaxCompressedLength(input.Length))
+            throw new ArgumentException("output is smaller than MaxCompressedLength", nameof(output));
+
+        int iLen = 0;
+        int bitIdx = 0;
+        uint xOutVal = 0;
+
+        for (int i = 0; i <= input.Length; i++)
+        {
+            ushort value = CompressBase[i == input.Length ? 256 : input[i]];
+            int nBits = value & 0xF;
+            value >>= 4;
+
+            while (nBits > 0)
+            {
+                nBits--;
+                xOutVal = (xOutVal << 1) | (((uint)value >> nBits) & 0x1u);
+
+                if (++bitIdx == 8)
+                {
+                    bitIdx = 0;
+                    output[iLen++] = (byte)xOutVal;
+                    xOutVal = 0;
+                }
+            }
+        }
+
+        if (bitIdx > 0)
+            output[iLen++] = (byte)(xOutVal << (8 - bitIdx));
+
+        return iLen;
     }
 }

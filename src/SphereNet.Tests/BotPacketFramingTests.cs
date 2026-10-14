@@ -178,4 +178,19 @@ public sealed class BotPacketFramingTests
         Assert.Equal([0x40000202u, 0x40000203u], bot.World.OpenContainers[pack].Items.ConvertAll(i => i.Serial));
         Assert.False(bot.World.KnownItems.ContainsKey(0x40000201));
     }
+
+    /// <summary>A variable-length packet shorter than its own header means the stream
+    /// is off a packet boundary. The bot skipped such bytes without a trace; it now
+    /// counts them, so a misaligned stream shows in the soak report.</summary>
+    [Fact]
+    public void AStreamOffAPacketBoundaryIsCounted()
+    {
+        var bot = new BotClient(1, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)
+        {
+            State = BotState.Playing,
+        };
+        // 0xAE (variable) claiming a length of 1.
+        bot.ProcessDecompressed([0xAE, 0x00, 0x01], 0x00001234);
+        Assert.Equal(1, bot.World.FramingErrors);
+    }
 }

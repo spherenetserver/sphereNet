@@ -40,6 +40,8 @@ public sealed class BotWorldModel
     public int LateMoveAcks;
     /// <summary>Steps not sent because the bot already ran into that tile.</summary>
     public int SkippedBlockedSteps;
+    /// <summary>Times the incoming stream was found off a packet boundary.</summary>
+    public int FramingErrors;
 
     // Tiles a step into was refused, until when. A player who walks into the sea
     // does not try the same tile again; a bot that did made terrain rejects nearly

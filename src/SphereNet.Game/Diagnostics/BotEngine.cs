@@ -118,6 +118,34 @@ public sealed class BotEngine : IDisposable
     public static string TradeOutcomeSummary =>
         _tradeOutcomes.IsEmpty ? "none" : string.Join(", ",
             _tradeOutcomes.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {kv.Value}"));
+    // Incoming stream health, over all bots: packets by opcode, and the times a
+    // stream was found off a packet boundary (with the first few, as bytes).
+    private static readonly long[] _receivedByOpcode = new long[256];
+    private static long _framingErrors;
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<string> _framingSamples = new();
+
+    internal static void CountReceivedOpcode(byte opcode) => Interlocked.Increment(ref _receivedByOpcode[opcode]);
+
+    internal static void CountFramingError(string sample)
+    {
+        if (Interlocked.Increment(ref _framingErrors) <= 5)
+            _framingSamples.Enqueue(sample);
+    }
+
+    public static string StreamSummary
+    {
+        get
+        {
+            var ops = Enumerable.Range(0, 256)
+                .Select(op => (op, n: Interlocked.Read(ref _receivedByOpcode[op])))
+                .Where(x => x.n > 0)
+                .OrderByDescending(x => x.n)
+                .Select(x => $"0x{x.op:X2}:{x.n}");
+            string samples = _framingSamples.IsEmpty ? "" : " e.g. [" + string.Join("] [", _framingSamples) + "]";
+            return $"framing errors {Interlocked.Read(ref _framingErrors)}{samples}; opcodes {string.Join(" ", ops)}";
+        }
+    }
+
     internal static void CountTradeOpened() => Interlocked.Increment(ref _tradesOpened);
     internal static void CountTradeClosed() => Interlocked.Increment(ref _tradesClosed);
     /// <summary>Trade windows bots saw open and close (both sides count).</summary>
@@ -676,6 +704,7 @@ public sealed class BotEngine : IDisposable
                 offered, opened, closed, r.CsvPath);
             _logger.LogWarning("[soak] trade turns without an offer: {Skips}", TradeSkipSummary);
             _logger.LogWarning("[soak] offers that opened no window / windows left open: {Outcomes}", TradeOutcomeSummary);
+            _logger.LogWarning("[soak] incoming stream: {Stream}", StreamSummary);
             var playing = _bots.Values.Where(b => b.State == BotState.Playing).ToList();
             _logger.LogWarning("[soak] bots knowing their backpack {Packs}/{Bots}, worn items seen {Worn}",
                 playing.Count(b => b.World.BackpackSerial != 0), playing.Count,

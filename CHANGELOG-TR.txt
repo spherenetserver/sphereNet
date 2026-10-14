@@ -13,6 +13,10 @@ DUZELTME - Bot istemcisinin Huffman cozumu: bir paketin ortasinda biten TCP okum
        pencereleri). HuffmanCompression.DecompressFromServer artik paketin bitis koduna
        ulasip ulasmadigini soyleyebiliyor; bot yarim paketi kalani gelene kadar tutuyor.
        Ayni soak'ta framing hatasi: 0.
+EKLEME - Soak raporunda "incoming stream" satiri: botlarin gordugu framing hatalari (kendi
+       basligindan kisa degisken uzunluklu paket), ilk besi baytlari ve onceki opcode
+       ile, ve opcode basina alinan paket sayisi. Listede sunucunun hic gondermedigi bir
+       opcode varsa akis kaymistir.
 
 [2026-10-14] - Bot test araci: engeller, container durumu, takas onayi
 ------------------------------------------------------------------------

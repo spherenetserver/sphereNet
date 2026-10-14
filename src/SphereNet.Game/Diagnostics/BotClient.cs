@@ -1399,6 +1399,19 @@ public sealed class BotClient : IDisposable
 
     private static int GetPacketLength(byte opcode) => s_serverPacketLengths[opcode];
 
+    private byte _lastOpcode;
+
+    private void NoteFramingError(byte opcode)
+    {
+        _world.FramingErrors++;
+        int n = Math.Min(12, _decompressedBuffer.Count);
+        var head = new System.Text.StringBuilder(n * 3);
+        for (int i = 0; i < n; i++)
+            head.Append(_decompressedBuffer[i].ToString("X2")).Append(' ');
+        BotEngine.CountFramingError(
+            $"0x{opcode:X2} after 0x{_lastOpcode:X2}: {head.ToString().TrimEnd()}");
+    }
+
     private static uint ReadUInt32BE(byte[] buf, int offset)
     {
         return ((uint)buf[offset] << 24) | ((uint)buf[offset + 1] << 16) |
@@ -1496,23 +1509,33 @@ public sealed class BotClient : IDisposable
     /// </summary>
     private byte[]? ExtractPacketFromBuffer()
     {
-        if (_decompressedBuffer.Count == 0) return null;
-
-        byte opcode = _decompressedBuffer[0];
-        int length = GetPacketLength(opcode);
-        bool isVariable = (length == -1);
-
-        if (isVariable)
+        byte opcode;
+        int length;
+        while (true)
         {
-            if (_decompressedBuffer.Count < 3) return null; // Need at least opcode + 2 length bytes
-            length = (_decompressedBuffer[1] << 8) | _decompressedBuffer[2];
-        }
+            if (_decompressedBuffer.Count == 0) return null;
 
-        if (length <= 0 || length > 65535) 
-        {
-            // Invalid packet, skip this byte
-            _decompressedBuffer.RemoveAt(0);
-            return null;
+            opcode = _decompressedBuffer[0];
+            length = GetPacketLength(opcode);
+            bool isVariable = (length == -1);
+
+            if (isVariable)
+            {
+                if (_decompressedBuffer.Count < 3) return null; // Need at least opcode + 2 length bytes
+                length = (_decompressedBuffer[1] << 8) | _decompressedBuffer[2];
+            }
+
+            // A variable packet is at least its opcode and the length itself. Anything
+            // shorter means the stream is no longer on a packet boundary: count it, so a
+            // misaligned stream shows in the report instead of only in odd bot
+            // behaviour, and look for the next boundary.
+            if (length <= 0 || (isVariable && length < 3))
+            {
+                NoteFramingError(opcode);
+                _decompressedBuffer.RemoveAt(0);
+                continue;
+            }
+            break;
         }
 
         if (_decompressedBuffer.Count < length) return null; // Incomplete packet
@@ -1520,6 +1543,8 @@ public sealed class BotClient : IDisposable
         // Extract the packet
         var packet = _decompressedBuffer.GetRange(0, length).ToArray();
         _decompressedBuffer.RemoveRange(0, length);
+        _lastOpcode = opcode;
+        BotEngine.CountReceivedOpcode(opcode);
         return packet;
     }
 

@@ -13,6 +13,10 @@ FIX - Bot client Huffman decoding: a TCP read that ended partway through a packe
       soak; trade windows that never completed). HuffmanCompression.DecompressFromServer
       can now say whether it reached the packet's terminator, and the bot keeps a
       partial packet until the rest arrives. Framing errors in the same soak: 0.
+ADD - Soak report line "incoming stream": framing errors seen by the bots (a variable
+      packet shorter than its own header), the first five with the bytes and the
+      opcode before, and the count of packets received per opcode. An opcode the server
+      never sends in that list means a misaligned stream.
 
 [2026-10-14] - Bot harness: obstacles, container state, trade acceptance
 ------------------------------------------------------------------------

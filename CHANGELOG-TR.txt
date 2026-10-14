@@ -12,6 +12,10 @@ DUZELTME - Bot hareketi: bot, adim atmasi reddedilen kareyi 5 dakika hatirliyor 
        arazi kaynakliydi; oran artik yaklasik %1,3. Davranislar giris paket akisi
        (0x55) ve bir saniye sonrasinda basliyor; ilk adim giristeki yeniden cizimle
        cakisip sira disi diye reddedilmiyor.
+DUZELTME - Bot container durumu: 0x3C artik o container hakkinda bilinenin yerine geciyor,
+       yeniden acma (0x24) listeyi bos baslatiyor, 0x1D / 0x25 item'i diger listelerden
+       cikariyor. Bot ekliyor ama hic cikarmiyordu; trade botlari coktan gitmis item'lari
+       teklif ediyor, sunucu bir soak'ta 1855 pickup'i "yok" diye reddediyordu.
 
 [2026-10-14] - Memory item index sizintisi, trade penceresi denetimi, bot istemcisi
 ------------------------------------------------------------------------

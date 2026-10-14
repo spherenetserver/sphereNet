@@ -135,4 +135,47 @@ public sealed class BotPacketFramingTests
         Assert.Equal(sent, bot.World.TotalMoveRequests);
         Assert.Equal(1, bot.World.SkippedBlockedSteps);
     }
+
+    private static byte[] Content(uint container, params uint[] serials)
+    {
+        var bytes = new List<byte> { 0x3C, 0, 0, (byte)(serials.Length >> 8), (byte)serials.Length };
+        foreach (uint serial in serials)
+        {
+            bytes.AddRange([(byte)(serial >> 24), (byte)(serial >> 16), (byte)(serial >> 8), (byte)serial]);
+            bytes.AddRange([0x0F, 0x0C, 0, 0, 1, 0, 30, 0, 30, 0]);       // id, unk, amount, x, y, grid
+            bytes.AddRange([(byte)(container >> 24), (byte)(container >> 16), (byte)(container >> 8), (byte)container]);
+            bytes.AddRange([0, 0]);                                        // hue
+        }
+        bytes[1] = (byte)(bytes.Count >> 8);
+        bytes[2] = (byte)bytes.Count;
+        return bytes.ToArray();
+    }
+
+    /// <summary>A 0x3C is the whole content of the container, and a deleted item
+    /// leaves it. The bot appended to its list and never removed from it, so it kept
+    /// offering a potion long since drunk: 1855 trade offers in a soak were refused
+    /// as "does not exist".</summary>
+    [Fact]
+    public void ContainerListFollowsTheServer()
+    {
+        const uint me = 0x00001234;
+        const uint pack = 0x40000100;
+        var bot = new BotClient(1, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)
+        {
+            State = BotState.Playing,
+        };
+        var open = Bytes(new PacketOpenContainer(pack, 0x3C, useNewFormat: false));
+        bot.ProcessDecompressed(open, me);
+        bot.ProcessDecompressed(Content(pack, 0x40000201, 0x40000202), me);
+        Assert.Equal(2, bot.World.OpenContainers[pack].Items.Count);
+
+        bot.ProcessDecompressed([0x1D, 0x40, 0x00, 0x02, 0x01], me);      // 0x40000201 deleted
+        Assert.Equal([0x40000202u], bot.World.OpenContainers[pack].Items.ConvertAll(i => i.Serial));
+
+        // Opened again: the new listing replaces the old one, no duplicates.
+        bot.ProcessDecompressed(open, me);
+        bot.ProcessDecompressed(Content(pack, 0x40000202, 0x40000203), me);
+        Assert.Equal([0x40000202u, 0x40000203u], bot.World.OpenContainers[pack].Items.ConvertAll(i => i.Serial));
+        Assert.False(bot.World.KnownItems.ContainsKey(0x40000201));
+    }
 }

@@ -528,6 +528,7 @@ public sealed class BotClient : IDisposable
                     uint serialDel = ReadUInt32BE(packet, 1);
                     _world.Mobiles.Remove(serialDel);
                     _world.KnownItems.Remove(serialDel);
+                    ForgetFromContainers(serialDel);
                     if (_world.OpenContainers.Remove(serialDel, out var cont))
                         foreach (var ci in cont.Items)
                             _world.KnownItems.Remove(ci.Serial);
@@ -661,9 +662,13 @@ public sealed class BotClient : IDisposable
                 {
                     uint contSerial24 = ReadUInt32BE(packet, 1);
                     ushort gumpId24 = ReadUInt16BE(packet, 5);
-                    if (!_world.OpenContainers.ContainsKey(contSerial24))
-                        _world.OpenContainers[contSerial24] = new BotContainerState
-                            { Serial = contSerial24, GumpId = gumpId24 };
+                    // Opening again starts from nothing: the 0x3C that follows (none
+                    // for an empty container) lists all of it.
+                    if (_world.OpenContainers.Remove(contSerial24, out var reopened))
+                        foreach (var ci in reopened.Items)
+                            ForgetKnown(ci);
+                    _world.OpenContainers[contSerial24] = new BotContainerState
+                        { Serial = contSerial24, GumpId = gumpId24 };
                     _actionApi?.CompleteContainerOpen();
                 }
                 break;
@@ -808,6 +813,10 @@ public sealed class BotClient : IDisposable
         ushort count = ReadUInt16BE(packet, 3);
         int offset = 5;
 
+        // A 0x3C is the whole content of each container it names: what the bot held
+        // for them before goes. Appending kept items long gone (given away, used up)
+        // and offered them in trade, where the server answered "does not exist".
+        var listed = new HashSet<uint>();
         uint parentSerial = 0;
         for (int i = 0; i < count && offset + 20 <= packet.Length; i++)
         {
@@ -832,7 +841,16 @@ public sealed class BotClient : IDisposable
             _world.KnownItems[itemSerial] = item;
 
             if (_world.OpenContainers.TryGetValue(contSerial, out var cs))
+            {
+                if (listed.Add(contSerial))
+                {
+                    foreach (var old in cs.Items)
+                        ForgetKnown(old);
+                    cs.Items.Clear();
+                    _world.KnownItems[itemSerial] = item;
+                }
                 cs.Items.Add(item);
+            }
         }
 
         if (parentSerial != 0 && _world.OpenContainers.TryGetValue(parentSerial, out var container))
@@ -841,6 +859,20 @@ public sealed class BotClient : IDisposable
         }
 
         RecalcGold();
+    }
+
+    /// <summary>Drop <paramref name="item"/> from KnownItems unless a newer entry for
+    /// the same serial has replaced it.</summary>
+    private void ForgetKnown(BotKnownItem item)
+    {
+        if (_world.KnownItems.TryGetValue(item.Serial, out var known) && ReferenceEquals(known, item))
+            _world.KnownItems.Remove(item.Serial);
+    }
+
+    private void ForgetFromContainers(uint serial)
+    {
+        foreach (var cont in _world.OpenContainers.Values)
+            cont.Items.RemoveAll(i => i.Serial == serial);
     }
 
     private void HandleContainerItemAdd(byte[] packet, long now)
@@ -862,6 +894,8 @@ public sealed class BotClient : IDisposable
         };
         _world.KnownItems[serial] = item;
 
+        // An item arriving here has left wherever it was before.
+        ForgetFromContainers(serial);
         if (_world.OpenContainers.TryGetValue(contSerial, out var cs))
             cs.Items.Add(item);
 

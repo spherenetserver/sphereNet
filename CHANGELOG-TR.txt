@@ -10,6 +10,11 @@ DUZELTME - Motorun olusturup sonra unuttugu memory (hic script'e verilmedigi ici
        olmayan bir dovus memory'si) sahibinin altinda world container index'inde
        kaliyordu: memory listesinden cikiyor ama CONT degeri kaliyordu. Dovusulen
        NPC'lerde birikiyordu (canli dunyada bir saatlik soak'ta yaklasik 1500).
+DUZELTME - WorldInvariantAuditor acik bir secure trade penceresini sahibinin ne giydigi,
+       ne hatirladigi ne de surukledigi bir item (CharacterLimboItem) olarak
+       raporluyordu. Pencere LAYER_SPECIAL'da giyili ama memory'lerle paylasilan bu
+       katman yuzunden ekipman slotlarina yazilmiyor; takas sirasinda calisan bir
+       denetim her acik pencere icin soak'i basarisiz sayiyordu.
 
 [2026-10-14] - Soak senaryosu ve SCENARIO komutu
 ------------------------------------------------------------------------

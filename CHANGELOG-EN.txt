@@ -10,6 +10,10 @@ FIX - A memory the engine made and later forgot (a fight memory that was never h
       to a script, so never given a UID) stayed in the world's container index under
       its owner for good: it was taken off the memory list but kept CONT. NPCs that
       were fought collected them (about 1500 in an hour of soak on a live world).
+FIX - WorldInvariantAuditor reported an open secure trade window as an item its owner
+      neither wears, remembers nor drags (CharacterLimboItem). The window is worn on
+      LAYER_SPECIAL but kept out of the equipment slots, which memories share; an audit
+      that ran mid-trade failed the soak on every open window.
 
 [2026-10-14] - Soak scenario and SCENARIO command
 ------------------------------------------------------------------------

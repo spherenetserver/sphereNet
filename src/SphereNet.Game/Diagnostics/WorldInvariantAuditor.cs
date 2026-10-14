@@ -120,6 +120,11 @@ public static class WorldInvariantAuditor
         }
         foreach (var mem in ch.Memories)
             legitimate.Add(mem.Uid.Value);
+        // An open secure trade window: worn on LAYER_SPECIAL as Source-X has it, but
+        // kept out of the equipment slots (memories share that layer).
+        foreach (var child in world.GetContainerContents(ch.Uid))
+            if (child.ItemType == ItemType.EqTradeWindow && child.IsEquipped)
+                legitimate.Add(child.Uid.Value);
         // The lift/drop path parks the dragged item on the character until it
         // lands somewhere, so it is legitimately in neither collection.
         if (ch.TryGetTag("DRAGGING", out string? dragged) &&

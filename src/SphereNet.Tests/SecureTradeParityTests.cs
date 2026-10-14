@@ -282,4 +282,21 @@ public sealed class SecureTradeParityTests
         Assert.NotEqual(me.Uid, item.ContainedIn);
         Assert.Contains(item, me.Backpack.Contents);
     }
+
+    /// <summary>An open window is worn on LAYER_SPECIAL like Source-X has it, but kept
+    /// out of the equipment slots (memories share the layer). The world audit read it
+    /// as an item nobody wears, remembers or drags - a soak audit that happened to run
+    /// mid-trade reported every open window as lost.</summary>
+    [Fact]
+    public void AnOpenTradeWindowIsNotALimboItem()
+    {
+        var (world, client, me, partner) = Setup();
+        var offer = NewItem(world);
+        me.Backpack!.AddItem(offer);
+        Assert.True(client.InitiateTrade(partner, offer));
+
+        var anomalies = SphereNet.Game.Diagnostics.WorldInvariantAuditor.Audit(world);
+        Assert.DoesNotContain(anomalies, a =>
+            a.Kind == SphereNet.Game.Diagnostics.WorldInvariantAuditor.Kind.CharacterLimboItem);
+    }
 }

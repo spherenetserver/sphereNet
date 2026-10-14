@@ -308,7 +308,16 @@ public sealed class CharacterMemoryState
             return;
         var world = Objects.ObjBase.ResolveWorld?.Invoke();
         if (world != null && world.IsRegistered(mem))
+        {
             world.DeleteObject(mem);
+            return;
+        }
+        // Never handed to a script, so it has no UID - but CONT still indexed it
+        // under its owner; left set, every forgotten fight memory stayed in the
+        // container index for good.
+        mem.IsEquipped = false;
+        mem.ContainedIn = Serial.Invalid;
+        mem.CompleteDeletion();
     }
 
     /// <summary>The memory as a script sees it: a registered item with its own UID

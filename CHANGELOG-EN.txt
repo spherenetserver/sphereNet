@@ -4,6 +4,13 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-14] - Memory item index leak, trade window audit, bot client
+------------------------------------------------------------------------
+FIX - A memory the engine made and later forgot (a fight memory that was never handed
+      to a script, so never given a UID) stayed in the world's container index under
+      its owner for good: it was taken off the memory list but kept CONT. NPCs that
+      were fought collected them (about 1500 in an hour of soak on a live world).
+
 [2026-10-14] - Soak scenario and SCENARIO command
 ------------------------------------------------------------------------
 ADD - Soak bot scenario: hours of mixed play (walkers, melee, mages, vendor buyers,

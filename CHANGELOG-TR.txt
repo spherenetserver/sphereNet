@@ -4,6 +4,13 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-14] - Memory item index sizintisi, trade penceresi denetimi, bot istemcisi
+------------------------------------------------------------------------
+DUZELTME - Motorun olusturup sonra unuttugu memory (hic script'e verilmedigi icin UID'i
+       olmayan bir dovus memory'si) sahibinin altinda world container index'inde
+       kaliyordu: memory listesinden cikiyor ama CONT degeri kaliyordu. Dovusulen
+       NPC'lerde birikiyordu (canli dunyada bir saatlik soak'ta yaklasik 1500).
+
 [2026-10-14] - Soak senaryosu ve SCENARIO komutu
 ------------------------------------------------------------------------
 EKLEME - Soak bot senaryosu: saatlerce karisik oyun (yuruyen, yakin dovus, buyucu,

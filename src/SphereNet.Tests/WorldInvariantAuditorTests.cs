@@ -123,6 +123,32 @@ public sealed class WorldInvariantAuditorTests
             a.Uid == lost.Uid.Value);
     }
 
+    /// <summary>A memory the engine made and later forgot - a fight memory on an
+    /// animal a bot attacked - never got a UID. Forgetting it took it off the memory
+    /// list but left it indexed under its owner, a limbo item with UID 0 that the
+    /// container index held for good.</summary>
+    [Fact]
+    public void ForgottenUnregisteredMemory_LeavesTheContainerIndex()
+    {
+        var world = MakeWorld();
+        var ch = world.CreateCharacter();
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+        var foe = world.CreateCharacter();
+        world.PlaceCharacter(foe, new Point3D(101, 100, 0, 0));
+
+        var mem = ch.Memory_AddObjTypes(foe.Uid, MemoryType.Fight);
+        Assert.False(world.IsRegistered(mem));
+        Assert.Contains(mem, world.GetContainerContents(ch.Uid));
+
+        ch.Memory_ClearTypes(mem, MemoryType.Fight);
+
+        Assert.True(mem.IsDeleted);
+        Assert.False(mem.ContainedIn.IsValid);
+        Assert.DoesNotContain(mem, world.GetContainerContents(ch.Uid));
+        Assert.DoesNotContain(WorldInvariantAuditor.Audit(world),
+            a => a.Kind == WorldInvariantAuditor.Kind.CharacterLimboItem);
+    }
+
     /// <summary>Worn gear, memories and the item currently in hand are all
     /// legitimately parked on the character and must not be flagged.</summary>
     [Fact]

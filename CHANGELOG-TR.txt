@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-14] - Bot test araci: engeller, container durumu, takas onayi
+------------------------------------------------------------------------
+DUZELTME - Bot hareketi: bot, adim atmasi reddedilen kareyi 5 dakika hatirliyor ve oraya
+       tekrar yurumuyor; MoveTo etrafindan en yakin acik yonu seciyor. Ayni suya ve
+       duvara carpan rastgele yuruyenler yuzunden %21-27'lik ret oraninin %99,7'si
+       arazi kaynakliydi; oran artik yaklasik %1,3. Davranislar giris paket akisi
+       (0x55) ve bir saniye sonrasinda basliyor; ilk adim giristeki yeniden cizimle
+       cakisip sira disi diye reddedilmiyor.
+
 [2026-10-14] - Memory item index sizintisi, trade penceresi denetimi, bot istemcisi
 ------------------------------------------------------------------------
 DUZELTME - Motorun olusturup sonra unuttugu memory (hic script'e verilmedigi icin UID'i

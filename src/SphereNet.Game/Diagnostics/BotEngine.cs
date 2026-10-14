@@ -649,6 +649,8 @@ public sealed class BotEngine : IDisposable
             LastScenarioReport.Disconnects, LastScenarioReport.AnomalyCount,
             LastScenarioReport.TotalMoveRejects, LastScenarioReport.TotalMoveRequests,
             LastScenarioReport.TickSamples);
+        _logger.LogInformation("[BOT] Steps not sent into a tile already refused: {Skipped}",
+            _bots.Values.Sum(b => b.World.SkippedBlockedSteps));
 
         if (LastScenarioReport.FailReasons.Count > 0)
         {

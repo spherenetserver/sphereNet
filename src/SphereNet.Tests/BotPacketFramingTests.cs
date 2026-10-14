@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using SphereNet.Game.Diagnostics;
 using SphereNet.Network.Packets;
 using SphereNet.Network.Packets.Outgoing;
@@ -108,5 +110,29 @@ public sealed class BotPacketFramingTests
         draw[0] = 0x20;
         bot.ProcessDecompressed(draw, 0x00001234);
         Assert.Equal(0, bot.SendMovePacket(0));
+    }
+
+    /// <summary>A refused step along the facing marks the tile ahead; the bot does
+    /// not send that step again, and a walk toward a point routes round it. Bots that
+    /// kept walking into the same water and walls made terrain nearly all of their
+    /// reject rate.</summary>
+    [Fact]
+    public async Task ARefusedTileIsNotWalkedIntoAgain()
+    {
+        const uint me = 0x00001234;
+        var bot = new BotClient(1, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)
+        {
+            State = BotState.Playing,
+        };
+        // Facing east (2) at 100,200; a step east is refused where it stands.
+        bot.ProcessDecompressed(Reject(0, 100, 200, 2, 0), me);
+        byte step = bot.SendMovePacket(2);
+        bot.ProcessDecompressed(Reject(step, 100, 200, 2, 0), me);
+        Assert.True(bot.World.IsKnownBlocked(101, 200, Environment.TickCount64));
+
+        int sent = bot.World.TotalMoveRequests;
+        Assert.Equal(BotActionResult.Rejected, await bot.Actions.MoveDirection(2, CancellationToken.None));
+        Assert.Equal(sent, bot.World.TotalMoveRequests);
+        Assert.Equal(1, bot.World.SkippedBlockedSteps);
     }
 }

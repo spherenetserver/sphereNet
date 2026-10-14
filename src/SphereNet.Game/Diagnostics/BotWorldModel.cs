@@ -38,6 +38,38 @@ public sealed class BotWorldModel
     /// the previous request timed out and this is its late reply. Counted rather than
     /// applied to whatever move is in flight now.</summary>
     public int LateMoveAcks;
+    /// <summary>Steps not sent because the bot already ran into that tile.</summary>
+    public int SkippedBlockedSteps;
+
+    // Tiles a step into was refused, until when. A player who walks into the sea
+    // does not try the same tile again; a bot that did made terrain rejects nearly
+    // all of its reject rate, which hid anything else the rate could show.
+    private readonly Dictionary<(short X, short Y), long> _blockedUntil = new();
+    private const long BlockedTileMs = 300_000;
+
+    public void NoteBlocked(short x, short y, long nowMs)
+    {
+        if (_blockedUntil.Count >= 4096)
+            _blockedUntil.Clear();
+        _blockedUntil[(x, y)] = nowMs + BlockedTileMs;
+    }
+
+    public bool IsKnownBlocked(short x, short y, long nowMs) =>
+        _blockedUntil.TryGetValue((x, y), out long until) && until > nowMs;
+
+    /// <summary>The tile a step in <paramref name="dir"/> (run bit ignored) leads to.</summary>
+    public static (short Dx, short Dy) StepDelta(byte dir) => (dir & 0x07) switch
+    {
+        0 => (0, -1),
+        1 => (1, -1),
+        2 => (1, 0),
+        3 => (1, 1),
+        4 => (0, 1),
+        5 => (-1, 1),
+        6 => (-1, 0),
+        _ => (-1, -1),
+    };
+
 
     // Navigation state
     public short DestX, DestY;

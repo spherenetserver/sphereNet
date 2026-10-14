@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-14] - Bot harness: obstacles, container state, trade acceptance
+------------------------------------------------------------------------
+FIX - Bot movement: a bot remembers a tile a step into was refused (5 minutes) and no
+      longer walks into it again; MoveTo takes the nearest open direction round it.
+      Random walkers hitting the same water and walls made terrain 99.7% of a 21-27%
+      reject rate; it is now about 1.3%. Behaviours start after the login burst (0x55)
+      and a second more, so a first step no longer crosses the login redraw and gets
+      refused as out of sequence.
+
 [2026-10-14] - Memory item index leak, trade window audit, bot client
 ------------------------------------------------------------------------
 FIX - A memory the engine made and later forgot (a fight memory that was never handed

@@ -26,6 +26,14 @@ public sealed class BotActionApi
     {
         if (_bot.State != BotState.Playing) return BotActionResult.Disconnected;
 
+        var (dx, dy) = BotWorldModel.StepDelta(dir);
+        if (World.IsKnownBlocked((short)(World.X + dx), (short)(World.Y + dy), Environment.TickCount64))
+        {
+            World.SkippedBlockedSteps++;
+            await Task.Delay(50, ct);
+            return BotActionResult.Rejected;
+        }
+
         byte seq = _bot.SendMovePacket(dir);
         SetWaitForMove(seq);
         World.TotalMoveRequests++;
@@ -47,7 +55,7 @@ public sealed class BotActionApi
             if (Math.Max(Math.Abs(dx), Math.Abs(dy)) <= 1)
                 return BotActionResult.Success;
 
-            byte dir = World.GetDirectionTo((short)targetX, (short)targetY);
+            byte dir = OpenDirectionToward(World.GetDirectionTo((short)targetX, (short)targetY));
             var result = await MoveDirection(dir, ct);
             if (result == BotActionResult.Disconnected) return result;
             if (result == BotActionResult.Rejected)
@@ -64,6 +72,23 @@ public sealed class BotActionApi
 
         return BotActionResult.TimedOut;
     }
+
+    /// <summary><paramref name="dir"/>, or the nearest direction either side of it
+    /// whose tile this bot has not already run into: the way round a wall it met.</summary>
+    private byte OpenDirectionToward(byte dir)
+    {
+        long now = Environment.TickCount64;
+        foreach (int turn in s_detour)
+        {
+            byte d = (byte)((dir + turn) & 0x07);
+            var (dx, dy) = BotWorldModel.StepDelta(d);
+            if (!World.IsKnownBlocked((short)(World.X + dx), (short)(World.Y + dy), now))
+                return d;
+        }
+        return dir;
+    }
+
+    private static readonly int[] s_detour = [0, 1, -1, 2, -2, 3, -3];
 
     public async Task<BotActionResult> DoubleClick(uint serial,
         int timeoutMs = 2000, CancellationToken ct = default)

@@ -27,6 +27,10 @@ public sealed class BotClient : IDisposable
     // The direction each in-flight move went out with, by sequence. 0x22 carries
     // only the sequence and the client applies the step itself.
     private readonly byte[] _stepDirBySeq = new byte[256];
+    // Set by 0x55, which ends the login burst. A step sent before the burst's own
+    // 0x20 lands is answered on the old sequence while the 0x20 resets the bot's,
+    // and the next step is refused as out of order.
+    private readonly TaskCompletionSource _loginBurstDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private uint _authId;
     private uint _charUid;
     private short _x, _y;
@@ -319,10 +323,21 @@ public sealed class BotClient : IDisposable
         }
     }
 
+    /// <summary>Wait out the login burst and a second more, as a client loads its
+    /// world before the player can walk. The server redraws a character that has just
+    /// come in (appearance, facing); a first step at sequence 0 that crosses that 0x20
+    /// is accepted on the reset sequence, and the bot's own reset then sends 0 again.</summary>
+    private async Task WaitForLoginBurstAsync(CancellationToken ct)
+    {
+        await Task.WhenAny(_loginBurstDone.Task, Task.Delay(5000, ct));
+        await Task.Delay(1000, ct);
+    }
+
     private async Task RunRoleBehaviorAsync(Behaviors.IBotBehavior roleBehavior, CancellationToken ct)
     {
         try
         {
+            await WaitForLoginBurstAsync(ct);
             while (!ct.IsCancellationRequested && State == BotState.Playing)
             {
                 // Incoming packets are drained by ReceiveLoopAsync (sole reader).
@@ -356,6 +371,7 @@ public sealed class BotClient : IDisposable
     {
         try
         {
+            await WaitForLoginBurstAsync(ct);
             while (!ct.IsCancellationRequested && State == BotState.Playing)
             {
                 // Incoming packets are drained by ReceiveLoopAsync (sole reader).
@@ -588,6 +604,14 @@ public sealed class BotClient : IDisposable
                     _world.Direction = (byte)(packet[6] & 0x07);
                     _world.Z = _z = (sbyte)packet[7];
                     _world.NoteCorrection(predictedX, predictedY, _x, _y, _z);
+
+                    // A refused step along the facing ran into the tile ahead.
+                    byte refusedDir = _stepDirBySeq[packet[1]];
+                    if ((refusedDir & 0x07) == _world.Direction)
+                    {
+                        var (bdx, bdy) = BotWorldModel.StepDelta(refusedDir);
+                        _world.NoteBlocked((short)(_x + bdx), (short)(_y + bdy), now);
+                    }
                     _world.LastActionTimeMs = now;
 
                     // The server pins its walk sequence to 0 on a reject and ignores
@@ -706,6 +730,10 @@ public sealed class BotClient : IDisposable
                             _world.BackpackSerial = eqSerial;
                     }
                 }
+                break;
+
+            case 0x55: // Login complete
+                _loginBurstDone.TrySetResult();
                 break;
 
             case 0x6F: // Secure Trade (variable)
@@ -1182,17 +1210,7 @@ public sealed class BotClient : IDisposable
             _world.Direction = dir;
             return;
         }
-        (short dx, short dy) = dir switch
-        {
-            0 => ((short)0, (short)-1),
-            1 => ((short)1, (short)-1),
-            2 => ((short)1, (short)0),
-            3 => ((short)1, (short)1),
-            4 => ((short)0, (short)1),
-            5 => ((short)-1, (short)1),
-            6 => ((short)-1, (short)0),
-            _ => ((short)-1, (short)-1),
-        };
+        var (dx, dy) = BotWorldModel.StepDelta(dir);
         _world.X = _x = (short)(_x + dx);
         _world.Y = _y = (short)(_y + dy);
     }

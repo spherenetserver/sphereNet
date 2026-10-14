@@ -135,7 +135,9 @@ public sealed class BotAckCorrelationTests
         bot.ProcessIncomingPacket(MoveReject(1, 100, 100));
         Assert.Equal(BotActionResult.Rejected, await second);
 
-        var afterReject = api.MoveDirection(0, CancellationToken.None);
+        // East, not north again: the tile north is the one just refused, which the
+        // bot no longer walks into.
+        var afterReject = api.MoveDirection(2, CancellationToken.None);
         await Task.Delay(20);
         bot.ProcessIncomingPacket(MoveAck(0));           // the sequence began again
         Assert.Equal(BotActionResult.Success, await afterReject);

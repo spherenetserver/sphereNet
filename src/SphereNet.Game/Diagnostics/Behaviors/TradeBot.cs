@@ -49,6 +49,14 @@ public sealed class TradeBot : IBotBehavior
                 continue;
             }
 
+            // Either side already in a trade: the server refuses a second one.
+            if (world.TradeContainer != 0 || other.World.TradeContainer != 0)
+            {
+                BotEngine.CountTradeSkip("busy");
+                await Task.Delay(1000, ct);
+                continue;
+            }
+
             await actions.OpenContainer(world.BackpackSerial, 2000, ct);
             await Task.Delay(300, ct);
 
@@ -74,7 +82,9 @@ public sealed class TradeBot : IBotBehavior
                 {
                     if (world.TradeOpenedMs < offeredMs)
                         refused = world.LastSystemMessage(offeredMs)
-                            ?? (picked == BotActionResult.Rejected ? "pickup rejected" : "no message");
+                            ?? (picked == BotActionResult.Rejected
+                                ? $"pickup rejected ({world.LastMoveItemRejectReason}) 0x{offer.ItemId:X4}"
+                                : "no message");
                 }
                 if (refused != null)
                     BotEngine.CountTradeOutcome("no window: " + refused);

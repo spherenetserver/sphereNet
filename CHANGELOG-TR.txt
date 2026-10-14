@@ -16,6 +16,11 @@ DUZELTME - Bot container durumu: 0x3C artik o container hakkinda bilinenin yerin
        yeniden acma (0x24) listeyi bos baslatiyor, 0x1D / 0x25 item'i diger listelerden
        cikariyor. Bot ekliyor ama hic cikarmiyordu; trade botlari coktan gitmis item'lari
        teklif ediyor, sunucu bir soak'ta 1855 pickup'i "yok" diye reddediyordu.
+DUZELTME - Trade botlari: sunucu onaylari temizlediginde (Source-X'teki gibi tekliflerden
+       birinin degismesi temizler) bot kendi tarafini yeniden onayliyor, kendisi ya da
+       partneri zaten takastayken teklif etmiyor ve sokete tek kilit altinda yaziyor
+       (onay gorevi ile davranis dongusu baytlari karistirabiliyordu). Soak raporu
+       reddedilen pickup'in 0x27 nedenini ve acik kalan pencerenin onay durumunu veriyor.
 
 [2026-10-14] - Memory item index sizintisi, trade penceresi denetimi, bot istemcisi
 ------------------------------------------------------------------------

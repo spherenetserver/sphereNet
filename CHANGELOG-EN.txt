@@ -16,6 +16,11 @@ FIX - Bot container state: a 0x3C now replaces what the bot knew of that contain
       re-open (0x24) starts it empty, and 0x1D / 0x25 take the item out of any other
       list. The bot appended and never removed, so trade bots kept offering items long
       gone and the server refused 1855 pickups in a soak as "does not exist".
+FIX - Trade bots: a bot checks its side again whenever the server clears the marks (any
+      change to either offer does, as in Source-X), does not offer while it or its
+      partner is already trading, and writes to its socket under one lock (the accept
+      task and the behaviour loop could interleave bytes). The soak report gives the
+      0x27 reason of a refused pickup and the check marks of a window left open.
 
 [2026-10-14] - Memory item index leak, trade window audit, bot client
 ------------------------------------------------------------------------

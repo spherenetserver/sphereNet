@@ -92,7 +92,7 @@ public sealed class BotEngine : IDisposable
     private static long _tradesOffered, _tradesOpened, _tradesClosed;
     internal static void CountTradeOffered() => Interlocked.Increment(ref _tradesOffered);
 
-    private static long _tradeNoPartner, _tradeNoBackpack, _tradeNoItem, _tradeTooFar;
+    private static long _tradeNoPartner, _tradeNoBackpack, _tradeNoItem, _tradeTooFar, _tradeBusy;
     /// <summary>Why a trading bot's turn ended without an offer.</summary>
     internal static void CountTradeSkip(string reason)
     {
@@ -101,13 +101,15 @@ public sealed class BotEngine : IDisposable
             case "partner": Interlocked.Increment(ref _tradeNoPartner); break;
             case "backpack": Interlocked.Increment(ref _tradeNoBackpack); break;
             case "item": Interlocked.Increment(ref _tradeNoItem); break;
+            case "busy": Interlocked.Increment(ref _tradeBusy); break;
             default: Interlocked.Increment(ref _tradeTooFar); break;
         }
     }
 
     public static string TradeSkipSummary =>
         $"no partner {Interlocked.Read(ref _tradeNoPartner)}, no backpack {Interlocked.Read(ref _tradeNoBackpack)}, " +
-        $"no item {Interlocked.Read(ref _tradeNoItem)}, too far {Interlocked.Read(ref _tradeTooFar)}";
+        $"no item {Interlocked.Read(ref _tradeNoItem)}, too far {Interlocked.Read(ref _tradeTooFar)}, " +
+        $"already trading {Interlocked.Read(ref _tradeBusy)}";
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _tradeOutcomes = new();
     /// <summary>An offer that opened no window, or a window that never closed, with
     /// the server's message where it gave one.</summary>

@@ -27,6 +27,9 @@ public sealed class BotClient : IDisposable
     // The direction each in-flight move went out with, by sequence. 0x22 carries
     // only the sequence and the client applies the step itself.
     private readonly byte[] _stepDirBySeq = new byte[256];
+    // The behaviour loop, the trade-accept task and the action API all write to the
+    // one stream; two writes at once could interleave their bytes.
+    private readonly SemaphoreSlim _sendGate = new(1, 1);
     // Set by 0x55, which ends the login burst. A step sent before the burst's own
     // 0x20 lands is answered on the old sequence while the 0x20 resets the bot's,
     // and the next step is refused as out of order.
@@ -746,6 +749,7 @@ public sealed class BotClient : IDisposable
                 break;
 
             case 0x27: // Reject Move Item (2 bytes)
+                _world.LastMoveItemRejectReason = packet.Length >= 2 ? packet[1] : (byte)0xFF;
                 _world.ConsecutivePickupRejects++;
                 _world.LastActionResult = BotActionResult.Rejected;
                 _world.LastActionTimeMs = now;
@@ -1149,28 +1153,48 @@ public sealed class BotClient : IDisposable
             long openedMs = Environment.TickCount64;
             _world.TradeContainer = myContainer;
             _world.TradeOpenedMs = openedMs;
+            _world.TradeMyAccepted = _world.TradeTheirAccepted = false;
             BotEngine.CountTradeOpened();
             _ = Task.Run(async () =>
             {
-                await Task.Delay(1000);
-                if (State == BotState.Playing)
-                    SendRawPacket(BotPacketBuilder.BuildTradeAccept(myContainer, accept: true));
+                // Check this side, and check it again whenever the server clears it:
+                // any change to either offer drops both marks (Source-X
+                // Trade_Status(false)), and a bot that accepted only once left the
+                // trade waiting on it for good.
+                for (int second = 0; second < 15; second++)
+                {
+                    await Task.Delay(1000);
+                    bool accept;
+                    lock (_world.SyncRoot)
+                    {
+                        if (_world.TradeContainer != myContainer)
+                            return;
+                        accept = !_world.TradeMyAccepted;
+                    }
+                    if (accept && State == BotState.Playing)
+                        SendRawPacket(BotPacketBuilder.BuildTradeAccept(myContainer, accept: true));
+                }
 
-                // Both sides accepted and the window is still there: the server
-                // refused to complete (weight, pack full, a script). A player would
-                // close it; left open, both bots stay "already trading" for good.
-                await Task.Delay(15_000);
+                // Still open with this side checked: the server refused to complete
+                // (weight, pack full, a script). A player would close it; left open,
+                // both bots stay "already trading" for good.
                 string? reason;
                 lock (_world.SyncRoot)
                 {
                     if (_world.TradeContainer != myContainer)
                         return;
-                    reason = _world.LastSystemMessage(openedMs);
+                    reason = $"(me {(_world.TradeMyAccepted ? 1 : 0)}, them {(_world.TradeTheirAccepted ? 1 : 0)}) " +
+                             (_world.LastSystemMessage(openedMs) ?? "no message");
                 }
-                BotEngine.CountTradeOutcome("left open: " + (reason ?? "no message"));
+                BotEngine.CountTradeOutcome("left open " + reason);
                 if (State == BotState.Playing)
                     SendRawPacket(BotPacketBuilder.BuildTradeClose(myContainer));
             });
+        }
+        else if (action == 2 && packet.Length >= 16 && ReadUInt32BE(packet, 4) == _world.TradeContainer)
+        {
+            _world.TradeMyAccepted = ReadUInt32BE(packet, 8) != 0;
+            _world.TradeTheirAccepted = ReadUInt32BE(packet, 12) != 0;
         }
         else if (action == 1)
         {
@@ -1201,6 +1225,7 @@ public sealed class BotClient : IDisposable
     internal void SendRawPacket(byte[] packet)
     {
         if (_stream == null || !_tcp!.Connected) return;
+        _sendGate.Wait();
         try
         {
             _stream.Write(packet);
@@ -1208,6 +1233,7 @@ public sealed class BotClient : IDisposable
             BytesSent += packet.Length;
         }
         catch { State = BotState.Disconnected; }
+        finally { _sendGate.Release(); }
     }
 
     /// <summary>Send one move request and return the sequence it went out with, so
@@ -1252,7 +1278,12 @@ public sealed class BotClient : IDisposable
     private async Task SendPacketAsync(byte[] packet, CancellationToken ct)
     {
         if (_stream == null || !_tcp!.Connected) return;
-        
+
+        try
+        {
+            await _sendGate.WaitAsync(ct);
+        }
+        catch (OperationCanceledException) { return; }
         try
         {
             await _stream.WriteAsync(packet, ct);
@@ -1260,6 +1291,7 @@ public sealed class BotClient : IDisposable
             BytesSent += packet.Length;
         }
         catch { State = BotState.Disconnected; }
+        finally { _sendGate.Release(); }
     }
 
     private async Task<byte[]?> ReadPacketAsync(CancellationToken ct, int timeout = 5000)

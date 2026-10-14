@@ -70,7 +70,6 @@ public sealed class BotWorldModel
         _ => (-1, -1),
     };
 
-
     // Navigation state
     public short DestX, DestY;
     public bool HasDestination;
@@ -116,7 +115,11 @@ public sealed class BotWorldModel
     // This bot's own window in the secure trade it is in, 0 when none, and when it
     // opened.
     public uint TradeContainer;
+    // Reason byte of the last 0x27 (pickup or drop refused).
+    public byte LastMoveItemRejectReason;
     public long TradeOpenedMs;
+    // Check marks from the last 0x6F action 2 for that window.
+    public bool TradeMyAccepted, TradeTheirAccepted;
 
     /// <summary>The newest system message the server sent since
     /// <paramref name="sinceMs"/> - why a drop or a trade went nowhere. Call with

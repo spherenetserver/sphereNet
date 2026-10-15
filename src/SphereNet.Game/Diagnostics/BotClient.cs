@@ -680,6 +680,37 @@ public sealed class BotClient : IDisposable
                 HandleWorldItemSA(packet, now);
                 break;
 
+            case 0x7C: // Item menu (skill menus): [serial:4][menu id:2][title][count] then
+                       // [model:2][color:2][text len:1][text] per entry
+                if (packet.Length >= 10)
+                {
+                    var menu = new BotMenuState
+                    {
+                        Serial = ReadUInt32BE(packet, 3), MenuId = ReadUInt16BE(packet, 7), ReceivedMs = now,
+                    };
+                    int mo = 9;
+                    int titleLen = packet[mo++];
+                    menu.Title = System.Text.Encoding.ASCII.GetString(packet, mo, Math.Min(titleLen, packet.Length - mo));
+                    mo += titleLen;
+                    int entries = mo < packet.Length ? packet[mo++] : 0;
+                    for (int i = 0; i < entries && mo + 5 <= packet.Length; i++)
+                    {
+                        ushort model = ReadUInt16BE(packet, mo);
+                        ushort color = ReadUInt16BE(packet, mo + 2);
+                        int len = packet[mo + 4];
+                        mo += 5;
+                        string text = System.Text.Encoding.ASCII.GetString(packet, mo, Math.Min(len, packet.Length - mo));
+                        mo += len;
+                        menu.Entries.Add((model, color, text));
+                    }
+                    _world.ActiveMenu = menu;
+                }
+                break;
+
+            case 0x3A: // Skills: full list (0x00 / 0x02 with caps) or one update (0xFF / 0xDF)
+                HandleSkills(packet);
+                break;
+
             case 0x2C: // Death screen
                 _world.DeathScreens++;
                 break;
@@ -979,6 +1010,25 @@ public sealed class BotClient : IDisposable
         _world.LastActionTimeMs = now;
 
         if (itemId == 0x0EED) RecalcGold();
+    }
+
+    private void HandleSkills(byte[] packet)
+    {
+        if (packet.Length < 4) return;
+        byte type = packet[3];
+        bool caps = type is 0x02 or 0xDF;
+        bool single = type is 0xFF or 0xDF;
+        int entry = caps ? 9 : 7;
+        for (int o = 4; o + entry <= packet.Length; o += entry)
+        {
+            ushort id = ReadUInt16BE(packet, o);
+            if (id == 0 && !single) break;
+            // The full list numbers skills from 1, a single update from 0.
+            int skill = single ? id : id - 1;
+            _world.Skills[skill] = ReadUInt16BE(packet, o + 2);
+            _world.SkillBases[skill] = ReadUInt16BE(packet, o + 4);
+            if (single) break;
+        }
     }
 
     private void HandleBuyList(byte[] packet)

@@ -117,17 +117,66 @@ public sealed class ClientWorldFeaturesHandler
     private const int CraftButtonPrevPage = 2;
     private const int CraftButtonRecipeBase = 100;
 
-    public void OpenCraftingGump(SkillType craftSkill) => OpenCraftingGump(craftSkill, 0, fireMenuTrigger: true);
+    public void OpenCraftingGump(SkillType craftSkill) => OpenCraftingMenu(craftSkill, DefaultSkillMenu(craftSkill), 0);
 
-    private void OpenCraftingGump(SkillType craftSkill, int page, bool fireMenuTrigger = false)
+    /// <summary>The menu a crafting tool opens (CClientUse.cpp:382-549, 1290, 1311,
+    /// CClientTarg.cpp:2396).</summary>
+    private static string DefaultSkillMenu(SkillType skill) => skill switch
+    {
+        SkillType.Blacksmithing => "sm_blacksmith",
+        SkillType.Alchemy => "sm_alchemy",
+        SkillType.Carpentry => "sm_carpentry",
+        SkillType.Cartography => "sm_cartography",
+        SkillType.Cooking => "sm_cooking",
+        SkillType.Tinkering => "sm_tinker",
+        SkillType.Tailoring => "sm_tailor_cloth",
+        SkillType.Inscription => "sm_inscription",
+        SkillType.Bowcraft => "sm_bowcraft",
+        _ => "",
+    };
+
+    /// <summary>Source-X CClient::Skill_Menu (CClientUse.cpp:642): @SkillMenu runs with
+    /// LOCAL.SkillMenu / LOCAL.Skill / LOCAL.ItemUsed and may answer 1 or name another
+    /// menu; the name is then opened as a [DIALOG] if the pack has one, otherwise as a
+    /// [SKILLMENU]. The trigger used to get only N1 = the skill number, so a pack
+    /// testing LOCAL.SKILLMENU (Scripts-X e_player_crafting_event) never matched, and
+    /// the pack's own menus were never opened. When the pack has neither (upstream
+    /// logs an error and opens nothing) the engine's recipe list is shown so the skill
+    /// stays usable.</summary>
+    public void OpenCraftingMenu(SkillType craftSkill, string skillMenu, ushort itemUsed)
+    {
+        if (_character == null) return;
+        if (!SkillHandlers.CanUse(_character, craftSkill)) return;
+
+        var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.Set("SkillMenu", skillMenu);
+        locals.SetInt("Skill", (int)craftSkill);
+        locals.SetInt("ItemUsed", itemUsed);
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
+                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill, Locals = locals }) == TriggerResult.True)
+            return;
+        string menu = locals.GetKeyStr("SkillMenu", false);
+        if (string.IsNullOrWhiteSpace(menu)) menu = skillMenu;
+
+        var resources = _client.Cmds?.Resources ?? DefinitionLoader.StaticResources;
+        if (!string.IsNullOrWhiteSpace(menu) && resources != null)
+        {
+            var rid = resources.ResolveDefName(menu.Trim());
+            if (rid.IsValid && rid.Type == ResType.Dialog &&
+                _client.TryExecuteScriptCommand(_character, "DIALOG", menu.Trim(), null))
+                return;
+            if (_client.TryExecuteScriptCommand(_character, "SKILLMENU", menu.Trim(), null))
+                return;
+        }
+        _client.Log.LogWarning("No [DIALOG] or [SKILLMENU] named '{Menu}' for {Skill}; showing the engine recipe list",
+            menu, craftSkill);
+        OpenCraftingGump(craftSkill, 0);
+    }
+
+    private void OpenCraftingGump(SkillType craftSkill, int page)
     {
         if (_character == null || _craftingEngine == null) return;
         if (!SkillHandlers.CanUse(_character, craftSkill)) return;
-
-        if (fireMenuTrigger &&
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
-                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True)
-            return;
 
         var recipes = _craftingEngine.GetRecipesBySkill(craftSkill);
         if (recipes.Count == 0)
@@ -190,9 +239,9 @@ public sealed class ClientWorldFeaturesHandler
         SendGump(gump, (pressedButton, switches, textEntries) =>
         {
             if (pressedButton == CraftButtonNextPage)
-                OpenCraftingGump(craftSkill, capturedPage + 1, fireMenuTrigger: false);
+                OpenCraftingGump(craftSkill, capturedPage + 1);
             else if (pressedButton == CraftButtonPrevPage)
-                OpenCraftingGump(craftSkill, capturedPage - 1, fireMenuTrigger: false);
+                OpenCraftingGump(craftSkill, capturedPage - 1);
             else if (pressedButton >= CraftButtonRecipeBase)
             {
                 int index = capturedSkip + ((int)pressedButton - CraftButtonRecipeBase);
@@ -521,7 +570,7 @@ public sealed class ClientWorldFeaturesHandler
         _character.ActDiff = 0;          // Skill_Cleanup
 
         if (reopenGump)
-            OpenCraftingGump(craftSkill, 0, fireMenuTrigger: false);
+            OpenCraftingGump(craftSkill, 0);
     }
 
     /// <summary>Skill_Fail(false) (CCharSkill.cpp:3783): the difficulty is made

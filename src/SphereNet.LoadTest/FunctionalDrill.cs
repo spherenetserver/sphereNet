@@ -81,6 +81,10 @@ internal static class FunctionalDrill
                 await DeathSuite(o, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "combat")
                 await CombatSuite(o, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "craft")
+                await CraftSuite(o, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "gather")
+                await GatherSuite(o, root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -476,6 +480,291 @@ internal static class FunctionalDrill
         bot.Disconnect();
     }
 
+    // ---- crafting ----------------------------------------------------------------------
+
+    // The pack's legacy tinkering menu (sm_tinker -> sm_parts / sm_tools): the
+    // crafting dialog is off in this pack (crafting_settings.scp CraftingSystem=0).
+    private const ushort TinkerTools = 0x1EBC, IronIngot = 0x1BEF, Log = 0x1BDD;
+    private const ushort Gears = 0x1053, Shovel = 0x0F39, IronWire = 0x1876;
+    private const int Tinkering = 37;
+
+    private static async Task CraftSuite(Options o, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        var bot = await LoginAsync(931, port, ct);
+
+        await RunScenario("craft", "setup: tinker tools, ingots, logs", outcomes, async () =>
+        {
+            await AsStaff(server, bot.AccountName, async () =>
+            {
+                await SayAsync(bot, $".go {o.Vendor.Point}", ct);
+                await AddIntoPackAsync(bot, "i_tinker_tools", ct);
+                for (int i = 0; i < 16; i++) await AddIntoPackAsync(bot, "i_ingot_iron", ct);
+                for (int i = 0; i < 2; i++) await AddIntoPackAsync(bot, "i_log", ct);
+                await SayAsync(bot, ".tinkering 1000", ct);
+            });
+            var pack = await PackContentsAsync(bot, ct);
+            if (!pack.Any(i => i.ItemId == TinkerTools) || CountOf(pack, IronIngot) < 16 || CountOf(pack, Log) < 2)
+                throw new ScenarioFailed($"pack: tools {pack.Any(i => i.ItemId == TinkerTools)}, ingots {CountOf(pack, IronIngot)}, logs {CountOf(pack, Log)}");
+            return $"tools, {CountOf(pack, IronIngot)} ingots, {CountOf(pack, Log)} logs";
+        });
+
+        await RunScenario("craft", "tinker gears: one ingot in, gears out", outcomes, async () =>
+            await CraftAndCheck(bot, "Parts", Gears, [(IronIngot, 1)], ct));
+
+        await RunScenario("craft", "tinker a shovel: four ingots and two logs", outcomes, async () =>
+            await CraftAndCheck(bot, "Tools", Shovel, [(IronIngot, 4), (Log, 2)], ct));
+
+        await RunScenario("craft", "skill gain while crafting near the difficulty", outcomes, async () =>
+        {
+            // Just above the SKILLMAKE minimum (41.7): below it the attempt is refused outright.
+            await AsStaff(server, bot.AccountName, () => SayAsync(bot, ".tinkering 420", ct));
+            int before = await SkillAsync(bot, Tinkering, ct);
+            int attempts = 0, made = 0;
+            for (; attempts < 10; attempts++)
+            {
+                var pack = await PackContentsAsync(bot, ct);
+                if (CountOf(pack, IronIngot) < 1) break;
+                int wires = CountOf(pack, IronWire);
+                await PressCraftAsync(bot, "Parts", IronWire, ct);
+                await Task.Delay(4000, ct);
+                if (CountOf(await PackContentsAsync(bot, ct), IronWire) > wires) made++;
+                if (await SkillAsync(bot, Tinkering, ct) > before) break;
+            }
+            int after = await SkillAsync(bot, Tinkering, ct);
+            if (after <= before)
+            {
+                string said = string.Join(" | ", bot.World.Journal.ToArray().TakeLast(8).Select(e => e.Text));
+                throw new ScenarioFailed($"tinkering stayed at {before / 10.0:F1} over {attempts} attempts ({made} made) " +
+                                         $"at difficulty 41.7; journal: {said}");
+            }
+            return $"tinkering {before / 10.0:F1} -> {after / 10.0:F1} (base {bot.World.SkillBases.GetValueOrDefault(Tinkering) / 10.0:F1}) " +
+                   $"after {attempts + 1} attempt(s), {made} made";
+        });
+
+        bot.Disconnect();
+    }
+
+    private static async Task<string> CraftAndCheck(BotClient bot, string category, ushort product,
+        (ushort Id, int Amount)[] resources, CancellationToken ct)
+    {
+        var before = await PackContentsAsync(bot, ct);
+        int productBefore = CountOf(before, product);
+        await PressCraftAsync(bot, category, product, ct);
+        await WaitAsync(() =>
+        {
+            lock (bot.World.SyncRoot)
+                return bot.World.KnownItems.Values.Count(i => i.ItemId == product) > productBefore ? (object)true : null;
+        }, 15_000, $"0x{product:X4} to be made");
+        var after = await PackContentsAsync(bot, ct);
+        var report = new List<string>();
+        foreach (var (id, amount) in resources)
+        {
+            int b = CountOf(before, id), a = CountOf(after, id);
+            report.Add($"0x{id:X4} {b} -> {a}");
+            if (a != b - amount)
+                throw new ScenarioFailed($"0x{id:X4} {b} -> {a}, the recipe takes {amount}; {string.Join(", ", report)}");
+        }
+        if (CountOf(after, product) != productBefore + 1)
+            throw new ScenarioFailed($"0x{product:X4} in pack {productBefore} -> {CountOf(after, product)}");
+        return $"0x{product:X4} {productBefore} -> {productBefore + 1}; {string.Join(", ", report)}";
+    }
+
+    /// <summary>Use the tool, pick the category entry, pick the product entry - the
+    /// pack's [SKILLMENU] as the item menu (0x7C) shows them, chosen by text and by
+    /// model, since a menu may leave out what the character cannot make.</summary>
+    private static async Task PressCraftAsync(BotClient bot, string category, ushort product, CancellationToken ct)
+    {
+        var tool = (await PackContentsAsync(bot, ct)).FirstOrDefault(i => i.ItemId == TinkerTools)
+            ?? throw new ScenarioFailed("no tinker tools in the pack");
+        long t0 = Environment.TickCount64;
+        await bot.Actions.DoubleClick(tool.Serial, 1000, ct);
+        var top = await WaitMenuAsync(bot, t0, "the tinkering menu (0x7C)");
+        int ci = top.Entries.FindIndex(e => e.Text.Contains(category, StringComparison.OrdinalIgnoreCase));
+        if (ci < 0) throw new ScenarioFailed($"no '{category}' in '{top.Title}': {string.Join(" / ", top.Entries.Select(e => e.Text))}");
+        long t1 = Environment.TickCount64;
+        ChooseMenu(bot, top, ci);
+        var sub = await WaitMenuAsync(bot, t1, $"the '{category}' menu");
+        int pi = sub.Entries.FindIndex(e => e.Model == product);
+        if (pi < 0) throw new ScenarioFailed($"no 0x{product:X4} in '{sub.Title}': {string.Join(" / ", sub.Entries.Select(e => $"0x{e.Model:X4} {e.Text}"))}");
+        ChooseMenu(bot, sub, pi);
+    }
+
+    private static Task<BotMenuState> WaitMenuAsync(BotClient bot, long sinceMs, string what) =>
+        WaitAsync(() => bot.World.ActiveMenu is { } m && m.ReceivedMs >= sinceMs ? m : null, 5000, what);
+
+    /// <summary>0x7D: [serial:4][menu id:2][index:2, from 1][model:2][color:2].</summary>
+    private static void ChooseMenu(BotClient bot, BotMenuState menu, int index)
+    {
+        var e = menu.Entries[index];
+        var p = new byte[13];
+        p[0] = 0x7D;
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(p.AsSpan(1), menu.Serial);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(p.AsSpan(5), menu.MenuId);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(p.AsSpan(7), (ushort)(index + 1));
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(p.AsSpan(9), e.Model);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(p.AsSpan(11), e.Color);
+        bot.SendRaw(p);
+    }
+
+    private static Task<BotGumpState> WaitGumpAsync(BotClient bot, long sinceMs, string what) =>
+        WaitAsync(() => bot.World.ActiveGump is { IsOpen: true } g && g.ReceivedMs >= sinceMs ? g : null, 5000, what);
+
+    /// <summary>Ask for the skill list (0x34 type 5) and return one skill in tenths.</summary>
+    private static async Task<int> SkillAsync(BotClient bot, int skill, CancellationToken ct)
+    {
+        bot.World.Skills.Remove(skill);
+        var p = new byte[10];
+        p[0] = 0x34; p[1] = 0xED; p[2] = 0xED; p[3] = 0xED; p[4] = 0xED; p[5] = 0x05;
+        uint uid = bot.World.CharUid;
+        p[6] = (byte)(uid >> 24); p[7] = (byte)(uid >> 16); p[8] = (byte)(uid >> 8); p[9] = (byte)uid;
+        bot.SendRaw(p);
+        var v = await WaitAsync(() => bot.World.Skills.TryGetValue(skill, out int x) ? (object)x : null, 5000, "the skill list (0x3A)");
+        await Task.Delay(0, ct);
+        return (int)v;
+    }
+
+    // ---- gathering --------------------------------------------------------------------
+
+    private static readonly ushort[] Logs = [0x1BDD, 0x1BDE, 0x1BDF, 0x1BE0, 0x1BE1, 0x1BE2];
+    private static readonly ushort[] Ores = [0x19B7, 0x19B8, 0x19B9, 0x19BA];
+    private const int Lumberjacking = 44, Mining = 45;
+
+    private sealed record Spot(int X, int Y, int Z, ushort Graphic, bool IsStatic, int StandX, int StandY, int StandZ, string Name);
+
+    /// <summary>The nearest resource tile to (cx, cy) whose tiledata name matches, with a
+    /// walkable tile next to it to stand on. Whether it really yields is the server's
+    /// call (the tile's item type, the region's resources).</summary>
+    private static Spot? FindSpot(SphereNet.MapData.MapDataManager map, int cx, int cy, int radius,
+        Func<string, bool> staticName, Func<string, bool> landName)
+    {
+        for (int r = 0; r <= radius; r++)
+        for (int dx = -r; dx <= r; dx++)
+        for (int dy = -r; dy <= r; dy++)
+        {
+            if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != r) continue;
+            int x = cx + dx, y = cy + dy;
+            Spot? hit = null;
+            foreach (var st in map.GetStatics(0, x, y))
+            {
+                string n = map.GetItemTileData(st.TileId).Name ?? "";
+                if (staticName(n)) { hit = new Spot(x, y, st.Z, st.TileId, true, 0, 0, 0, n); break; }
+            }
+            if (hit == null)
+            {
+                var land = map.GetTerrainTile(0, x, y);
+                string n = map.GetLandTileData(land.TileId).Name ?? "";
+                if (landName(n)) hit = new Spot(x, y, land.Z, land.TileId, false, 0, 0, 0, n);
+            }
+            if (hit == null) continue;
+            foreach (var (sx, sy) in new[] { (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1), (x + 1, y + 1), (x - 1, y - 1) })
+            {
+                int sz = map.GetEffectiveZ(0, sx, sy);
+                if (map.IsPassable(0, sx, sy, sz))
+                    return hit with { StandX = sx, StandY = sy, StandZ = sz };
+            }
+        }
+        return null;
+    }
+
+    private static async Task GatherSuite(Options o, string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        using var map = new SphereNet.MapData.MapDataManager(mul);
+        map.Load();
+        map.InitMap(0, 7168, 4096);
+
+        var bot = await LoginAsync(941, port, ct);
+
+        await RunScenario("gather", "lumberjacking: a tree gives logs", outcomes, async () =>
+        {
+            // Scripts-X r_default_tree: a tree yields nothing 60% of the time
+            // (RESOURCES=60.0 mr_nothing), decided per tree, so up to ten different
+            // trees are tried; all ten empty is a 0.6% chance.
+            await AsStaff(server, bot.AccountName, async () =>
+            {
+                await AddIntoPackAsync(bot, "i_hatchet", ct);
+                await SayAsync(bot, ".lumberjacking 1000", ct);
+            });
+            var trees = new List<Spot>();
+            foreach (var (cx, cy) in new[] { (1300, 1640), (1250, 1500), (1360, 1720), (1200, 1600), (1320, 1550) })
+            {
+                foreach (int ring in new[] { 0, 8, 16 })
+                {
+                    var t = FindSpot(map, cx + ring, cy + ring, 40, n => n.Contains("tree", StringComparison.OrdinalIgnoreCase), _ => false);
+                    if (t != null && !trees.Any(k => k.X == t.X && k.Y == t.Y)) trees.Add(t);
+                    if (trees.Count >= 10) break;
+                }
+                if (trees.Count >= 10) break;
+            }
+            if (trees.Count == 0) throw new ScenarioFailed("no tree found on the map near Britain");
+            int empty = 0;
+            foreach (var tree in trees)
+            {
+                await AsStaff(server, bot.AccountName, () => SayAsync(bot, $".go {tree.StandX},{tree.StandY},{tree.StandZ}", ct));
+                try
+                {
+                    string got = await GatherAt(bot, tree, 0x0F43, Logs, "logs", ct, uses: 2);
+                    return empty == 0 ? got : $"{got}; {empty} tree(s) before it had nothing to chop";
+                }
+                catch (ScenarioFailed f) when (f.Message.Contains("nothing here", StringComparison.OrdinalIgnoreCase)) { empty++; }
+            }
+            throw new ScenarioFailed($"all {trees.Count} trees tried had nothing to chop");
+        });
+
+        await RunScenario("gather", "mining: rock gives ore", outcomes, async () =>
+        {
+            var rock = FindSpot(map, 2560, 480, 120,
+                _ => false,
+                n => n.Contains("mountain", StringComparison.OrdinalIgnoreCase) || n.Equals("rock", StringComparison.OrdinalIgnoreCase))
+                ?? throw new ScenarioFailed("no mountain or rock found on the map near Minoc");
+            await AsStaff(server, bot.AccountName, async () =>
+            {
+                await SayAsync(bot, $".go {rock.StandX},{rock.StandY},{rock.StandZ}", ct);
+                await AddIntoPackAsync(bot, "i_pickaxe", ct);
+                await SayAsync(bot, ".mining 1000", ct);
+            });
+            return await GatherAt(bot, rock, 0x0E85, Ores, "ore", ct);
+        });
+
+        bot.Disconnect();
+    }
+
+    /// <summary>Use the tool on the spot up to five times; pass once the pack holds more
+    /// of the product than before.</summary>
+    private static async Task<string> GatherAt(BotClient bot, Spot spot, ushort tool, ushort[] products, string what,
+        CancellationToken ct, int uses = 5)
+    {
+        int Count(List<BotKnownItem> pack) => pack.Where(i => products.Contains(i.ItemId)).Sum(i => Math.Max(1, (int)i.Amount));
+        var start = await PackContentsAsync(bot, ct);
+        // Using an axe puts it in hand (Source-X equips a weapon tool first), so after
+        // the first tree it is no longer in the pack.
+        BotKnownItem? toolItem = start.FirstOrDefault(i => i.ItemId == tool);
+        if (toolItem == null)
+            lock (bot.World.SyncRoot) toolItem = bot.World.Equipment.Values.FirstOrDefault(i => i.ItemId == tool);
+        if (toolItem == null) throw new ScenarioFailed($"no tool 0x{tool:X4} in the pack or in hand");
+        int before = Count(start);
+        long since = Environment.TickCount64;
+        for (int attempt = 1; attempt <= uses; attempt++)
+        {
+            await bot.Actions.DoubleClick(toolItem.Serial, 1000, ct);
+            if (await bot.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed("no target cursor from the tool");
+            // A static is picked with its graphic, the ground with graphic 0.
+            var p = BotPacketBuilder.BuildTargetLocation(bot.World.TargetCursorId, (short)spot.X, (short)spot.Y,
+                (sbyte)spot.Z, spot.IsStatic ? spot.Graphic : (ushort)0);
+            bot.SendRaw(p);
+            bot.World.HasPendingTarget = false;
+            await Task.Delay(8000, ct);
+            int now = Count(await PackContentsAsync(bot, ct));
+            if (now > before)
+                return $"{now - before} {what} after {attempt} use(s) on '{spot.Name}' 0x{spot.Graphic:X4} at {spot.X},{spot.Y},{spot.Z}";
+        }
+        string said = string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).TakeLast(6).Select(e => e.Text));
+        throw new ScenarioFailed($"no {what} after {uses} uses on '{spot.Name}' 0x{spot.Graphic:X4} at {spot.X},{spot.Y},{spot.Z} " +
+                                 $"(standing {spot.StandX},{spot.StandY},{spot.StandZ}); journal: {said}");
+    }
+
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>
     private static async Task AddIntoPackAsync(BotClient bot, string defname, CancellationToken ct)
     {
@@ -513,6 +802,18 @@ internal static class FunctionalDrill
         };
         if (!await bot.ConnectAndLoginAsync("127.0.0.1", port, ct))
             throw new ScenarioFailed($"bot {id} could not log in");
+        // FUNCTIONAL_DUMP_GUMPS=<dir>: keep every 0xDD the bot receives, for working out
+        // a script pack's dialog buttons.
+        if (Environment.GetEnvironmentVariable("FUNCTIONAL_DUMP_GUMPS") is { Length: > 0 } dumpDir)
+        {
+            Directory.CreateDirectory(dumpDir);
+            int n = 0;
+            bot.ServerPacketObserver = p =>
+            {
+                if (p[0] == 0xDD)
+                    File.WriteAllBytes(Path.Combine(dumpDir, $"bot{id}-{Interlocked.Increment(ref n):D3}.dd"), p);
+            };
+        }
         bot.StartBehavior(new Idle(), ct);
         await Task.Delay(1500, ct); // the login burst
         return bot;

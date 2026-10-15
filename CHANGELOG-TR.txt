@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Crafting aletleri paketin menulerini aciyor; skill menu satirlari; RESMAKE
+------------------------------------------------------------------------
+DUZELTME - Crafting aletleri (tinker aleti, havan, testere, yemek, haritacilik, dikis
+       kiti, kulce, bos parsomen) Source-X CClient::Skill_Menu'yu izliyor: @SkillMenu
+       LOCAL.SkillMenu (sm_tinker, sm_alchemy, ...), LOCAL.Skill ve LOCAL.ItemUsed ile
+       calisir, 1 donebilir ya da baska bir menu adi verebilir; o ad paketin [DIALOG] ya
+       da [SKILLMENU] bolumu olarak acilir. Trigger'a once yalnizca N1 = skill numarasi
+       gidiyordu; LOCAL.SKILLMENU'yu kontrol eden paket hic eslesmiyor, paketin menuleri
+       yerine motorun kendi sayfali recete listesi (ham item id'leri, gump id 0)
+       aciliyordu. O liste artik yalnizca paket ikisini de tanimlamiyorsa, log'a uyari
+       yazilarak gosteriliyor.
+DUZELTME - Skill menu satirlari (CMenuItem::ParseLine): ITEMDEF'te DISPID yoksa item'in kendi
+       grafigi (sayisal ITEMDEF'ler model 0 ile, resimsiz gidiyordu), satir metni item'a
+       gore degerlendirilir (<name>, <resmake>), bilinmeyen defname'li satir gosterilmez.
+DUZELTME - Item RESMAKE, RESOURCES listesini adlariyla okuyor: "4 iron ingots, 2 logs"
+       (Source-X IBC_RESMAKE, CResourceQtyArray::WriteNames); onceden hicbir paketin
+       yazmadigi bir RESMAKE anahtarini okuyordu.
+EKLEME - Fonksiyonel tatbikat: paketin tinkering menusuyle crafting (gears: bir kulce;
+       kurek: dort kulce ve iki kutuk; zorluga yakin skill kazanimi) ve kaynak toplama
+       (agac kutuk, kaya cevher verir; kaynak karesi harita dosyalarindan bulunur).
+DUZELTME - Bot client: 0x6C yer hedefinin Z'si 16. bayta yaziliyor (15'e yaziliyordu, her
+       yer hedefi Z 0 ile gidiyordu); item menuleri (0x7C) ve skill listesi (0x3A) okunuyor.
+EKLEME - Testler: alet paketin skill menusunu item modelleri ve degerlendirilmis metinle
+       aciyor, @SkillMenu LOCAL.SkillMenu'yu goruyor, yonlendirebiliyor ya da iptal
+       edebiliyor, RESMAKE adlariyla okunuyor.
+
 [2026-10-15] - Fonksiyonel tatbikat: ekonomi, olum, savas; botun item ve dukkan okumasi
 ------------------------------------------------------------------------
 EKLEME - LoadTest "functional" tatbikati: oyuncu senaryolari bir bot client ile shard

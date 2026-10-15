@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - Crafting tools open the pack's menus; skill menu entries; RESMAKE
+------------------------------------------------------------------------
+FIX - Crafting tools (tinker tools, mortar, saw, cooking, cartography, sewing kit,
+      ingots, blank scrolls) follow Source-X CClient::Skill_Menu: @SkillMenu runs with
+      LOCAL.SkillMenu (sm_tinker, sm_alchemy, ...), LOCAL.Skill and LOCAL.ItemUsed and
+      may answer 1 or name another menu; the name is then opened as the pack's [DIALOG]
+      or [SKILLMENU]. The trigger used to get only N1 = the skill number, so a pack
+      testing LOCAL.SKILLMENU never matched, and the engine's own paged recipe list
+      (raw item ids, gump id 0) was opened instead of the pack's menus. That list is now
+      shown only when the pack defines neither, with a warning in the log.
+FIX - Skill menu entries (CMenuItem::ParseLine): the item's graphic when its ITEMDEF
+      has no DISPID (numeric ITEMDEFs were sent with model 0, no picture), the entry text
+      parsed against the item (<name>, <resmake>), and an entry naming an unknown
+      defname is left out.
+FIX - Item RESMAKE reads the RESOURCES list by name, "4 iron ingots, 2 logs"
+      (Source-X IBC_RESMAKE, CResourceQtyArray::WriteNames); it read a RESMAKE key no
+      pack sets.
+ADD - Functional drill: crafting through the pack's tinkering menu (gears: one ingot;
+      shovel: four ingots and two logs; skill gain near the difficulty) and gathering
+      (a tree gives logs, rock gives ore; the resource tile is found in the map files).
+FIX - Bot client: ground target Z written at byte 16 of 0x6C (it went at 15, so every
+      ground target arrived at Z 0); item menus (0x7C) and the skill list (0x3A) read.
+ADD - Tests: the tool opens the pack's skill menu with item models and parsed text,
+      @SkillMenu sees LOCAL.SkillMenu and can redirect or cancel, RESMAKE by name.
+
 [2026-10-15] - Functional drill: economy, death, combat; bot item and shop reading
 ------------------------------------------------------------------------
 ADD - LoadTest "functional" drill: player scenarios played by a bot client against

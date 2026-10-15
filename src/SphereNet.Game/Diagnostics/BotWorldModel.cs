@@ -15,6 +15,12 @@ public sealed class BotWorldModel
     public short Stam, MaxStam;
 
     public bool IsDead;
+    /// <summary>The last item menu (0x7C) the server showed.</summary>
+    public BotMenuState? ActiveMenu;
+    /// <summary>Skill values in tenths, by skill number, from 0x3A.</summary>
+    public readonly Dictionary<int, int> Skills = new();
+    /// <summary>Base (unmodified) skill values in tenths, from 0x3A.</summary>
+    public readonly Dictionary<int, int> SkillBases = new();
     /// <summary>0x2C death screens received.</summary>
     public int DeathScreens;
     public bool IsWarMode;
@@ -272,6 +278,15 @@ public sealed class BotContainerState
     public uint Serial;
     public ushort GumpId;
     public readonly List<BotKnownItem> Items = new();
+}
+
+public sealed class BotMenuState
+{
+    public uint Serial;
+    public ushort MenuId;
+    public string Title = string.Empty;
+    public long ReceivedMs;
+    public readonly List<(ushort Model, ushort Color, string Text)> Entries = new();
 }
 
 public sealed class BotGumpState

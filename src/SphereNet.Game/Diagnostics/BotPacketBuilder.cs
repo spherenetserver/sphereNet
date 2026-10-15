@@ -258,8 +258,10 @@ public static class BotPacketBuilder
         packet[6] = 0x00;
         WriteUInt16BE(packet, 11, (ushort)x);
         WriteUInt16BE(packet, 13, (ushort)y);
-        packet[15] = (byte)z;
-        packet[16] = 0;
+        // [15] is padding, the Z is [16]: written one byte early, every ground target
+        // the bot picked arrived at Z 0.
+        packet[15] = 0;
+        packet[16] = (byte)z;
         WriteUInt16BE(packet, 17, graphic);
         return packet;
     }

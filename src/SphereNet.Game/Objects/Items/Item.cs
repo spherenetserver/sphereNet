@@ -2864,7 +2864,10 @@ public class Item : ObjBase
                     value = ParseBaseDefNumber(def.TagDefs.Get(upper)).ToString();
                     return true;
                 case "TFLAGS": value = $"0{def.TFlags:x}"; return true;                      // IBC_TFLAGS
-                case "RESMAKE": value = def.ResMake; return true;                             // IBC_RESMAKE
+                // IBC_RESMAKE (CItemBase.cpp:1336): the RESOURCES list written out by name.
+                case "RESMAKE":
+                    value = def.ResourcesRaw.Length > 0 ? SphereNet.Game.Definitions.ResourceText.Names(def.ResourcesRaw) : def.ResMake;
+                    return true;
                 case "RESLEVEL": value = def.ResLevel.ToString(); return true;                // OBC_RESLEVEL
                 case "RESDISPDNHUE": value = $"0{def.ResDispDnHue:x}"; return true;         // OBC_RESDISPDNHUE
                 // IBC_DUPELIST (CItemBase.cpp:1190): the alternate graphics, "0id,0id".

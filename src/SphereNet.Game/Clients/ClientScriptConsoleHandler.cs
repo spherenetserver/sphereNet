@@ -1986,18 +1986,42 @@ public sealed class ClientScriptConsoleHandler
                 string itemRef = sp < 0 ? onArg : onArg[..sp];
                 string text = sp < 0 ? "" : onArg[(sp + 1)..].Trim();
 
+                // CMenuItem::ParseLine (CClientDialog.cpp:283): the item's display id
+                // (its DISPID, else its own id) and the text parsed against that item
+                // definition, so <name> and <resmake> are the item's. An entry whose
+                // item cannot be found is left out. A numeric ITEMDEF has no DISPID,
+                // and taking that 0 sent every such entry with no picture.
                 ushort modelId = 0;
                 string itemName = itemRef;
+                SphereNet.Scripting.Definitions.ItemDef? idef = null;
                 var irid = resources.ResolveDefName(itemRef);
                 if (irid.IsValid)
                 {
-                    var idef = DefinitionLoader.GetItemDef(irid.Index);
-                    modelId = idef?.DispIndex ?? (ushort)irid.Index;
+                    idef = DefinitionLoader.GetItemDef(irid.Index);
+                    modelId = idef is { DispIndex: > 0 } ? idef.DispIndex : (ushort)irid.Index;
                     if (!string.IsNullOrEmpty(idef?.Name))
                         itemName = idef.Name;
                 }
-                if (string.IsNullOrEmpty(text) || text.Equals("<name>", StringComparison.OrdinalIgnoreCase))
+                else if (ScriptNumber.TryParseUInt(itemRef, out uint rawId))
+                {
+                    // A bare id needs no ITEMDEF: upstream builds the base from the art
+                    // tables (CItemBase::FindItemBase).
+                    modelId = (ushort)rawId;
+                }
+                else
+                {
+                    current = null;
+                    skipping = true;
+                    continue;
+                }
+                if (string.IsNullOrEmpty(text))
                     text = itemName;
+                else if (idef != null)
+                    text = System.Text.RegularExpressions.Regex.Replace(text, "<(name|resmake)>", m =>
+                        m.Groups[1].Value.Equals("name", StringComparison.OrdinalIgnoreCase)
+                            ? SphereNet.Scripting.Definitions.ItemDef.Pluralize(itemName, false)
+                            : SphereNet.Game.Definitions.ResourceText.Names(idef.ResourcesRaw),
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
                 current = new MenuOptionEntry(modelId, 0, text, []);
                 continue;

@@ -82,7 +82,11 @@ public sealed class PartyMembershipSourceXTests
     {
         if (advanceClock)
             b.World.SetGameClockMs(b.World.GameClockMs + 6000);
-        b.C(inviter).HandleExtendedCommand(PartySub, WithUid(1, b.Ch(target).Uid));
+        // The Add command asks who with a target cursor (receive.cpp:2654).
+        var client = b.C(inviter);
+        client.HandleExtendedCommand(PartySub, WithUid(1, Serial.Invalid));
+        var who = b.Ch(target);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, who.Uid.Value, who.X, who.Y, 0, 0);
     }
 
     private static void Accept(Bench b, string who, string inviter) =>

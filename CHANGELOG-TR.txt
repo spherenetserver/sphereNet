@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Parti menusundeki Add hedef imleci aciyor; parti tatbikati
+------------------------------------------------------------------------
+DUZELTME - Parti: parti menusundeki Add butonu 0xBF.06.01'i serial 0 ile gonderir; SphereNet
+       bu serial'i davetli sayiyordu - bu yuzden yalnizca "select" cevabi veriyor ve parti
+       menusunden kimse davet edilemiyordu. PARTYMSG_Add'in yaptigi gibi (receive.cpp:2654)
+       serial yok sayiliyor ve hedef imleci "Who would you like to add to your party?"
+       diye soruyor; cevap davete gidiyor (OnTarg_Party_Add).
+EKLEME - Fonksiyonel tatbikat "party" paketi: Add kimi diye sorar ve davet eder, kabul iki
+       tarafta da iki kisilik parti kurar, parti sohbeti uyeye ulasir, ayrilmak iki
+       kisilik partiyi bitirir.
+EKLEME - Bot client: parti listesi, davet ve parti sohbeti (0xBF.06); parti komut paketleri.
+EKLEME - Test: serial 0 ile Add imleci acar ve hedef davet edilir; parti testleri artik
+       client'in yaptigi gibi davet ediyor.
+
 [2026-10-15] - Snooping ve stealing mesajlari ve gorunumu Source-X'e uyuyor; hirsiz tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Stealing: basarili hirsizlikta item kurbanin ekraninda kaliyordu - acik canta

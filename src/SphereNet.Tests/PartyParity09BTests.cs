@@ -85,6 +85,29 @@ public sealed class PartyParity09BTests
     private static void Remove(GameClient who, Serial member) =>
         who.HandleExtendedCommand(PartySub, WithUid(2, member));
 
+    // --- the party gump's Add -------------------------------------------
+
+    // PARTYMSG_Add (receive.cpp:2654) ignores the serial and asks who with a target
+    // cursor; the client's Add button sends zero. Using the serial meant the button
+    // only ever answered "select" and invited nobody.
+    [Fact]
+    public void AddFromThePartyMenuAsksWhoAndInvitesTheTarget()
+    {
+        var bench = Setup();
+        bench.World.SetGameClockMs(bench.World.GameClockMs + 6000);
+
+        bench.AliceClient.HandleExtendedCommand(PartySub, WithUid(1, Serial.Invalid));
+        Assert.Null(bench.Parties.FindParty(bench.Alice.Uid));
+        uint cursor = bench.AliceClient.ActiveTargetCursorId;
+        Assert.NotEqual(0u, cursor);
+        bench.AliceClient.HandleTargetResponse(0, cursor, bench.Bob.Uid.Value, bench.Bob.X, bench.Bob.Y, 0, 0);
+        Accept(bench.BobClient, bench.Alice.Uid);
+
+        var party = bench.Parties.FindParty(bench.Alice.Uid);
+        Assert.NotNull(party);
+        Assert.True(party!.IsMember(bench.Bob.Uid));
+    }
+
     // --- 09B-1: the answer names its invitation --------------------------
 
     // The record is the INVITER's (PARTY_LASTINVITE, CParty.cpp:454): two inviters

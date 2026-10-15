@@ -261,8 +261,9 @@ public sealed class GeneralGameplayIntegrityTests
         client.SetEngines(partyManager: new PartyManager(), triggerDispatcher: triggers);
         uint uid = target.Uid.Value;
 
-        client.HandleExtendedCommand(0x0006,
-            [1, (byte)(uid >> 24), (byte)(uid >> 16), (byte)(uid >> 8), (byte)uid]);
+        // Add asks who with a target cursor (receive.cpp:2654).
+        client.HandleExtendedCommand(0x0006, [1, 0, 0, 0, 0]);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, uid, target.X, target.Y, 0, 0);
 
         // The invitation record is the inviter's (CClientTarg.cpp:2481).
         Assert.Equal(1, asked);

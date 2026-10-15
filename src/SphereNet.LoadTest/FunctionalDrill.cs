@@ -97,6 +97,8 @@ internal static class FunctionalDrill
                 await HealingSuite(server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "thief")
                 await ThiefSuite(server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "party")
+                await PartySuite(server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -1567,6 +1569,73 @@ internal static class FunctionalDrill
 
         thief.Disconnect();
         mark.Disconnect();
+    }
+
+    // ---- party -----------------------------------------------------------------------
+
+    private static async Task PartySuite(ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        var leader = await LoginAsync(1011, port, ct);
+        var member = await LoginAsync(1012, port, ct);
+        uint l = leader.World.CharUid, m = member.World.CharUid;
+        const string Wild = "1135,1640,0";
+
+        string JournalSince(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        bool InParty(BotClient bot, params uint[] who) { lock (bot.World.SyncRoot) return who.All(bot.World.PartyMembers.Contains); }
+
+        await RunScenario("party", "setup: two players side by side", outcomes, async () =>
+        {
+            await AsStaff(server, leader.AccountName, () => SayAsync(leader, $".go {Wild}", ct));
+            await AsStaff(server, member.AccountName, () => SayAsync(member, $".go {Wild}", ct));
+            if (leader.World.PartyMembers.Count != 0 || member.World.PartyMembers.Count != 0)
+                throw new ScenarioFailed("already in a party");
+            return "both out of any party";
+        });
+
+        await RunScenario("party", "the party menu's Add asks who, and invites", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            // The client's party gump sends Add with serial 0 and waits for a cursor.
+            leader.SendRaw(BotPacketBuilder.BuildParty(0x01, 0));
+            if (await leader.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no target cursor after Add; leader: {JournalSince(leader, since)}");
+            await leader.Actions.TargetObject(m, ct);
+            await WaitAsync(() => member.World.PartyInviteFrom == l ? (object)true : null, 4000,
+                $"the invitation (0xBF.06.07) from the leader; leader: {JournalSince(leader, since)}; member: {JournalSince(member, since)}");
+            return $"cursor, then invited; member: {JournalSince(member, since)}";
+        });
+
+        await RunScenario("party", "accepting forms a party of two", outcomes, async () =>
+        {
+            member.SendRaw(BotPacketBuilder.BuildParty(0x08, l));
+            await WaitAsync(() => InParty(leader, l, m) && InParty(member, l, m) ? (object)true : null, 4000,
+                $"both party lists to hold both (leader {leader.World.PartyMembers.Count}, member {member.World.PartyMembers.Count})");
+            return "both see a party of two";
+        });
+
+        await RunScenario("party", "party chat reaches the member", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            leader.SendRaw(BotPacketBuilder.BuildPartyMessage("meet at the bank"));
+            await WaitAsync(() => member.World.Journal.ToArray().Any(e => e.TimestampMs >= since && e.SpeakerSerial == l &&
+                    e.Speaker == "[party]" && e.Text == "meet at the bank") ? (object)true : null, 4000,
+                $"the party message at the member; member: {JournalSince(member, since)}");
+            return "member heard the party message";
+        });
+
+        await RunScenario("party", "leaving ends a party of two", outcomes, async () =>
+        {
+            member.SendRaw(BotPacketBuilder.BuildParty(0x02, m));
+            await WaitAsync(() => member.World.PartyMembers.Count == 0 ? (object)true : null, 4000,
+                $"the member's party list to empty ({member.World.PartyMembers.Count})");
+            await WaitAsync(() => leader.World.PartyMembers.Count == 0 ? (object)true : null, 4000,
+                $"the leader's party list to empty, a party of one disbands ({leader.World.PartyMembers.Count})");
+            return "both out of the party";
+        });
+
+        leader.Disconnect();
+        member.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

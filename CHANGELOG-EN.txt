@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - Party gump Add opens a target cursor; party drill
+------------------------------------------------------------------------
+FIX - Party: the party gump's Add button sends 0xBF.06.01 with serial 0, and SphereNet used
+      that serial as the guest - so it only ever answered "select" and nobody could be
+      invited from the party menu. As PARTYMSG_Add does (receive.cpp:2654), the serial is
+      ignored and a target cursor asks "Who would you like to add to your party?"; the
+      answer goes to the invitation (OnTarg_Party_Add).
+ADD - Functional drill "party" suite: Add asks who and invites, accepting forms a party of
+      two on both sides, party chat reaches the member, leaving ends a party of two.
+ADD - Bot client: party list, invitation and party chat (0xBF.06); party command builders.
+ADD - Test: Add with serial 0 opens the cursor and the target is invited; party tests now
+      invite the way the client does.
+
 [2026-10-15] - Snooping and stealing messages and views follow Source-X; thief drill
 ------------------------------------------------------------------------
 FIX - Stealing: a successful theft left the item on the mark's screen - the open pack

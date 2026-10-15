@@ -231,6 +231,32 @@ public static class BotPacketBuilder
         return packet;
     }
 
+    /// <summary>0xBF.06 party command with a serial: 01 add (the client sends 0 and gets a
+    /// target cursor), 02 remove, 08 accept, 09 decline.</summary>
+    public static byte[] BuildParty(byte command, uint serial)
+    {
+        var packet = new byte[10];
+        packet[0] = 0xBF;
+        WriteUInt16BE(packet, 1, 10);
+        WriteUInt16BE(packet, 3, 0x0006);
+        packet[5] = command;
+        WriteUInt32BE(packet, 6, serial);
+        return packet;
+    }
+
+    /// <summary>0xBF.06.04: a message to the whole party.</summary>
+    public static byte[] BuildPartyMessage(string text)
+    {
+        byte[] body = System.Text.Encoding.BigEndianUnicode.GetBytes(text);
+        var packet = new byte[6 + body.Length + 2];
+        packet[0] = 0xBF;
+        WriteUInt16BE(packet, 1, (ushort)packet.Length);
+        WriteUInt16BE(packet, 3, 0x0006);
+        packet[5] = 0x04;
+        body.CopyTo(packet, 6);
+        return packet;
+    }
+
     public static byte[] BuildDropToWorld(uint itemSerial, short x, short y, sbyte z)
     {
         return BuildDropToContainer(itemSerial, 0xFFFFFFFF, x, y, z);

@@ -808,6 +808,11 @@ public sealed class BotClient : IDisposable
                     HandleSellList(packet);
                 break;
 
+            case 0xBF: // General info: only the party sub-command (0x06) is read
+                if (packet.Length >= 7 && ReadUInt16BE(packet, 3) == 0x0006)
+                    HandleParty(packet, now);
+                break;
+
             case 0x1C: // ASCII Message (variable)
                 if (packet.Length >= 44)
                     HandleAsciiMessage(packet, now);
@@ -1142,6 +1147,50 @@ public sealed class BotClient : IDisposable
             TimestampMs = now, SpeakerSerial = serial,
             Speaker = name, Text = text,
         });
+    }
+
+    /// <summary>0xBF.06: [sub:1] then 01 [count][serial x count], 02 [count][removed][serial x count],
+    /// 03/04 [from:4][unicode text], 07 [leader:4].</summary>
+    private void HandleParty(byte[] packet, long now)
+    {
+        byte sub = packet[5];
+        switch (sub)
+        {
+            case 0x01:
+            {
+                var members = new List<uint>();
+                for (int i = 0, at = 7; i < packet[6] && at + 4 <= packet.Length; i++, at += 4)
+                    members.Add(ReadUInt32BE(packet, at));
+                _world.PartyMembers = members;
+                _world.PartyInviteFrom = 0;
+                break;
+            }
+            case 0x02:
+            {
+                var members = new List<uint>();
+                for (int i = 0, at = 11; i < packet[6] && at + 4 <= packet.Length; i++, at += 4)
+                    members.Add(ReadUInt32BE(packet, at));
+                _world.PartyMembers = members;
+                break;
+            }
+            case 0x03:
+            case 0x04:
+                if (packet.Length >= 10)
+                {
+                    uint from = ReadUInt32BE(packet, 6);
+                    string text = System.Text.Encoding.BigEndianUnicode.GetString(packet, 10, packet.Length - 10).TrimEnd('\0');
+                    _world.Journal.Push(new BotJournalEntry
+                    {
+                        TimestampMs = now, SpeakerSerial = from,
+                        Speaker = sub == 0x03 ? "[party private]" : "[party]", Text = text,
+                    });
+                }
+                break;
+            case 0x07:
+                if (packet.Length >= 10)
+                    _world.PartyInviteFrom = ReadUInt32BE(packet, 6);
+                break;
+        }
     }
 
     private void HandleUnicodeMessage(byte[] packet, long now)

@@ -25,6 +25,10 @@ public sealed class BotWorldModel
     public int DeathScreens;
     /// <summary>Mobiles whose health bar the server last tinted green (0x17 poison).</summary>
     public readonly HashSet<uint> Poisoned = new();
+    /// <summary>The party as the server last listed it (0xBF.06.01 / .02); empty when in none.</summary>
+    public List<uint> PartyMembers = new();
+    /// <summary>The leader whose party invitation (0xBF.06.07) is waiting, 0 for none.</summary>
+    public uint PartyInviteFrom;
     public bool IsWarMode;
     public bool IsMounted;
 

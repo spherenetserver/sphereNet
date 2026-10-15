@@ -3537,14 +3537,17 @@ public sealed class ClientWorldFeaturesHandler
         switch (partyCmd)
         {
             case 1: // Add member (invite)
-                if (data.Length >= 5)
+                // PARTYMSG_Add (receive.cpp:2654) ignores the serial the client sends -
+                // the party gump's Add button sends zero - and asks who with a target
+                // cursor. The answer goes to CClient::OnTarg_Party_Add
+                // (CClientTarg.cpp:2398): the record of the invitation is kept on the
+                // inviter (PARTY_LASTINVITE), so a second invitation replaces the first.
+                SysMessage(ServerMessages.Get(Msg.PartyTargWho));
+                SetPendingTarget((serial, _, _, _, _) =>
                 {
-                    // CClient::OnTarg_Party_Add (CClientTarg.cpp:2398): the record of the
-                    // invitation is kept on the inviter (PARTY_LASTINVITE), so a second
-                    // invitation replaces the first and the answer is checked against it.
-                    uint targetUid = (uint)((data[1] << 24) | (data[2] << 16) | (data[3] << 8) | data[4]);
-                    _partyManager.Invite(_character, _world.FindChar(new Serial(targetUid)), PartyIoForClient());
-                }
+                    if (_character == null || _partyManager == null) return;
+                    _partyManager.Invite(_character, _world.FindChar(new Serial(serial)), PartyIoForClient());
+                });
                 break;
 
             case 2: // Remove member

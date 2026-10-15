@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Akici gemi hareketi yalnizca destekleyen client'lara; gemi tatbikati
+------------------------------------------------------------------------
+DUZELTME - Gemiler: hareket eden geminin yakinindaki her client'a akici hareket paketi
+       (0xF6) gidiyordu; High Seas oncesi client bu paketi okuyamaz. CCMultiMovable'daki
+       gibi (:330) yalnizca 7.0.9.0+ ya da Enhanced client, OF_NoSmoothSailing kapaliyken
+       alir; gemideki diger client'a kendi yeni konumu soylenir (0x20, addPlayerUpdate),
+       gemi ve diger yolcular gorunum yenilemesiyle hareket eder.
+EKLEME - Fonksiyonel tatbikat "ship" paketi: acik denizde deed'den gemi kur (anahtarlar
+       cantaya gelir), "forward" gemiyi 7.0.20 kaptan (0xF6) ve 5.0.1 tayfa (0xF6'siz) ile
+       yurutur, "stop" durdurur.
+EKLEME - Bot client: 0xF6 akici gemi hareketini okur; 0xF3 veri tipi 2 multi'dir (bot onu
+       atiyordu).
+EKLEME - Test: hangi client surumleri akici seyreder ve OF_NoSmoothSailing.
+
 [2026-10-15] - Parti menusundeki Add hedef imleci aciyor; parti tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Parti: parti menusundeki Add butonu 0xBF.06.01'i serial 0 ile gonderir; SphereNet

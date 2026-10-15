@@ -2548,35 +2548,46 @@ public static partial class Program
                     var o = shipObjs[i];
                     entries[i - 1] = (o.Uid.Value, o.X, o.Y, o.Z);
                 }
-                var pkt = new PacketBoatSmoothMove(
-                    mi.Uid.Value,
-                    (byte)ship.SpeedMode,
-                    (byte)((byte)ship.DirMove & 0x07),
-                    (byte)((byte)ship.DirFace & 0x07),
-                    // The hull's real Z, as the reference writes it: PacketMoveShip
-                    // sends the signed value in sixteen bits (send.cpp:5414). Clamping
-                    // a negative hull to zero left it disagreeing with the very objects
-                    // it was carrying, which were sent unclamped.
-                    mi.X, mi.Y, unchecked((ushort)(short)mi.Z),
-                    entries);
-                BroadcastNearby(mi.Position, 18, pkt, 0);
-
-                // The smooth-move packet has already carried every deck passenger to
-                // the hull's new tile on each receiving client. Upstream does not then
-                // also send a per-character move for them: addCharMove is the
-                // NON-smooth-sailing branch (CCMultiMovable.cpp:375). The view delta
-                // here compares each known mobile against its last known position, so
-                // without being told, it saw every passenger jump a tile per ship step
-                // and sent a 0x77 for it - which the client draws as a walk. From the
-                // deck that reads as the other player jogging on the spot for the whole
-                // voyage.
-                foreach (var carried in shipObjs)
+                PacketBoatSmoothMove? pkt = null;
+                ForEachClientInRange(mi.Position, 18, 0, (viewerChar, viewer) =>
                 {
-                    if (carried is not SphereNet.Game.Objects.Characters.Character passenger)
-                        continue;
-                    ForEachClientInRange(mi.Position, 18, 0,
-                        (_, viewer) => viewer.UpdateKnownCharPosition(passenger));
-                }
+                    // Smooth sailing only for a client that knows 0xF6 (UsesSmoothSailing).
+                    // It went to every client, and one older than High Seas cannot parse it.
+                    if (viewer.UsesSmoothSailing)
+                    {
+                        viewer.Send(pkt ??= new PacketBoatSmoothMove(
+                            mi.Uid.Value,
+                            (byte)ship.SpeedMode,
+                            (byte)((byte)ship.DirMove & 0x07),
+                            (byte)((byte)ship.DirFace & 0x07),
+                            // The hull's real Z, as the reference writes it: PacketMoveShip
+                            // sends the signed value in sixteen bits (send.cpp:5414). Clamping
+                            // a negative hull to zero left it disagreeing with the very
+                            // objects it was carrying, which were sent unclamped.
+                            mi.X, mi.Y, unchecked((ushort)(short)mi.Z),
+                            entries));
+
+                        // The smooth-move packet has already carried every deck passenger
+                        // to the hull's new tile on this client. Upstream does not then also
+                        // send a per-character move: addCharMove is the NON-smooth branch
+                        // (CCMultiMovable.cpp:375). The view delta compares each known mobile
+                        // against its last known position, so without being told it saw
+                        // every passenger jump a tile per ship step and sent a 0x77 for it -
+                        // which the client draws as a walk.
+                        foreach (var carried in shipObjs)
+                            if (carried is SphereNet.Game.Objects.Characters.Character passenger)
+                                viewer.UpdateKnownCharPosition(passenger);
+                        return;
+                    }
+
+                    // No smooth sailing (:333-379): a passenger's own client is told where
+                    // it now stands (addPlayerUpdate); the hull, its components and the
+                    // other passengers reach it through the view refresh, which moves the
+                    // items and sends the characters' moves.
+                    if (shipObjs.Contains(viewerChar))
+                        viewer.SendPlayerUpdate();
+                    viewer.ViewNeedsRefresh = true;
+                });
             };
             // Crossing the map edge (OF_MapBoundarySailing): everyone aboard gets a full
             // view rebuild (MoveDelta fUpdateViewFull, CCMultiMovable.cpp:400) and the

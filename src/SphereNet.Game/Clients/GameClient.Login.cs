@@ -1305,6 +1305,27 @@ public sealed partial class GameClient
         ResetWalkValidator();
     }
 
+    /// <summary>Whether this client sails smoothly - is sent 0xF6 for a moving ship:
+    /// 7.0.9.0 (MINCLIVER_HS) or the Enhanced client, while OF_NoSmoothSailing is off
+    /// (CCMultiMovable.cpp:330). An older client cannot parse 0xF6.</summary>
+    public bool UsesSmoothSailing =>
+        (ServerOptionFlags & Core.Enums.OptionFlags.NoSmoothSailing) == 0 &&
+        (_netState.IsClientPost7090 || _netState.IsEnhancedClient);
+
+    /// <summary>Source-X CClient::addPlayerUpdate: the player's own position and flags
+    /// (0x20), as a ship carrying a client that cannot sail smoothly sends it
+    /// (CCMultiMovable.cpp:367). The client restarts its walk sequence on 0x20.</summary>
+    public void SendPlayerUpdate()
+    {
+        if (_character == null || !IsPlaying) return;
+        _netState.Send(new PacketDrawPlayer(
+            _character.Uid.Value, _character.BodyId, _character.Hue,
+            BuildMobileFlags(_character),
+            _character.X, _character.Y, _character.Z, (byte)_character.Direction));
+        _netState.WalkSequence = 0;
+        ResetWalkValidator();
+    }
+
     /// <summary>
     /// Partial resync — re-sends only position and nearby objects without full clear.
     /// Used for minor movement desync corrections.

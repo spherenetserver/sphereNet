@@ -99,6 +99,8 @@ internal static class FunctionalDrill
                 await ThiefSuite(server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "party")
                 await PartySuite(server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "ship")
+                await ShipSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -1638,6 +1640,141 @@ internal static class FunctionalDrill
         member.Disconnect();
     }
 
+    // ---- ships -----------------------------------------------------------------------
+
+    private const ushort ShipDeed = 0x14F1;
+
+    /// <summary>Open sea for a small ship facing north: wet land with no statics over the
+    /// hull and a clear lane ahead of it.</summary>
+    private static IEnumerable<(int X, int Y, int Z)> WaterSites(SphereNet.MapData.MapDataManager map, int cx, int cy, int radius)
+    {
+        for (int r = 0; r <= radius; r += 4)
+        for (int dx = -r; dx <= r; dx += 4)
+        for (int dy = -r; dy <= r; dy += 4)
+        {
+            if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != r) continue;
+            int x = cx + dx, y = cy + dy;
+            bool ok = true;
+            for (int ix = x - 5; ix <= x + 5 && ok; ix++)
+            for (int iy = y - 30; iy <= y + 8 && ok; iy++)
+            {
+                var land = map.GetTerrainTile(0, ix, iy);
+                if (!map.GetLandTileData(land.TileId).IsWet || map.GetStatics(0, ix, iy).Length > 0)
+                    ok = false;
+            }
+            if (ok) yield return (x, y, map.GetTerrainTile(0, x, y).Z);
+        }
+    }
+
+    private static async Task ShipSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        using var map = new SphereNet.MapData.MapDataManager(mul);
+        map.Load();
+        map.InitMap(0, 7168, 4096);
+
+        var captain = await LoginAsync(1021, port, ct);
+        // A pre-High-Seas client aboard: it cannot parse 0xF6 and must be moved with the
+        // ship by ordinary updates (CCMultiMovable.cpp:333).
+        var deckhand = await LoginAsync(1022, port, ct, ReferenceClientProtocol.Pack(5, 0, 1, 0));
+        int deckhandF6 = 0;
+        deckhand.ServerPacketObserver = p => { if (p[0] == 0xF6) Interlocked.Increment(ref deckhandF6); };
+        BotKnownItem? ship = null;
+
+        string JournalSince(long since) =>
+            string.Join(" | ", captain.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        BotKnownItem? Ship() { lock (captain.World.SyncRoot) return ship == null ? null : captain.World.KnownItems.GetValueOrDefault(ship.Serial); }
+
+        await RunScenario("ship", "place a ship from a deed", outcomes, async () =>
+        {
+            var tried = new List<string>();
+            foreach (var (cx, cy) in new[] { (1500, 1780), (1560, 1700), (1420, 1900), (1650, 1620) })
+            {
+                foreach (var cand in WaterSites(map, cx, cy, 80).Take(2))
+                {
+                    await AsStaff(server, captain.AccountName, async () =>
+                    {
+                        await SayAsync(captain, $".go {cand.X},{cand.Y + 10},{cand.Z}", ct);
+                        await AddIntoPackAsync(captain, "i_deed_small_ship_n", ct);
+                    });
+                    var pack = await PackContentsAsync(captain, ct);
+                    var deed = pack.FirstOrDefault(i => i.ItemId == ShipDeed)
+                        ?? throw new ScenarioFailed("no ship deed in the pack after .add");
+                    int keysBefore = pack.Count(i => IsKey(i.ItemId));
+                    long since = Environment.TickCount64;
+                    await captain.Actions.DoubleClick(deed.Serial, 1000, ct);
+                    if (await captain.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                        throw new ScenarioFailed($"no placement cursor from the deed; journal: {JournalSince(since)}");
+                    captain.SendRaw(BotPacketBuilder.BuildTargetLocation(captain.World.TargetCursorId,
+                        (short)cand.X, (short)cand.Y, (sbyte)cand.Z));
+                    captain.World.HasPendingTarget = false;
+                    await Task.Delay(2500, ct);
+                    var after = await PackContentsAsync(captain, ct);
+                    if (after.Any(i => i.Serial == deed.Serial))
+                    {
+                        tried.Add($"{cand.X},{cand.Y},{cand.Z}: {JournalSince(since)}");
+                        continue;
+                    }
+                    lock (captain.World.SyncRoot)
+                        ship = captain.World.KnownItems.Values.FirstOrDefault(i => i.IsMulti && i.ContainerSerial == 0 &&
+                            Math.Abs(i.X - cand.X) <= 8 && Math.Abs(i.Y - cand.Y) <= 8);
+                    if (ship == null)
+                    {
+                        string near;
+                        lock (captain.World.SyncRoot)
+                            near = string.Join(", ", captain.World.KnownItems.Values.Where(i => i.ContainerSerial == 0 &&
+                                    Math.Abs(i.X - cand.X) <= 12 && Math.Abs(i.Y - cand.Y) <= 12)
+                                .Select(i => $"0x{i.ItemId:X}{(i.IsMulti ? "M" : "")}@{i.X},{i.Y},{i.Z}"));
+                        throw new ScenarioFailed($"the deed was used at {cand.X},{cand.Y} but no ship multi is in view; near: {near}; journal: {JournalSince(since)}");
+                    }
+                    int keys = after.Count(i => IsKey(i.ItemId)) - keysBefore;
+                    if (keys < 1) throw new ScenarioFailed($"ship placed at {cand.X},{cand.Y} but no key came into the pack");
+                    return $"ship 0x{ship.Serial:X} (multi 0x{ship.ItemId & 0x3FFF:X}) at {ship.X},{ship.Y},{ship.Z}, {keys} key(s)" +
+                           (tried.Count > 0 ? $"; refused first at: {string.Join(" || ", tried)}" : "");
+                }
+            }
+            throw new ScenarioFailed(tried.Count == 0 ? "no open water found" : "every site refused: " + string.Join(" || ", tried));
+        });
+
+        await RunScenario("ship", "'forward' sails the ship with its captain aboard", outcomes, async () =>
+        {
+            if (ship == null) throw new ScenarioFailed("no ship");
+            await AsStaff(server, captain.AccountName, () => SayAsync(captain, $".go {ship.X},{ship.Y + 1},{ship.Z + 3}", ct));
+            await AsStaff(server, deckhand.AccountName, () => SayAsync(deckhand, $".go {ship.X},{ship.Y - 1},{ship.Z + 3}", ct));
+            await Task.Delay(1000, ct);
+            short sy = Ship()?.Y ?? ship.Y, cy = captain.World.Y, dy = deckhand.World.Y;
+            long since = Environment.TickCount64;
+            await captain.Actions.Say("forward", ct);
+            await WaitAsync(() => Ship() is { } s && s.Y < sy - 2 ? (object)true : null, 10_000,
+                $"the ship to move north from y {sy} (ship y {Ship()?.Y}, captain {captain.World.X},{captain.World.Y}; journal: {JournalSince(since)})");
+            await Task.Delay(1500, ct);
+            int shipMoved = sy - (Ship()?.Y ?? sy), captainMoved = cy - captain.World.Y, deckhandMoved = dy - deckhand.World.Y;
+            if (captainMoved < shipMoved - 2)
+                throw new ScenarioFailed($"the ship went {shipMoved} tiles but its captain (7.0.20, smooth) only {captainMoved}");
+            if (deckhandMoved < shipMoved - 2)
+                throw new ScenarioFailed($"the ship went {shipMoved} tiles but the 5.0.1 deckhand only {deckhandMoved}");
+            if (deckhandF6 > 0)
+                throw new ScenarioFailed($"the 5.0.1 deckhand was sent {deckhandF6} smooth-move packet(s) (0xF6) it cannot read");
+            return $"ship sailed {shipMoved} tiles north; captain carried {captainMoved} (0xF6), 5.0.1 deckhand {deckhandMoved} (no 0xF6); journal: {JournalSince(since)}";
+        });
+
+        await RunScenario("ship", "'stop' halts it", outcomes, async () =>
+        {
+            if (ship == null) throw new ScenarioFailed("no ship");
+            await captain.Actions.Say("stop", ct);
+            await Task.Delay(2000, ct);
+            short y1 = Ship()?.Y ?? 0;
+            await Task.Delay(3000, ct);
+            short y2 = Ship()?.Y ?? 0;
+            if (y1 != y2) throw new ScenarioFailed($"still moving after 'stop': y {y1} -> {y2}");
+            return $"stopped at y {y2}";
+        });
+
+        captain.Disconnect();
+        deckhand.Disconnect();
+    }
+
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>
     private static async Task AddIntoPackAsync(BotClient bot, string defname, CancellationToken ct)
     {
@@ -1666,11 +1803,11 @@ internal static class FunctionalDrill
         }
     }
 
-    private static async Task<BotClient> LoginAsync(int id, int port, CancellationToken ct)
+    private static async Task<BotClient> LoginAsync(int id, int port, CancellationToken ct, uint? clientVersion = null)
     {
         var bot = new BotClient(id, NullLogger.Instance)
         {
-            ClientVersion = ReferenceClientProtocol.Pack(7, 0, 20, 0),
+            ClientVersion = clientVersion ?? ReferenceClientProtocol.Pack(7, 0, 20, 0),
             RawGameSeed = true,
         };
         if (!await bot.ConnectAndLoginAsync("127.0.0.1", port, ct))

@@ -808,6 +808,30 @@ public sealed class BotClient : IDisposable
                     HandleSellList(packet);
                 break;
 
+            case 0xF6: // Smooth ship move: [ship:4][speed][moveDir][faceDir][x:2][y:2][z:2][count:2]
+                       // then count x [serial:4][x:2][y:2][z:2] - the passengers and cargo
+                if (packet.Length >= 18)
+                {
+                    uint hull = ReadUInt32BE(packet, 3);
+                    if (_world.KnownItems.TryGetValue(hull, out var hullItem))
+                    {
+                        hullItem.X = (short)ReadUInt16BE(packet, 10);
+                        hullItem.Y = (short)ReadUInt16BE(packet, 12);
+                        hullItem.Z = (sbyte)ReadUInt16BE(packet, 14);
+                    }
+                    int carried = ReadUInt16BE(packet, 16);
+                    for (int i = 0, at = 18; i < carried && at + 10 <= packet.Length; i++, at += 10)
+                    {
+                        uint s = ReadUInt32BE(packet, at);
+                        short ox = (short)ReadUInt16BE(packet, at + 4), oy = (short)ReadUInt16BE(packet, at + 6);
+                        sbyte oz = (sbyte)ReadUInt16BE(packet, at + 8);
+                        if (s == _charUid) { _world.X = ox; _world.Y = oy; _world.Z = oz; }
+                        else if (_world.Mobiles.TryGetValue(s, out var mob)) { mob.X = ox; mob.Y = oy; mob.Z = oz; }
+                        else if (_world.KnownItems.TryGetValue(s, out var it)) { it.X = ox; it.Y = oy; it.Z = oz; }
+                    }
+                }
+                break;
+
             case 0xBF: // General info: only the party sub-command (0x06) is read
                 if (packet.Length >= 7 && ReadUInt16BE(packet, 3) == 0x0006)
                     HandleParty(packet, now);
@@ -923,7 +947,8 @@ public sealed class BotClient : IDisposable
     /// [z:1][light/dir:1][hue:2][flags:1] (+2 from 7.0.9). Type 2 is a mobile.</summary>
     private void HandleWorldItemSA(byte[] packet, long now)
     {
-        if (packet.Length < 24 || packet[3] == 0x02) return;
+        // Data type: 0 item, 1 mobile body, 2 multi (ClassicUO UpdateGameObject).
+        if (packet.Length < 24 || packet[3] == 0x01) return;
         uint serial = ReadUInt32BE(packet, 4);
         ushort itemId = ReadUInt16BE(packet, 8);
         ushort amount = ReadUInt16BE(packet, 11);
@@ -935,7 +960,7 @@ public sealed class BotClient : IDisposable
         _world.KnownItems[serial] = new BotKnownItem
         {
             Serial = serial, ItemId = itemId, X = x, Y = y, Z = z,
-            Amount = amount, Hue = hue, LastSeenMs = now, IsMulti = packet[3] == 0x01,
+            Amount = amount, Hue = hue, LastSeenMs = now, IsMulti = packet[3] == 0x02,
         };
         if (itemId == 0x0EED) RecalcGold();
     }

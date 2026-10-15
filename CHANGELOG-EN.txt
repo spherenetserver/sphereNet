@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - Smooth ship movement only for clients that support it; ship drill
+------------------------------------------------------------------------
+FIX - Ships: every client near a moving ship was sent the smooth-move packet (0xF6), which
+      a client older than High Seas cannot parse. As CCMultiMovable does (:330), only a
+      7.0.9.0+ or Enhanced client with OF_NoSmoothSailing off gets it; any other client
+      aboard is told its own new position (0x20, addPlayerUpdate) and sees the hull and
+      the other passengers move through its view refresh.
+ADD - Functional drill "ship" suite: place a ship from a deed on open sea (keys in the
+      pack), "forward" sails it carrying a 7.0.20 captain (0xF6) and a 5.0.1 deckhand
+      (no 0xF6), "stop" halts it.
+ADD - Bot client: reads 0xF6 smooth ship moves; 0xF3 data type 2 is a multi (the bot
+      used to drop it).
+ADD - Test: which client versions sail smoothly, and OF_NoSmoothSailing.
+
 [2026-10-15] - Party gump Add opens a target cursor; party drill
 ------------------------------------------------------------------------
 FIX - Party: the party gump's Add button sends 0xBF.06.01 with serial 0, and SphereNet used

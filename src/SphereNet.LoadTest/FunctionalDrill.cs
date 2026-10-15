@@ -93,6 +93,8 @@ internal static class FunctionalDrill
                 await LawSuite(o, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "travel")
                 await TravelSuite(o, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "healing")
+                await HealingSuite(server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -1327,6 +1329,142 @@ internal static class FunctionalDrill
         });
 
         bot.Disconnect();
+    }
+
+    // ---- healing and poison ------------------------------------------------------------
+
+    // Scripts-X i_bandage 0x0E21; Source-X ITEMID_BANDAGES_BLOODY1/2 0x0E20 / 0x0E22.
+    private const ushort Bandage = 0x0E21;
+    private static bool IsBloodyBandage(ushort id) => id is 0x0E20 or 0x0E22;
+
+    private static async Task HealingSuite(ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        var healer = await LoginAsync(991, port, ct);
+        var patient = await LoginAsync(992, port, ct);
+        uint p = patient.World.CharUid;
+        // Out of town: no healer NPC raises the ghost before the bandage can.
+        const string Wild = "1135,1640,0";
+
+        string JournalSince(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+
+        // Bandage the patient: double-click a bandage, target the patient, wait for the
+        // skill's delay. Returns the healer's journal for the attempt.
+        async Task<string> BandageAsync(long since)
+        {
+            var band = (await PackContentsAsync(healer, ct)).FirstOrDefault(i => i.ItemId == Bandage)
+                ?? throw new ScenarioFailed("no bandage left in the healer's pack");
+            await healer.Actions.DoubleClick(band.Serial, 1000, ct);
+            if (await healer.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no target cursor from the bandage; journal: {JournalSince(healer, since)}");
+            await healer.Actions.TargetObject(p, ct);
+            return JournalSince(healer, since);
+        }
+
+        async Task StaffOnPatient(string verb)
+        {
+            await AsStaff(server, healer.AccountName, async () =>
+            {
+                await healer.Actions.Say(verb, ct);
+                if (await healer.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no target cursor for {verb}");
+                await healer.Actions.TargetObject(p, ct);
+                await Task.Delay(800, ct);
+            });
+        }
+
+        await RunScenario("healing", "setup: a healer with bandages, a wounded patient", outcomes, async () =>
+        {
+            await AsStaff(server, healer.AccountName, async () =>
+            {
+                await SayAsync(healer, $".go {Wild}", ct);
+                await SayAsync(healer, ".healing 1000", ct);
+                await SayAsync(healer, ".anatomy 1000", ct);
+                for (int i = 0; i < 6; i++)
+                    await AddIntoPackAsync(healer, "i_bandage", ct);
+            });
+            await AsStaff(server, patient.AccountName, async () =>
+            {
+                await SayAsync(patient, $".go {Wild}", ct);
+                await SayAsync(patient, ".hits 40", ct);
+            });
+            int bandages = CountOf(await PackContentsAsync(healer, ct), Bandage);
+            if (bandages < 3) throw new ScenarioFailed($"{bandages} bandage(s) in the pack");
+            if (patient.World.Hits > 40) throw new ScenarioFailed($"patient hits {patient.World.Hits}");
+            return $"{bandages} bandages; patient hits {patient.World.Hits}/{patient.World.MaxHits}";
+        });
+
+        await RunScenario("healing", "a bandage heals the wounded", outcomes, async () =>
+        {
+            var before = await PackContentsAsync(healer, ct);
+            int bandages = CountOf(before, Bandage), bloody = before.Where(i => IsBloodyBandage(i.ItemId)).Sum(i => Math.Max(1, (int)i.Amount));
+            int hits = patient.World.Hits;
+            long since = Environment.TickCount64;
+            await BandageAsync(since);
+            await WaitAsync(() => patient.World.Hits > hits ? (object)true : null, 12_000,
+                $"the patient's hits to rise from {hits}; healer journal: {JournalSince(healer, since)}");
+            await Task.Delay(500, ct);
+            var after = await PackContentsAsync(healer, ct);
+            int bandages2 = CountOf(after, Bandage), bloody2 = after.Where(i => IsBloodyBandage(i.ItemId)).Sum(i => Math.Max(1, (int)i.Amount));
+            string detail = $"hits {hits} -> {patient.World.Hits}, bandages {bandages} -> {bandages2}, bloody {bloody} -> {bloody2}";
+            if (bandages2 != bandages - 1 || bloody2 != bloody + 1) throw new ScenarioFailed(detail);
+            return detail;
+        });
+
+        await RunScenario("healing", "a bandage cures poison", outcomes, async () =>
+        {
+            await StaffOnPatient(".xpoison 300");
+            await WaitAsync(() => { lock (patient.World.SyncRoot) return patient.World.Poisoned.Contains(p) ? (object)true : null; },
+                5000, "the patient's health bar to turn green (0x17 poison)");
+            long since = Environment.TickCount64;
+            int hits = patient.World.Hits;
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                await BandageAsync(since);
+                for (int i = 0; i < 24; i++)
+                {
+                    await Task.Delay(500, ct);
+                    lock (patient.World.SyncRoot)
+                        if (!patient.World.Poisoned.Contains(p))
+                            return $"cured after {attempt + 1} bandage(s); hits {hits} -> {patient.World.Hits}; healer: {JournalSince(healer, since)}";
+                }
+            }
+            throw new ScenarioFailed($"still poisoned; healer: {JournalSince(healer, since)}; patient: {JournalSince(patient, since)}");
+        });
+
+        await RunScenario("healing", "a bandage raises a ghost", outcomes, async () =>
+        {
+            int screens = patient.World.DeathScreens;
+            await StaffOnPatient(".xkill");
+            await WaitAsync(() => patient.World.DeathScreens > screens && GhostBodies.Contains(patient.World.Body) ? (object)true : null,
+                6000, "the patient to die");
+            long since = Environment.TickCount64;
+            // An unmanifested ghost is insubstantial (Source-X sets STATF_INSUBSTANTIAL at
+            // death out of war mode): the living cannot see it. War mode manifests it.
+            await BandageAsync(since);
+            await Task.Delay(1500, ct);
+            string unmanifested = JournalSince(healer, since);
+            if (!unmanifested.Contains("manifest", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed($"an unmanifested ghost was not refused; healer: {unmanifested}");
+            await patient.Actions.SetWarMode(true, ct);
+            await Task.Delay(800, ct);
+            since = Environment.TickCount64;
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                await BandageAsync(since);
+                for (int i = 0; i < 24; i++)
+                {
+                    await Task.Delay(500, ct);
+                    if (!GhostBodies.Contains(patient.World.Body))
+                        return $"refused until manifested; alive after {attempt + 1} bandage(s) in war mode: body 0x{patient.World.Body:X}, " +
+                               $"hits {patient.World.Hits}/{patient.World.MaxHits}; healer: {JournalSince(healer, since)}";
+                }
+            }
+            throw new ScenarioFailed($"still a ghost; healer: {JournalSince(healer, since)}; patient: {JournalSince(patient, since)}");
+        });
+
+        healer.Disconnect();
+        patient.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

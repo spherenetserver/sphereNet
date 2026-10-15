@@ -566,6 +566,20 @@ public sealed class BotClient : IDisposable
                 }
                 break;
 
+            case 0x17: // Health bar status: [serial:4][count:2] then count x ([type:2][on:1]); type 1 = poison
+                if (packet.Length >= 9)
+                {
+                    uint serialBar = ReadUInt32BE(packet, 3);
+                    int entries = ReadUInt16BE(packet, 7);
+                    for (int e = 0, at = 9; e < entries && at + 3 <= packet.Length; e++, at += 3)
+                    {
+                        if (ReadUInt16BE(packet, at) != 1) continue;
+                        if (packet[at + 2] != 0) _world.Poisoned.Add(serialBar);
+                        else _world.Poisoned.Remove(serialBar);
+                    }
+                }
+                break;
+
             case 0xA1: // Health Update (9 bytes)
                 if (packet.Length >= 9)
                 {

@@ -23,6 +23,8 @@ public sealed class BotWorldModel
     public readonly Dictionary<int, int> SkillBases = new();
     /// <summary>0x2C death screens received.</summary>
     public int DeathScreens;
+    /// <summary>Mobiles whose health bar the server last tinted green (0x17 poison).</summary>
+    public readonly HashSet<uint> Poisoned = new();
     public bool IsWarMode;
     public bool IsMounted;
 

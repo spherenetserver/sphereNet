@@ -4,6 +4,14 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Fonksiyonel tatbikat: iyilestirme ve zehir
+------------------------------------------------------------------------
+EKLEME - Fonksiyonel tatbikat "healing" paketi (Source-X Skill_Healing): bandaj yarali
+       oyuncuyu iyilestirir ve kanli bandaj birakir, bandaj zehri tedavi eder, hayalet
+       savas moduna gecip gorunur olana kadar reddedilir (gorunmeyen hayalet
+       insubstantial'dir), sonra bandajla diriltilir.
+EKLEME - Bot client: mobile basina 0x17 can cubugu durumu (yesil = zehirli).
+
 [2026-10-15] - Mark ve rune asinmasi Source-X'e uyuyor; seyahat buyusu tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Mark (CItem::OnSpellEffect SPELL_Mark, CItem.cpp:5721): basarili mark, aslinda

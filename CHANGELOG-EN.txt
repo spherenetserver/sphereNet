@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - Functional drill: healing and poison
+------------------------------------------------------------------------
+ADD - Functional drill "healing" suite (Source-X Skill_Healing): a bandage heals a wounded
+      player and leaves a bloody bandage, a bandage cures poison, and a ghost is refused
+      until it manifests (war mode; an unmanifested ghost is insubstantial) and is then
+      raised by a bandage.
+ADD - Bot client: the 0x17 health bar status (green bar = poisoned) per mobile.
+
 [2026-10-15] - Mark and rune wear follow Source-X; travel magic drill
 ------------------------------------------------------------------------
 FIX - Mark (CItem::OnSpellEffect SPELL_Mark, CItem.cpp:5721): a successful mark printed

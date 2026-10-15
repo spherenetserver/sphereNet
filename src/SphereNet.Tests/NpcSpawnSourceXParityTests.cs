@@ -190,6 +190,29 @@ public sealed class NpcSpawnSourceXParityTests : IDisposable
         Assert.NotSame(free, guard);
     }
 
+    // CChar::CallGuards() (CCharFight.cpp:199-203): a calling PLAYER who saw a crime makes
+    // its doer a criminal, and only then are the criminals looked for. The step was
+    // missing, so a crime only its victim's witnesses had seen - grey to them alone -
+    // could never be reported to the guards.
+    [Fact]
+    public void APlayerWhoSawTheCrimeMakesItsDoerACriminalByCallingTheGuards()
+    {
+        var (_, caller, criminal) = GuardBench();
+        criminal.ClearStatFlag(StatFlag.Criminal);
+        criminal.IsOnline = true;
+        var targets = typeof(SphereNet.Server.Program)
+            .GetMethod("FindAllGuardTargets", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        Assert.Empty((List<Character>)targets.Invoke(null, [caller])!);
+        Assert.False(criminal.IsCriminal);
+
+        caller.Memory_AddObjTypes(criminal.Uid, MemoryType.SawCrime);
+        var found = (List<Character>)targets.Invoke(null, [caller])!;
+
+        Assert.Contains(criminal, found);
+        Assert.True(criminal.IsCriminal || criminal.IsStatFlag(StatFlag.Criminal));
+    }
+
     [Fact]
     public void NoGuardComesWhenTheGuardsResourceDoesNotResolve()
     {

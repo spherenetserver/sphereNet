@@ -228,6 +228,11 @@ public static partial class Program
             // logged-out player.
             if (ch.IsLoggedOut) continue;
             if (ch.PrivLevel >= PrivLevel.Counsel) continue;
+            // A player who saw this one commit a crime makes it a criminal by calling
+            // (CCharFight.cpp:199-203): a witness's own grey becomes everyone's. Players
+            // only - an NPC witness flags the criminal the moment it sees the crime.
+            if (speaker.IsPlayer && speaker.Memory_FindObjTypes(ch.Uid, MemoryType.SawCrime) != null)
+                ch.MakeCriminal(speaker, fromSawCrime: true);
             bool criminal = ch.IsCriminal || ch.IsStatFlag(StatFlag.Criminal);
             if (criminal || (_config.GuardsOnMurderers && _npcAI.NotoIsEvil(ch)))
                 results.Add(ch);

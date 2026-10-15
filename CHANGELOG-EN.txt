@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - A player calling the guards reports the crimes they saw
+------------------------------------------------------------------------
+FIX - Guards: as CChar::CallGuards() does (CCharFight.cpp:199-203), a PLAYER calling the
+      guards first makes a criminal of anyone they remember seeing commit a crime
+      (MEMORY_SAWCRIME), and only then are the criminals around looked for. The step was
+      missing, so a crime that was grey only to the people who saw it could never be
+      reported; found running the functional drill on the Sphere 56T custom-version pack,
+      where the guards never came.
+ADD - Test: a player who saw the crime makes its doer a criminal by calling the guards.
+
+[2026-10-15] - Spawn gems placed in game work; START fires at once; spawn drill
+------------------------------------------------------------------------
+FIX - Spawns: a spawn gem made from its definition (.ADD, a script's NEWITEM) never got its
+      spawn component - that was only built at world load and on a runtime TYPE change -
+      so SPAWNID, AMOUNT and START were taken and nothing was ever produced. The
+      component now comes with the item, as upstream builds CCSpawn when the item is
+      created, before @Create so the creation script can configure it.
+FIX - Spawns: START and RESET only moved the component's own clock; the gem's timer, which
+      drives the spawn, stayed where it was (15-30 minutes for a new gem). They now fire
+      the gem at once, as pItem->SetTimeout(0) does (CCSpawn.cpp:1257).
+FIX - Spawns: a numeric MORE1 on a live spawner is its spawn target (CCSpawn.cpp:943);
+      only the defname form reached the component.
+ADD - Functional drill "spawn" suite: a gem placed with .ADD and set up with
+      SPAWNID/AMOUNT/TIMELO/TIMEHI/MAXDIST/START produces its first creature at once and
+      the next on its timer, never beyond its amount, and replaces a killed one.
+ADD - Test: a gem made from its definition spawns through the world's timer queue.
+
 [2026-10-15] - Smooth ship movement only for clients that support it; ship drill
 ------------------------------------------------------------------------
 FIX - Ships: every client near a moving ship was sent the smooth-move packet (0xF6), which

@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - Muhafiz cagiran oyuncu gordugu sucu bildirir
+------------------------------------------------------------------------
+DUZELTME - Muhafizlar: CChar::CallGuards()'in yaptigi gibi (CCharFight.cpp:199-203), muhafiz
+       cagiran OYUNCU once suc islerken gordugu herkesi (MEMORY_SAWCRIME) kriminal yapar,
+       ancak sonra etraftaki kriminaller aranir. Bu adim eksikti; yalnizca gorenlere gri
+       gorunen bir suc muhafiza hic bildirilemiyordu. Fonksiyonel tatbikati Sphere 56T ozel
+       surum paketinde calistirirken bulundu; orada muhafizlar hic gelmiyordu.
+EKLEME - Test: sucu goren oyuncu muhafiz cagirarak sucluyu kriminal yapar.
+
+[2026-10-15] - Oyunda kurulan spawn gem'leri calisiyor; START hemen tetikler; spawn tatbikati
+------------------------------------------------------------------------
+DUZELTME - Spawn: tanimindan yapilan spawn gem'i (.ADD, script NEWITEM) spawn bilesenini hic
+       almiyordu - bilesen yalnizca dunya yuklenirken ve calisma aninda TYPE degisince
+       kuruluyordu - bu yuzden SPAWNID, AMOUNT ve START kabul ediliyor ama hicbir sey
+       uretilmiyordu. Bilesen artik item'la birlikte geliyor, Source-X'in item
+       yaratilirken CCSpawn kurmasi gibi; @Create'ten once, olusturma scripti ayarlayabilsin.
+DUZELTME - Spawn: START ve RESET yalnizca bilesenin kendi saatini oynatiyordu; spawn'i
+       yuruten gem zamanlayicisi oldugu yerde kaliyordu (yeni gem icin 15-30 dakika).
+       Artik gem'i hemen tetikliyorlar, pItem->SetTimeout(0) gibi (CCSpawn.cpp:1257).
+DUZELTME - Spawn: canli spawner'da sayisal MORE1 spawn hedefidir (CCSpawn.cpp:943); yalnizca
+       defname bicimi bilesene ulasiyordu.
+EKLEME - Fonksiyonel tatbikat "spawn" paketi: .ADD ile kurulup SPAWNID/AMOUNT/TIMELO/TIMEHI/
+       MAXDIST/START ile ayarlanan gem ilk yaratigi hemen, sonrakini zamanlayicisiyla uretir,
+       miktarini asmaz ve oldurulen yaratigi yeniler.
+EKLEME - Test: tanimindan yapilan gem dunyanin zamanlayici kuyruguyla spawn eder.
+
 [2026-10-15] - Akici gemi hareketi yalnizca destekleyen client'lara; gemi tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Gemiler: hareket eden geminin yakinindaki her client'a akici hareket paketi

@@ -86,6 +86,8 @@ public class SkillMagicPhase4Tests
 
             var rune = world.CreateItem();
             rune.SetRuneMark(new Point3D(200, 210, 5, 0));
+            rune.ItemType = ItemType.Rune;
+            rune.More1 = 10;
             world.PlaceItem(rune, new Point3D(101, 100, 0, 0));
 
             var engine = new SpellEngine(world, registry);

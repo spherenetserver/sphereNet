@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Mark ve rune asinmasi Source-X'e uyuyor; seyahat buyusu tatbikati
+------------------------------------------------------------------------
+DUZELTME - Mark (CItem::OnSpellEffect SPELL_Mark, CItem.cpp:5721): basarili mark, aslinda
+       ret mesaji olan "The rune must be on your person to mark" yaziyordu. Mark artik
+       yalnizca buyucunun uzerinde tasidigi bir rune ya da telepad'i isaretler (degilse
+       "That item is not a recall rune.", tasinmiyorsa MARK_CONT reddi; yerde yakindaki
+       rune da isaretleniyordu), staff haric. Isaretlenen rune gucunu buyunun EFFECT
+       egrisinden (MORE1, kalan kullanim) ve isaretlendigi bolgenin adini alir, mesajsiz.
+DUZELTME - Recall / Gate Travel (CChar::Spell_Recall, CCharSpell.cpp:395): hedef rune ya da
+       telepad olmali; gucu bitmis rune "The recall rune's magic has faded" der ve
+       gondermez (staff'a soylenir ama gider). Her yolculuk rune'dan bir kullanim dusurur
+       (staff haric), ondan azinda "starting to fade" uyarir. Rune'lar hic asinmiyordu.
+EKLEME - Fonksiyonel tatbikat "travel" paketi: sehirde rune isaretle, sehir disindan recall,
+       Gate Travel acip kapidan gec; reagent, mana ve iki uctaki kapi kontrol edilir.
+EKLEME - Testler: mark noktayi, gucu ve bolgeyi mesajsiz yazar; yerdeki rune ve rune
+       olmayan item reddedilir; recall bir kullanim dusurur ve uyarir; bitmis rune gitmez.
+       Mevcut recall/gate testleri artik gercek rune kullanir (t_rune ve guc).
+
 [2026-10-15] - Fonksiyonel tatbikat: notoriety ve muhafizlar
 ------------------------------------------------------------------------
 EKLEME - Fonksiyonel tatbikat "law" paketi, Source-X tanik modeline gore (CheckCrimeSeen /

@@ -91,6 +91,8 @@ internal static class FunctionalDrill
                 await HouseSuite(o, root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "law")
                 await LawSuite(o, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "travel")
+                await TravelSuite(o, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -1196,6 +1198,135 @@ internal static class FunctionalDrill
         attacker.Disconnect();
         victim.Disconnect();
         second.Disconnect();
+    }
+
+    // ---- travel magic ------------------------------------------------------------------
+
+    // Scripts-X: i_rune_marker 0x1F14 (t_rune), i_moongate_blue 0x0F6C; [SPELL 45] s_mark,
+    // [SPELL 32] s_recall, [SPELL 52] s_gate_travel.
+    private const ushort Rune = 0x1F14, Moongate = 0x0F6C;
+    private const ushort BlackPearl = 0x0F7A, BloodMoss = 0x0F7B, MandrakeRoot = 0x0F86, SulfurAsh = 0x0F8C;
+    private const int MarkSpell = 45, RecallSpell = 32, GateSpell = 52;
+
+    private static async Task TravelSuite(Options o, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        var bot = await LoginAsync(981, port, ct);
+        string[] parts = o.Vendor.Point.Split(',');
+        int hx = int.Parse(parts[0], CultureInfo.InvariantCulture) + 2, hy = int.Parse(parts[1], CultureInfo.InvariantCulture) + 2;
+        int hz = int.Parse(parts[2], CultureInfo.InvariantCulture);
+        const string Away = "1135,1640,0";
+        uint rune = 0;
+
+        bool Near(int x, int y) => Math.Max(Math.Abs(bot.World.X - x), Math.Abs(bot.World.Y - y)) <= 1;
+        string JournalSince(long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+
+        async Task GoAway()
+        {
+            await AsStaff(server, bot.AccountName, async () =>
+            {
+                await SayAsync(bot, $".go {Away}", ct);
+                await SayAsync(bot, ".mana 100", ct);
+            });
+            if (Near(hx, hy)) throw new ScenarioFailed("still at the marked spot after .go");
+        }
+
+        await RunScenario("travel", "setup: spellbook, reagents, a blank rune", outcomes, async () =>
+        {
+            await AsStaff(server, bot.AccountName, async () =>
+            {
+                await SayAsync(bot, $".go {hx},{hy},{hz}", ct);
+                await SayAsync(bot, ".magery 1000", ct);
+                await SayAsync(bot, ".int 100", ct);
+                await SayAsync(bot, ".mana 100", ct);
+                await AddIntoPackAsync(bot, "i_spellbook", ct);
+                await AddIntoPackAsync(bot, "i_rune_marker", ct);
+                for (int i = 0; i < 3; i++)
+                    foreach (string def in new[] { "i_reag_black_pearl", "i_reag_blood_moss", "i_reag_mandrake_root", "i_reag_sulfur_ash" })
+                        await AddIntoPackAsync(bot, def, ct);
+                var book = (await PackContentsAsync(bot, ct)).FirstOrDefault(i => i.ItemId == Spellbook)
+                    ?? throw new ScenarioFailed("no spellbook in the pack after .add");
+                foreach (string verb in new[] { ".xmore1 0ffffffff", ".xmore2 0ffffffff" })
+                {
+                    await bot.Actions.Say(verb, ct);
+                    if (await bot.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                        throw new ScenarioFailed($"no target cursor for {verb}");
+                    await bot.Actions.TargetObject(book.Serial, ct);
+                    await Task.Delay(500, ct);
+                }
+            });
+            var pack = await PackContentsAsync(bot, ct);
+            rune = pack.FirstOrDefault(i => i.ItemId == Rune)?.Serial ?? throw new ScenarioFailed("no rune in the pack after .add");
+            return $"rune 0x{rune:X}, pearl/moss/mandrake/ash {CountOf(pack, BlackPearl)}/{CountOf(pack, BloodMoss)}/" +
+                   $"{CountOf(pack, MandrakeRoot)}/{CountOf(pack, SulfurAsh)}, mana {bot.World.Mana}/{bot.World.MaxMana}";
+        });
+
+        await RunScenario("travel", "mark the rune here", outcomes, async () =>
+        {
+            var pack = await PackContentsAsync(bot, ct);
+            int pearls = CountOf(pack, BlackPearl), mana = bot.World.Mana;
+            long since = Environment.TickCount64;
+            var cast = await bot.Actions.CastSpell(MarkSpell, rune, 5000, ct);
+            await WaitAsync(() => bot.World.Mana < mana ? (object)true : null, 8000,
+                $"mana to be spent on Mark (cast {cast}; journal: {JournalSince(since)})");
+            await Task.Delay(500, ct);
+            int pearlsAfter = CountOf(await PackContentsAsync(bot, ct), BlackPearl);
+            string said = JournalSince(since);
+            if (pearlsAfter != pearls - 1) throw new ScenarioFailed($"black pearl {pearls} -> {pearlsAfter}; journal: {said}");
+            // DEFMSG_SPELL_MARK_CONT is the refusal for a rune not carried, never the success.
+            if (said.Contains("must be on your person", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed($"a successful mark said the refusal line; journal: {said}");
+            return $"marked at {bot.World.X},{bot.World.Y}; mana {mana} -> {bot.World.Mana}{(said.Length > 0 ? $"; {said}" : "")}";
+        });
+
+        await RunScenario("travel", "recall to the rune", outcomes, async () =>
+        {
+            await GoAway();
+            long since = Environment.TickCount64;
+            var cast = await bot.Actions.CastSpell(RecallSpell, rune, 5000, ct);
+            await WaitAsync(() => Near(hx, hy) ? (object)true : null, 8000,
+                $"to arrive at {hx},{hy} (cast {cast}, at {bot.World.X},{bot.World.Y}; journal: {JournalSince(since)})");
+            return $"recalled from {Away} to {bot.World.X},{bot.World.Y}";
+        });
+
+        await RunScenario("travel", "a gate to the rune, walked through", outcomes, async () =>
+        {
+            await GoAway();
+            short ax = bot.World.X, ay = bot.World.Y;
+            long since = Environment.TickCount64;
+            var cast = await bot.Actions.CastSpell(GateSpell, rune, 5000, ct);
+            var gate = await WaitAsync(() =>
+            {
+                lock (bot.World.SyncRoot)
+                    return bot.World.KnownItems.Values.FirstOrDefault(i => i.ContainerSerial == 0 && i.ItemId == Moongate &&
+                        Math.Max(Math.Abs(i.X - ax), Math.Abs(i.Y - ay)) <= 3);
+            }, 10_000, $"a moongate (0x0F6C) beside the caster (cast {cast}; journal: {JournalSince(since)})");
+            // The gate opens on the caster's own tile; a gate takes whoever steps onto it.
+            // MoveTo stops a tile short, so single steps: east off the gate, west back on
+            // (the first press in a new direction only turns).
+            for (int i = 0; i < 3 && bot.World.X == gate.X; i++)
+            {
+                await bot.Actions.MoveDirection(2, ct);
+                await Task.Delay(300, ct);
+            }
+            string offAt = $"{bot.World.X},{bot.World.Y}";
+            for (int i = 0; i < 3 && bot.World.X != gate.X && !Near(hx, hy); i++)
+            {
+                await bot.Actions.MoveDirection(6, ct);
+                await Task.Delay(300, ct);
+            }
+            await WaitAsync(() => Near(hx, hy) ? (object)true : null, 6000,
+                $"the gate at {gate.X},{gate.Y} to take the bot to {hx},{hy} (stepped off to {offAt}; " +
+                $"at {bot.World.X},{bot.World.Y}; journal: {JournalSince(since)})");
+            bool otherEnd;
+            lock (bot.World.SyncRoot)
+                otherEnd = bot.World.KnownItems.Values.Any(i => i.ContainerSerial == 0 && i.ItemId == Moongate &&
+                    Math.Max(Math.Abs(i.X - hx), Math.Abs(i.Y - hy)) <= 2);
+            return $"gate at {gate.X},{gate.Y} took the bot to {bot.World.X},{bot.World.Y}" +
+                   (otherEnd ? ", a gate stands at this end too" : ", no gate seen at this end");
+        });
+
+        bot.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

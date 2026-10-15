@@ -1399,26 +1399,8 @@ public sealed partial class SpellEngine
         if (spell == SpellType.Mark)
         {
             var rune = _world?.FindItem(targetUid);
-            if (rune != null)
-            {
-                if (!IsItemAccessible(caster, rune))
-                {
-                    OnSysMessage?.Invoke(caster, "You must target a rune in your pack.");
-                }
-                else if (FireItemSpellEffect(caster, rune, def, skillLevel, castSource) == TriggerResult.True)
-                {
-                    // Script handled/cancelled the native mark.
-                }
-                else
-                {
-                    rune.SetRuneMark(caster.Position);
-                    OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellMarkCont));
-                }
-            }
-            else
-            {
-                OnSysMessage?.Invoke(caster, "You must target a recall rune.");
-            }
+            if (rune != null && FireItemSpellEffect(caster, rune, def, skillLevel, castSource) != TriggerResult.True)
+                MarkRune(caster, rune, def, skillLevel);
             if (def.Sound > 0) OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
             return true;
         }
@@ -3102,13 +3084,76 @@ public sealed partial class SpellEngine
         return false;
     }
 
+    /// <summary>CItem::OnSpellEffect SPELL_Mark (CItem.cpp:5721-5746): only a rune or a
+    /// telepad takes a mark, and only one the caster carries (staff excepted). The
+    /// mark is the caster's spot; a rune also takes its strength - the uses left, from
+    /// the spell's EFFECT curve - and the name of the area it was marked in. Nothing is
+    /// said on success: DEFMSG_SPELL_MARK_CONT is the refusal for a rune not carried.</summary>
+    private void MarkRune(Character caster, Item rune, SpellDef def, int skillLevel)
+    {
+        bool isRune = rune.ItemType == ItemType.Rune;
+        if (caster.PrivLevel < PrivLevel.GM)
+        {
+            if (!isRune && rune.ItemType != ItemType.Telepad)
+            {
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallNotrune));
+                return;
+            }
+            if (rune.GetTopLevelObj() != caster)
+            {
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellMarkCont));
+                return;
+            }
+        }
+        rune.SetRuneMark(caster.Position);
+        if (isRune)
+        {
+            rune.More1 = (uint)Math.Max(0, def.GetEffect(skillLevel));
+            if (_world?.FindRegion(caster.Position) is { } area && !string.IsNullOrEmpty(area.Name))
+                rune.Name = area.Name;
+        }
+    }
+
     private void ApplyRuneTravelSpell(Character caster, Item rune, SpellDef def)
     {
+        // CChar::Spell_Recall (CCharSpell.cpp:395-410): a rune or a telepad, marked,
+        // and - for a rune - not worn out; a GM is told but goes anyway.
+        bool isRune = rune.ItemType == ItemType.Rune;
+        if (!isRune && rune.ItemType != ItemType.Telepad)
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallNotrune));
+            return;
+        }
         if (!rune.TryGetRuneMark(out Point3D dest))
         {
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallBlank));
             return;
         }
+        if (isRune && (int)rune.More1 <= 0)
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallFaded));
+            if (caster.PrivLevel < PrivLevel.GM)
+                return;
+        }
+
+        if (TravelByRune(caster, def, dest) && isRune)
+        {
+            // Wear out the rune (:425-434): one use per trip, staff excepted. The
+            // fade-complete line sits behind the "< 10" test upstream and so never
+            // shows; the starting-to-fade warning covers the last ten uses.
+            if (caster.PrivLevel < PrivLevel.GM)
+                rune.More1 = (uint)Math.Max(0, (int)rune.More1 - 1);
+            if ((int)rune.More1 < 10)
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallSfade));
+            else if (rune.More1 == 0)
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallFadec));
+        }
+    }
+
+    /// <summary>The trip itself: Spell_Teleport for Recall, Spell_CreateGate for Gate
+    /// Travel. Returns whether the caster went (or a gate opened).</summary>
+    private bool TravelByRune(Character caster, SpellDef def, Point3D dest)
+    {
 
         // A frozen/jailed/paralyzed or dead caster cannot travel out — otherwise
         // a jailed player could recall straight out of jail.
@@ -3116,7 +3161,7 @@ public sealed partial class SpellEngine
             (caster.IsDead || caster.IsStatFlag(StatFlag.Freeze)))
         {
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
-            return;
+            return false;
         }
 
         // PRIV_JAILED and Gate Travel: Spell_CreateGate refuses a jailed caster
@@ -3127,7 +3172,7 @@ public sealed partial class SpellEngine
             caster.PrivLevel < Core.Enums.PrivLevel.GM && caster.IsJailed)
         {
             SendJailedTravelMessage(caster);
-            return;
+            return false;
         }
 
         if (caster.PrivLevel < Core.Enums.PrivLevel.GM)
@@ -3137,12 +3182,12 @@ public sealed partial class SpellEngine
             if (srcRegion != null && srcRegion.NoMagic)
             {
                 OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
-                return;
+                return false;
             }
             if (destRegion != null && destRegion.NoMagic)
             {
                 OnSysMessage?.Invoke(caster, "That location blocks magic.");
-                return;
+                return false;
             }
             // Source-X anti-magic sub-flags (REGION_ANTIMAGIC_*): RECALL_OUT blocks
             // leaving by recall, RECALL_IN (the Recall flag) blocks arriving by
@@ -3152,26 +3197,26 @@ public sealed partial class SpellEngine
             {
                 if (srcRegion != null && (srcRegion.IsFlag(RegionFlag.RecallOut) ||
                     (srcRegion.TryGetProperty("RECALLOUT", out string? rOut) && rOut == "0")))
-                { OnSysMessage?.Invoke(caster, "You cannot recall from here."); return; }
+                { OnSysMessage?.Invoke(caster, "You cannot recall from here."); return false; }
                 if (destRegion != null && (destRegion.IsFlag(RegionFlag.Recall) ||
                     (destRegion.TryGetProperty("RECALLIN", out string? rIn) && rIn == "0")))
-                { OnSysMessage?.Invoke(caster, "You cannot recall to that location."); return; }
+                { OnSysMessage?.Invoke(caster, "You cannot recall to that location."); return false; }
             }
             if (def.Id == SpellType.GateTravel)
             {
                 if (srcRegion != null && (srcRegion.IsFlag(RegionFlag.Gate) ||
                     (srcRegion.TryGetProperty("GATEOUT", out string? gOut) && gOut == "0")))
-                { OnSysMessage?.Invoke(caster, "You cannot open a gate here."); return; }
+                { OnSysMessage?.Invoke(caster, "You cannot open a gate here."); return false; }
                 if (destRegion != null && (destRegion.IsFlag(RegionFlag.Recall) || destRegion.IsFlag(RegionFlag.Gate) ||
                     (destRegion.TryGetProperty("GATEIN", out string? gIn) && gIn == "0")))
-                { OnSysMessage?.Invoke(caster, "You cannot gate to that location."); return; }
+                { OnSysMessage?.Invoke(caster, "You cannot gate to that location."); return false; }
             }
         }
 
         if (_world.GetSector(dest) == null)
         {
             OnSysMessage?.Invoke(caster, "That location is unreachable.");
-            return;
+            return false;
         }
 
         var md = _world.MapData;
@@ -3181,7 +3226,7 @@ public sealed partial class SpellEngine
             if (dest.X < 0 || dest.Y < 0 || dest.X >= mapW || dest.Y >= mapH)
             {
                 OnSysMessage?.Invoke(caster, "That location is unreachable.");
-                return;
+                return false;
             }
             // Don't teleport into a wall/water/impassable static — would leave
             // the traveller stuck. Applies to both Recall and Gate destinations.
@@ -3189,7 +3234,7 @@ public sealed partial class SpellEngine
                 !md.IsPassable(dest.Map, dest.X, dest.Y, dest.Z))
             {
                 OnSysMessage?.Invoke(caster, "That location is blocked.");
-                return;
+                return false;
             }
         }
 
@@ -3198,14 +3243,15 @@ public sealed partial class SpellEngine
             // Spell_Teleport's PRIV_JAILED check runs after its anti-magic checks
             // (CCharSpell.cpp:146-174), so it comes last here too.
             if (!RedirectJailedTravel(caster, ref dest))
-                return;
+                return false;
             byte oldMap = caster.MapIndex;
-            if (_world.MoveCharacter(caster, dest))
-                OnSpellTeleport?.Invoke(caster, dest, oldMap);
-            return;
+            if (!_world.MoveCharacter(caster, dest))
+                return false;
+            OnSpellTeleport?.Invoke(caster, dest, oldMap);
+            return true;
         }
 
-        CreateGate(caster, def, dest);
+        return CreateGate(caster, def, dest);
     }
 
     private void SendJailedTravelMessage(Character caster) =>
@@ -3241,7 +3287,7 @@ public sealed partial class SpellEngine
     /// curve at 0 skill; the art is EFFECT_ID, else blue into a safe region and red
     /// into an unsafe one. A ship is never a destination, and a gate already on
     /// either spot refuses a second.</summary>
-    private void CreateGate(Character caster, SpellDef def, Point3D dest)
+    private bool CreateGate(Character caster, SpellDef def, Point3D dest)
     {
         var here = caster.Position;
         var srcRegion = _world.FindRegion(here);
@@ -3251,12 +3297,12 @@ public sealed partial class SpellEngine
             if (destRegion != null && destRegion.IsFlag(RegionFlag.Ship))
             {
                 OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGateSomethingblocking));
-                return;
+                return false;
             }
             if (HasTelepadAt(here) || HasTelepadAt(dest))
             {
                 OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGateAlreadythere));
-                return;
+                return false;
             }
         }
 
@@ -3298,6 +3344,7 @@ public sealed partial class SpellEngine
         }
 
         OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGateOpen));
+        return true;
     }
 
     private bool HasTelepadAt(Point3D p)

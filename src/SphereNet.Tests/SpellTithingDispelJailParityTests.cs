@@ -341,6 +341,8 @@ public sealed class SpellTithingDispelJailParityTests
     {
         var rune = world.CreateItem();
         rune.SetRuneMark(mark);
+        rune.ItemType = ItemType.Rune;
+        rune.More1 = 10;
         world.PlaceItem(rune, new Point3D((short)(caster.X + 1), caster.Y, 0, 0));
         return rune;
     }

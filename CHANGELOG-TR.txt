@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Evcillestirme basari mesaji ve hafizasi; fonksiyonel takas, kapi ve pet senaryolari
+------------------------------------------------------------------------
+DUZELTME - Evcillestirme: basari "It seems to accept you as master" ve ardindan Source-X'in
+       yalnizca kendini hedef alana gosterdigi "You are your own master" mesajini
+       veriyordu. Ilk evcillestirme artik hayvanda evcillestirene dair NPC_MEM_ACT_TAMED
+       hafizasi birakiyor; serbest birakip tekrar evcillestirmek TAMING_REMEMBER der ve
+       skill kazandirmaz (CCharSkill.cpp:2384); evcillestir-birak dongusu skill yukseltmez.
+EKLEME - Fonksiyonel tatbikat "world" paketi: iki taraf da onaylayinca takas bir item'i ve
+       100 altini tasir, iptal edilen takas teklifi geri verir, kapi cift tiklayinca acilir
+       ve kendiliginden kapanir, evcillestirilen at sahibini takip eder.
+EKLEME - Bot client: AutoAcceptTrades (varsayilan acik) kapatilabiliyor; takas penceresini
+       cagiran yonetir.
+EKLEME - Test: ilk evcillestirme basari der ve hafiza kaydeder, ikincisi hatirlanir.
+
 [2026-10-15] - Crafting aletleri paketin menulerini aciyor; skill menu satirlari; RESMAKE
 ------------------------------------------------------------------------
 DUZELTME - Crafting aletleri (tinker aleti, havan, testere, yemek, haritacilik, dikis

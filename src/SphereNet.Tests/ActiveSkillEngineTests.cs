@@ -307,6 +307,43 @@ public class ActiveSkillEngineTests
         Assert.Equal(ServerMessages.GetFormatted(Msg.TamingTamed, human.Name), sink.Log[0].Text);
     }
 
+    /// <summary>CChar::Skill_Taming success (CCharSkill.cpp:2384-2406): a first taming
+    /// says TAMING_SUCCESS and leaves the creature a NPC_MEM_ACT_TAMED memory of the
+    /// tamer; taming it again after a release says TAMING_REMEMBER. TAMING_YMASTER is
+    /// the self-target refusal and never follows a success.</summary>
+    [Fact]
+    public void Taming_SuccessSaysAcceptsAndASecondTamingIsRemembered()
+    {
+        var world = MakeWorld();
+        var ch = MakeChar();
+        ch.SetSkill(SkillType.Taming, 1000);
+        var horse = MakeChar("horse", player: false, brain: NpcBrainType.Animal, body: 0x00C8);
+        horse.SetSkill(SkillType.Taming, 10);
+
+        RecordingActiveSink TameUntilOwned()
+        {
+            for (int i = 0; i < 50; i++)
+            {
+                var sink = new RecordingActiveSink(ch, world);
+                if (ActiveSkillEngine.Taming(sink, horse)) return sink;
+            }
+            throw new Xunit.Sdk.XunitException("never tamed at 100.0 against 1.0");
+        }
+
+        var first = TameUntilOwned();
+        Assert.Contains(first.Log, e => e.Text == ServerMessages.GetFormatted(Msg.TamingSuccess, horse.Name));
+        Assert.DoesNotContain(first.Log, e => e.Text == ServerMessages.GetFormatted(Msg.TamingYmaster, horse.Name) ||
+                                               e.Text == ServerMessages.Get(Msg.TamingYmaster));
+        var memory = horse.Memory_FindObjTypes(ch.Uid, MemoryType.Speak);
+        Assert.NotNull(memory);
+        Assert.Equal(Character.NpcMemActTamed, memory!.More1 & 0xFFFF);
+
+        horse.ClearOwnership();
+        var second = TameUntilOwned();
+        Assert.Contains(second.Log, e => e.Text == ServerMessages.GetFormatted(Msg.TamingRemember, horse.Name));
+        Assert.DoesNotContain(second.Log, e => e.Text == ServerMessages.GetFormatted(Msg.TamingSuccess, horse.Name));
+    }
+
     [Fact]
     public void Taming_AlreadyPet_PrintsTamedAlready()
     {

@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - Taming success message and memory; functional trade, door and pet scenarios
+------------------------------------------------------------------------
+FIX - Taming: a success said "It seems to accept you as master" and then "You are your
+      own master", the message Source-X keeps for targeting yourself. A first taming now
+      leaves the creature a NPC_MEM_ACT_TAMED memory of the tamer; taming it again after
+      a release says TAMING_REMEMBER and gives no skill gain (CCharSkill.cpp:2384), so a
+      tame-release loop no longer raises the skill.
+ADD - Functional drill "world" suite: a secure trade moves an item and 100 gold both
+      ways once both sides accept, a cancelled trade returns the offer, a door opens on
+      double-click and closes by itself, a tamed horse follows its master.
+ADD - Bot client: AutoAcceptTrades (on by default) can be turned off so a caller drives
+      the trade window.
+ADD - Test: first taming says success and records the memory, a second is remembered.
+
 [2026-10-15] - Crafting tools open the pack's menus; skill menu entries; RESMAKE
 ------------------------------------------------------------------------
 FIX - Crafting tools (tinker tools, mortar, saw, cooking, cartography, sewing kit,

@@ -65,6 +65,10 @@ public sealed class BotClient : IDisposable
     /// decoded Huffman unit is one packet).</summary>
     public Action<byte[]>? ServerPacketObserver { get; set; }
 
+    /// <summary>Check this side of every trade window the server opens (the load
+    /// bots' behaviour). Off: the window is left to the caller.</summary>
+    public bool AutoAcceptTrades { get; set; } = true;
+
     public BotState State { get; internal set; } = BotState.Disconnected;
     public int PacketsSent { get; private set; }
     public int PacketsReceived { get; private set; }
@@ -1292,6 +1296,8 @@ public sealed class BotClient : IDisposable
             _world.TradeOpenedMs = openedMs;
             _world.TradeMyAccepted = _world.TradeTheirAccepted = false;
             BotEngine.CountTradeOpened();
+            if (!AutoAcceptTrades)
+                return;
             _ = Task.Run(async () =>
             {
                 // Check this side, and check it again whenever the server clears it:

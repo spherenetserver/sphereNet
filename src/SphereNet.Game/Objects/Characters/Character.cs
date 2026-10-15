@@ -52,6 +52,9 @@ public partial class Character : ObjBase
     /// in the low word of MORE1 (m_itEqMemory.m_Action) once an NPC has quoted its
     /// wage to someone - their next gold is the hire.</summary>
     public const uint NpcMemActSpeakHire = 2;
+    /// <summary>NPC_MEM_ACT_TAMED (CItem.h:57): this creature was tamed by the memory's
+    /// subject before.</summary>
+    public const uint NpcMemActTamed = 4;
     public static Func<Character, Character?, string, bool>? NpcTrainOffer;
     /// <summary>SHRINK: the NPC becomes a figurine. The bool is upstream's
     /// "an argument was given", which bounces the figurine into the owner's pack

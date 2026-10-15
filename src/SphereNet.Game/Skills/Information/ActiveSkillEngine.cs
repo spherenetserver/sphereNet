@@ -860,15 +860,30 @@ public static class ActiveSkillEngine
         if (target.Memory_FindObjTypes(ch.Uid, MemoryType.Fight | MemoryType.HarmedBy |
                 MemoryType.IrritatedBy | MemoryType.Aggreived) != null)
             diff += 50; // "I've attacked it before?" (CCharSkill.cpp:2346)
-        bool success = SkillEngine.UseQuick(ch, SkillType.Taming, diff);
+        // A creature this tamer tamed before remembers it (MEMORY_SPEAK with
+        // NPC_MEM_ACT_TAMED, CCharSkill.cpp:2384): it takes the tamer back with
+        // TAMING_REMEMBER and no skill credit; a first taming says TAMING_SUCCESS and
+        // leaves that memory, against macroing a tame/release loop. TAMING_YMASTER
+        // ("You are your own master") is the self-target refusal only.
+        var tamedMemory = target.Memory_FindObjTypes(ch.Uid, MemoryType.Speak);
+        bool tamedBefore = tamedMemory != null && (tamedMemory.More1 & 0xFFFF) == Character.NpcMemActTamed;
+        bool success = SkillEngine.UseQuick(ch, SkillType.Taming, diff, allowGain: !tamedBefore);
         if (success)
         {
             success = target.TryAssignOwnership(ch, ch, summoned: false, enforceFollowerCap: true);
         }
         if (success)
         {
-            sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingSuccess, target.Name));
-            sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingYmaster, target.Name));
+            if (tamedBefore)
+            {
+                sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingRemember, target.Name));
+            }
+            else
+            {
+                sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingSuccess, target.Name));
+                var memory = target.Memory_AddObjTypes(ch.Uid, MemoryType.Speak);
+                memory.More1 = (memory.More1 & 0xFFFF0000u) | Character.NpcMemActTamed;
+            }
         }
         return success;
     }

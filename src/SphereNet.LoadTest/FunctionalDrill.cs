@@ -85,6 +85,8 @@ internal static class FunctionalDrill
                 await CraftSuite(o, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "gather")
                 await GatherSuite(o, root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "world")
+                await WorldSuite(o, root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -172,15 +174,35 @@ internal static class FunctionalDrill
 
         await RunScenario("economy", "sell to the vendor", outcomes, async () =>
         {
+            // A vendor buys back only some of what it sells, and its stock changes, so
+            // when nothing of ours is on the sell list at a price another item is bought
+            // (up to three) until something is.
+            BotVendorState list = null!;
+            BotVendorItem? entry = null;
+            var triedIds = new HashSet<ushort>();
+            for (int round = 0; round < 3 && entry == null; round++)
+            {
+                bot.World.ActiveVendor = null;
+                await SayAsync(bot, "vendor sell", ct);
+                list = await WaitAsync(() => bot.World.ActiveVendor is { IsBuyList: false } v ? v : null,
+                    8000, "a sell list (0x9E)");
+                entry = list.Items.FirstOrDefault(i => bought != null && i.ItemId == bought.ItemId && i.Price > 0)
+                    ?? list.Items.FirstOrDefault(i => i.Price > 0);
+                if (entry != null) break;
+                if (bought != null) triedIds.Add(bought.ItemId);
+                bot.World.ActiveVendor = null;
+                await SayAsync(bot, "vendor buy", ct);
+                var shop = await WaitAsync(() => bot.World.ActiveVendor is { IsBuyList: true, VendorSerial: not 0 } v && v.Items.Count > 0
+                    ? bot.World.ActiveVendor : null, 8000, "a buy window");
+                var next = shop.Items.Where(i => i.Serial != 0 && i.Price >= 10 && !triedIds.Contains(i.ItemId))
+                    .OrderBy(i => i.Price).FirstOrDefault();
+                if (next == null) break;
+                await bot.Actions.Buy(shop.VendorSerial, next.Serial, 1, ct);
+                await Task.Delay(1500, ct);
+                bought = next;
+            }
             int goldBefore = await RefreshGoldAsync(bot, ct);
-            bot.World.ActiveVendor = null;
-            await SayAsync(bot, "vendor sell", ct);
-            var list = await WaitAsync(() => bot.World.ActiveVendor is { IsBuyList: false } v ? v : null,
-                8000, "a sell list (0x9E)");
-            // What the vendor offers to buy: the item just bought if it is among them,
-            // otherwise anything listed (a vendor buys only some of what it sells).
-            var entry = list.Items.FirstOrDefault(i => bought != null && i.ItemId == bought.ItemId)
-                ?? list.Items.FirstOrDefault(i => i.Price > 0)
+            entry = entry
                 ?? throw new ScenarioFailed($"the sell list offers nothing at a price: [" +
                     string.Join(", ", list.Items.Select(i => $"'{i.Name}' 0x{i.ItemId:X4} serial 0x{i.Serial:X} x{i.Amount} @{i.Price}")) + "]");
             int haveBefore = await CountInPackAsync(bot, entry.ItemId, ct);
@@ -763,6 +785,171 @@ internal static class FunctionalDrill
         string said = string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).TakeLast(6).Select(e => e.Text));
         throw new ScenarioFailed($"no {what} after {uses} uses on '{spot.Name}' 0x{spot.Graphic:X4} at {spot.X},{spot.Y},{spot.Z} " +
                                  $"(standing {spot.StandX},{spot.StandY},{spot.StandZ}); journal: {said}");
+    }
+
+    // ---- trade, doors, pets -------------------------------------------------------------
+
+    private static async Task WorldSuite(Options o, string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        var a = await LoginAsync(951, port, ct);
+        var b = await LoginAsync(952, port, ct);
+        a.AutoAcceptTrades = false;
+        b.AutoAcceptTrades = false;
+        string[] parts = o.Vendor.Point.Split(',');
+        int px = int.Parse(parts[0], CultureInfo.InvariantCulture), py = int.Parse(parts[1], CultureInfo.InvariantCulture);
+        int pz = int.Parse(parts[2], CultureInfo.InvariantCulture);
+
+        await RunScenario("world", "setup: two players side by side", outcomes, async () =>
+        {
+            await AsStaff(server, a.AccountName, async () =>
+            {
+                await SayAsync(a, $".go {px},{py},{pz}", ct);
+                await SayAsync(a, ".newgold 500", ct);
+                await AddIntoPackAsync(a, "i_gears", ct);
+            });
+            await AsStaff(server, b.AccountName, () => SayAsync(b, $".go {px + 1},{py},{pz}", ct));
+            await WaitAsync(() => { lock (a.World.SyncRoot) return a.World.Mobiles.ContainsKey(b.World.CharUid) ? (object)true : null; },
+                5000, "each other in view");
+            return $"A has {await PackGoldAsync(a, ct)} gold and gears";
+        });
+
+        await RunScenario("world", "trade: gears and 100 gold change hands", outcomes, async () =>
+        {
+            var packA = await PackContentsAsync(a, ct);
+            int gearsA = CountOf(packA, Gears), goldA = await PackGoldAsync(a, ct);
+            int gearsB = CountOf(await PackContentsAsync(b, ct), Gears), goldB = await PackGoldAsync(b, ct);
+            var gears = packA.First(i => i.ItemId == Gears);
+
+            await a.Actions.PickUp(gears.Serial, 1, 2000, ct);
+            await a.Actions.DropToContainer(gears.Serial, b.World.CharUid, 2000, ct);
+            await WaitAsync(() => a.World.TradeContainer != 0 && b.World.TradeContainer != 0 ? (object)true : null,
+                5000, "a trade window on both sides (0x6F)");
+            var pile = (await PackContentsAsync(a, ct)).Where(i => i.ItemId == 0x0EED).OrderByDescending(i => i.Amount).First();
+            await a.Actions.PickUp(pile.Serial, 100, 2000, ct);
+            await a.Actions.DropToContainer(pile.Serial, a.World.TradeContainer, 2000, ct);
+            await Task.Delay(800, ct);
+            a.SendRaw(BotPacketBuilder.BuildTradeAccept(a.World.TradeContainer, accept: true));
+            b.SendRaw(BotPacketBuilder.BuildTradeAccept(b.World.TradeContainer, accept: true));
+            await WaitAsync(() => a.World.TradeContainer == 0 && b.World.TradeContainer == 0 ? (object)true : null,
+                6000, "the trade to close after both accepted");
+
+            int gearsA2 = CountOf(await PackContentsAsync(a, ct), Gears), goldA2 = await PackGoldAsync(a, ct);
+            int gearsB2 = CountOf(await PackContentsAsync(b, ct), Gears), goldB2 = await PackGoldAsync(b, ct);
+            string detail = $"A gears {gearsA} -> {gearsA2}, gold {goldA} -> {goldA2}; B gears {gearsB} -> {gearsB2}, gold {goldB} -> {goldB2}";
+            if (gearsA2 != gearsA - 1 || gearsB2 != gearsB + 1 || goldA2 != goldA - 100 || goldB2 != goldB + 100)
+                throw new ScenarioFailed(detail);
+            return detail;
+        });
+
+        await RunScenario("world", "a cancelled trade returns the offer", outcomes, async () =>
+        {
+            var packB = await PackContentsAsync(b, ct);
+            var gears = packB.FirstOrDefault(i => i.ItemId == Gears) ?? throw new ScenarioFailed("B has no gears to offer");
+            int gearsA = CountOf(await PackContentsAsync(a, ct), Gears), gearsB = CountOf(packB, Gears);
+            await b.Actions.PickUp(gears.Serial, 1, 2000, ct);
+            await b.Actions.DropToContainer(gears.Serial, a.World.CharUid, 2000, ct);
+            await WaitAsync(() => b.World.TradeContainer != 0 ? (object)true : null, 5000, "a trade window (0x6F)");
+            await Task.Delay(500, ct);
+            b.SendRaw(BotPacketBuilder.BuildTradeClose(b.World.TradeContainer));
+            await WaitAsync(() => a.World.TradeContainer == 0 && b.World.TradeContainer == 0 ? (object)true : null,
+                5000, "the trade to close");
+            int gearsA2 = CountOf(await PackContentsAsync(a, ct), Gears), gearsB2 = CountOf(await PackContentsAsync(b, ct), Gears);
+            string detail = $"A gears {gearsA} -> {gearsA2}; B gears {gearsB} -> {gearsB2}";
+            if (gearsA2 != gearsA || gearsB2 != gearsB) throw new ScenarioFailed(detail);
+            return detail;
+        });
+
+        await RunScenario("world", "a door opens and closes by itself", outcomes, async () =>
+        {
+            string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+            if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+            using var map = new SphereNet.MapData.MapDataManager(mul);
+            map.Load();
+            bool IsDoor(ushort id) => (map.GetItemTileData(id).Flags & SphereNet.MapData.Tiles.TileFlag.Door) != 0;
+            await Task.Delay(1000, ct);
+            BotKnownItem? door;
+            lock (a.World.SyncRoot)
+                door = a.World.KnownItems.Values.Where(i => i.ContainerSerial == 0 && IsDoor(i.ItemId))
+                    .OrderBy(i => Math.Max(Math.Abs(i.X - a.World.X), Math.Abs(i.Y - a.World.Y))).FirstOrDefault();
+            if (door == null) throw new ScenarioFailed("no door item in view");
+            await AsStaff(server, a.AccountName, () => SayAsync(a, $".go {door.X},{door.Y + 1},{door.Z}", ct));
+            ushort closed = door.ItemId;
+            await a.Actions.DoubleClick(door.Serial, 1000, ct);
+            var opened = await WaitAsync(() => { lock (a.World.SyncRoot) return a.World.KnownItems.GetValueOrDefault(door.Serial) is { } d && d.ItemId != closed ? d : null; },
+                4000, $"door 0x{door.Serial:X} (0x{closed:X4}) to change graphic");
+            ushort openId = opened.ItemId;
+            var sw = Stopwatch.StartNew();
+            await WaitAsync(() => { lock (a.World.SyncRoot) return a.World.KnownItems.GetValueOrDefault(door.Serial) is { } d && d.ItemId == closed ? d : null; },
+                35_000, $"door 0x{door.Serial:X} to close again (still 0x{openId:X4})");
+            return $"door 0x{door.Serial:X} 0x{closed:X4} -> 0x{openId:X4}, closed again after {sw.Elapsed.TotalSeconds:F0}s";
+        });
+
+        await RunScenario("world", "tame a horse, it follows its master", outcomes, async () =>
+        {
+            HashSet<uint> before;
+            lock (a.World.SyncRoot) before = a.World.Mobiles.Keys.ToHashSet();
+            await AsStaff(server, a.AccountName, async () =>
+            {
+                // Open ground west of Britain (the tree drill's forest edge), not the
+                // vendor's shop, so the pet has a clear path after its master.
+                await SayAsync(a, ".go 1253,1500,0", ct);
+                await SayAsync(a, ".taming 1000", ct); // Source-X skill key TAMING
+                await SayAsync(a, ".animallore 1000", ct);
+                await a.Actions.Say(".add c_horse_tan", ct);
+                if (await a.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_horse_tan");
+                await a.Actions.TargetLocation(a.World.X + 2, a.World.Y, a.World.Z, ct);
+                await Task.Delay(800, ct);
+            });
+            var horse = await WaitAsync(() => { lock (a.World.SyncRoot) return a.World.Mobiles.Values.FirstOrDefault(m => !before.Contains(m.Serial) && m.Body == 0x00C8); },
+                5000, "the horse (body 0xC8) to appear");
+            string where = $"bot at {a.World.X},{a.World.Y}, horse at {horse.X},{horse.Y}";
+            long since = Environment.TickCount64;
+            bool tamed = false;
+            for (int attempt = 0; attempt < 6 && !tamed; attempt++)
+            {
+                await ApproachAsync(a, horse.Serial, ct);
+                await a.Actions.UseSkill(35, 3000, ct); // Animal Taming
+                if (await a.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                    await a.Actions.TargetObject(horse.Serial, ct);
+                for (int i = 0; i < 24 && !tamed; i++)
+                {
+                    await Task.Delay(500, ct);
+                    tamed = a.World.Journal.ToArray().Any(e => e.TimestampMs >= since &&
+                        e.Text.Contains("accept", StringComparison.OrdinalIgnoreCase) && e.Text.Contains("master", StringComparison.OrdinalIgnoreCase));
+                }
+            }
+            string said = string.Join(" | ", a.World.Journal.ToArray().Where(e => e.TimestampMs >= since).TakeLast(6).Select(e => e.Text));
+            if (!tamed) throw new ScenarioFailed($"not tamed ({where}); journal: {said}");
+
+            await SayAsync(a, "all follow me", ct);
+            // Walk away; the pet should keep up.
+            short startX = a.World.X, startY = a.World.Y;
+            for (int step = 0; step < 6; step++)
+                await a.Actions.MoveDirection(2, ct); // east
+            await Task.Delay(500, ct);
+            int dist = 99;
+            var trail = new List<string>();
+            var sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < 15_000)
+            {
+                await Task.Delay(1000, ct);
+                lock (a.World.SyncRoot)
+                    if (a.World.Mobiles.TryGetValue(horse.Serial, out var h))
+                    {
+                        dist = a.World.DistanceTo(h.X, h.Y);
+                        trail.Add($"{h.X},{h.Y}");
+                    }
+                if (dist <= 2) break;
+            }
+            if (dist > 2)
+                throw new ScenarioFailed($"tamed, but after 'all follow me' the horse stayed {dist} tiles away; " +
+                                         $"master walked {startX},{startY} -> {a.World.X},{a.World.Y}; horse: {string.Join(" ", trail)}");
+            return $"tamed ({said.Split(" | ").Last()}), followed to {dist} tile(s) in {sw.Elapsed.TotalSeconds:F0}s";
+        });
+
+        a.Disconnect();
+        b.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

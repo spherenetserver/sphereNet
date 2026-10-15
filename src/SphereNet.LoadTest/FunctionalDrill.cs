@@ -95,6 +95,8 @@ internal static class FunctionalDrill
                 await TravelSuite(o, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "healing")
                 await HealingSuite(server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "thief")
+                await ThiefSuite(server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -1465,6 +1467,106 @@ internal static class FunctionalDrill
 
         healer.Disconnect();
         patient.Disconnect();
+    }
+
+    // ---- hiding, snooping, stealing --------------------------------------------------
+
+    private const int HidingSkill = 21, StealingSkill = 33;
+
+    private static async Task ThiefSuite(ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        var thief = await LoginAsync(1001, port, ct);
+        var mark = await LoginAsync(1002, port, ct);
+        uint t = thief.World.CharUid;
+        const int Wx = 1135, Wy = 1640, Wz = 0;
+        uint gears = 0;
+
+        string JournalSince(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        bool MarkSeesThief() { lock (mark.World.SyncRoot) return mark.World.Mobiles.ContainsKey(t); }
+
+        await RunScenario("thief", "setup: a thief beside a mark with gears", outcomes, async () =>
+        {
+            await AsStaff(server, thief.AccountName, async () =>
+            {
+                await SayAsync(thief, $".go {Wx},{Wy},{Wz}", ct);
+                foreach (string skill in new[] { ".hiding 1000", ".stealing 1000", ".snooping 1000", ".stealth 1000" })
+                    await SayAsync(thief, skill, ct);
+            });
+            await AsStaff(server, mark.AccountName, async () =>
+            {
+                await SayAsync(mark, $".go {Wx + 1},{Wy},{Wz}", ct);
+                await AddIntoPackAsync(mark, "i_gears", ct);
+            });
+            gears = (await PackContentsAsync(mark, ct)).FirstOrDefault(i => i.ItemId == Gears)?.Serial
+                ?? throw new ScenarioFailed("no gears in the mark's pack");
+            await WaitAsync(() => MarkSeesThief() ? (object)true : null, 5000, "the thief in the mark's view");
+            if (mark.World.BackpackSerial == 0) throw new ScenarioFailed("the mark's backpack serial is unknown");
+            return $"gears 0x{gears:X} in the mark's pack 0x{mark.World.BackpackSerial:X}";
+        });
+
+        await RunScenario("thief", "hiding takes the thief out of sight", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            for (int attempt = 0; attempt < 4 && MarkSeesThief(); attempt++)
+            {
+                await thief.Actions.UseSkill(HidingSkill, 3000, ct);
+                for (int i = 0; i < 16 && MarkSeesThief(); i++)
+                    await Task.Delay(250, ct);
+            }
+            if (MarkSeesThief()) throw new ScenarioFailed($"the mark still sees the thief; thief: {JournalSince(thief, since)}");
+            return $"gone from the mark's view; thief: {JournalSince(thief, since)}";
+        });
+
+        await RunScenario("thief", "speaking reveals the hidden thief", outcomes, async () =>
+        {
+            await thief.Actions.Say("hello", ct);
+            await WaitAsync(() => MarkSeesThief() ? (object)true : null, 4000, "the thief to reappear after speaking");
+            return "back in the mark's view after speaking";
+        });
+
+        await RunScenario("thief", "snooping opens the mark's pack", outcomes, async () =>
+        {
+            uint pack = mark.World.BackpackSerial;
+            long since = Environment.TickCount64;
+            await thief.Actions.DoubleClick(pack, 1000, ct);
+            var seen = await WaitAsync(() =>
+            {
+                lock (thief.World.SyncRoot)
+                    return thief.World.OpenContainers.TryGetValue(pack, out var c) && c.Items.Any(i => i.Serial == gears) ? c : null;
+            }, 5000, $"the mark's pack to open for the thief with the gears in it; thief: {JournalSince(thief, since)}");
+            return $"pack open, {seen.Items.Count} item(s) seen; mark heard: {JournalSince(mark, since)}";
+        });
+
+        await RunScenario("thief", "stealing takes the gears", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                await thief.Actions.UseSkill(StealingSkill, 3000, ct);
+                if (await thief.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no target cursor from Stealing; thief: {JournalSince(thief, since)}");
+                await thief.Actions.TargetObject(gears, ct);
+                await Task.Delay(2500, ct);
+                var thiefPack = await PackContentsAsync(thief, ct);
+                if (thiefPack.Any(i => i.Serial == gears || i.ItemId == Gears))
+                {
+                    var markPack = await PackContentsAsync(mark, ct);
+                    int left = CountOf(markPack, Gears);
+                    if (left != 0)
+                    {
+                        string theirs = string.Join(",", thiefPack.Where(i => i.ItemId == Gears).Select(i => $"0x{i.Serial:X}"));
+                        string mine = string.Join(",", markPack.Where(i => i.ItemId == Gears).Select(i => $"0x{i.Serial:X}"));
+                        throw new ScenarioFailed($"the thief has gears ({theirs}) but the mark still shows {left} ({mine}); stolen 0x{gears:X}");
+                    }
+                    return $"stolen on attempt {attempt + 1}; thief: {JournalSince(thief, since)}; mark: {JournalSince(mark, since)}";
+                }
+            }
+            throw new ScenarioFailed($"not stolen in 5 tries; thief: {JournalSince(thief, since)}; mark: {JournalSince(mark, since)}");
+        });
+
+        thief.Disconnect();
+        mark.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

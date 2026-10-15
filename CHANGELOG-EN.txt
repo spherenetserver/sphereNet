@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - Snooping and stealing messages and views follow Source-X; thief drill
+------------------------------------------------------------------------
+FIX - Stealing: a successful theft left the item on the mark's screen - the open pack
+      kept showing it until reopened. The move now takes it off every screen first, as
+      CItemContainer::OnInsert does (RemoveFromView, CItemContainer.cpp:727).
+FIX - Stealing from a person greeted the thief with STEALING_PICKPOCKET ("Just dclick this
+      to practice stealing"), the training-dummy line; it is gone.
+FIX - Snooping sent the snooper SNOOPING_ATTEMPTING ("attempting to peek into") as a bare
+      line. That text belongs to the witnesses: CheckCrimeSeen now shows each witness who
+      noticed "You notice X attempting to peek into Y's backpack" over the thief
+      (CCharFight.cpp:128-172), and "stealing" / "attempting to steal" for a theft that
+      worked / failed. The mark is never a witness. No witness was told anything before.
+ADD - Functional drill "thief" suite: hiding takes the thief out of the mark's sight,
+      speaking reveals it, snooping opens the mark's pack, stealing moves the item.
+ADD - Tests: the witness notice text and who gets it, no fragment to the snooper, no
+      training-dummy line on a theft, a stolen item is removed from view (0x1D).
+
 [2026-10-15] - Functional drill: healing and poison
 ------------------------------------------------------------------------
 ADD - Functional drill "healing" suite (Source-X Skill_Healing): a bandage heals a wounded

@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Snooping ve stealing mesajlari ve gorunumu Source-X'e uyuyor; hirsiz tatbikati
+------------------------------------------------------------------------
+DUZELTME - Stealing: basarili hirsizlikta item kurbanin ekraninda kaliyordu - acik canta
+       yeniden acilana kadar gostermeye devam ediyordu. Tasima artik once item'i tum
+       ekranlardan kaldiriyor, CItemContainer::OnInsert'in yaptigi gibi (RemoveFromView,
+       CItemContainer.cpp:727).
+DUZELTME - Bir kisiden calmak hirsiza egitim kuklasinin mesajini (STEALING_PICKPOCKET,
+       "Just dclick this to practice stealing") veriyordu; kaldirildi.
+DUZELTME - Snooping, snoop yapana SNOOPING_ATTEMPTING ("attempting to peek into") metnini
+       tek basina gonderiyordu. Bu metin taniklarindir: CheckCrimeSeen artik fark eden her
+       tanikta hirsizin uzerinde "You notice X attempting to peek into Y's backpack"
+       gosteriyor (CCharFight.cpp:128-172), hirsizlikta basari/basarisizliga gore
+       "stealing" / "attempting to steal". Kurban tanik sayilmaz. Daha once hicbir tanik
+       bir sey duymuyordu.
+EKLEME - Fonksiyonel tatbikat "thief" paketi: saklanma hirsizi kurbanin gorusunden cikarir,
+       konusma ortaya cikarir, snooping kurbanin cantasini acar, stealing item'i tasir.
+EKLEME - Testler: tanik mesaji ve kime gittigi, snoop yapana parca mesaj yok, hirsizlikta
+       egitim kuklasi mesaji yok, calinan item gorunumden kalkar (0x1D).
+
 [2026-10-15] - Fonksiyonel tatbikat: iyilestirme ve zehir
 ------------------------------------------------------------------------
 EKLEME - Fonksiyonel tatbikat "healing" paketi (Source-X Skill_Healing): bandaj yarali

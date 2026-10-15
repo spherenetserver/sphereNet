@@ -1597,6 +1597,12 @@ public static partial class Program
                     _triggerDispatcher.FireCharTrigger(witness, CharTrigger.SeeCrime, args);
                     return args.N1 != 0;
                 };
+            SphereNet.Game.Objects.Characters.CrimeWitnessService.OnWitnessNotice =
+                (witness, criminal, text) =>
+                {
+                    if (_clientsByCharUid.TryGetValue(witness.Uid, out var wc) && wc.IsPlaying)
+                        wc.ObjectMessage(criminal, text);
+                };
             // An NPC witness in a guarded area yells (unless it is a guard) and calls
             // the guards (CCharFight.cpp:85-91).
             SphereNet.Game.Objects.Characters.CrimeWitnessService.OnNpcCallGuards =

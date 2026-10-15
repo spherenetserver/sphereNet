@@ -261,6 +261,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.CrimeWitnessService.OnSeeSnoop = null;
         SphereNet.Game.Objects.Characters.CrimeWitnessService.OnSeeCrime = null;
         SphereNet.Game.Objects.Characters.CrimeWitnessService.OnNpcCallGuards = null;
+        SphereNet.Game.Objects.Characters.CrimeWitnessService.OnWitnessNotice = null;
         SphereNet.Game.Objects.Characters.CrimeWitnessService.WitnessRange = 18;
         SphereNet.Game.Objects.Characters.Character.PetsInheritNotoriety = 0;
         SphereNet.Game.Objects.Characters.CrimeWitnessService.SnoopCriminalChance = 100;

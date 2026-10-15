@@ -245,10 +245,6 @@ public static class ActiveSkillEngine
 
         if (owner == ch)
             return false;
-        if (owner != null)
-        {
-            sink.SysMessage(ServerMessages.GetFormatted(Msg.StealingPickpocket, owner.Name));
-        }
 
         // From a mark: Calc_StealingItem. Off the ground: 1 - "town stuff on the
         // ground is too easy" (CCharSkill.cpp:4307/4314).
@@ -265,6 +261,12 @@ public static class ActiveSkillEngine
             Item? sourceContainer = null;
             if (target.ContainedIn.IsValid)
             {
+                // The insert into the thief's pack takes the item off every screen
+                // first (CItemContainer::OnInsert -> RemoveFromView, CItemContainer.cpp:727)
+                // and then redraws it where it now is. Without the removal the mark's
+                // open pack kept showing the stolen item until it was reopened.
+                Objects.ObjBase.BroadcastNearby?.Invoke(ch.Position, Clients.GameClient.UpdateRange,
+                    new Network.Packets.Outgoing.PacketDeleteObject(target.Uid.Value), 0);
                 sourceContainer = sink.World.FindItem(target.ContainedIn);
                 sourceContainer?.RemoveItem(target);
             }
@@ -305,7 +307,10 @@ public static class ActiveSkillEngine
         // guard flags the thief globally. A theft someone saw costs Noto_Karma(-100)
         // down to -1000 with the karma-change message (:4342-4343); one no one sees
         // has no consequence.
-        if (CrimeWitnessService.CheckCrimeSeen(sink.World, ch, owner, SkillType.Stealing, sink.Random))
+        // Witnesses are told "stealing" for a theft that worked, "attempting to steal"
+        // for one that did not (CCharSkill.cpp:4342).
+        if (CrimeWitnessService.CheckCrimeSeen(sink.World, ch, owner, SkillType.Stealing, sink.Random,
+                item: target, action: ServerMessages.Get(success ? Msg.StealingSomeone : Msg.StealingYour)))
             ApplySkillKarma(ch, -100, -1000, sink.SysMessage);
 
         return success;
@@ -410,7 +415,6 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        sink.SysMessage(ServerMessages.Get(Msg.SnoopingAttempting));
         // All or nothing: 100 when the adjusted skill loses to rand(1000), else 0
         // (CCharSkill.cpp:4157).
         int snoopDiff = SkillEngine.GetAdjustedSkill(ch, SkillType.Snooping) < sink.Random.Next(1000)
@@ -437,8 +441,10 @@ public static class ActiveSkillEngine
         // (perception contest). @SeeSnoop fires; SNOOPCRIMINAL is only the percent
         // chance a noticed snoop counts as a crime (CCharFight.cpp:156) - the witness
         // check itself always runs.
+        // SNOOPING_ATTEMPTING is the witnesses' line ("You notice X attempting to peek
+        // into Y's backpack", CCharSkill.cpp:4161), never the snooper's own message.
         CrimeWitnessService.CheckCrimeSeen(sink.World, ch, ownerChar, SkillType.Snooping,
-            sink.Random, isSnoop: true);
+            sink.Random, isSnoop: true, item: container, action: ServerMessages.Get(Msg.SnoopingAttempting));
 
         return success;
     }

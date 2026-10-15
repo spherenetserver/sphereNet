@@ -43,6 +43,11 @@ public static class CrimeWitnessService
     /// criminal (CCharFight.cpp:85-91). Args: witness, criminal.</summary>
     public static Action<Character, Character>? OnNpcCallGuards;
 
+    /// <summary>Show a witness what it noticed, over the criminal and to that witness
+    /// alone (pChar->ObjMessage(z, this), CCharFight.cpp:165/172). Args: witness,
+    /// criminal, text.</summary>
+    public static Action<Character, Character, string>? OnWitnessNotice;
+
     /// <summary>
     /// Run the witness check. <paramref name="skillToSee"/> is the perception skill
     /// contested for a covert crime (Stealing / Snooping); pass null for an overt
@@ -50,8 +55,18 @@ public static class CrimeWitnessService
     /// if at least one witness noticed.
     /// </summary>
     public static bool CheckCrimeSeen(GameWorld world, Character criminal, Character? mark,
-        SkillType? skillToSee, Random rng, bool isSnoop = false)
+        SkillType? skillToSee, Random rng, bool isSnoop = false, Items.Item? item = null, string? action = null)
     {
+        // What a witness is told (CCharFight.cpp:128-136): "You notice <criminal>
+        // <action> <mark>'s <item>", or without a mark "... <action> <item>." The mark
+        // itself is never a witness, so the "your" form never comes up here.
+        string? notice = null;
+        if (item != null && !string.IsNullOrEmpty(action))
+            notice = mark != null
+                ? Messages.ServerMessages.GetFormatted(Messages.Msg.MsgYounotice2, criminal.Name, action,
+                    mark.Name, Messages.ServerMessages.Get(Messages.Msg.MsgYounoticeS), item.Name)
+                : Messages.ServerMessages.GetFormatted(Messages.Msg.MsgYounotice1, criminal.Name, action, item.Name);
+
         // Guards fight for justice — they can't themselves commit a crime.
         if (!criminal.IsPlayer && criminal.NpcBrain == NpcBrainType.Guard) return false;
 
@@ -85,6 +100,8 @@ public static class CrimeWitnessService
                 seen = true;
                 OnNoticeCrime(world, witness, criminal, mark);
             }
+            if (notice != null)
+                OnWitnessNotice?.Invoke(witness, criminal, notice);
         }
 
         return seen;

@@ -26,7 +26,7 @@ public sealed partial class GameClient
     public void TickPendingSkill() => SkillUse.TickPendingSkill();
 
     /// <summary>Source-X addObjMessage: overhead speech over any ObjBase.</summary>
-    internal void ObjectMessage(Objects.ObjBase target, string text) => SkillUse.ObjectMessage(target, text);
+    public void ObjectMessage(Objects.ObjBase target, string text) => SkillUse.ObjectMessage(target, text);
 
     public void HandleHelpRequest() => SkillUse.HandleHelpRequest();
 

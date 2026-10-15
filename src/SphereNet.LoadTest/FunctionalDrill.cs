@@ -103,6 +103,8 @@ internal static class FunctionalDrill
                 await ShipSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "spawn")
                 await SpawnSuite(server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "guild")
+                await GuildSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -1868,6 +1870,106 @@ internal static class FunctionalDrill
             }
         });
         gm.Disconnect();
+    }
+
+    // ---- guilds ----------------------------------------------------------------------
+
+    private static async Task GuildSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        int Sx, Sy, Sz;
+        using (var map = new SphereNet.MapData.MapDataManager(mul))
+        {
+            map.Load();
+            map.InitMap(0, 7168, 4096);
+            // Open, flat, walkable ground away from the house drill's site.
+            (Sx, Sy, Sz) = HouseSites(map, 1180, 1660, 60).FirstOrDefault();
+        }
+        var founder = await LoginAsync(1041, port, ct);
+        uint stone = 0;
+
+        string JournalSince(long since) =>
+            string.Join(" | ", founder.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+
+        async Task<BotKnownItem> NewDeed()
+        {
+            List<BotKnownItem> before = await PackContentsAsync(founder, ct);
+            await AsStaff(server, founder.AccountName, () => AddIntoPackAsync(founder, "i_deed_guildstone", ct));
+            var after = await PackContentsAsync(founder, ct);
+            return after.FirstOrDefault(i => before.All(b => b.Serial != i.Serial))
+                ?? throw new ScenarioFailed("no guildstone deed in the pack after .add");
+        }
+
+        await RunScenario("guild", "a guildstone deed places the stone and asks for a name", outcomes, async () =>
+        {
+            if (Sx == 0) throw new ScenarioFailed("no open ground found for the stone");
+            await AsStaff(server, founder.AccountName, () => SayAsync(founder, $".go {Sx},{Sy + 2},{Sz}", ct));
+            var deed = await NewDeed();
+            HashSet<uint> seen;
+            lock (founder.World.SyncRoot) seen = founder.World.KnownItems.Keys.ToHashSet();
+            long since = Environment.TickCount64;
+            founder.World.PromptId = 0;
+            await founder.Actions.DoubleClick(deed.Serial, 1000, ct);
+            if (await founder.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no placement cursor from the deed; journal: {JournalSince(since)}");
+            // On the ground the founder stands on, two tiles north.
+            await founder.Actions.TargetLocation(Sx, Sy, Sz, ct);
+            BotKnownItem? placed = null;
+            try
+            {
+                placed = await WaitAsync(() => { lock (founder.World.SyncRoot) return founder.World.KnownItems.Values.FirstOrDefault(i =>
+                        !seen.Contains(i.Serial) && i.ContainerSerial == 0 && i.X == Sx && i.Y == Sy); }, 4000, "the stone");
+            }
+            catch (TimeoutException)
+            {
+                throw new ScenarioFailed($"no stone on the ground at {Sx},{Sy}; journal: {JournalSince(since)}");
+            }
+            stone = placed.Serial;
+            await WaitAsync(() => founder.World.PromptId != 0 ? (object)true : null, 4000,
+                $"the name prompt (0x9A); journal: {JournalSince(since)}");
+            var pack = await PackContentsAsync(founder, ct);
+            if (pack.Any(i => i.Serial == deed.Serial)) throw new ScenarioFailed("the deed is still in the pack");
+            return $"stone 0x{stone:X} (0x{placed.ItemId:X4}) placed, deed used up; {JournalSince(since)}";
+        });
+
+        await RunScenario("guild", "the answer names the stone", outcomes, async () =>
+        {
+            if (stone == 0) throw new ScenarioFailed("no stone");
+            long since = Environment.TickCount64;
+            founder.SendRaw(BotPacketBuilder.BuildPromptResponse(founder.World.PromptSerial, founder.World.PromptId, "Drill Guild"));
+            await Task.Delay(800, ct);
+            founder.SendRaw(BotPacketBuilder.BuildSingleClick(stone));
+            var label = await WaitAsync(() => founder.World.Journal.ToArray().FirstOrDefault(e => e.TimestampMs >= since &&
+                    e.SpeakerSerial == stone && e.Text.Contains("Drill Guild", StringComparison.Ordinal)), 4000,
+                $"the stone's name to carry 'Drill Guild'; journal: {JournalSince(since)}");
+            return $"'{label.Text}'; {JournalSince(since)}";
+        });
+
+        await RunScenario("guild", "a guild member cannot found another guild", outcomes, async () =>
+        {
+            if (stone == 0) throw new ScenarioFailed("no stone");
+            var deed = await NewDeed();
+            long since = Environment.TickCount64;
+            await founder.Actions.DoubleClick(deed.Serial, 1000, ct);
+            await Task.Delay(1500, ct);
+            string said = JournalSince(since);
+            if (founder.World.HasPendingTarget)
+                throw new ScenarioFailed($"a placement cursor was offered to a guild master; journal: {said}");
+            if (!said.Contains("guild", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed($"no refusal; journal: {said}");
+            return $"refused: {said}";
+        });
+
+        await AsStaff(server, founder.AccountName, async () =>
+        {
+            if (stone == 0) return;
+            await founder.Actions.Say(".xremove", ct);
+            if (await founder.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                await founder.Actions.TargetObject(stone, ct);
+            await Task.Delay(500, ct);
+        });
+        founder.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

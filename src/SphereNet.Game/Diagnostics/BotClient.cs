@@ -832,6 +832,14 @@ public sealed class BotClient : IDisposable
                 }
                 break;
 
+            case 0x9A: // ASCII prompt: [serial:4][promptId:4][type:4][text]
+                if (packet.Length >= 15)
+                {
+                    _world.PromptSerial = ReadUInt32BE(packet, 3);
+                    _world.PromptId = ReadUInt32BE(packet, 7);
+                }
+                break;
+
             case 0xBF: // General info: only the party sub-command (0x06) is read
                 if (packet.Length >= 7 && ReadUInt16BE(packet, 3) == 0x0006)
                     HandleParty(packet, now);

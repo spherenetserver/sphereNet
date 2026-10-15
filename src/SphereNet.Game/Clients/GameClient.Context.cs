@@ -184,6 +184,8 @@ public sealed partial class GameClient : IClientContext
 
     void IClientContext.OpenCraftingGump(SkillType craftSkill) => OpenCraftingGump(craftSkill);
     void IClientContext.OpenGuildStoneGump(Item stone) => OpenGuildStoneGump(stone);
+    bool IClientContext.IsInGuild(Character ch) => IsInGuild(ch);
+    void IClientContext.FoundGuildAtNewStone(Item stone) => FoundGuildAtNewStone(stone);
     void IClientContext.OpenHouseSignGump(Item signOrMulti) => OpenHouseSignGump(signOrMulti);
     void IClientContext.OpenBook(Item book, bool writable) => OpenBook(book, writable);
     void IClientContext.OpenBankBox() => OpenBankBox();

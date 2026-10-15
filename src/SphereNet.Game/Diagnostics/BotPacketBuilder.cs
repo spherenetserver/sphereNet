@@ -231,6 +231,29 @@ public static class BotPacketBuilder
         return packet;
     }
 
+    /// <summary>0x9A answer to a text prompt: type 1 = sent, 0 = cancelled.</summary>
+    public static byte[] BuildPromptResponse(uint serial, uint promptId, string text, bool cancel = false)
+    {
+        byte[] body = System.Text.Encoding.ASCII.GetBytes(text);
+        var packet = new byte[15 + body.Length + 1];
+        packet[0] = 0x9A;
+        WriteUInt16BE(packet, 1, (ushort)packet.Length);
+        WriteUInt32BE(packet, 3, serial);
+        WriteUInt32BE(packet, 7, promptId);
+        WriteUInt32BE(packet, 11, cancel ? 0u : 1u);
+        body.CopyTo(packet, 15);
+        return packet;
+    }
+
+    /// <summary>0x09 single click: asks the server for the object's name label.</summary>
+    public static byte[] BuildSingleClick(uint serial)
+    {
+        var packet = new byte[5];
+        packet[0] = 0x09;
+        WriteUInt32BE(packet, 1, serial);
+        return packet;
+    }
+
     /// <summary>0xBF.06 party command with a serial: 01 add (the client sends 0 and gets a
     /// target cursor), 02 remove, 08 accept, 09 decline.</summary>
     public static byte[] BuildParty(byte command, uint serial)

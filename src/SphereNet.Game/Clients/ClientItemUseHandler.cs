@@ -1580,6 +1580,13 @@ public sealed class ClientItemUseHandler
                 break;
 
             case ItemType.Deed:
+                // A deed for an ordinary item - a guildstone, a bulletin board - places
+                // that item; only a multi goes through the housing engines.
+                if (TryResolveDeedItem(item, out int deedItemDef))
+                {
+                    UseItemDeed(item, deedItemDef);
+                    break;
+                }
                 if (_housingEngine != null)
                 {
                     var deedItem = item;
@@ -5570,6 +5577,108 @@ public sealed class ClientItemUseHandler
                 $"You cannot place a {kind} here.",
             _ => isShip ? "Cannot place ship here." : ServerMessages.Get("house_cant_place"),
         };
+    }
+
+    /// <summary>The deed names an ordinary ITEMDEF rather than a multi (MORE=i_guildstone).
+    /// Upstream's deed path places either kind (OnTarg_Use_Multi: "Might be a IT_MULTI or
+    /// it might not. place it anyhow", CClientTarg.cpp:1683); here a non-multi target used
+    /// to be read as a multi id or reported blank.</summary>
+    private bool TryResolveDeedItem(Item deed, out int defIndex)
+    {
+        defIndex = 0;
+        if (deed.TryGetTag("SHIP_MULTI_BASEID", out _) || deed.TryGetTag("HOUSE_MULTI_BASEID", out _))
+            return false;
+        static bool IsPlainItem(ItemDef? def) =>
+            def != null && def.Type is not (ItemType.Multi or ItemType.MultiCustom or ItemType.Ship);
+
+        var resources = DefinitionLoader.StaticResources;
+        foreach (string key in MultiDeedTagKeys)
+        {
+            if (!deed.TryGetTag(key, out string? name) || string.IsNullOrWhiteSpace(name) || resources == null)
+                continue;
+            name = name.Trim();
+            if ((Item.ResolveMultiDefId?.Invoke(name) ?? -1) >= 0)
+                return false;
+            var rid = resources.ResolveDefName(name);
+            if (rid.IsValid && rid.Type == ResType.ItemDef && IsPlainItem(DefinitionLoader.GetItemDef(rid.Index)))
+            {
+                defIndex = rid.Index;
+                return true;
+            }
+        }
+        if (deed.More1 is > 0 and < 0x4000 && _housingEngine?.MultiDefs.Get((ushort)deed.More1) == null &&
+            IsPlainItem(DefinitionLoader.GetItemDef((int)deed.More1)))
+        {
+            defIndex = (int)deed.More1;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Place the item a deed names, as Source-X does for a non-multi deed:
+    /// "Where would you like to place the X?" (addTargetItems, CClientMsg.cpp:1841), a
+    /// guildstone refused to one already in a guild; on the target the one-tile placement
+    /// checks (Multi_Create, skipped for staff and a magic deed), the item made from its
+    /// definition, never movable, in the deed's hue; the deed is used up
+    /// (OnTarg_Use_Deed). A new guildstone founds the guild (CItemMulti.cpp:3448).</summary>
+    private void UseItemDeed(Item deed, int defIndex)
+    {
+        if (_character == null) return;
+        var def = DefinitionLoader.GetItemDef(defIndex);
+        if (def == null) return;
+        if (def.Type == ItemType.StoneGuild && _client.IsInGuild(_character))
+        {
+            SysMessage(ServerMessages.Get("guild_already_member"));
+            return;
+        }
+        // The definition's name, else the tiledata's (CItemBase::GetName).
+        string name = !string.IsNullOrWhiteSpace(def.Name)
+            ? DefinitionLoader.ResolveNames(def.Name)
+            : defIndex is > 0 and <= ushort.MaxValue && _world.MapData != null
+                ? SphereNet.Scripting.Definitions.ItemDef.Pluralize(
+                    _world.MapData.GetItemTileData((ushort)defIndex).Name ?? "", false)
+                : "";
+        SysMessage($"{ServerMessages.Get("where_to_place")} {name}?");
+        // The deed and where it lay are pinned on the cursor and checked again on the
+        // answer (OnTarg_Use_Item's cheat verify).
+        SetPendingItemTarget(deed, (_, x, y, z, _) =>
+        {
+            if (_character == null || deed.IsDeleted)
+                return;
+            var pt = new Point3D(x, y, z, _character.MapIndex);
+            if (_character.PrivLevel < PrivLevel.GM && !deed.IsAttr(ObjAttributes.Magic) &&
+                _housingEngine != null && !_housingEngine.CanPlaceHouse(pt, OneTileFootprint))
+            {
+                SysMessage(ServerMessages.Get(Msg.ItemuseMultiFail));
+                return;
+            }
+            var placed = _world.CreateItem();
+            if (!ItemDefHelper.ApplyInstanceMetadata(placed, defIndex))
+            {
+                _world.RemoveItem(placed);
+                return;
+            }
+            placed.SetAttr(ObjAttributes.Move_Never);
+            if (deed.IsAttr(ObjAttributes.Magic)) placed.SetAttr(ObjAttributes.Magic);
+            if (deed.IsAttr(ObjAttributes.Invis)) placed.SetAttr(ObjAttributes.Invis);
+            placed.Hue = deed.Hue;
+            _world.PlaceItem(placed, pt);
+            if (placed.ItemType == ItemType.StoneGuild)
+                _client.FoundGuildAtNewStone(placed);
+            ConsumeOneFrom(deed);
+        });
+    }
+
+    /// <summary>A non-multi deed's footprint: the one tile it stands on (baseRect 1x1,
+    /// CItemMulti.cpp:3346).</summary>
+    private static readonly Housing.MultiDef OneTileFootprint = CreateOneTileFootprint();
+
+    private static Housing.MultiDef CreateOneTileFootprint()
+    {
+        var def = new Housing.MultiDef { Id = 0 };
+        def.Components.Add(new Housing.MultiComponent { TileId = 1, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+        def.RecalcBounds();
+        return def;
     }
 
     private bool TryResolveDeedMulti(Item deed, out ushort multiId, out bool isShip)

@@ -29,6 +29,8 @@ public sealed class BotWorldModel
     public List<uint> PartyMembers = new();
     /// <summary>The leader whose party invitation (0xBF.06.07) is waiting, 0 for none.</summary>
     public uint PartyInviteFrom;
+    /// <summary>The text prompt (0x9A) waiting for an answer: its serial and id; 0 for none.</summary>
+    public uint PromptSerial, PromptId;
     public bool IsWarMode;
     public bool IsMounted;
 

@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - Item deed'leri item'ini yerlestiriyor; guildstone deed'i lonca kuruyor; lonca tatbikati
+------------------------------------------------------------------------
+DUZELTME - Deed: siradan bir ITEMDEF'i gosteren deed (MORE=i_guildstone, bulletin board gibi
+       item deed'leri) ev deed'i saniliyor ya da bos deniyordu. Source-X deed yolunun her
+       hedefi yerlestirmesi gibi (OnTarg_Use_Multi, CClientTarg.cpp:1683) artik
+       "Where would you like to place the <ad>?" diye sorar, tek kareyi kontrol eder
+       (Multi_Create; staff ve magic deed icin atlanir), item'i deed'in renginde ve
+       tasinamaz yapar ve deed'i harcar.
+DUZELTME - Guildstone: deed'den kurulan tas kuraniyi lonca ustasi yapar ve adi sorar
+       (CLIMODE_PROMPT_STONE_NAME); cevap tasi ve loncayi "Stone for the <ad>" diye
+       adlandirir. Zaten loncada olan imlecten once reddedilir.
+EKLEME - Fonksiyonel tatbikat "guild" paketi: deed'den guildstone kur, ad sorusunu cevapla ve
+       tek tikla adi oku, uye ikinci tasi alamaz. Bot client: 0x9A prompt'larini cevaplar ve
+       tek tik (0x09) gonderir. Sphere 56T ozel surum paketinde guildstone deed'i paketin
+       artik tanimlamadigi bir ITEMDEF'i gosteriyor (orada 0x0EDD mezar tasi; paketin kendi
+       lonca sistemi var), bu yuzden deed orada bos - o sunucuda da oyle olurdu.
+EKLEME - Testler: guildstone deed'i tasi kurar, loncayi kurar ve adlandirir; uyeye imlec yok.
+
 [2026-10-16] - Muhafiz cagiran oyuncu gordugu sucu bildirir
 ------------------------------------------------------------------------
 DUZELTME - Muhafizlar: CChar::CallGuards()'in yaptigi gibi (CCharFight.cpp:199-203), muhafiz

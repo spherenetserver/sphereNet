@@ -61,6 +61,8 @@ public sealed partial class GameClient
     public void HandleViewRange(byte range) => WorldFeatures.HandleViewRange(range);
 
     internal void OpenGuildStoneGump(Item stone) => WorldFeatures.OpenGuildStoneGump(stone);
+    internal bool IsInGuild(Objects.Characters.Character ch) => WorldFeatures.IsInGuild(ch);
+    internal void FoundGuildAtNewStone(Item stone) => WorldFeatures.FoundGuildAtNewStone(stone);
 
     internal void OpenHouseSignGump(Item signOrMulti) => WorldFeatures.OpenHouseSignGump(signOrMulti);
 

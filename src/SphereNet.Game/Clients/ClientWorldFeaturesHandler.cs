@@ -1637,6 +1637,32 @@ public sealed class ClientWorldFeaturesHandler
         _netState.ViewRange = range;
     }
 
+    /// <summary>Whether the character already belongs to a guild (Guild_Find(MEMORY_GUILD)).</summary>
+    internal bool IsInGuild(Character ch) => _guildManager?.FindGuildFor(ch.Uid) != null;
+
+    /// <summary>A guildstone placed from a deed (Multi_Create, CItemMulti.cpp:3448): its
+    /// placer is the master, and is asked for the name (CLIMODE_PROMPT_STONE_NAME). The
+    /// answer names the stone "STONE_FOR + text" and so the guild (CClientEvent.cpp:1762,
+    /// :1810); an empty answer keeps the default and says the renaming was cancelled.</summary>
+    internal void FoundGuildAtNewStone(Item stone)
+    {
+        if (_character == null || _guildManager == null) return;
+        var guild = _guildManager.CreateGuild(stone.Uid, stone.Name ?? "", _character.Uid);
+        StampStoneMemory(_character, stone, add: true);
+        string what = ServerMessages.Get(Msg.StoneName);
+        _client.SendPrompt(stone.Uid.Value, ServerMessages.Get(Msg.ItemuseGuildstoneNew), (_, _, type, text) =>
+        {
+            if (stone.IsDeleted || type == 0 || string.IsNullOrWhiteSpace(text))
+            {
+                SysMessage(ServerMessages.GetFormatted(Msg.MsgRenameCancel, what));
+                return;
+            }
+            stone.Name = ServerMessages.Get(Msg.StoneFor) + text.Trim();
+            guild.Name = stone.Name;
+            SysMessage(ServerMessages.GetFormatted(Msg.MsgRenameSuccess, what, stone.Name));
+        });
+    }
+
     /// <summary>Open guild stone gump with member list, options.</summary>
     internal void OpenGuildStoneGump(Item stone)
     {

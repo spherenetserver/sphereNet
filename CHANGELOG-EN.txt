@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - Item deeds place their item; a guildstone deed founds the guild; guild drill
+------------------------------------------------------------------------
+FIX - Deeds: a deed naming an ordinary ITEMDEF (MORE=i_guildstone, item deeds such as a
+      bulletin board) was read as a house deed or reported blank. As upstream's deed
+      path places any target (OnTarg_Use_Multi, CClientTarg.cpp:1683), it now asks
+      "Where would you like to place the <name>?", checks the one tile (Multi_Create,
+      skipped for staff and a magic deed), makes the item never movable in the deed's
+      hue and uses the deed up.
+FIX - Guildstones: a stone placed from a deed makes its placer the guild master and asks
+      for the name (CLIMODE_PROMPT_STONE_NAME); the answer names the stone and the guild
+      "Stone for the <name>". One already in a guild is refused before the cursor
+      ("You are already a member of a guild").
+ADD - Functional drill "guild" suite: place a guildstone from its deed, answer the name
+      prompt and read the name back with a single click, and a member is refused a
+      second stone. Bot client: answers 0x9A prompts and sends single clicks (0x09).
+      On the Sphere 56T custom-version pack the guildstone deed points at an ITEMDEF the
+      pack no longer defines (0x0EDD is a gravestone there; it has its own guild system),
+      so the deed is blank there as it would be on that server.
+ADD - Tests: a guildstone deed places the stone, founds the guild and names it; a member
+      gets no cursor.
+
 [2026-10-16] - A player calling the guards reports the crimes they saw
 ------------------------------------------------------------------------
 FIX - Guards: as CChar::CallGuards() does (CCharFight.cpp:199-203), a PLAYER calling the

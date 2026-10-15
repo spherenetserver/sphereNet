@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - Functional drill: notoriety and guards
+------------------------------------------------------------------------
+ADD - Functional drill "law" suite, against the Source-X witness model (CheckCrimeSeen /
+      OnNoticeCrime): an attack nobody sees is no crime (the victim is not a witness),
+      the same attack in front of an NPC makes the attacker criminal, the victim who
+      strikes back stays innocent, and a criminal who walks into a guarded town is
+      killed by the guards when they are called.
+
 [2026-10-15] - House doors lock to the house key and close on their timer
 ------------------------------------------------------------------------
 FIX - Door auto-close follows Source-X: a classic hinge door (and a map-static door)

@@ -89,6 +89,8 @@ internal static class FunctionalDrill
                 await WorldSuite(o, root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "house")
                 await HouseSuite(o, root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "law")
+                await LawSuite(o, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -1084,6 +1086,116 @@ internal static class FunctionalDrill
 
         owner.Disconnect();
         stranger.Disconnect();
+    }
+
+    // ---- notoriety and guards ---------------------------------------------------------
+
+    // Notoriety byte of 0x77/0x78, as the viewer sees the mobile.
+    private const byte NotoInnocent = 1, NotoCriminal = 4;
+
+    private static byte NotorietyOf(BotClient viewer, uint serial)
+    {
+        lock (viewer.World.SyncRoot)
+            return viewer.World.Mobiles.TryGetValue(serial, out var m) ? m.Notoriety : (byte)0;
+    }
+
+    private static async Task LawSuite(Options o, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        var attacker = await LoginAsync(971, port, ct);
+        var victim = await LoginAsync(972, port, ct);
+        var second = await LoginAsync(973, port, ct);
+        string[] parts = o.Vendor.Point.Split(',');
+        int px = int.Parse(parts[0], CultureInfo.InvariantCulture), py = int.Parse(parts[1], CultureInfo.InvariantCulture);
+        int pz = int.Parse(parts[2], CultureInfo.InvariantCulture);
+        uint a = attacker.World.CharUid, v = victim.World.CharUid, w = second.World.CharUid;
+        // Out of town, on open ground where houses may be built: no guard ends a fight
+        // before it can be looked at, and nobody watches unless the drill puts someone.
+        const int Wx = 1135, Wy = 1640, Wz = 0;
+
+        await RunScenario("law", "setup: innocents out of town, nobody watching", outcomes, async () =>
+        {
+            await AsStaff(server, attacker.AccountName, () => SayAsync(attacker, $".go {Wx},{Wy},{Wz}", ct));
+            await AsStaff(server, victim.AccountName, () => SayAsync(victim, $".go {Wx + 1},{Wy},{Wz}", ct));
+            await WaitAsync(() => NotorietyOf(victim, a) != 0 && NotorietyOf(attacker, v) != 0 ? (object)true : null,
+                5000, "each other in view");
+            byte seenA = NotorietyOf(victim, a), seenV = NotorietyOf(attacker, v);
+            if (seenA != NotoInnocent || seenV != NotoInnocent)
+                throw new ScenarioFailed($"not both innocent: the victim sees the attacker as {seenA}, the attacker sees the victim as {seenV}");
+            string others;
+            lock (attacker.World.SyncRoot)
+                others = string.Join(", ", attacker.World.Mobiles.Values.Where(m => m.Serial != a && m.Serial != v && m.IsHumanBody)
+                    .Select(m => $"0x{m.Serial:X}"));
+            if (others.Length > 0) throw new ScenarioFailed($"someone else is in view: {others}");
+            return "both innocent (notoriety 1), no other person in view";
+        });
+
+        await RunScenario("law", "an attack nobody sees is no crime", outcomes, async () =>
+        {
+            await attacker.Actions.SetWarMode(true, ct);
+            await attacker.Actions.Attack(v, ct);
+            await Task.Delay(3000, ct);
+            await attacker.Actions.SetWarMode(false, ct);
+            byte seen = NotorietyOf(victim, a);
+            if (seen != NotoInnocent) throw new ScenarioFailed($"the victim sees the attacker as {seen} with no witness around");
+            return "the attacker stayed innocent (CheckCrimeSeen: the victim is not a witness)";
+        });
+
+        await RunScenario("law", "an attack an NPC sees makes the attacker criminal", outcomes, async () =>
+        {
+            await AsStaff(server, second.AccountName, async () =>
+            {
+                await SayAsync(second, $".go {Wx + 6},{Wy + 6},{Wz}", ct);
+                await second.Actions.Say(".add c_man", ct);
+                if (await second.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_man");
+                await second.Actions.TargetLocation(second.World.X + 2, second.World.Y + 2, second.World.Z, ct);
+                await Task.Delay(800, ct);
+            });
+            await AsStaff(server, attacker.AccountName, () => SayAsync(attacker, $".go {Wx + 5},{Wy + 6},{Wz}", ct));
+            await WaitAsync(() => NotorietyOf(second, a) != 0 ? (object)true : null, 5000, "the attacker in the second victim's view");
+            if (NotorietyOf(second, a) != NotoInnocent)
+                throw new ScenarioFailed($"the attacker already shows as {NotorietyOf(second, a)}");
+            await attacker.Actions.SetWarMode(true, ct);
+            await attacker.Actions.Attack(w, ct);
+            var sw = Stopwatch.StartNew();
+            await WaitAsync(() => NotorietyOf(second, a) == NotoCriminal ? (object)true : null,
+                8000, $"the victim to see the attacker as criminal (sees {NotorietyOf(second, a)})");
+            return $"criminal {sw.Elapsed.TotalSeconds:F1}s after the attack in front of the NPC";
+        });
+
+        await RunScenario("law", "the victim strikes back and stays innocent", outcomes, async () =>
+        {
+            await second.Actions.SetWarMode(true, ct);
+            await second.Actions.Attack(a, ct);
+            await Task.Delay(4000, ct);
+            byte seen = NotorietyOf(attacker, w);
+            await second.Actions.SetWarMode(false, ct);
+            await attacker.Actions.SetWarMode(false, ct);
+            if (seen != NotoInnocent) throw new ScenarioFailed($"the attacker sees the defending victim as {seen}");
+            return "self-defence left the victim innocent";
+        });
+
+        await RunScenario("law", "the guards kill a criminal in town", outcomes, async () =>
+        {
+            if (NotorietyOf(second, a) != NotoCriminal)
+                throw new ScenarioFailed($"the attacker is no longer criminal (seen as {NotorietyOf(second, a)})");
+            int screens = attacker.World.DeathScreens;
+            long since = Environment.TickCount64;
+            await AsStaff(server, second.AccountName, () => SayAsync(second, $".go {px + 3},{py + 2},{pz}", ct));
+            await AsStaff(server, attacker.AccountName, () => SayAsync(attacker, $".go {px + 2},{py + 2},{pz}", ct));
+            var sw = Stopwatch.StartNew();
+            await second.Actions.Say("guards", ct);
+            await WaitAsync(() => attacker.World.DeathScreens > screens ? (object)true : null, 20_000,
+                "the criminal to die (death screen 0x2C)");
+            if (GhostBodies.Contains(second.World.Body)) throw new ScenarioFailed("the victim died too");
+            string said = string.Join(" | ", second.World.Journal.ToArray()
+                .Where(e => e.TimestampMs >= since && !e.Text.StartsWith('.') && e.Text != "guards").Select(e => e.Text).TakeLast(3));
+            return $"the criminal died {sw.Elapsed.TotalSeconds:F1}s after reaching town; heard: {said}";
+        });
+
+        attacker.Disconnect();
+        victim.Disconnect();
+        second.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

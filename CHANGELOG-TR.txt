@@ -4,6 +4,13 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Fonksiyonel tatbikat: notoriety ve muhafizlar
+------------------------------------------------------------------------
+EKLEME - Fonksiyonel tatbikat "law" paketi, Source-X tanik modeline gore (CheckCrimeSeen /
+       OnNoticeCrime): kimsenin gormedigi saldiri suc degildir (kurban tanik sayilmaz),
+       ayni saldiri bir NPC'nin onunde saldirgani kriminal yapar, karsilik veren kurban
+       masum kalir, guarded sehre giren kriminal muhafiz cagrilinca oldurulur.
+
 [2026-10-15] - Ev kapilari ev anahtarina kilitli ve zamanlayicisiyla kapaniyor
 ------------------------------------------------------------------------
 DUZELTME - Kapi kendiliginden kapanma suresi Source-X'e uyuyor: klasik mentese kapi (ve

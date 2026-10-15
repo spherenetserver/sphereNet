@@ -5244,18 +5244,24 @@ public class Item : ObjBase
 
         if (timerFired)
         {
-            typeHandledTimer = _type is ItemType.TrapActive or ItemType.TrapInactive
+            // The effective type, as upstream switches on GetType() (CItem.cpp:6247):
+            // an item made from its definition alone - a house's door built from the
+            // MULTIDEF component list - keeps the raw field Normal and takes its type
+            // from the def, and opening such a door swaps it onto the t_door_open def.
+            // Switching on the raw field skipped the door case, so it never closed.
+            var type = ItemType;
+            typeHandledTimer = type is ItemType.TrapActive or ItemType.TrapInactive
                 or ItemType.ShipPlank or ItemType.Door or ItemType.DoorOpen
                 or ItemType.DoorLocked or ItemType.Portculis or ItemType.PortLocked
                 or ItemType.Crops or ItemType.Foliage or ItemType.LightLit
                 or ItemType.AnimActive or ItemType.BeeHive
-                || (_type == ItemType.EqMemoryObj && EquipLayer is Layer.FlagWool or Layer.FlagPotionUsed)
+                || (type == ItemType.EqMemoryObj && EquipLayer is Layer.FlagWool or Layer.FlagPotionUsed)
                 || (IsEquipped && EquipLayer == Layer.FlagStuck && IsAttr(ObjAttributes.Decay));
 
             // Source-X CItem::_OnTick trap state machine: an armed trap relaxes
             // to inactive, an inactive one either re-arms (MOREZ periodic) or
             // returns to the idle IT_TRAP waiting for the next trigger.
-            switch (_type)
+            switch (type)
             {
                 case ItemType.TrapActive:
                     SetTrapState(ItemType.TrapInactive, (ushort)More1, MoreP.X);
@@ -5276,8 +5282,8 @@ public class Item : ObjBase
                 case ItemType.DoorLocked:
                 case ItemType.Portculis:
                 case ItemType.PortLocked:
-                    // Source-X Use_Door timer: an opened door swings shut 20
-                    // seconds later (locked-while-open still closes).
+                    // Source-X Use_Door timer: an opened door swings shut on
+                    // its own (locked-while-open still closes).
                     CloseDoor();
                     break;
                 case ItemType.Crops:
@@ -5429,7 +5435,7 @@ public class Item : ObjBase
 
     /// <summary>Source-X Ship_Plank close: restore the stored side type and
     /// graphic, clear the autoclose timer.</summary>
-    /// <summary>Source-X Use_Door closing half (the 20s auto-close timer):
+    /// <summary>Source-X Use_Door closing half (the auto-close timer):
     /// flip the open art back, un-shift the hinge, clear the state and push
     /// the visual to observers. Returns false when already closed.</summary>
     public bool CloseDoor()
@@ -5448,7 +5454,7 @@ public class Item : ObjBase
         if (!isOpen)
             return false;
 
-        int offset = _type is ItemType.Portculis or ItemType.PortLocked ? 2 : 1;
+        int offset = ItemType is ItemType.Portculis or ItemType.PortLocked ? 2 : 1;
         ushort newId = (ushort)(DispIdFull - offset);
         if (DispIdOverride != 0)
             TrySetProperty("DISPID", $"0{newId:x}");

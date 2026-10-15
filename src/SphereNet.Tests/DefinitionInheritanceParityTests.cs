@@ -731,6 +731,49 @@ public sealed class DefinitionInheritanceParityTests : IDisposable
         Assert.All(made, i => Assert.Equal(multi.Uid, i.Link));
     }
 
+    /// <summary>Multi_CreateComponent + OnComponentCreate (CItemMulti.cpp:357-359,
+    /// :3468): every COMPONENT line's item gets ei_house_component; a door gets
+    /// ei_house_door and starts LOCKED to the structure, a container likewise. A
+    /// house door was left an ordinary unlocked door and opened for anyone.</summary>
+    [Fact]
+    public void ScriptComponentDoor_StartsLockedToTheHouse()
+    {
+        var r = Load("""
+            [ITEMDEF 06a5]
+            DEFNAME=i_door_wood_t
+            TYPE=t_door
+
+            [ITEMDEF 0e43]
+            DEFNAME=i_chest_t
+            TYPE=t_container
+            """);
+        var def = new MultiDef { Id = 0x65 };
+        def.Components.Add(new MultiComponent { TileId = 0x0064, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+        def.RecalcBounds();
+        Assert.True(MultiRegistry.TryParseScriptComponent("i_door_wood_t,0,3,7", r, out var door));
+        Assert.True(MultiRegistry.TryParseScriptComponent("i_chest_t,1,1,7", r, out var chest));
+        def.ScriptComponents.Add(door);
+        def.ScriptComponents.Add(chest);
+
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 256, 256);
+        ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+        var multi = world.CreateItem();
+        world.PlaceItem(multi, new Point3D(50, 50, 0, 0));
+        var made = MultiRegistry.MaterializeScriptComponents(world, def, multi, multi.Position);
+
+        var houseDoor = made.Single(i => i.BaseId == 0x06a5);
+        Assert.Equal(ItemType.DoorLocked, houseDoor.ItemType);
+        Assert.Contains(ResourceId.FromString("ei_house_door", ResType.Events), houseDoor.Events);
+        Assert.Contains(ResourceId.FromString("ei_house_component", ResType.Events), houseDoor.Events);
+        Assert.Equal(ItemType.ContainerLocked, made.Single(i => i.BaseId == 0x0e43).ItemType);
+
+        var key = world.CreateItem();
+        key.Link = multi.Uid;
+        Assert.True(Item.KeyFits(key, houseDoor));
+    }
+
     [Fact]
     public void ScriptComponent_OnAMulPlaceholderSpot_IsNotMadeTwice()
     {

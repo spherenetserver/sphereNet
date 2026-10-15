@@ -1014,8 +1014,12 @@ public sealed class MultiRegistry
             if (multiItem.IsAttr(ObjAttributes.Magic)) item.SetAttr(ObjAttributes.Magic);
             if (multiItem.IsAttr(ObjAttributes.Invis)) item.SetAttr(ObjAttributes.Invis);
             item.Link = multiItem.Uid;
+            CustomHousingEngine.AddEvent(item, CustomHousingEngine.CreatedComponentEvent);
             world.PlaceItem(item, new Point3D(
                 (short)(origin.X + dx), (short)(origin.Y + dy), (sbyte)(origin.Z + dz), origin.Map));
+            // OnComponentCreate (:359): a door starts locked to the house key, a
+            // container likewise. Left unlocked, anyone walked into a new house.
+            CustomHousingEngine.ApplyComponentCreate(multiItem, item);
             made.Add(item);
         }
         return made;
@@ -1273,6 +1277,8 @@ public sealed class HousingEngine
                 compItem.SetTag("HOUSE_UID", multiItem.Uid.Value.ToString());
                 if (compItem.ItemType == ItemType.SignGump)
                     multiItem.Link = compItem.Uid;
+                CustomHousingEngine.AddEvent(compItem, CustomHousingEngine.CreatedComponentEvent);
+                CustomHousingEngine.ApplyComponentCreate(multiItem, compItem);
                 _world.PlaceItem(compItem, compPos);
                 house.AddComponent(compItem.Uid);
             }

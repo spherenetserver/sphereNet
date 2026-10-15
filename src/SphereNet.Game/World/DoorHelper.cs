@@ -112,6 +112,14 @@ public static class DoorHelper
     /// locked doors unless <paramref name="ignoreLock"/> is requested by the
     /// privileged Source-X USEDOOR verb.
     /// </summary>
+    /// <summary>Source-X Use_Door (CItem.cpp:4842): a classic hinge door swings shut
+    /// 60 seconds after it opened.</summary>
+    public const long HingeDoorAutoCloseMs = 60_000;
+
+    /// <summary>Source-X Use_DoorNew (CItem.cpp:4690): a door with its own open
+    /// graphic (DOOROPENID) swings shut 20 seconds after it opened.</summary>
+    public const long SwitchDoorAutoCloseMs = 20_000;
+
     public static bool TryOpenDoorState(Item door, bool ignoreLock = false)
     {
         if (!ignoreLock && door.ItemType is (ItemType.DoorLocked or ItemType.PortLocked))
@@ -133,8 +141,8 @@ public static class DoorHelper
             door.BaseId = newDisplayId;
         door.SetTag("DOOR_OPEN", "1");
         MoveDoorLeaf(door, doorDir);
-        // Source-X _SetTimeoutS(20): the door swings shut on its own.
-        door.SetTimeout(Environment.TickCount64 + 20_000);
+        // Source-X Use_Door _SetTimeoutS(60): the door swings shut on its own.
+        door.SetTimeout(Environment.TickCount64 + HingeDoorAutoCloseMs);
         return true;
     }
 

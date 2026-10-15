@@ -924,6 +924,9 @@ public sealed class CustomHousingEngine
     }
 
     public const string ComponentEvent = "t_house_component";
+    /// <summary>The event every COMPONENT line's item gets on creation
+    /// (Multi_CreateComponent, CItemMulti.cpp:357).</summary>
+    public const string CreatedComponentEvent = "ei_house_component";
     public const string DoorEvent = "ei_house_door";
     public const string ContainerEvent = "ei_house_container";
     public const string TelepadEvent = "ei_house_telepad";
@@ -959,7 +962,7 @@ public sealed class CustomHousingEngine
             component.Hue = multi.Hue;
     }
 
-    private static void AddEvent(Item item, string name)
+    internal static void AddEvent(Item item, string name)
     {
         var rid = ResourceId.FromString(name, ResType.Events);
         if (!item.Events.Contains(rid))

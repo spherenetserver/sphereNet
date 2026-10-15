@@ -2656,8 +2656,8 @@ public sealed class ClientWorldFeaturesHandler
         // backwards / into the wall.
         DoorHelper.MoveDoorLeaf(door, doorDir);
 
-        // Source-X _SetTimeoutS(20): an opened door swings shut on its own.
-        door.SetTimeout(isOpen ? 0 : Environment.TickCount64 + 20_000);
+        // Source-X Use_Door _SetTimeoutS(60): an opened door swings shut on its own.
+        door.SetTimeout(isOpen ? 0 : Environment.TickCount64 + DoorHelper.HingeDoorAutoCloseMs);
         Character.Diagnostic?.Invoke(
             $"[door] 0x{door.Uid.Value:X} {(isOpen ? "closed" : "opened")} by 0x{_character.Uid.Value:X} " +
             $"'{_character.Name}' -> {door.Position} art 0x{door.DispIdFull:X}");
@@ -2719,7 +2719,7 @@ public sealed class ClientWorldFeaturesHandler
         else
             door.Position = pos;
 
-        door.SetTimeout(isOpen ? 0 : Environment.TickCount64 + 20_000);
+        door.SetTimeout(isOpen ? 0 : Environment.TickCount64 + DoorHelper.SwitchDoorAutoCloseMs);
 
         ushort soundId = (ushort)(isOpen ? 0x00F1 : 0x00EA);
         BroadcastNearby?.Invoke(door.Position, UpdateRange,

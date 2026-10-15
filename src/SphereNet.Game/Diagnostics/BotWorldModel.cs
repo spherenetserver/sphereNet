@@ -270,6 +270,9 @@ public sealed class BotKnownItem
     public ushort Hue;
     public uint ContainerSerial;
     public byte Layer;
+    /// <summary>A house or ship (0xF3 type 1, 0x1A graphic with 0x4000): ItemId is then
+    /// a multi number, not an item graphic.</summary>
+    public bool IsMulti;
     public long LastSeenMs;
 }
 

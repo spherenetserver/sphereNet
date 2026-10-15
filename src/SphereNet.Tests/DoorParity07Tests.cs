@@ -195,6 +195,26 @@ public sealed class DoorParity07Tests
         Assert.True(door.TryGetTag("DOOR_OPEN", out _));
     }
 
+    /// <summary>The two door routines keep different clocks: a classic hinge door
+    /// swings shut 60 seconds after it opened (Use_Door, CItem.cpp:4842), a door with
+    /// its own open graphic 20 seconds after (Use_DoorNew, :4690).</summary>
+    [Fact]
+    public void AHingeDoorClosesAfterSixtySeconds_ACustomDoorAfterTwenty()
+    {
+        var world = CreateWorld();
+        var (client, _) = Bench(world);
+        var hinge = Door(world);
+        long before = Environment.TickCount64;
+        client.HandleDoubleClick(hinge.Uid.Value);
+        Assert.InRange(hinge.Timeout - before, 59_000, 61_000);
+
+        var custom = Door(world);
+        custom.DoorOpenId = 0x06A5;
+        before = Environment.TickCount64;
+        client.HandleDoubleClick(custom.Uid.Value);
+        Assert.InRange(custom.Timeout - before, 19_000, 21_000);
+    }
+
     // --- SX-07C-01: a door in a pack is not a door in the world -------------
 
     [Fact]

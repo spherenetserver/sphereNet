@@ -1425,7 +1425,7 @@ public static partial class Program
         }
     }
 
-    /// <summary>Swing shut any map-static door whose 20s auto-close timer has
+    /// <summary>Swing shut any map-static door whose auto-close timer (60s, Use_Door) has
     /// elapsed. Item-doors self-close via Item.OnTick; map-static doors are just
     /// an open-overlay set, so their auto-close is driven here. Mirrors the
     /// manual toggle-close broadcast (restore the closed static art + play the

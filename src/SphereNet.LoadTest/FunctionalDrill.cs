@@ -87,6 +87,8 @@ internal static class FunctionalDrill
                 await GatherSuite(o, root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "world")
                 await WorldSuite(o, root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "house")
+                await HouseSuite(o, root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -880,7 +882,7 @@ internal static class FunctionalDrill
             ushort openId = opened.ItemId;
             var sw = Stopwatch.StartNew();
             await WaitAsync(() => { lock (a.World.SyncRoot) return a.World.KnownItems.GetValueOrDefault(door.Serial) is { } d && d.ItemId == closed ? d : null; },
-                35_000, $"door 0x{door.Serial:X} to close again (still 0x{openId:X4})");
+                75_000, $"door 0x{door.Serial:X} to close again (still 0x{openId:X4})");
             return $"door 0x{door.Serial:X} 0x{closed:X4} -> 0x{openId:X4}, closed again after {sw.Elapsed.TotalSeconds:F0}s";
         });
 
@@ -950,6 +952,138 @@ internal static class FunctionalDrill
 
         a.Disconnect();
         b.Disconnect();
+    }
+
+    // ---- housing ------------------------------------------------------------------------
+
+    // Scripts-X i_deed_small_brick_house -> m_small_brick_house: MULTIREGION -3,-3,3,4,
+    // door i_door_wood at 0,3,7, sign at 2,4,5.
+    private const ushort HouseDeed = 0x14EF;
+    private static bool IsKey(ushort id) => id is >= 0x100E and <= 0x1013 || id == 0x1176;
+
+    /// <summary>Open ground for a 7x8 house: every land tile of the footprint and a
+    /// margin within 2 of the centre's Z, passable, and no static on it.</summary>
+    private static IEnumerable<(int X, int Y, int Z)> HouseSites(SphereNet.MapData.MapDataManager map, int cx, int cy, int radius)
+    {
+        for (int r = 0; r <= radius; r += 3)
+        for (int dx = -r; dx <= r; dx += 3)
+        for (int dy = -r; dy <= r; dy += 3)
+        {
+            if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != r) continue;
+            int x = cx + dx, y = cy + dy;
+            int z = map.GetTerrainTile(0, x, y).Z;
+            bool ok = true;
+            for (int ix = x - 5; ix <= x + 5 && ok; ix++)
+            for (int iy = y - 5; iy <= y + 9 && ok; iy++)
+            {
+                var land = map.GetTerrainTile(0, ix, iy);
+                if (Math.Abs(land.Z - z) > 2 || map.GetStatics(0, ix, iy).Length > 0 ||
+                    !map.IsPassable(0, ix, iy, land.Z))
+                    ok = false;
+            }
+            if (ok) yield return (x, y, z);
+        }
+    }
+
+    private static async Task HouseSuite(Options o, string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        using var map = new SphereNet.MapData.MapDataManager(mul);
+        map.Load();
+        map.InitMap(0, 7168, 4096);
+        bool IsDoor(ushort id) => (map.GetItemTileData(id).Flags & SphereNet.MapData.Tiles.TileFlag.Door) != 0;
+
+        var owner = await LoginAsync(961, port, ct);
+        var stranger = await LoginAsync(962, port, ct);
+        (int X, int Y, int Z) site = default;
+        BotKnownItem? door = null;
+
+        await RunScenario("house", "place a house from a deed", outcomes, async () =>
+        {
+            var tried = new List<string>();
+            foreach (var (cx, cy) in new[] { (1150, 1650), (1260, 1840), (1650, 1900), (1700, 1450), (1100, 1450) })
+            {
+                foreach (var cand in HouseSites(map, cx, cy, 45).Take(3))
+                {
+                    await AsStaff(server, owner.AccountName, async () =>
+                    {
+                        await SayAsync(owner, $".go {cand.X},{cand.Y + 7},{cand.Z}", ct);
+                        await AddIntoPackAsync(owner, "i_deed_small_brick_house", ct);
+                    });
+                    var pack = await PackContentsAsync(owner, ct);
+                    var deed = pack.FirstOrDefault(i => i.ItemId == HouseDeed)
+                        ?? throw new ScenarioFailed("no house deed in the pack after .add");
+                    int keysBefore = pack.Count(i => IsKey(i.ItemId));
+                    long since = Environment.TickCount64;
+                    await owner.Actions.DoubleClick(deed.Serial, 1000, ct);
+                    if (await owner.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                        throw new ScenarioFailed("no placement cursor (0x99) from the deed");
+                    owner.SendRaw(BotPacketBuilder.BuildTargetLocation(owner.World.TargetCursorId,
+                        (short)cand.X, (short)cand.Y, (sbyte)cand.Z));
+                    owner.World.HasPendingTarget = false;
+                    await Task.Delay(2500, ct);
+                    var after = await PackContentsAsync(owner, ct);
+                    if (after.Any(i => i.Serial == deed.Serial))
+                    {
+                        string said = string.Join(" | ", owner.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+                        tried.Add($"{cand.X},{cand.Y},{cand.Z}: {said}");
+                        continue; // refused here; the deed is still ours, try the next site
+                    }
+                    site = cand;
+                    int keys = after.Count(i => IsKey(i.ItemId)) - keysBefore;
+                    lock (owner.World.SyncRoot)
+                        door = owner.World.KnownItems.Values.Where(i => i.ContainerSerial == 0 && !i.IsMulti && IsDoor(i.ItemId) &&
+                                Math.Abs(i.X - cand.X) <= 3 && Math.Abs(i.Y - cand.Y) <= 4)
+                            .OrderBy(i => Math.Abs(i.X - cand.X) + Math.Abs(i.Y - (cand.Y + 3))).FirstOrDefault();
+                    if (door == null) throw new ScenarioFailed($"the deed was used at {cand.X},{cand.Y} but no house door is in view");
+                    if (keys < 1) throw new ScenarioFailed($"house placed at {cand.X},{cand.Y} but no key came into the pack");
+                    return $"house at {cand.X},{cand.Y},{cand.Z}: deed used, {keys} key(s) in the pack, door 0x{door.Serial:X} at {door.X},{door.Y}" +
+                           (tried.Count > 0 ? $"; refused first at: {string.Join(" || ", tried)}" : "");
+                }
+            }
+            throw new ScenarioFailed(tried.Count == 0 ? "no open site found on the map" : "every site refused: " + string.Join(" || ", tried));
+        });
+
+        await RunScenario("house", "the owner opens the door", outcomes, async () =>
+        {
+            if (door == null) throw new ScenarioFailed("no house");
+            // In front of the door, outside (the door faces south).
+            await AsStaff(server, owner.AccountName, () => SayAsync(owner, $".go {door.X},{door.Y + 1},{site.Z}", ct));
+            ushort closed = door.ItemId;
+            await owner.Actions.DoubleClick(door.Serial, 1000, ct);
+            var opened = await WaitAsync(() => { lock (owner.World.SyncRoot) return owner.World.KnownItems.GetValueOrDefault(door.Serial) is { } d && d.ItemId != closed ? d : null; },
+                4000, $"the door 0x{door.Serial:X} to open for its owner");
+            return $"0x{closed:X4} -> 0x{opened.ItemId:X4}";
+        });
+
+        await RunScenario("house", "the house door closes by itself", outcomes, async () =>
+        {
+            if (door == null) throw new ScenarioFailed("no house");
+            var sw = Stopwatch.StartNew();
+            await WaitAsync(() => { lock (owner.World.SyncRoot) return owner.World.KnownItems.GetValueOrDefault(door.Serial) is { } d && d.ItemId == door.ItemId ? d : null; },
+                75_000, $"the house door 0x{door.Serial:X} to close again");
+            return $"closed after {sw.Elapsed.TotalSeconds:F0}s";
+        });
+
+        await RunScenario("house", "a stranger cannot open the locked door", outcomes, async () =>
+        {
+            if (door == null) throw new ScenarioFailed("no house");
+            await AsStaff(server, stranger.AccountName, () => SayAsync(stranger, $".go {door.X + 1},{door.Y + 1},{site.Z}", ct));
+            await Task.Delay(1500, ct);
+            ushort closed = door.ItemId;
+            long since = Environment.TickCount64;
+            await stranger.Actions.DoubleClick(door.Serial, 1000, ct);
+            await Task.Delay(2000, ct);
+            ushort now;
+            lock (stranger.World.SyncRoot) now = stranger.World.KnownItems.GetValueOrDefault(door.Serial)?.ItemId ?? 0;
+            string said = string.Join(" | ", stranger.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+            if (now != closed) throw new ScenarioFailed($"the door opened for a stranger (0x{closed:X4} -> 0x{now:X4}); journal: {said}");
+            return $"stayed shut ({said})";
+        });
+
+        owner.Disconnect();
+        stranger.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

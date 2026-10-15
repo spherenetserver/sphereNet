@@ -179,11 +179,11 @@ public sealed class GameWorld
     public Movement.WalkCheck Standing => _standing ??= new Movement.WalkCheck(this);
 
     /// <summary>Auto-close delay for an opened map-static door, matching the
-    /// item-door Use_Door timer (Source-X: an opened door swings shut 20s later).
+    /// item-door Use_Door timer (Source-X: an opened hinge door swings shut 60s later).
     /// Map-static doors (doors baked into the .mul statics rather than real Item
     /// objects) are tracked here as an open-overlay set; without this timer they
     /// stayed open forever because they never receive Item.OnTick.</summary>
-    public const long StaticDoorAutoCloseMs = 20_000;
+    public const long StaticDoorAutoCloseMs = DoorHelper.HingeDoorAutoCloseMs;
 
     // Value = TickCount64 at which the door auto-closes (0 = no auto-close).
     private readonly Dictionary<(byte Map, short X, short Y, sbyte Z), long> _openMapStaticDoors = [];

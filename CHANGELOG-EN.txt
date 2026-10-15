@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - House doors lock to the house key and close on their timer
+------------------------------------------------------------------------
+FIX - Door auto-close follows Source-X: a classic hinge door (and a map-static door)
+      swings shut 60 seconds after opening (Use_Door, CItem.cpp:4842); only a door with
+      its own open graphic (DOOROPENID) keeps 20 seconds (Use_DoorNew, :4690). Every door
+      used to close after 20 seconds.
+FIX - Item timers: the type behaviour on expiry (door close, trap state, plank, crops,
+      light, animation) switched on the raw type field. An item typed only by its
+      definition - a house door built from the MULTIDEF COMPONENT list - keeps that field
+      Normal, so an opened house door never swung shut. The switch now uses the effective
+      type, as CItem::_OnTick switches on GetType().
+FIX - House components: COMPONENT items and the engine's placeholder items now get
+      ei_house_component and the OnComponentCreate setup (CItemMulti.cpp:3468): a door
+      gets ei_house_door and starts locked to the house key, a container likewise. House
+      doors used to be plain unlocked doors that opened for anyone.
+ADD - Functional drill "house" suite: place a house from a deed (placement cursor 0x99),
+      keys arrive in the pack, the owner opens the door, it closes by itself, and a
+      stranger is refused with "This item is locked."
+ADD - Bot client: multi placement cursor (0x99) and multi items in the world model.
+ADD - Tests: a def-typed door closes on its timer; a COMPONENT door starts locked with the
+      house events and the house key fits it; hinge door 60 s, custom door 20 s.
+
 [2026-10-15] - Taming success message and memory; functional trade, door and pet scenarios
 ------------------------------------------------------------------------
 FIX - Taming: a success said "It seems to accept you as master" and then "You are your

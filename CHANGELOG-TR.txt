@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Ev kapilari ev anahtarina kilitli ve zamanlayicisiyla kapaniyor
+------------------------------------------------------------------------
+DUZELTME - Kapi kendiliginden kapanma suresi Source-X'e uyuyor: klasik mentese kapi (ve
+       harita-static kapi) acildiktan 60 saniye sonra kapanir (Use_Door, CItem.cpp:4842);
+       yalnizca kendi acik grafigi olan kapi (DOOROPENID) 20 saniyede kapanir
+       (Use_DoorNew, :4690). Tum kapilar 20 saniyede kapaniyordu.
+DUZELTME - Item zamanlayicilari: sure dolunca calisan tur davranisi (kapi kapanmasi, tuzak
+       durumu, iskele, ekin, isik, animasyon) ham tur alanina bakiyordu. Turunu yalnizca
+       tanimindan alan item - MULTIDEF COMPONENT listesinden kurulan ev kapisi - bu alani
+       Normal tutar; acilan ev kapisi hic kapanmiyordu. Artik etkin tur kullaniliyor
+       (CItem::_OnTick GetType() uzerinden karar verir).
+DUZELTME - Ev bilesenleri: COMPONENT item'lari ve motorun yer tutucu item'lari artik
+       ei_house_component ve OnComponentCreate kurulumunu aliyor (CItemMulti.cpp:3468):
+       kapi ei_house_door alir ve ev anahtarina kilitli baslar, konteyner de oyle. Ev
+       kapilari herkese acilan kilitsiz kapilardi.
+EKLEME - Fonksiyonel tatbikat "house" paketi: deed'den ev kurma (yerlestirme imleci 0x99),
+       anahtarlar cantaya gelir, sahibi kapiyi acar, kapi kendiliginden kapanir, yabanci
+       "This item is locked." ile reddedilir.
+EKLEME - Bot client: multi yerlestirme imleci (0x99) ve dunya modelinde multi item'lar.
+EKLEME - Testler: tanimdan turlu kapi zamanlayicisiyla kapanir; COMPONENT kapisi ev
+       event'leriyle kilitli baslar ve ev anahtari uyar; mentese kapi 60 sn, ozel kapi 20 sn.
+
 [2026-10-15] - Evcillestirme basari mesaji ve hafizasi; fonksiyonel takas, kapi ve pet senaryolari
 ------------------------------------------------------------------------
 DUZELTME - Evcillestirme: basari "It seems to accept you as master" ve ardindan Source-X'in

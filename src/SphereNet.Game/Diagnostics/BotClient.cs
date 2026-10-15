@@ -666,6 +666,15 @@ public sealed class BotClient : IDisposable
                 }
                 break;
 
+            case 0x99: // Multi placement cursor: [allow ground][cursor id:4]... answered with 0x6C
+                if (packet.Length >= 6)
+                {
+                    _world.HasPendingTarget = true;
+                    _world.TargetCursorId = ReadUInt32BE(packet, 2);
+                    _actionApi?.CompleteTarget();
+                }
+                break;
+
             case 0x6C: // Target Cursor (19 bytes)
                 if (packet.Length >= 7)
                 {
@@ -850,6 +859,7 @@ public sealed class BotClient : IDisposable
         int offset = 7;
         ushort itemId = ReadUInt16BE(packet, offset); offset += 2;
         bool hasStackId = (itemId & 0x8000) != 0;
+        bool isMulti = (itemId & 0x4000) != 0;
         itemId &= 0x3FFF;
         if (hasStackId) offset += 2; // skip stack id
 
@@ -882,7 +892,7 @@ public sealed class BotClient : IDisposable
         _world.KnownItems[serial] = new BotKnownItem
         {
             Serial = serial, ItemId = itemId, X = x, Y = y, Z = z,
-            Amount = amount, Hue = hue, LastSeenMs = now,
+            Amount = amount, Hue = hue, LastSeenMs = now, IsMulti = isMulti,
         };
 
         if (itemId == 0x0EED) // gold pile
@@ -906,7 +916,7 @@ public sealed class BotClient : IDisposable
         _world.KnownItems[serial] = new BotKnownItem
         {
             Serial = serial, ItemId = itemId, X = x, Y = y, Z = z,
-            Amount = amount, Hue = hue, LastSeenMs = now,
+            Amount = amount, Hue = hue, LastSeenMs = now, IsMulti = packet[3] == 0x01,
         };
         if (itemId == 0x0EED) RecalcGold();
     }

@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Fonksiyonel tatbikat: ekonomi, olum, savas; botun item ve dukkan okumasi
+------------------------------------------------------------------------
+EKLEME - LoadTest "functional" tatbikati: oyuncu senaryolari bir bot client ile shard
+       kopyasindaki gercek sunucuya karsi oynanir ve client'a gosterilenle dogrulanir. On
+       hazirlik bir yetkilinin yapacagi gibi yapilir (konsoldan hesap Owner, .go, .newgold,
+       sonra tekrar oyuncu). Ekonomi: alim (altin liste fiyati kadar duser, item cantada),
+       satis (altin teklif edilen fiyat kadar artar, item gider), banka (kutu acilir, canta
+       altini tasinir, bakiye artar, durum altini PAYFROMPACKONLY'ye gore). Olum: olum
+       ekrani, hayalet bedeni, cantanin altinini tasiyan ceset, healer'in diriltmesi.
+       --probe konsola satir gonderip ardindan gelenleri yazar. Savas: Heal tam MANAUSE
+       kadar mana ve her reagent'tan bir tane harcar ve can doldurur, reagent eksikken Heal
+       mana harcamadan reddedilir, yakin dovuste oldurulen tavsan ceset birakir.
+DUZELTME - Bot client: 0x1A yer item'lari mobile sanilip atlaniyordu (item serial'lerinde
+       0x40000000 var) ve 0xF3 hic okunmuyordu; botlar yerdeki hicbir item'i gormuyordu.
+DUZELTME - Bot client: 0x74 alim listesi, 2D client'taki gibi dukkan kabinin 0x3C item'lariyla
+       sondan basa eslestiriliyor; vendor gump 0x30'u acan 0x24'ten aliniyor; alimlar katman
+       0x1A ile gidiyor. Daha once botun her alimi item 0'i istiyordu. Bot durum altinini
+       (0x11) ve 0x2C olum ekranini okuyor.
+EKLEME - Test: botun yer item'lari (0x1A, 0xF3) ve alim listesi eslestirmesi.
+
 [2026-10-15] - Client surum uyumlulugu, kopan baglanti temizligi, eski client paketleri
 ------------------------------------------------------------------------
 DUZELTME - Ag: karsi tarafin RST ile kopardigi baglanti (coken client, kopan hat, okunmamis

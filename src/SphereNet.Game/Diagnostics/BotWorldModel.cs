@@ -15,6 +15,8 @@ public sealed class BotWorldModel
     public short Stam, MaxStam;
 
     public bool IsDead;
+    /// <summary>0x2C death screens received.</summary>
+    public int DeathScreens;
     public bool IsWarMode;
     public bool IsMounted;
 
@@ -89,6 +91,12 @@ public sealed class BotWorldModel
     public readonly Dictionary<byte, BotKnownItem> Equipment = new();
     public uint BackpackSerial;
     public int Gold;
+    /// <summary>Gold in the backpack as the status window (0x11) last showed it; -1
+    /// before the first full status.</summary>
+    public int StatusGold = -1;
+    /// <summary>Each container's items in the order its last 0x3C listed them - the
+    /// order a shop's 0x74 price list is matched against.</summary>
+    public readonly Dictionary<uint, List<BotKnownItem>> LastContents = new();
 
     // Gump state
     public BotGumpState? ActiveGump;
@@ -280,6 +288,9 @@ public sealed class BotGumpState
 public sealed class BotVendorState
 {
     public uint VendorSerial;
+    /// <summary>The shop container the list describes (0x74 and 0x9E name it, not the
+    /// vendor).</summary>
+    public uint ContainerSerial;
     public bool IsBuyList;
     public readonly List<BotVendorItem> Items = new();
 }

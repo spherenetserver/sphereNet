@@ -18,6 +18,14 @@ internal sealed class ServerHost : IDisposable
     private int _warnings;
     private int _errors;
 
+    private readonly List<string> _all = [];
+
+    /// <summary>Lines logged so far; pass to <see cref="LinesSince"/>.</summary>
+    public int LineCount { get { lock (_all) return _all.Count; } }
+
+    /// <summary>Every line logged after <paramref name="mark"/>.</summary>
+    public List<string> LinesSince(int mark) { lock (_all) return _all.Skip(mark).ToList(); }
+
     public int Warnings => _warnings;
     public int Errors => _errors;
     public List<string> ErrorLines { get; } = [];
@@ -89,6 +97,7 @@ internal sealed class ServerHost : IDisposable
     private void OnLine(string line)
     {
         _log?.WriteLine(line);
+        lock (_all) _all.Add(line);
         _recent.Enqueue(line);
         while (_recent.Count > 400 && _recent.TryDequeue(out _)) { }
         if (line.Contains(" WRN] ", StringComparison.Ordinal)) Interlocked.Increment(ref _warnings);

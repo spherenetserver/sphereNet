@@ -35,6 +35,7 @@ public sealed class BotClient : IDisposable
     // and the next step is refused as out of order.
     private readonly TaskCompletionSource _loginBurstDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private uint _authId;
+    private uint _lastShopVendor;
     private uint _charUid;
     private short _x, _y;
     private sbyte _z;
@@ -574,6 +575,11 @@ public sealed class BotClient : IDisposable
                 }
                 break;
 
+            case 0x11: // Status: gold at 58 in the full (type >= 1) form for the player
+                if (packet.Length >= 62 && ReadUInt32BE(packet, 3) == _charUid && packet[42] >= 1)
+                    _world.StatusGold = (int)ReadUInt32BE(packet, 58);
+                break;
+
             case 0xA2: // Mana Update (9 bytes)
                 if (packet.Length >= 9)
                 {
@@ -670,6 +676,14 @@ public sealed class BotClient : IDisposable
                     HandleWorldItem(packet, now);
                 break;
 
+            case 0xF3: // World Item, 7.0.0+ form
+                HandleWorldItemSA(packet, now);
+                break;
+
+            case 0x2C: // Death screen
+                _world.DeathScreens++;
+                break;
+
             case 0x3C: // Container Content (variable)
                 if (packet.Length >= 5)
                 {
@@ -695,6 +709,12 @@ public sealed class BotClient : IDisposable
                             ForgetKnown(ci);
                     _world.OpenContainers[contSerial24] = new BotContainerState
                         { Serial = contSerial24, GumpId = gumpId24 };
+                    // Gump 0x30 is the shop window: the serial is the vendor.
+                    if (gumpId24 == 0x0030)
+                    {
+                        _lastShopVendor = contSerial24;
+                        if (_world.ActiveVendor != null) _world.ActiveVendor.VendorSerial = contSerial24;
+                    }
                     _actionApi?.CompleteContainerOpen();
                 }
                 break;
@@ -789,8 +809,8 @@ public sealed class BotClient : IDisposable
         uint serial = ReadUInt32BE(packet, 3);
         bool hasAmount = (serial & 0x80000000) != 0;
         serial &= 0x7FFFFFFF;
-
-        if ((serial & 0x40000000) != 0) return; // skip mobiles
+        // 0x1A carries only items, whose serials have 0x40000000 set. Skipping those
+        // as "mobiles" hid every ground item from the bot.
 
         int offset = 7;
         ushort itemId = ReadUInt16BE(packet, offset); offset += 2;
@@ -823,6 +843,7 @@ public sealed class BotClient : IDisposable
             offset += 2;
         }
 
+        ForgetFromContainers(serial); // on the ground now, wherever it was
         _world.KnownItems[serial] = new BotKnownItem
         {
             Serial = serial, ItemId = itemId, X = x, Y = y, Z = z,
@@ -831,6 +852,28 @@ public sealed class BotClient : IDisposable
 
         if (itemId == 0x0EED) // gold pile
             RecalcGold();
+    }
+
+    /// <summary>0xF3, the world item the server sends a 7.0.0+ client instead of 0x1A:
+    /// [0xF3][0x0001][type][serial:4][graphic:2][inc:1][amount:2][amount:2][x:2][y:2]
+    /// [z:1][light/dir:1][hue:2][flags:1] (+2 from 7.0.9). Type 2 is a mobile.</summary>
+    private void HandleWorldItemSA(byte[] packet, long now)
+    {
+        if (packet.Length < 24 || packet[3] == 0x02) return;
+        uint serial = ReadUInt32BE(packet, 4);
+        ushort itemId = ReadUInt16BE(packet, 8);
+        ushort amount = ReadUInt16BE(packet, 11);
+        short x = (short)ReadUInt16BE(packet, 15);
+        short y = (short)ReadUInt16BE(packet, 17);
+        sbyte z = (sbyte)packet[19];
+        ushort hue = ReadUInt16BE(packet, 21);
+        ForgetFromContainers(serial);
+        _world.KnownItems[serial] = new BotKnownItem
+        {
+            Serial = serial, ItemId = itemId, X = x, Y = y, Z = z,
+            Amount = amount, Hue = hue, LastSeenMs = now,
+        };
+        if (itemId == 0x0EED) RecalcGold();
     }
 
     private void HandleContainerContent(byte[] packet, long now)
@@ -844,6 +887,7 @@ public sealed class BotClient : IDisposable
         // for them before goes. Appending kept items long gone (given away, used up)
         // and offered them in trade, where the server answered "does not exist".
         var listed = new HashSet<uint>();
+        var listedOrder = new HashSet<uint>();
         uint parentSerial = 0;
         for (int i = 0; i < count && offset + 20 <= packet.Length; i++)
         {
@@ -858,6 +902,9 @@ public sealed class BotClient : IDisposable
             ushort hue = ReadUInt16BE(packet, offset); offset += 2;
 
             if (parentSerial == 0) parentSerial = contSerial;
+            // The first item a packet names for a container starts that container's list.
+            if (listedOrder.Add(contSerial) || !_world.LastContents.TryGetValue(contSerial, out var order))
+                _world.LastContents[contSerial] = order = new List<BotKnownItem>();
 
             var item = new BotKnownItem
             {
@@ -866,6 +913,7 @@ public sealed class BotClient : IDisposable
                 ContainerSerial = contSerial, LastSeenMs = now,
             };
             _world.KnownItems[itemSerial] = item;
+            order.Add(item);
 
             if (_world.OpenContainers.TryGetValue(contSerial, out var cs))
             {
@@ -935,10 +983,18 @@ public sealed class BotClient : IDisposable
 
     private void HandleBuyList(byte[] packet)
     {
-        // 0x74: [opcode][len:2][vendorSerial:4][count:1] then items
-        uint vendorSerial = ReadUInt32BE(packet, 3);
+        // 0x74: [opcode][len:2][shop container:4][count:1] then [price:4][name len:1][name]
+        // per item. The entries carry no serial: the client pairs entry i with the
+        // container's 0x3C items read from the last one back (ClassicUO BuyList), so
+        // the bot does the same. The vendor is named by the 0x24 (gump 0x30) that
+        // opens the window.
+        uint containerSerial = ReadUInt32BE(packet, 3);
         byte count = packet[7];
-        var vendor = new BotVendorState { VendorSerial = vendorSerial, IsBuyList = true };
+        var vendor = new BotVendorState
+        {
+            ContainerSerial = containerSerial, VendorSerial = _lastShopVendor, IsBuyList = true,
+        };
+        _world.LastContents.TryGetValue(containerSerial, out var stock);
 
         int offset = 8;
         for (int i = 0; i < count && offset + 5 <= packet.Length; i++)
@@ -948,7 +1004,15 @@ public sealed class BotClient : IDisposable
             string name = nameLen > 0 && offset + nameLen <= packet.Length
                 ? System.Text.Encoding.ASCII.GetString(packet, offset, nameLen) : "";
             offset += nameLen;
-            vendor.Items.Add(new BotVendorItem { Price = price, Name = name });
+            var entry = new BotVendorItem { Price = price, Name = name };
+            if (stock != null && i < stock.Count)
+            {
+                var stocked = stock[stock.Count - 1 - i];
+                entry.Serial = stocked.Serial;
+                entry.ItemId = stocked.ItemId;
+                entry.Amount = stocked.Amount;
+            }
+            vendor.Items.Add(entry);
         }
 
         _world.ActiveVendor = vendor;
@@ -1254,6 +1318,9 @@ public sealed class BotClient : IDisposable
 
     private string VersionText =>
         $"{ClientVersion >> 24}.{(ClientVersion >> 16) & 0xFF}.{(ClientVersion >> 8) & 0xFF}.{ClientVersion & 0xFF}";
+
+    /// <summary>Send bytes as they are, for drills that build their own packets.</summary>
+    public void SendRaw(byte[] packet) => SendRawPacket(packet);
 
     internal void SendRawPacket(byte[] packet)
     {

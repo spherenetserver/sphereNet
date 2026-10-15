@@ -53,6 +53,8 @@ internal static class Program
             return await SaveKillDrill.RunAsync(args[1..]);
         if (args.Length > 0 && args[0] == "conformance")
             return await ConformanceDrill.RunAsync(args[1..]);
+        if (args.Length > 0 && args[0] == "functional")
+            return await FunctionalDrill.RunAsync(args[1..]);
 
         Options o;
         try { o = Parse(args); }

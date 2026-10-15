@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - Functional drill: economy, death, combat; bot item and shop reading
+------------------------------------------------------------------------
+ADD - LoadTest "functional" drill: player scenarios played by a bot client against
+      the real server on a shard copy and checked by what the client is shown. Setup is
+      done as staff would do it (account to Owner on the console, .go, .newgold, back to
+      player). Economy: buy (gold down by the listed price, the item in the pack), sell
+      (gold up by the offered price, the item gone), bank (box opens, pack gold moved,
+      balance up, status gold as PAYFROMPACKONLY says). Death: death screen, ghost body,
+      a corpse holding the pack's gold, resurrection by a healer. --probe sends console
+      lines and prints what follows. Combat: Heal costs exactly its MANAUSE and one of
+      each reagent and restores hit points, Heal without a reagent is refused at no
+      mana, a rabbit killed in melee leaves a corpse.
+FIX - Bot client: 0x1A ground items were skipped as mobiles (item serials carry
+      0x40000000) and 0xF3 was not read, so bots never saw an item on the ground.
+FIX - Bot client: the 0x74 buy list is paired with the shop container's 0x3C items from
+      the last one back, as the 2D client pairs them, and the vendor is taken from the
+      0x24 that opens gump 0x30; buys go out on layer 0x1A. Every bot purchase named
+      item 0 before. The bot reads its status gold (0x11) and the 0x2C death screen.
+ADD - Test: bot ground items (0x1A, 0xF3) and the buy list matching.
+
 [2026-10-15] - Client version conformance, dead connection reaping, old-client packets
 ------------------------------------------------------------------------
 FIX - Network: a connection whose peer reset it (a crashed client, a dropped line, a

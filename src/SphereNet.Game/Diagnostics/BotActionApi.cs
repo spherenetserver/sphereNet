@@ -215,8 +215,9 @@ public sealed class BotActionApi
     {
         if (_bot.State != BotState.Playing) return BotActionResult.Disconnected;
 
+        // Layer 0x1A (ShopBuyRestock), as the 2D client writes each entry.
         _bot.SendRawPacket(BotPacketBuilder.BuildBuyItems(vendorSerial,
-            [(0, itemSerial, (ushort)amount)]));
+            [(0x1A, itemSerial, (ushort)amount)]));
         await Task.Delay(200, ct);
         return BotActionResult.Success;
     }

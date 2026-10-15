@@ -3264,6 +3264,13 @@ public class Item : ObjBase
                     else SetTag("MORE1_DEFNAME", value);
                 }
                 _more1 = v;
+                // A numeric target is the spawn target too (CCSpawn.cpp:943): only the
+                // defname form reached a live component.
+                if (Definitions.DefinitionLoader.StaticResources is { } numSpawnRes)
+                {
+                    if (SpawnChar != null) { SpawnChar.SetFromMore1(v, numSpawnRes); ApplySpawnTrackId(); }
+                    if (SpawnItem != null && v != 0) { SpawnItem.ItemDefId = (int)v; ApplySpawnTrackId(); }
+                }
                 return true;
             }
             case "MORE2":

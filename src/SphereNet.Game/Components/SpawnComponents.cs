@@ -596,6 +596,11 @@ public sealed class SpawnComponent
         KillAll();
         _stopped = false;
         ForceSpawn();
+        // The gem's own timer drives the spawn (Item.OnTick); upstream's START and
+        // RESET set it to fire now (pItem->SetTimeout(0), CCSpawn.cpp:1257). Moving
+        // only the component's clock left the gem asleep until its old 15-30 minute
+        // timer came round.
+        _spawnItem.SetTimeout(Environment.TickCount64);
     }
 
     /// <summary>World-level RESPAWN: top this spawner straight up to its max now,
@@ -639,6 +644,11 @@ public sealed class SpawnComponent
     {
         _stopped = false;
         ForceSpawn();
+        // The gem's own timer drives the spawn (Item.OnTick); upstream's START and
+        // RESET set it to fire now (pItem->SetTimeout(0), CCSpawn.cpp:1257). Moving
+        // only the component's clock left the gem asleep until its old 15-30 minute
+        // timer came round.
+        _spawnItem.SetTimeout(Environment.TickCount64);
     }
 
     /// <summary>Source-X STOP verb: kill all + disable timer permanently.</summary>
@@ -1346,6 +1356,11 @@ public sealed class ItemSpawnComponent
     {
         _stopped = false;
         ForceSpawn();
+        // The gem's own timer drives the spawn (Item.OnTick); upstream's START and
+        // RESET set it to fire now (pItem->SetTimeout(0), CCSpawn.cpp:1257). Moving
+        // only the component's clock left the gem asleep until its old 15-30 minute
+        // timer came round.
+        _spawnItem.SetTimeout(Environment.TickCount64);
     }
 
     /// <summary>Source-X RESET: clear the children and start over immediately.</summary>
@@ -1354,6 +1369,11 @@ public sealed class ItemSpawnComponent
         KillAll();
         _stopped = false;
         ForceSpawn();
+        // The gem's own timer drives the spawn (Item.OnTick); upstream's START and
+        // RESET set it to fire now (pItem->SetTimeout(0), CCSpawn.cpp:1257). Moving
+        // only the component's clock left the gem asleep until its old 15-30 minute
+        // timer came round.
+        _spawnItem.SetTimeout(Environment.TickCount64);
     }
 
     /// <summary>Detach a spawned item without deleting it (Source-X DelObj).</summary>

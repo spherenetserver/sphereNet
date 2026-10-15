@@ -89,6 +89,15 @@ public static class ItemDefHelper
         if (defIndex != item.BaseId)
             item.SetTag("SCRIPTDEF", defIndex.ToString());
 
+        // A spawner made from its definition gets its spawn component with it, as
+        // upstream builds the CCSpawn component from the type when the item is created
+        // (CItem::CItem -> CreateBase). It was only set up at world load and on a
+        // runtime TYPE change, so a gem placed with .ADD (or made by a script) took
+        // SPAWNID/AMOUNT/START and never produced anything. Before @Create, so the
+        // creation script can configure it.
+        if (item.ItemType is ItemType.SpawnChar or ItemType.SpawnItem or ItemType.SpawnChampion)
+            Item.OnSpawnTypeChanged?.Invoke(item);
+
         // Source-X CItem::GenerateScript fires ITRIG_Create on every item it
         // materialises from a def. This is the only hook that runs a magic
         // weapon's @Create body (MOREY/ATTR/HITPOINTS/COLOR), so loot, spawns,

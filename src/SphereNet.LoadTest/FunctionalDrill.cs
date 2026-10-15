@@ -101,6 +101,8 @@ internal static class FunctionalDrill
                 await PartySuite(server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "ship")
                 await ShipSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "spawn")
+                await SpawnSuite(server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -1773,6 +1775,99 @@ internal static class FunctionalDrill
 
         captain.Disconnect();
         deckhand.Disconnect();
+    }
+
+    // ---- spawns ----------------------------------------------------------------------
+
+    private const ushort SpawnGem = 0x1EA7, RabbitBody = 0x00CD;
+
+    private static async Task SpawnSuite(ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        var gm = await LoginAsync(1031, port, ct);
+        const int Gx = 1160, Gy = 1660, Gz = 0;
+        uint gem = 0;
+        HashSet<uint> before = new();
+
+        List<KnownMobile> Rabbits()
+        {
+            lock (gm.World.SyncRoot)
+                return gm.World.Mobiles.Values.Where(m => !before.Contains(m.Serial) && m.Body == RabbitBody &&
+                    Math.Max(Math.Abs(m.X - Gx), Math.Abs(m.Y - Gy)) <= 6).ToList();
+        }
+
+        async Task OnGem(string verb)
+        {
+            await gm.Actions.Say(verb, ct);
+            if (await gm.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no target cursor for {verb}");
+            await gm.Actions.TargetObject(gem, ct);
+            await Task.Delay(400, ct);
+        }
+
+        // Upstream spawns ONE creature per timer (CCSpawn::OnTickComponent) and START fires
+        // the gem now (SetTimeout(0)): amount 2 with a one-minute timer is one at once and
+        // the second a minute later.
+        await RunScenario("spawn", "START spawns at once, the timer fills the gem", outcomes, async () =>
+        {
+            await AsStaff(server, gm.AccountName, async () =>
+            {
+                await SayAsync(gm, $".go {Gx},{Gy + 3},{Gz}", ct);
+                lock (gm.World.SyncRoot) before = gm.World.Mobiles.Keys.ToHashSet();
+                await gm.Actions.Say(".add i_worldgem_bit", ct);
+                if (await gm.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add i_worldgem_bit");
+                await gm.Actions.TargetLocation(Gx, Gy, Gz, ct);
+                var found = await WaitAsync(() => { lock (gm.World.SyncRoot) return gm.World.KnownItems.Values.FirstOrDefault(i =>
+                    i.ItemId == SpawnGem && i.ContainerSerial == 0 && i.X == Gx && i.Y == Gy); }, 4000, "the spawn gem on the ground");
+                gem = found.Serial;
+                foreach (string verb in new[] { ".xspawnid c_rabbit", ".xamount 2", ".xmaxdist 4", ".xtimelo 1", ".xtimehi 1", ".xstart" })
+                    await OnGem(verb);
+            });
+            var sw = Stopwatch.StartNew();
+            await WaitAsync(() => Rabbits().Count >= 1 ? (object)true : null, 10_000,
+                $"the first rabbit right after START (have {Rabbits().Count})");
+            double first = sw.Elapsed.TotalSeconds;
+            await WaitAsync(() => Rabbits().Count >= 2 ? (object)true : null, 100_000,
+                $"the second rabbit on the one-minute timer (have {Rabbits().Count})");
+            double second = sw.Elapsed.TotalSeconds;
+            await Task.Delay(5000, ct);
+            int n = Rabbits().Count;
+            if (n != 2) throw new ScenarioFailed($"{n} rabbits around a gem of amount 2");
+            return $"gem 0x{gem:X}: first rabbit after {first:F0}s, second after {second:F0}s, none beyond the amount";
+        });
+
+        await RunScenario("spawn", "a killed spawn is replaced on the gem's timer", outcomes, async () =>
+        {
+            var victim = Rabbits().FirstOrDefault() ?? throw new ScenarioFailed("no rabbit to kill");
+            await AsStaff(server, gm.AccountName, async () =>
+            {
+                await gm.Actions.Say(".xkill", ct);
+                if (await gm.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .xkill");
+                await gm.Actions.TargetObject(victim.Serial, ct);
+            });
+            await WaitAsync(() => Rabbits().All(r => r.Serial != victim.Serial) ? (object)true : null, 5000, "the killed rabbit to go");
+            int after = Rabbits().Count;
+            if (after != 1) throw new ScenarioFailed($"{after} rabbits after one was killed");
+            var sw = Stopwatch.StartNew();
+            // TIMELO/TIMEHI 1: one minute, as Source-X reads them.
+            await WaitAsync(() => Rabbits().Count >= 2 ? (object)true : null, 100_000,
+                $"the gem to replace the rabbit (have {Rabbits().Count})");
+            return $"replaced after {sw.Elapsed.TotalSeconds:F0}s (TIMELO=TIMEHI=1 minute)";
+        });
+
+        await AsStaff(server, gm.AccountName, async () =>
+        {
+            await OnGem(".xremove");
+            foreach (var r in Rabbits())
+            {
+                await gm.Actions.Say(".xremove", ct);
+                if (await gm.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                    await gm.Actions.TargetObject(r.Serial, ct);
+                await Task.Delay(300, ct);
+            }
+        });
+        gm.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

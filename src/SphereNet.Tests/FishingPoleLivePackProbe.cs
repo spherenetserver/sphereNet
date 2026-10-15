@@ -215,9 +215,11 @@ public sealed class FishingPoleLivePackProbe
         {
             var gem = world.CreateItem();
             bool applied = ItemDefHelper.ApplyInstanceMetadata(gem, 0x1EA7); // i_worldgem_bit
+            // The gem is a spawner from its creation (its component comes with it), so
+            // its target and amount are set the way a script or a GM sets them.
             var orcRid = resources.ResolveDefName("c_orc");
-            gem.More1 = (uint)orcRid.Index;
-            gem.Amount = 1;
+            Assert.True(gem.TrySetProperty("MORE1", $"0{(uint)orcRid.Index:x}"));
+            Assert.True(gem.TrySetProperty("AMOUNT", "1"));
             world.PlaceItem(gem, new Point3D(101, 100, 0, 0));
             if (gem.SpawnChar == null)
                 gem.InitializeSpawnComponent(world, resources);

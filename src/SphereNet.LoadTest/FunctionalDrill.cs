@@ -105,6 +105,8 @@ internal static class FunctionalDrill
                 await SpawnSuite(server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "guild")
                 await GuildSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "pvendor")
+                await PlayerVendorSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -1970,6 +1972,103 @@ internal static class FunctionalDrill
             await Task.Delay(500, ct);
         });
         founder.Disconnect();
+    }
+
+    // ---- player vendors --------------------------------------------------------------
+
+    private static async Task PlayerVendorSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        string Wild;
+        using (var map = new SphereNet.MapData.MapDataManager(mul))
+        {
+            map.Load();
+            map.InitMap(0, 7168, 4096);
+            // Open ground away from town, so no other vendor hears "vendor buy".
+            var site = HouseSites(map, 1220, 1700, 80).FirstOrDefault();
+            Wild = $"{site.X},{site.Y},{site.Z}";
+        }
+        var owner = await LoginAsync(1051, port, ct);
+        var buyer = await LoginAsync(1052, port, ct);
+        uint vendor = 0, gears = 0;
+        const int Price = 100;
+
+        string Said(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => $"{e.Speaker}: {e.Text}"));
+
+        await RunScenario("pvendor", "a vendor deed hires a vendor for its owner", outcomes, async () =>
+        {
+            await AsStaff(server, owner.AccountName, async () =>
+            {
+                await SayAsync(owner, $".go {Wild}", ct);
+                await AddIntoPackAsync(owner, "i_deed_vendor", ct);
+                await AddIntoPackAsync(owner, "i_gears", ct);
+            });
+            await AsStaff(server, buyer.AccountName, async () =>
+            {
+                await SayAsync(buyer, $".go {Wild}", ct);
+                await SayAsync(buyer, ".newgold 1000", ct);
+            });
+            var pack = await PackContentsAsync(owner, ct);
+            var deed = pack.FirstOrDefault(i => i.ItemId == 0x14EF) ?? throw new ScenarioFailed("no vendor deed in the pack");
+            gears = pack.FirstOrDefault(i => i.ItemId == Gears)?.Serial ?? throw new ScenarioFailed("no gears in the pack");
+            HashSet<uint> before;
+            lock (owner.World.SyncRoot) before = owner.World.Mobiles.Keys.ToHashSet();
+            long since = Environment.TickCount64;
+            await owner.Actions.DoubleClick(deed.Serial, 1000, ct);
+            var hired = await WaitAsync(() => { lock (owner.World.SyncRoot) return owner.World.Mobiles.Values.FirstOrDefault(m =>
+                    !before.Contains(m.Serial) && m.IsHumanBody && owner.World.DistanceTo(m.X, m.Y) <= 2); }, 5000,
+                "a vendor beside its owner");
+            vendor = hired.Serial;
+            return $"vendor 0x{vendor:X}; {Said(owner, since)}";
+        });
+
+        await RunScenario("pvendor", "the owner stocks and prices an item", outcomes, async () =>
+        {
+            if (vendor == 0) throw new ScenarioFailed("no vendor");
+            long since = Environment.TickCount64;
+            await owner.Actions.PickUp(gears, 1, 2000, ct);
+            await owner.Actions.DropToContainer(gears, vendor, 2000, ct);
+            await Task.Delay(1000, ct);
+            // The vendor takes it into its stock and says so (NPC_PET_SELL); the bot keeps
+            // a lifted item in its own model, so its pack is no witness here.
+            if (!Said(owner, since).Contains("sell", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed($"the vendor did not take the gears; {Said(owner, since)}");
+            // The pet command PRICE with a number: the cursor picks the item (PC_PRICE).
+            await owner.Actions.Say($"all price {Price}", ct);
+            if (await owner.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no cursor for 'price'; {Said(owner, since)}");
+            await owner.Actions.TargetObject(gears, ct);
+            await Task.Delay(1200, ct);
+            string said = Said(owner, since);
+            if (!said.Contains(Price.ToString(), StringComparison.Ordinal))
+                throw new ScenarioFailed($"no price confirmation; {said}");
+            return said;
+        });
+
+        await RunScenario("pvendor", "a customer buys the item at its price", outcomes, async () =>
+        {
+            if (vendor == 0) throw new ScenarioFailed("no vendor");
+            int goldBefore = await RefreshGoldAsync(buyer, ct);
+            long since = Environment.TickCount64;
+            buyer.World.ActiveVendor = null;
+            await SayAsync(buyer, "vendor buy", ct);
+            var shop = await WaitAsync(() => buyer.World.ActiveVendor is { IsBuyList: true } v && v.VendorSerial == vendor
+                ? buyer.World.ActiveVendor : null, 8000, $"the player vendor's buy window; {Said(buyer, since)}");
+            var entry = shop.Items.FirstOrDefault(i => i.Serial == gears)
+                ?? throw new ScenarioFailed($"the gears are not on offer: {string.Join(", ", shop.Items.Select(i => $"0x{i.Serial:X}={i.Price}"))}");
+            if (entry.Price != Price) throw new ScenarioFailed($"listed at {entry.Price}, priced at {Price}");
+            await buyer.Actions.Buy(vendor, gears, 1, ct);
+            int goldAfter = await WaitGoldChangeAsync(buyer, goldBefore, ct);
+            var pack = await PackContentsAsync(buyer, ct);
+            if (goldAfter != goldBefore - Price) throw new ScenarioFailed($"gold {goldBefore} -> {goldAfter}");
+            if (!pack.Any(i => i.ItemId == Gears)) throw new ScenarioFailed("no gears in the buyer's pack");
+            return $"bought for {Price}: gold {goldBefore} -> {goldAfter}";
+        });
+
+        owner.Disconnect();
+        buyer.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

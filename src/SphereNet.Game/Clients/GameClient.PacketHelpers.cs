@@ -2056,7 +2056,10 @@ public sealed partial class GameClient
 
                 var item = _world.CreateItem();
                 item.BaseId = dispId;
-                item.Name = cleaned;
+                // No instance name: upstream's ADD (CItem::CreateTemplate) names nothing, so
+                // the item reads its definition's NAME or the tiledata name. Stamping the
+                // token made every pack item without a NAME= line go by its defname
+                // ("i_gears") on its label and in every message that names it.
                 item.Amount = Math.Max((ushort)1, amount);
 
                 var namedDef = DefinitionLoader.GetItemDef(rid.Index);

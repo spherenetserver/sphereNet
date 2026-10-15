@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - Pet'in sahibi MEMORY_IPET baglantisidir; .ADD ad vermez; oyuncu saticisi tatbikati
+------------------------------------------------------------------------
+DUZELTME - Petler: motorun kendi kaydi yoksa pet'in sahibi, Source-X'in yalnizca okudugu gibi,
+       MEMORY_IPET hafizasinin baglantisindan okunur (NPC_PetGetOwner,
+       CCharNPCStatus.cpp:471). Script'in Source-X usulu tuttugu oyuncu saticisi
+       (memory_ipet renkli, sahibe bagli i_memory - satici deed'i boyle yapar) sahipsiz
+       kaliyordu; sahibi ona mal koyamiyor ve fiyat veremiyordu.
+DUZELTME - .ADD yazilan token'i item'in adi yapiyordu; NAME= satiri olmayan item defname'iyle
+       aniliyordu ("Setting price of i_gears"). Source-X ADD ad vermez
+       (CItem::CreateTemplate): item tanimindaki ya da tiledata adini okur.
+EKLEME - Fonksiyonel tatbikat "pvendor" paketi: satici deed'i satici tutar, sahibi item koyar
+       ve fiyatlar ("all price 100" + imlec), musteri o fiyattan satin alir. Sphere 56T ozel
+       surum paketinde satici deed'i yok (kendi oyuncu saticisi sistemi var), paket orada
+       uygulanmaz.
+EKLEME - Testler: script'in yaptigi MEMORY_IPET'ten sahip; eklenen item defname'iyle anilmaz.
+
 [2026-10-16] - Item deed'leri item'ini yerlestiriyor; guildstone deed'i lonca kuruyor; lonca tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Deed: siradan bir ITEMDEF'i gosteren deed (MORE=i_guildstone, bulletin board gibi

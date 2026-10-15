@@ -2928,7 +2928,20 @@ public partial class Character : ObjBase
         TryGetTag("SUMMON_DURATION", out _) ||
         TryGetTag("SUMMON_EXPIRE_TICK", out _);
 
-    public Serial OwnerSerial => ParseSerialTag("OWNER_UID", fallback: _npcMaster);
+    /// <summary>The owner: the engine's own record, else - as upstream reads it alone -
+    /// the link of a pet's MEMORY_IPET memory (NPC_PetGetOwner, CCharNPCStatus.cpp:471).
+    /// A script that hires an NPC the Source-X way, an i_memory coloured memory_ipet
+    /// and linked to the owner (a player-vendor deed does), left it ownerless here.</summary>
+    public Serial OwnerSerial
+    {
+        get
+        {
+            var owner = ParseSerialTag("OWNER_UID", fallback: _npcMaster);
+            if (owner.IsValid || IsPlayer || !IsStatFlag(StatFlag.Pet))
+                return owner;
+            return Memory_FindTypes(MemoryType.IPet)?.Link ?? Serial.Invalid;
+        }
+    }
 
     /// <summary>The brain an NPC gets when its script names none: Source-X
     /// CChar::GetNPCBrainAuto guesses it from the body (CCharStatus.cpp:563).</summary>

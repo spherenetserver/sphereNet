@@ -277,6 +277,32 @@ public sealed class NetworkInputLoopTests
         Assert.True(state.IsClosing);
     }
 
+    /// <summary>A peer that resets the connection (a crashed client, a dropped line, a
+    /// close with unread data) fails the pending receive, and the socket's Connected
+    /// turns false before anyone reads the failure. The input loop skipped such a
+    /// connection, so it was never closed: it held its slot and its address's
+    /// CLIENTMAXIP count until the idle timeout, two minutes later.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void APeerThatResetsIsDetectedAndItsAddressCountReleased(bool asyncReceive)
+    {
+        var nm = NoCryptManager(asyncReceive);
+        nm.ClientMaxIP = 1;
+        using var lb = new Loopback(nm);
+        var (client, state) = LoggedIn(lb);
+
+        client.LingerState = new LingerOption(true, 0); // close with RST
+        client.Close();
+        lb.PumpUntil(() => state.IsClosing);
+        nm.Tick();
+        Assert.False(state.IsInUse);
+
+        // The one connection this address may hold is free again.
+        var (_, next) = lb.Connect();
+        Assert.True(next.IsInUse);
+    }
+
     /// <summary>Among many idle connections only the one that sent data is
     /// dispatched, and the idle ones stay open.</summary>
     [Theory]

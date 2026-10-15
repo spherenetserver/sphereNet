@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - Client version conformance, dead connection reaping, old-client packets
+------------------------------------------------------------------------
+FIX - Network: a connection whose peer reset it (a crashed client, a dropped line, a
+      close with unread data) was never closed. The failed receive turns the socket's
+      Connected false before anyone reads the failure, and the input loop skipped any
+      socket that was not Connected, so the connection held its slot and its address's
+      CLIENTMAXIP count until the 2-minute idle timeout; repeated drops from one address
+      could lock that address out. The input loop now reads such a socket and closes the
+      connection on that pass.
+FIX - Stat locks (0xBF.0x19 type 2) go only to clients 4.0.1 and later
+      (Source-X MINCLIVER_STATLOCKS); an older or unknown version was sent them.
+FIX - Tooltip revision: clients before 4.0.5 (or of unknown version) get 0xBF.0x10, as
+      in Source-X; they were sent 0xDC, which they do not know.
+ADD - ReferenceClientProtocol: how the 2D client of a given version frames each server
+      packet (length table and version gates), reads 0x78 and 0xA9, and which packets it
+      knows at all (Source-X CanSendTo minimum versions). Bot clients frame by it for
+      the version they announce.
+ADD - Bot clients can announce any client version and log in as that client does: a
+      bare 4-byte seed before 6.0.4.0, the relay's auth id as a raw seed on the game
+      connection, an 0xBD answer when asked (also on the login connection).
+ADD - LoadTest "conformance" drill: per client version, a fresh server and one bot of
+      each role; every server packet is checked against that version's client, and
+      after the run every connection must be gone.
+ADD - Tests: incoming packet lengths and layout switch versions agree with the 7.0.20
+      client; 0x78 and 0xA9 read whole in the client's layout; a peer reset frees its
+      CLIENTMAXIP slot; pre-4.0.5 clients get the old tooltip revision packet.
+
 [2026-10-15] - Hostile-client and kill-during-save drills, account file durability
 ------------------------------------------------------------------------
 FIX - Account save: the staged account file is now flushed to disk (FlushFileBuffers /

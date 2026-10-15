@@ -709,6 +709,29 @@ public sealed class PacketOPLInfo : PacketWriter
     }
 }
 
+/// <summary>0xBF.0x10 — AOS tooltip revision for clients before 4.0.5, which do not
+/// know 0xDC (Source-X PacketPropertyListVersionOld, send.cpp:4087).</summary>
+public sealed class PacketOPLInfoOld : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly uint _hash;
+
+    public PacketOPLInfoOld(uint serial, uint hash) : base(0xBF)
+    {
+        _serial = serial; _hash = hash;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(13);
+        buf.WriteUInt16(0x0010); // sub-command
+        buf.WriteUInt32(_serial);
+        buf.WriteUInt32(_hash);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 /// <summary>0xD6 — AOS tooltip data (object property list).</summary>
 public sealed class PacketOPLData : PacketWriter
 {

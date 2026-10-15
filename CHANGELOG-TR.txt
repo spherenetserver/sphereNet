@@ -4,6 +4,35 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Client surum uyumlulugu, kopan baglanti temizligi, eski client paketleri
+------------------------------------------------------------------------
+DUZELTME - Ag: karsi tarafin RST ile kopardigi baglanti (coken client, kopan hat, okunmamis
+       veriyle kapatma) hic kapatilmiyordu. Basarisiz okuma soketin Connected degerini,
+       hatayi kimse okumadan false yapiyor; giris dongusu Connected olmayan soketi
+       atladigi icin baglanti, slotunu ve adresinin CLIENTMAXIP sayacini 2 dakikalik
+       bosta kalma suresine kadar tutuyordu. Ayni adresten tekrarlanan kopmalar o adresi
+       kilitleyebiliyordu. Giris dongusu artik boyle bir soketi okuyor ve baglantiyi ayni
+       turda kapatiyor.
+DUZELTME - Stat kilitleri (0xBF.0x19 tip 2) yalnizca 4.0.1 ve sonrasi client'lara gidiyor
+       (Source-X MINCLIVER_STATLOCKS); daha eski ya da surumu bilinmeyen client'a da
+       gonderiliyordu.
+DUZELTME - Tooltip surumu: 4.0.5 oncesi (ya da surumu bilinmeyen) client'lar Source-X'teki
+       gibi 0xBF.0x10 aliyor; tanimadiklari 0xDC gonderiliyordu.
+EKLEME - ReferenceClientProtocol: belirli surumdeki 2D client'in her sunucu paketini nasil
+       cerceveledigi (uzunluk tablosu ve surum esikleri), 0x78 ve 0xA9'u nasil okudugu ve
+       hangi paketleri hic tanidigi (Source-X CanSendTo en dusuk surumleri). Bot
+       client'lari bildirdikleri surume gore bununla cerceveliyor.
+EKLEME - Bot client'lari herhangi bir client surumunu bildirip o client gibi giris
+       yapabiliyor: 6.0.4.0 oncesi yalin 4 baytlik seed, oyun baglantisinda relay auth id'si
+       ham seed olarak, istendiginde (giris baglantisinda da) 0xBD cevabi.
+EKLEME - LoadTest "conformance" tatbikati: her client surumu icin temiz bir sunucu ve her
+       rolden bir bot; sunucunun her paketi o surumun client'ina gore kontrol edilir, tur
+       sonunda tum baglantilarin kapanmis olmasi gerekir.
+EKLEME - Testler: gelen paket uzunluklari ve bicim degisim surumleri 7.0.20 client'i ile
+       uyumlu; 0x78 ve 0xA9 client'in biciminde eksiksiz okunuyor; RST ile kopan baglanti
+       CLIENTMAXIP slotunu birakiyor; 4.0.5 oncesi client'lar eski tooltip surum paketini
+       aliyor.
+
 [2026-10-15] - Dusmanca istemci ve save-ortasinda-oldurme tatbikatlari, hesap dosyasi dayanikliligi
 ------------------------------------------------------------------------
 DUZELTME - Hesap kaydi: hazirlanan hesap dosyasi, canli sphereaccu dosyasinin uzerine yeniden

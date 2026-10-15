@@ -1236,8 +1236,10 @@ public sealed class ClientSkillsHandler
 
         if (sendFull)
             _netState.Send(new PacketOPLData(serial, entry.Revision, entry.Properties));
-        else
+        else if (_netState.SupportsTooltipHash)
             _netState.Send(new PacketOPLInfo(serial, entry.Revision));
+        else
+            _netState.Send(new PacketOPLInfoOld(serial, entry.Revision));
     }
 
     private bool CanSendAosTooltip(ObjBase obj)

@@ -509,6 +509,33 @@ public class SourceXGameplayParityTests
         Assert.Single(opcodes, op => op == 0xDC);
     }
 
+    /// <summary>A client before 4.0.5 has no 0xDC: the revision goes out as
+    /// 0xBF.0x10 (Source-X PacketPropertyListVersion::CanSendTo, MINCLIVER_TOOLTIPHASH;
+    /// CClientMsg_AOSTooltip.cpp:188).</summary>
+    [Theory]
+    [InlineData(40_000_000u)]
+    [InlineData(40_004_000u)]
+    public void TooltipModeOne_SendsTheOldRevisionPacketBeforeFourZeroFive(uint version)
+    {
+        using var loggerFactory = TestHarness.CreateLoggerFactory();
+        var world = TestHarness.CreateWorld();
+        world.ToolTipMode = 1;
+        var client = CreatePlayingClient(loggerFactory, world, out var state, out var player);
+        state.ClientVersionNumber = version;
+        var item = world.CreateItem();
+        item.Name = "test item";
+        world.PlaceItem(item, player.Position);
+
+        client.SendAosTooltip(item, requested: false);
+        client.SendAosTooltip(item, requested: false);
+
+        var packets = TestHarness.GetQueuedPackets(state).Select(p => p.Span.ToArray()).ToList();
+        Assert.DoesNotContain(packets, p => p[0] == 0xDC);
+        var old = Assert.Single(packets, p => p[0] == 0xBF && p.Length >= 5 && p[3] == 0x00 && p[4] == 0x10);
+        Assert.Equal(13, old.Length);
+        Assert.Equal(item.Uid.Value, System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(old.AsSpan(5)));
+    }
+
     [Fact]
     public void TooltipModes_OffSendsNothingAndForceModeAlwaysSendsFullList()
     {

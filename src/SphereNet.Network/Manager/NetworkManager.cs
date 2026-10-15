@@ -577,7 +577,9 @@ public sealed class NetworkManager : IDisposable
             {
                 // A socket select() did not report has no data, no FIN and no error:
                 // the same answer Receive would give, without its two calls.
-                int read = readinessKnown && !state.ReceivesAsync && state.Socket is { } socket
+                // A socket that is no longer connected is not in the select set; it
+                // goes to Receive, which reports it lost.
+                int read = readinessKnown && !state.ReceivesAsync && state.Socket is { Connected: true } socket
                            && !_readable.Contains(socket)
                     ? 0
                     : state.Receive();
@@ -624,7 +626,7 @@ public sealed class NetworkManager : IDisposable
         _readable.Clear();
         foreach (var state in _states)
         {
-            if (state.CanReceive && !state.ReceivesAsync && state.Socket is { } socket)
+            if (state.CanReceive && !state.ReceivesAsync && state.Socket is { Connected: true } socket)
                 _selectList.Add(socket);
         }
         if (_selectList.Count == 0)

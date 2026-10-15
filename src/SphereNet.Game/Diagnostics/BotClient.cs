@@ -50,6 +50,20 @@ public sealed class BotClient : IDisposable
     private readonly List<byte> _compressedBuffer = new(); // Raw compressed data
     private bool _isGamePhase;
 
+    /// <summary>Client version the bot announces, packed major &lt;&lt; 24 | minor &lt;&lt; 16 |
+    /// build &lt;&lt; 8 | extra. Default 7.0.0.0.</summary>
+    public uint ClientVersion { get; init; } = ReferenceClientProtocol.Pack(7, 0, 0, 0);
+
+    /// <summary>Open the game connection the way the 2D client does: the relay's auth
+    /// id as a raw 4-byte seed, no 0xEF, so the server knows the version only from
+    /// the relay and from the 0xBD answer. Off: an 0xEF seed with the version.</summary>
+    public bool RawGameSeed { get; init; }
+
+    /// <summary>Every packet the server sent on the game connection, whole and
+    /// exactly as written (the server compresses each packet on its own, so one
+    /// decoded Huffman unit is one packet).</summary>
+    public Action<byte[]>? ServerPacketObserver { get; set; }
+
     public BotState State { get; internal set; } = BotState.Disconnected;
     public int PacketsSent { get; private set; }
     public int PacketsReceived { get; private set; }
@@ -123,11 +137,18 @@ public sealed class BotClient : IDisposable
 
             // Step 1: Login Seed + Account Login
             uint seed = (uint)(_rng.Next() & 0x7FFFFFFF);
-            await SendPacketAsync(BotPacketBuilder.BuildLoginSeed(seed), ct);
+            await SendPacketAsync(VersionSeed(seed), ct);
             await SendPacketAsync(BotPacketBuilder.BuildAccountLogin(_accountName, _password), ct);
             
-            // Step 2: Wait for server list (0xA8)
+            // Step 2: Wait for server list (0xA8). A client that sent no version in its
+            // seed is asked for it first (0xBD) and answers before the list arrives.
             var response = await ReadPacketAsync(ct);
+            for (int asked = 0; response != null && response[0] == 0xBD && asked < 3; asked++)
+            {
+                PacketsReceived++;
+                await SendPacketAsync(BotPacketBuilder.BuildClientVersion(VersionText), ct);
+                response = await ReadPacketAsync(ct);
+            }
             if (response == null)
             {
                 _logger.LogWarning("[Bot{Id}] Step 2 FAIL: No response after account login", _botId);
@@ -183,7 +204,9 @@ public sealed class BotClient : IDisposable
 
             // Step 5: Game server login (need to send seed again for game server)
             seed = (uint)(_rng.Next() & 0x7FFFFFFF);
-            await SendPacketAsync(BotPacketBuilder.BuildLoginSeed(seed), ct);
+            await SendPacketAsync(RawGameSeed
+                ? [(byte)(_authId >> 24), (byte)(_authId >> 16), (byte)(_authId >> 8), (byte)_authId]
+                : VersionSeed(seed), ct);
             await SendPacketAsync(BotPacketBuilder.BuildGameLogin(_accountName, _password, _authId), ct);
             await _stream.FlushAsync(ct);
 
@@ -1222,6 +1245,16 @@ public sealed class BotClient : IDisposable
         return count;
     }
 
+    // Clients before 6.0.4.0 open with a bare 4-byte seed and say their version only
+    // in the 0xBD answer; later ones send it in 0xEF.
+    private byte[] VersionSeed(uint seed) => ClientVersion < ReferenceClientProtocol.Pack(6, 0, 4, 0)
+        ? [(byte)(seed >> 24), (byte)(seed >> 16), (byte)(seed >> 8), (byte)seed]
+        : BotPacketBuilder.BuildLoginSeed(seed,
+            ClientVersion >> 24, (ClientVersion >> 16) & 0xFF, (ClientVersion >> 8) & 0xFF, ClientVersion & 0xFF);
+
+    private string VersionText =>
+        $"{ClientVersion >> 24}.{(ClientVersion >> 16) & 0xFF}.{(ClientVersion >> 8) & 0xFF}.{ClientVersion & 0xFF}";
+
     internal void SendRawPacket(byte[] packet)
     {
         if (_stream == null) return;
@@ -1376,34 +1409,13 @@ public sealed class BotClient : IDisposable
         }
     }
 
-    /// <summary>Server-to-client packet lengths for the client the bot announces in its
-    /// login seed (7.0.0.0); -1 = variable, a 2-byte length follows the opcode. The
-    /// server picks some sizes by client version (0x24 is 7 bytes before 7.0.9, 9
-    /// after), so the table has to be the one for that version, and it has to cover
-    /// every opcode: an unknown fixed-size packet read as variable took two payload
-    /// bytes for a length and the stream never lined up again. Base table and version
-    /// calibration from the ClassicUO client (PacketsTable).</summary>
-    private static readonly short[] s_serverPacketLengths =
-    [
-         104,    5,    7,   -1,    2,    5,    5,    7,   15,    5,   11,    7,   -1,    3,   -1,   61, // 0x00
-         215,   -1,   -1,   10,    6,    9,   -1,   -1,   -1,   -1,   -1,   37,   -1,    5,    4,    8, // 0x10
-          19,    8,    3,   26,    7,   21,    5,    2,    5,    1,    5,    2,    2,   17,   15,   10, // 0x20
-           5,   -1,    2,    2,   10,  653,   -1,    8,    7,    9,   -1,   -1,   -1,    2,   37,   -1, // 0x30
-         201,   -1,   -1,  553,  713,    5,   -1,   11,   73,   93,    5,    9,   -1,   -1,    6,    2, // 0x40
-          -1,   -1,   -1,    2,   12,    1,   11,  110,  106,   -1,   -1,    4,    2,   73,   -1,   49, // 0x50
-           5,    9,   15,   13,    1,    4,   -1,   21,   -1,   -1,    3,    9,   19,    3,   14,   -1, // 0x60
-          28,   -1,    5,    2,   -1,   35,   16,   17,   -1,    9,   -1,    2,   -1,   13,    2,   -1, // 0x70
-          62,   -1,    2,   39,   69,    2,   -1,   -1,   66,   -1,   -1,   -1,   11,   -1,   -1,   -1, // 0x80
-          19,   65,   -1,   99,   -1,    9,   -1,    2,   -1,   26,   -1,  258,  309,   51,   -1,   -1, // 0x90
-           3,    9,    9,    9,  149,   -1,   -1,    4,   -1,   -1,    5,   -1,   -1,   -1,   -1,   13, // 0xA0
-          -1,   -1,   -1,   -1,   -1,   64,    9,   -1,   -1,    5,    6,    9,    3,   -1,   -1,   -1, // 0xB0
-          36,   -1,   -1,   -1,    6,  203,    1,   49,    2,    6,    6,    7,   -1,    1,   -1,   78, // 0xC0
-          -1,    2,   25,   -1,   -1,   -1,   -1,   -1,   -1,  268,   -1,   -1,    9,   -1,   -1,   -1, // 0xD0
-          -1,   -1,   10,   -1,   -1,   -1,    5,   12,   13,   75,    3,   -1,   -1,   -1,   10,   21, // 0xE0
-          -1,   -1,   -1,   24,   -1,   21,   -1,   -1,  106,   -1,   -1,   -1,   -1,   -1,   -1,   -1, // 0xF0
-    ];
-
-    private static int GetPacketLength(byte opcode) => s_serverPacketLengths[opcode];
+    /// <summary>Server-to-client packet lengths for the client version the bot
+    /// announces (<see cref="ClientVersion"/>); -1 = variable, a 2-byte length follows
+    /// the opcode. The server picks some sizes by client version (0x24 is 7 bytes
+    /// before 7.0.9, 9 after), so the table has to be the one for that version, and it
+    /// has to cover every opcode: an unknown fixed-size packet read as variable took
+    /// two payload bytes for a length and the stream never lined up again.</summary>
+    private int GetPacketLength(byte opcode) => ReferenceClientProtocol.Length(opcode, ClientVersion);
 
     private byte _lastOpcode;
 
@@ -1449,6 +1461,9 @@ public sealed class BotClient : IDisposable
             if (packet != null)
             {
                 BytesReceived += packet.Length;
+                // The client answers the server's version request with its version text.
+                if (packet[0] == 0xBD)
+                    SendRawPacket(BotPacketBuilder.BuildClientVersion(VersionText));
                 return packet;
             }
 
@@ -1466,6 +1481,8 @@ public sealed class BotClient : IDisposable
 
                 if (complete)
                 {
+                    if (decompressed.Length > 0)
+                        ServerPacketObserver?.Invoke(decompressed);
                     _decompressedBuffer.AddRange(decompressed);
                     if (bytesConsumed > 0 && bytesConsumed <= _compressedBuffer.Count)
                         _compressedBuffer.RemoveRange(0, bytesConsumed);

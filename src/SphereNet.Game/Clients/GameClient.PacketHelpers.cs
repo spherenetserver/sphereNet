@@ -1725,11 +1725,12 @@ public sealed partial class GameClient
             _netState.Send(new PacketUpdateMana(ch.Uid.Value, maxMana, mana));
             _netState.Send(new PacketUpdateStamina(ch.Uid.Value, maxStam, stam));
 
-            _netState.Send(new PacketStatLockInfo(
-                ch.Uid.Value,
-                ch.GetStatLock(0),
-                ch.GetStatLock(1),
-                ch.GetStatLock(2)));
+            if (_netState.SupportsStatLocks)
+                _netState.Send(new PacketStatLockInfo(
+                    ch.Uid.Value,
+                    ch.GetStatLock(0),
+                    ch.GetStatLock(1),
+                    ch.GetStatLock(2)));
         }
     }
 

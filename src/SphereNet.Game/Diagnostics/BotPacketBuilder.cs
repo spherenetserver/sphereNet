@@ -32,6 +32,17 @@ public static class BotPacketBuilder
         return packet;
     }
 
+    /// <summary>Build 0xBD client version answer: [0xBD][len][ASCII version][0].</summary>
+    public static byte[] BuildClientVersion(string version)
+    {
+        var text = Encoding.ASCII.GetBytes(version);
+        var packet = new byte[3 + text.Length + 1];
+        packet[0] = 0xBD;
+        WriteUInt16BE(packet, 1, (ushort)packet.Length);
+        text.CopyTo(packet, 3);
+        return packet;
+    }
+
     /// <summary>Build 0xA0 Server Select packet (3 bytes).</summary>
     public static byte[] BuildServerSelect(ushort serverIndex = 0)
     {

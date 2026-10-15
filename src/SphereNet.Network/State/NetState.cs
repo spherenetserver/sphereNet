@@ -355,6 +355,14 @@ public sealed class NetState : IDisposable
     public bool SupportsHealthBarStatus =>
         IsKingdomRebornClient || _clientVersionNumber >= 70_000_000 || FallbackVersionAtLeast(70_000_000);
     public bool SupportsAosTooltip => HasProtocolChanges(ProtocolChanges.Version500a) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 40_000_000;
+    /// <summary>The 0xBF.0x19.0x02 stat-lock packet: MINCLIVER_STATLOCKS (4.0.1). An
+    /// unknown version is not sent it, as Source-X's isClientVersionNumber answers
+    /// false for one (PacketStatLocks::CanSendTo, send.cpp:4353).</summary>
+    public bool SupportsStatLocks => _clientVersionNumber >= 40_001_000;
+    /// <summary>The 0xDC tooltip revision: MINCLIVER_TOOLTIPHASH (4.0.5). Older or
+    /// unknown versions get 0xBF.0x10 instead (PacketPropertyListVersion::CanSendTo,
+    /// send.cpp:5013; CClientMsg_AOSTooltip.cpp:188).</summary>
+    public bool SupportsTooltipHash => _clientVersionNumber >= 40_005_000;
     public bool SupportsBuffIcon => HasProtocolChanges(ProtocolChanges.BuffIcon) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 50_002_002;
     public bool SupportsMapWaypoints => ClientEra == ClientEra.Modern || IsKingdomRebornClient ||
         IsEnhancedClient || _clientVersionNumber >= 70_084_000;
@@ -512,7 +520,12 @@ public sealed class NetState : IDisposable
             _cryptScratch = new byte[InitialCryptScratchSize];
     }
 
-    public bool CanReceive => IsInUse && !IsClosing && _socket is { Connected: true };
+    /// <summary>The connection is open on our side. Not the socket's Connected: that
+    /// turns false on a failed receive (a reset peer, a dropped line) before anyone has
+    /// read the failure, and a connection skipped for it was never closed - it held its
+    /// slot and its address's CLIENTMAXIP count until the idle timeout. Receive reports
+    /// such a socket as lost.</summary>
+    public bool CanReceive => IsInUse && !IsClosing && _socket != null;
 
     /// <summary>
     /// Try to receive data from the socket into the internal buffer.

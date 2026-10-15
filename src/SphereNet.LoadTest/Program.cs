@@ -46,6 +46,12 @@ internal static class Program
 
     public static async Task<int> Main(string[] args)
     {
+        // Drills share the server host and synthetic shard but not the load scenario.
+        if (args.Length > 0 && args[0] == "fuzz")
+            return await FuzzDrill.RunAsync(args[1..]);
+        if (args.Length > 0 && args[0] == "savekill")
+            return await SaveKillDrill.RunAsync(args[1..]);
+
         Options o;
         try { o = Parse(args); }
         catch (ArgumentException ex)

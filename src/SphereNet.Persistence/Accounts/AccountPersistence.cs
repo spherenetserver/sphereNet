@@ -256,7 +256,9 @@ public static class AccountPersistence
             RotateBackups(finalPath, levels, log);
         }
 
-        // Atomic promote: staging file → final (overwrite).
+        // Atomic promote: staging file → final (overwrite). The bytes reach the disk
+        // before the name points at them, as the world files do (PublishGeneration).
+        SaveIO.FlushToDisk(staged.TmpPath);
         File.Move(staged.TmpPath, finalPath, overwrite: true);
 
         // Name the active snapshot before removing anything. If the process dies

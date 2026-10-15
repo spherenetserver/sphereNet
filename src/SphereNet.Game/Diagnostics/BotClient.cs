@@ -1224,7 +1224,13 @@ public sealed class BotClient : IDisposable
 
     internal void SendRawPacket(byte[] packet)
     {
-        if (_stream == null || !_tcp!.Connected) return;
+        if (_stream == null) return;
+        if (!_tcp!.Connected)
+        {
+            // The server closed the connection: nothing sent from here on arrives.
+            State = BotState.Disconnected;
+            return;
+        }
         _sendGate.Wait();
         try
         {

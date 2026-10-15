@@ -4,6 +4,34 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-15] - Dusmanca istemci ve save-ortasinda-oldurme tatbikatlari, hesap dosyasi dayanikliligi
+------------------------------------------------------------------------
+DUZELTME - Hesap kaydi: hazirlanan hesap dosyasi, canli sphereaccu dosyasinin uzerine yeniden
+       adlandirilmadan once artik diske zorla yaziliyor (FlushFileBuffers / fsync); dunya
+       dosyalarinda bu zaten yapiliyordu. Hesap kaydindan hemen sonra elektrik kesilirse
+       canli dosya adi diske hic inmemis baytlari gosterebiliyordu.
+EKLEME - FuzzBot bot davranisi: cercevesi dogru ama dusmanca bir istemci. Gonderdigi her
+       paket sunucunun bekledigi uzunlukta; icerigi arkasindaki handler'i hedefliyor
+       (ulasilabilir ve sinir serial'ler, sinirdaki miktar ve koordinatlar, govdeden buyuk
+       eleman sayilari, kesik ve fazla uzun govdeler, bilinmeyen 0xBF/0xD7 alt komutlari);
+       arada normal oyun hareketleri yapiyor ki acik container, hedef imleci, gump ve
+       vendor penceresi olsun. Her paket gonderilmeden once iz dosyasina yaziliyor.
+       0xBE en fazla 128 bayt: daha uzunu eski
+       asistanin 5 baytlik bicimi olarak cercevelenebilir. PacketManager.RegisteredOpcodes
+       handler yuzeyini listeliyor.
+EKLEME - LoadTest "fuzz" tatbikati: sunucuyu alt surec olarak baslatir (--root ile hazir bir
+       shard kopyasi ya da --synthetic), fuzz botlarini oturumda tutar, sureci ve ana
+       donguyu izler (STATUS ilerleyen tick ile cevap vermeli), sonra save alir, save'i
+       yeniden acar ve yukleyicinin dunya denetimini raporlar; handler hatalari opcode,
+       exception ve atan frame'e gore gruplanir.
+EKLEME - LoadTest "savekill" tatbikati: sunucu surecini bir dunya kaydinin rastgele bir
+       aninda oldurur, yeniden acar ve yuklenen dunyanin tam bir neslin sayilarini
+       tasidigini kontrol eder; her save yapilandirmasi (format, shard, arka plan kaydi,
+       yedek seviyesi) icin tekrarlanir.
+DUZELTME - Bot istemcisi: sunucunun kapattigi baglantiya gonderim artik botu baglantisi
+       kopmus olarak isaretliyor; onceden paket sessizce dusuyor, bot calismaya devam
+       ediyordu.
+
 [2026-10-14] - Bot akis cozumu
 ------------------------------------------------------------------------
 DUZELTME - Bot istemcisinin Huffman cozumu: bir paketin ortasinda biten TCP okumasi cozulup

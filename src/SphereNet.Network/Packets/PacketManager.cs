@@ -27,6 +27,14 @@ public sealed class PacketManager
 
     public PacketHandler? GetHandler(byte opcode) => _handlers[opcode];
 
+    /// <summary>Every opcode with a registered handler, ascending.</summary>
+    public IEnumerable<byte> RegisteredOpcodes()
+    {
+        for (int i = 0; i < _handlers.Length; i++)
+            if (_handlers[i] != null)
+                yield return (byte)i;
+    }
+
     public PacketHandler? GetExtendedHandler(ushort subCmd) =>
         _extendedHandlers.GetValueOrDefault(subCmd);
 

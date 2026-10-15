@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-15] - Hostile-client and kill-during-save drills, account file durability
+------------------------------------------------------------------------
+FIX - Account save: the staged account file is now flushed to disk (FlushFileBuffers /
+      fsync) before it is renamed over the live sphereaccu file, as the world files
+      already were. A power cut right after an account save could leave the live name
+      pointing at bytes that never reached the disk.
+ADD - FuzzBot bot behaviour: a well-framed but hostile client. Every packet it sends has
+      the length the server frames it with; the payload aims at the handler behind it
+      (reachable and boundary serials, amounts and coordinates at their limits, element
+      counts larger than the body, truncated and over-long bodies, unknown 0xBF/0xD7
+      sub-commands), mixed with ordinary play so containers, target cursors, gumps and
+      vendor windows are open for it to land in. Each packet is written to a trace file
+      before it is sent. A 0xBE stays within 128 bytes: a longer one may be framed as
+      the 5-byte legacy assist form. PacketManager.RegisteredOpcodes lists the handler
+      surface.
+ADD - LoadTest "fuzz" drill: starts the server as a child process (a prepared shard copy
+      with --root, or --synthetic), keeps fuzz bots logged in, watches the process and
+      the main loop (STATUS must answer with an advancing tick), then saves, boots the
+      save again and reports the loader's world audit, with handler faults grouped by
+      opcode, exception and throwing frame.
+ADD - LoadTest "savekill" drill: kills the server process at a random moment inside a
+      world save, boots it again and checks the loaded world holds exactly the counts
+      of a whole generation; repeated per save configuration (format, shards,
+      background save, backup levels).
+FIX - Bot client: a send on a connection the server has closed now marks the bot
+      disconnected instead of dropping the packet silently while the bot kept running.
+
 [2026-10-14] - Bot stream decoding
 ------------------------------------------------------------------------
 FIX - Bot client Huffman decoding: a TCP read that ended partway through a packet was

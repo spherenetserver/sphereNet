@@ -252,6 +252,7 @@ public sealed partial class GameClient : IClientContext
     bool IClientContext.HasAmmoInBackpack(ItemType ammo) => HasAmmoInBackpack(ammo);
     void IClientContext.ConsumeAmmoFromBackpack(ItemType ammo) => ConsumeAmmoFromBackpack(ammo);
     bool IClientContext.TryHandlePetCommand(string text) => TryHandlePetCommand(text);
+    bool IClientContext.HeardPetCommand(Character pet) => HeardPetCommand(pet);
     bool IClientContext.ApplyPetCommand(Character pet, string verb) => ItemUse.ApplyPetCommand(pet, verb);
     void IClientContext.DeleteAndForget(uint uid) => ViewUpdater.DeleteAndForget(uid);
     bool IClientContext.TryHandleCommandSpeech(string text) => TryHandleCommandSpeech(text);

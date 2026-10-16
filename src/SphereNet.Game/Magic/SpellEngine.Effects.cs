@@ -1098,11 +1098,11 @@ public sealed partial class SpellEngine
     }
 
     /// <summary>ITEMID_FX_EXPLODE_3 on the victim of a delayed Explosion.</summary>
-    private static void SendExplodeEffect(Character victim, uint sourceUid)
+    private static void SendExplodeEffect(Character victim)
     {
         var at = victim.Position;
         Character.BroadcastNearby?.Invoke(at, 18,
-            new SphereNet.Network.Packets.Outgoing.PacketEffect(3, sourceUid, victim.Uid.Value, 0x36B0,
+            new SphereNet.Network.Packets.Outgoing.PacketEffect(3, victim.Uid.Value, 0, 0x36B0,
                 at.X, at.Y, at.Z, at.X, at.Y, at.Z, 10, 16, true, false), 0);
     }
 
@@ -1327,7 +1327,7 @@ public sealed partial class SpellEngine
                 // The blast shows on the victim when it goes off (Effect(EFFECT_OBJ,
                 // ITEMID_FX_EXPLODE_3, caster, 10, 16), CCharSpell.cpp:1954); only the
                 // damage landed here.
-                SendExplodeEffect(t, mem.Link.IsValid ? mem.Link.Value : t.Uid.Value);
+                SendExplodeEffect(t);
                 break;
             case SpellType.Strangle:
             {

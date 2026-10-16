@@ -319,9 +319,11 @@ public sealed class SpeechEngine
     /// caller broadcasts the rewritten words. <paramref name="hearPetCommand"/> is the
     /// speaker's pet-command pass (Source-X Event_Talk_Common runs it inside the NPC
     /// walk, after the @Speech trigger); when it reports the line consumed, no NPC
-    /// hears it (CClientEvent.cpp:1989-1993).</summary>
+    /// hears it (CClientEvent.cpp:1989-1993). A pet that took the command is not
+    /// picked to hear the line again (<paramref name="heardAsPet"/>; the reference
+    /// moves on past it, :1995).</summary>
     public bool ProcessSpeech(Character speaker, string text, TalkMode mode, ushort hue, ushort font, out string finalText,
-        Func<string, bool>? hearPetCommand = null)
+        Func<string, bool>? hearPetCommand = null, Func<Character, bool>? heardAsPet = null)
     {
         finalText = text;
         if (string.IsNullOrEmpty(text))
@@ -406,6 +408,9 @@ public sealed class SpeechEngine
             // them after the walk. See PickNpcListener below for why.
             if (!listener.IsPlayer)
             {
+                if (heardAsPet?.Invoke(listener) == true)
+                    continue;
+
                 // An NPC that cannot SEE the speaker is not a candidate
                 // (CClientEvent.cpp:1949 - CanSeeLOS, skipped only when
                 // NPCDISTANCEHEAR is negative, or for the words a shard lists as

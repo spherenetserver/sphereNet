@@ -957,6 +957,15 @@ public sealed class TriggerDispatcher
         ITextConsole? sourceConsole = null)
         => RunSpeechResourceHandlers(SpeechSelfResources, speaker, speaker, text, mode, sourceConsole, out _);
 
+    /// <summary>The SPEECHPET blocks a pet runs on a command before acting on it
+    /// (NPC_OnHearPetCmd -> OnTriggerSpeech(true, ...), CCharNPCPet.cpp:80, CChar.cpp:5004):
+    /// <paramref name="command"/> is what followed "ALL " or the pet's name. True = a
+    /// block RETURNed 1 and the pet does nothing more with the command.</summary>
+    public bool FirePetCommandSpeech(Character pet, Character speaker, string command,
+        ITextConsole? sourceConsole = null)
+        => RunSpeechResourceHandlers(SpeechPetResources, pet, speaker, command, 0, sourceConsole, out _)
+            == TriggerResult.True;
+
     /// <summary>Fire the speaker's @Speech self-trigger; <paramref name="rewrittenText"/>
     /// returns the utterance the script may have rewritten via ARGS (Source-X @Speech
     /// text rewrite), or the original text when unchanged.</summary>

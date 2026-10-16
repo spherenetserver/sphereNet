@@ -230,8 +230,9 @@ public static partial class Program
 
     private static void BroadcastLightningStrike(Character target)
     {
-        var effect = new PacketEffect(1, 0, target.Uid.Value, 0,
-            target.X, target.Y, (short)(target.Z + 20),
+        // EFFECT_LIGHTNING names the struck character as the source (send.cpp:2019).
+        var effect = new PacketEffect(1, target.Uid.Value, 0, 0,
+            target.X, target.Y, target.Z,
             target.X, target.Y, target.Z,
             6, 15, true, false);
         var sound = new PacketSound(0x0029, target.X, target.Y, target.Z);

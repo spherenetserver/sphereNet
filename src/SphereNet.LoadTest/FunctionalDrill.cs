@@ -119,6 +119,8 @@ internal static class FunctionalDrill
                 await FoodSuite(server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "poison")
                 await PoisonSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "pet")
+                await PetSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -2093,18 +2095,76 @@ internal static class FunctionalDrill
             return bot.World.Equipment.TryGetValue(MountLayer, out var m) && bot.World.KnownItems.ContainsKey(m.Serial);
     }
 
-    private static async Task MountSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    /// <summary>A flat open spot out of town (the first house site near 1260,1720), as ".go" text.</summary>
+    private static string OpenCountrySpot(string root)
     {
         string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
         if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
-        string spot;
-        using (var map = new SphereNet.MapData.MapDataManager(mul))
+        using var map = new SphereNet.MapData.MapDataManager(mul);
+        map.Load();
+        map.InitMap(0, 7168, 4096);
+        var site = HouseSites(map, 1260, 1720, 80).FirstOrDefault();
+        return $"{site.X},{site.Y},{site.Z}";
+    }
+
+    /// <summary>Send <paramref name="bot"/> to <paramref name="spot"/>, add a horse beside it and
+    /// tame it with the Taming skill; returns the horse's serial.</summary>
+    private static async Task<uint> TameHorseAsync(ServerHost server, BotClient bot, string spot, CancellationToken ct)
+    {
+        string Said(long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        async Task NextTo(uint serial)
         {
-            map.Load();
-            map.InitMap(0, 7168, 4096);
-            var site = HouseSites(map, 1260, 1720, 80).FirstOrDefault();
-            spot = $"{site.X},{site.Y},{site.Z}";
+            var m = await WaitAsync(() => { lock (bot.World.SyncRoot) return bot.World.Mobiles.GetValueOrDefault(serial); }, 4000, "the horse in view");
+            if (bot.World.DistanceTo(m.X, m.Y) > 1)
+                await bot.Actions.MoveTo(m.X, m.Y, 6000, ct);
         }
+
+        await AsStaff(server, bot.AccountName, async () =>
+        {
+            await SayAsync(bot, $".go {spot}", ct);
+            await SayAsync(bot, ".taming 1000", ct);
+            await SayAsync(bot, ".animallore 1000", ct);
+            // A pack whose taming wants a staff in the pack (Sphere 56T custom version)
+            // defines i_staff_taming; elsewhere the .add simply finds nothing.
+            try { await AddIntoPackAsync(bot, "i_staff_taming", ct); } catch (ScenarioFailed) { }
+            await bot.Actions.Say(".add c_horse_tan", ct);
+            if (await bot.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed("no target cursor for .add c_horse_tan");
+            await bot.Actions.TargetLocation(bot.World.X + 1, bot.World.Y, bot.World.Z, ct);
+            await Task.Delay(800, ct);
+        });
+        var found = await WaitAsync(() => { lock (bot.World.SyncRoot) return bot.World.Mobiles.Values.FirstOrDefault(m =>
+            m.Body == 0x00C8 && bot.World.DistanceTo(m.X, m.Y) <= 2); }, 5000, "the horse");
+        uint horse = found.Serial;
+        long since = Environment.TickCount64;
+        // A pack may tame in timed stages (the 56T pack does); let each attempt run.
+        for (int attempt = 0; attempt < 4; attempt++)
+        {
+            await NextTo(horse);
+            await bot.Actions.UseSkill(35, 3000, ct);
+            if (await bot.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                await bot.Actions.TargetObject(horse, ct);
+            for (int i = 0; i < 60; i++)
+            {
+                await Task.Delay(500, ct);
+                // Stay beside it: the animal wanders while a staged taming runs.
+                if (i % 4 == 3) await NextTo(horse);
+                string heard = Said(since);
+                // "accept you as master" (Source-X) or the 56T pack's "sizi sahibi olarak kabul
+                // etti" - not its earlier stage line "... sahibi olmak istemistim", said
+                // while the taming is still running.
+                if (heard.Contains("master", StringComparison.OrdinalIgnoreCase) ||
+                    heard.Contains("sahibi olarak kabul", StringComparison.OrdinalIgnoreCase))
+                    return horse;
+            }
+        }
+        throw new ScenarioFailed($"not tamed; {Said(since)}");
+    }
+
+    private static async Task MountSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string spot = OpenCountrySpot(root);
         var rider = await LoginAsync(1061, port, ct);
         var stranger = await LoginAsync(1062, port, ct);
         uint horse = 0;
@@ -2122,48 +2182,9 @@ internal static class FunctionalDrill
 
         await RunScenario("mount", "setup: a tamed horse", outcomes, async () =>
         {
-            HashSet<uint> before;
-            await AsStaff(server, rider.AccountName, async () =>
-            {
-                await SayAsync(rider, $".go {spot}", ct);
-                await SayAsync(rider, ".taming 1000", ct);
-                await SayAsync(rider, ".animallore 1000", ct);
-                // A pack whose taming wants a staff in the pack (Sphere 56T custom version)
-                // defines i_staff_taming; elsewhere the .add simply finds nothing.
-                try { await AddIntoPackAsync(rider, "i_staff_taming", ct); } catch (ScenarioFailed) { }
-                lock (rider.World.SyncRoot) before = rider.World.Mobiles.Keys.ToHashSet();
-                await rider.Actions.Say(".add c_horse_tan", ct);
-                if (await rider.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
-                    throw new ScenarioFailed("no target cursor for .add c_horse_tan");
-                await rider.Actions.TargetLocation(rider.World.X + 1, rider.World.Y, rider.World.Z, ct);
-                await Task.Delay(800, ct);
-            });
-            lock (rider.World.SyncRoot) before = rider.World.Mobiles.Keys.Where(k => rider.World.Mobiles[k].Body != 0x00C8).ToHashSet();
-            var found = await WaitAsync(() => { lock (rider.World.SyncRoot) return rider.World.Mobiles.Values.FirstOrDefault(m =>
-                m.Body == 0x00C8 && rider.World.DistanceTo(m.X, m.Y) <= 2); }, 5000, "the horse");
-            horse = found.Serial;
             await AsStaff(server, stranger.AccountName, () => SayAsync(stranger, $".go {spot}", ct));
-            long since = Environment.TickCount64;
-            // A pack may tame in timed stages (the 56T pack does); let each attempt run.
-            for (int attempt = 0; attempt < 4; attempt++)
-            {
-                await NextTo(rider, horse);
-                await rider.Actions.UseSkill(35, 3000, ct);
-                if (await rider.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
-                    await rider.Actions.TargetObject(horse, ct);
-                for (int i = 0; i < 60; i++)
-                {
-                    await Task.Delay(500, ct);
-                    // Stay beside it: the animal wanders while a staged taming runs.
-                    if (i % 4 == 3) await NextTo(rider, horse);
-                    string heard = Said(rider, since);
-                    // "accept you as master" (Source-X) or the 56T pack's "sizi sahibi olarak kabul etti".
-                    if (heard.Contains("master", StringComparison.OrdinalIgnoreCase) ||
-                        heard.Contains("sahibi", StringComparison.OrdinalIgnoreCase))
-                        return $"horse 0x{horse:X} tamed";
-                }
-            }
-            throw new ScenarioFailed($"not tamed; {Said(rider, since)}");
+            horse = await TameHorseAsync(server, rider, spot, ct);
+            return $"horse 0x{horse:X} tamed";
         });
 
         await RunScenario("mount", "a stranger cannot ride another's horse", outcomes, async () =>
@@ -2443,7 +2464,14 @@ internal static class FunctionalDrill
         {
             await Heal(target);
             int bolts = 0;
-            target.ServerPacketObserver = p => { if (p[0] == 0x70 && p.Length > 1 && p[1] == 1) Interlocked.Increment(ref bolts); };
+            uint struck = target.World.CharUid;
+            // The client draws lightning on the packet's source object (bytes 2-5).
+            target.ServerPacketObserver = p =>
+            {
+                if (p[0] == 0x70 && p.Length > 5 && p[1] == 1 &&
+                    (uint)(p[2] << 24 | p[3] << 16 | p[4] << 8 | p[5]) == struck)
+                    Interlocked.Increment(ref bolts);
+            };
             try
             {
                 int before = target.World.Hits;
@@ -2452,7 +2480,7 @@ internal static class FunctionalDrill
                 await WaitAsync(() => target.World.Hits < before ? (object)true : null, 8000,
                     $"the lightning to hit; caster: {Said(caster, since)}");
                 await Task.Delay(300, ct);
-                if (Volatile.Read(ref bolts) == 0) throw new ScenarioFailed($"hit {before} -> {target.World.Hits} with no bolt drawn");
+                if (Volatile.Read(ref bolts) == 0) throw new ScenarioFailed($"hit {before} -> {target.World.Hits} with no bolt drawn on the target");
                 return $"bolt seen, hits {before} -> {target.World.Hits}";
             }
             finally { target.ServerPacketObserver = null; }
@@ -2901,6 +2929,188 @@ internal static class FunctionalDrill
             throw new ScenarioFailed($"no target cursor for .add {defname}");
         await bot.Actions.TargetObject(bot.World.BackpackSerial, ct);
         await Task.Delay(400, ct);
+    }
+
+    /// <summary>Pet commands (NPC_OnHearPetCmd): stay, a stranger ignored, come, kill,
+    /// transfer and release, spoken as "all ..." the way a player commands every pet.</summary>
+    private static async Task PetSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string spot = OpenCountrySpot(root);
+        var owner = await LoginAsync(1121, port, ct);
+        var stranger = await LoginAsync(1122, port, ct);
+        uint horse = 0;
+        string horseName = "";
+        // The 56T pack's pet speech refuses transfer ("Animal Contrat") and swallows release.
+        bool packBlocksTransfer = false;
+
+        string Said(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        KnownMobile? Mob(BotClient bot, uint serial) { lock (bot.World.SyncRoot) return bot.World.Mobiles.GetValueOrDefault(serial); }
+        int HorseDistance(BotClient bot) => Mob(bot, horse) is { } m ? bot.World.DistanceTo(m.X, m.Y) : 99;
+        // Walk a few steps away from the horse along the row, so a pet that comes is
+        // plainly seen to; walking through it only shoves past it.
+        async Task StepAway(BotClient bot, int steps)
+        {
+            for (int tries = 0; tries < 3 && HorseDistance(bot) < 4; tries++)
+            {
+                int dir = Mob(bot, horse) is { } h && h.X > bot.World.X ? -1 : 1;
+                await bot.Actions.MoveTo(bot.World.X + dir * steps, bot.World.Y, 6000, ct);
+                await Task.Delay(300, ct);
+            }
+            if (HorseDistance(bot) < 4)
+                throw new ScenarioFailed($"could not step away from the horse ({HorseDistance(bot)} tiles)");
+        }
+        async Task<bool> Comes(BotClient bot, int timeoutMs)
+        {
+            var sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < timeoutMs)
+            {
+                if (HorseDistance(bot) <= 2) return true;
+                await Task.Delay(200, ct);
+            }
+            return false;
+        }
+
+        await RunScenario("pet", "setup: a tamed horse, a stranger beside it", outcomes, async () =>
+        {
+            await AsStaff(server, stranger.AccountName, () => SayAsync(stranger, $".go {spot}", ct));
+            horse = await TameHorseAsync(server, owner, spot, ct);
+            long clicked = Environment.TickCount64;
+            stranger.SendRaw(BotPacketBuilder.BuildSingleClick(horse));
+            var label = await WaitAsync(() => stranger.World.Journal.ToArray().FirstOrDefault(e =>
+                e.TimestampMs >= clicked && e.SpeakerSerial == horse &&
+                (e.Speaker.Length > 0 || e.Text.Length > 0)), 3000, "the horse's name");
+            horseName = (label.Speaker.Length > 0 ? label.Speaker : label.Text).Trim().Split(' ')[^1];
+            return $"horse 0x{horse:X} '{horseName}'";
+        });
+
+        await RunScenario("pet", "'all stay' keeps the pet where it is", outcomes, async () =>
+        {
+            if (horse == 0) throw new ScenarioFailed("no horse");
+            await SayAsync(owner, "all stay", ct);
+            var at = Mob(owner, horse) ?? throw new ScenarioFailed("the horse is out of view");
+            await StepAway(owner, 6);
+            await Task.Delay(3000, ct);
+            var now = Mob(owner, horse) ?? throw new ScenarioFailed("the horse is out of view");
+            int moved = Math.Max(Math.Abs(now.X - at.X), Math.Abs(now.Y - at.Y));
+            if (moved > 1) throw new ScenarioFailed($"the horse moved {moved} tiles after 'stay'");
+            return $"owner {HorseDistance(owner)} tiles away, the horse stayed";
+        });
+
+        await RunScenario("pet", "a stranger's command goes unheeded", outcomes, async () =>
+        {
+            if (horse == 0) throw new ScenarioFailed("no horse");
+            await StepAway(stranger, 6);
+            await SayAsync(stranger, $"{horseName} come", ct);
+            if (await Comes(stranger, 3000))
+                throw new ScenarioFailed($"the horse came to a stranger's '{horseName} come'");
+            return $"'{horseName} come' from a stranger ignored ({HorseDistance(stranger)} tiles)";
+        });
+
+        await RunScenario("pet", "'all come' brings the pet to its owner", outcomes, async () =>
+        {
+            if (horse == 0) throw new ScenarioFailed("no horse");
+            long since = Environment.TickCount64;
+            await owner.Actions.Say("all come", ct);
+            if (!await Comes(owner, 8000))
+                throw new ScenarioFailed($"the horse stays {HorseDistance(owner)} tiles away; {Said(owner, since)}");
+            return $"the horse came ({HorseDistance(owner)} tiles)";
+        });
+
+        await RunScenario("pet", "'all kill' sets the pet on a target", outcomes, async () =>
+        {
+            if (horse == 0) throw new ScenarioFailed("no horse");
+            HashSet<uint> before;
+            lock (owner.World.SyncRoot) before = owner.World.Mobiles.Keys.ToHashSet();
+            await AsStaff(server, owner.AccountName, async () =>
+            {
+                await owner.Actions.Say(".add c_rabbit", ct);
+                if (await owner.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_rabbit");
+                await owner.Actions.TargetLocation(owner.World.X, owner.World.Y + 2, owner.World.Z, ct);
+                await Task.Delay(800, ct);
+            });
+            var rabbit = await WaitAsync(() => { lock (owner.World.SyncRoot) return owner.World.Mobiles.Values.FirstOrDefault(m =>
+                !before.Contains(m.Serial) && m.Serial != stranger.World.CharUid && owner.World.DistanceTo(m.X, m.Y) <= 4); },
+                4000, "the rabbit");
+            long since = Environment.TickCount64;
+            await owner.Actions.Say("all kill", ct);
+            if (await owner.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no target cursor for 'all kill'; {Said(owner, since)}");
+            await owner.Actions.TargetObject(rabbit.Serial, ct);
+            await WaitAsync(() => Mob(owner, rabbit.Serial) == null ? (object)true : null, 30000,
+                $"the rabbit to die; {Said(owner, since)}");
+            return $"the horse killed rabbit 0x{rabbit.Serial:X}";
+        });
+
+        await RunScenario("pet", "'all transfer' hands the pet to another player", outcomes, async () =>
+        {
+            if (horse == 0) throw new ScenarioFailed("no horse");
+            long since = Environment.TickCount64;
+            await owner.Actions.Say("all transfer", ct);
+            if (await owner.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+            {
+                // The 56T pack's spk_npc_pet: "Bunun icin Animal Contrat kullaniniz", RETURN 1.
+                if (Said(owner, since).Contains("Contrat", StringComparison.OrdinalIgnoreCase))
+                {
+                    packBlocksTransfer = true;
+                    return $"pack refuses transfer: {Said(owner, since)}";
+                }
+                throw new ScenarioFailed($"no target cursor for 'all transfer'; {Said(owner, since)}");
+            }
+            await owner.Actions.TargetObject(stranger.World.CharUid, ct);
+            await Task.Delay(800, ct);
+            await SayAsync(stranger, "all come", ct);
+            if (!await Comes(stranger, 10000))
+                throw new ScenarioFailed($"the horse does not answer its new owner ({HorseDistance(stranger)} tiles); {Said(owner, since)}");
+            await StepAway(owner, 6);
+            await SayAsync(owner, $"{horseName} come", ct);
+            if (await Comes(owner, 3000))
+                throw new ScenarioFailed("the horse still answers its old owner");
+            return "the new owner commands it, the old one no longer";
+        });
+
+        await RunScenario("pet", "'all release' frees the pet", outcomes, async () =>
+        {
+            if (horse == 0) throw new ScenarioFailed("no horse");
+            var master = packBlocksTransfer ? owner : stranger;
+            long since = Environment.TickCount64;
+            master.World.ActiveGump = null;
+            await master.Actions.Say("all release", ct);
+            await Task.Delay(1500, ct);
+            string dialog = "no dialog";
+            if (master.World.ActiveGump is { IsOpen: true } g)
+            {
+                dialog = $"dialog 0x{g.GumpId:X} on 0x{g.Serial:X}";
+                await master.Actions.RespondGump(g.GumpId, g.Serial, 1, ct: ct); // d_pet_release: OKAY
+            }
+            else if (packBlocksTransfer)
+            {
+                // The 56T pack swallows RELEASE in its pet speech: the horse is still the owner's.
+                await StepAway(master, 6);
+                await master.Actions.Say("all come", ct);
+                if (!await Comes(master, 8000))
+                    throw new ScenarioFailed($"the release the pack refuses still freed the horse; {Said(master, since)}");
+                return "pack refuses release; the horse still comes";
+            }
+            await Task.Delay(1000, ct);
+            await StepAway(master, 6);
+            long asked = Environment.TickCount64;
+            await master.Actions.Say("all come", ct);
+            // A pet that hears its owner acknowledges the order (NPC_OnPetCommand) and
+            // keeps at its heels; a free horse only wanders, and may wander close by.
+            await Task.Delay(2500, ct);
+            bool near1 = HorseDistance(master) <= 2;
+            await Task.Delay(2500, ct);
+            bool near2 = HorseDistance(master) <= 2;
+            bool answered = master.World.Journal.ToArray().Any(e => e.TimestampMs >= asked && e.SpeakerSerial == horse);
+            if (answered || (near1 && near2))
+                throw new ScenarioFailed($"the released horse still answers ({dialog}); {Said(master, since)}");
+            return $"released ({dialog})";
+        });
+
+        owner.Disconnect();
+        stranger.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

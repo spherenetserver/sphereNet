@@ -2684,7 +2684,15 @@ public partial class Character : ObjBase
         {
             if (_npcMaster.IsValid)
                 return _npcMaster;
-            return ParseSerialTag("OWNER_UID", Serial.Invalid);
+            var tagged = ParseSerialTag("OWNER_UID", Serial.Invalid);
+            if (tagged.IsValid || IsPlayer || !IsStatFlag(StatFlag.Pet))
+                return tagged;
+            // A pet whose only record of its owner is a MEMORY_IPET memory - what a
+            // script taming with an i_memory makes - is owned all the same
+            // (NPC_PetGetOwner, CCharNPCStatus.cpp:471). OwnerSerial already read it;
+            // here it was missed, so the pet AI never ran for such a pet: it answered
+            // "come" and stood where it was.
+            return Memory_FindTypes(MemoryType.IPet)?.Link ?? Serial.Invalid;
         }
         set => SetOwnerControllerRaw(value, value, mirrorLegacySummon: false);
     }
@@ -3916,10 +3924,42 @@ public partial class Character : ObjBase
         if (!ownerSees)
             SendOwnerMessage?.Invoke(owner, ServerMessages.GetFormatted(Msg.NpcPetDeserted, GetName()));
         BroadcastSpeech(0, unicode: false, ServerMessages.GetFormatted(Msg.NpcPetDecideMaster, GetName()));
+        PetRelease();
+    }
 
-        // NPC_PetRelease (:860): @PetRelease may keep it.
+    /// <summary>Source-X NPC_PetRelease (CCharNPCPet.cpp:860-896), behind the pet
+    /// command, the RELEASE verb (a pack's d_pet_release button) and desertion.
+    /// Nothing happens without an owner. @PetRelease runs with the owner as SRC and
+    /// may keep the pet (RETURN 1). A conjured creature, or a bonded pet that is dead,
+    /// is taken away in the teleport vanish; anything else makes its notice sound,
+    /// drops what it was doing and loses its owners and friends. True = released.</summary>
+    public bool PetRelease()
+    {
+        if (IsPlayer)
+            return false;
+        var owner = OwnerSerial.IsValid ? ResolveOwnerCharacter() : null;
+        if (owner == null)
+            return false;
         if (OnPetRelease != null && OnPetRelease(this, owner))
-            return;
+            return false;
+
+        var at = Position;
+        if (IsStatFlag(StatFlag.Conjured) || IsSummoned || (IsBonded && IsDead))
+        {
+            // Effect(EFFECT_XYZ, ITEMID_FX_TELE_VANISH, this, 10, 15); Sound(SOUND_TELEPORT).
+            BroadcastNearby?.Invoke(at, 18, new SphereNet.Network.Packets.Outgoing.PacketEffect(2, Uid.Value,
+                Uid.Value, 0x3728, at.X, at.Y, at.Z, at.X, at.Y, at.Z, 10, 15, true, false), 0);
+            BroadcastNearby?.Invoke(at, 18, new SphereNet.Network.Packets.Outgoing.PacketSound(0x01FE, at.X, at.Y, at.Z), 0);
+            ClearOwnership(clearFriends: true);
+            Delete();
+            return true;
+        }
+
+        // SoundChar(CRESND_NOTICE).
+        ushort snd = CharacterSounds.Resolve(this, SphereNet.Game.AI.CreatureSoundType.Notice,
+            GetEquippedItem(Layer.OneHanded) ?? GetEquippedItem(Layer.TwoHanded));
+        if (snd != 0)
+            BroadcastNearby?.Invoke(at, 18, new SphereNet.Network.Packets.Outgoing.PacketSound(snd, at.X, at.Y, at.Z), 0);
         ClearOwnership(clearFriends: true);
         PetAIMode = PetAIMode.Stay;
         Action = SkillType.None;
@@ -3927,6 +3967,7 @@ public partial class Character : ObjBase
         RemoveTag("GUARD_TARGET");
         RemoveTag("FOLLOW_TARGET");
         RemoveTag("GO_TARGET");
+        return true;
     }
 
     /// <summary>ISVALID plus the pack's pervasive ISVALIDE alias.</summary>
@@ -9103,8 +9144,10 @@ public partial class Character : ObjBase
             }
             case "RELEASE":
             {
-                _npcMaster = Serial.Invalid;
-                ClearStatFlag(StatFlag.Pet);
+                // NV_RELEASE is NPC_PetRelease (CCharNPCAct.cpp:185). Clearing the
+                // master field alone left the controller in place: a pack's
+                // d_pet_release OKAY freed nothing and the pet still obeyed.
+                PetRelease();
                 return true;
             }
             case "BARK":

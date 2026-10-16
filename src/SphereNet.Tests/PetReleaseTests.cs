@@ -79,4 +79,88 @@ public sealed class PetReleaseTests
         Assert.Same(owner, seenSrc);
         Assert.True(pet.HasOwner(owner.Uid));
     }
+
+    /// <summary>The RELEASE verb - what a pack's d_pet_release OKAY button runs - is
+    /// NPC_PetRelease (CCharNPCAct.cpp:185): the pet stops answering its owner.</summary>
+    [Fact]
+    public void ReleaseVerbFreesThePetForGood()
+    {
+        var (world, client, owner) = Setup();
+        var pet = Pet(world, owner);
+        Character? seenSrc = null;
+        Character.OnPetRelease = (p, src) => { seenSrc = src; return false; };
+
+        Assert.True(pet.TryExecuteCommand("RELEASE", "", new Console(), out _));
+
+        Assert.Same(owner, seenSrc);
+        Assert.False(pet.HasOwner(owner.Uid));
+        Assert.False(pet.OwnerSerial.IsValid);
+        Assert.False(pet.CanAcceptPetCommandFrom(owner, false));
+    }
+
+    /// <summary>NPC_OnHearPetCmd runs the SPEECHPET blocks on the pet with the command
+    /// before anything else (CCharNPCPet.cpp:80): a RETURN 1 keeps the command - the
+    /// way a pack refuses TRANSFER or RELEASE - and a block with no RETURN lets it on.</summary>
+    [Fact]
+    public void PetSpeechReturnOneKeepsTheCommand()
+    {
+        var (world, client, owner) = Setup();
+        var pet = Pet(world, owner);
+        var stack = ScriptTestBootstrap.CreateRuntimeStack();
+        string path = Path.Combine(Path.GetTempPath(), $"sphnet_petspk_{Guid.NewGuid():N}.scp");
+        File.WriteAllText(path, """
+            [SPEECH spk_pet_test]
+            on=transfer
+            TAG.REFUSED=1
+            return 1
+
+            ON=RELEASE
+            return 1
+
+            ON=COME
+            ON=STAY
+            """);
+        try
+        {
+            stack.Resources.LoadResourceFile(path);
+            stack.Dispatcher.SpeechPetResources.Add(
+                ResourceId.FromString("spk_pet_test", SphereNet.Core.Enums.ResType.Speech));
+            client.SetEngines(triggerDispatcher: stack.Dispatcher);
+
+            client.HandleSpeech(0, 0, 0, "all transfer");
+            Assert.False(client.Targets.CursorActive);
+            Assert.Equal("1", pet.TagValue("REFUSED"));
+
+            client.HandleSpeech(0, 0, 0, "rex release");
+            Assert.True(pet.HasOwner(owner.Uid));
+
+            // An empty block lets the command through.
+            client.HandleSpeech(0, 0, 0, "all stay");
+            Assert.Equal(PetAIMode.Stay, pet.PetAIMode);
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>A pet whose owner is only a MEMORY_IPET memory - what a script taming
+    /// with an i_memory leaves - is owned (NPC_PetGetOwner, CCharNPCStatus.cpp:471): the
+    /// pet AI, which keys on NpcMaster, runs for it.</summary>
+    [Fact]
+    public void AMemoryOwnedPetHasItsMaster()
+    {
+        var (world, _, owner) = Setup();
+        var pet = world.CreateCharacter();
+        world.PlaceCharacter(pet, new Point3D(101, 100, 0, 0));
+        pet.Memory_AddObjTypes(owner.Uid, MemoryType.IPet);
+        pet.SetStatFlag(StatFlag.Pet);
+
+        Assert.Equal(owner.Uid, pet.NpcMaster);
+        Assert.Equal(owner.Uid, pet.OwnerSerial);
+    }
+
+    private sealed class Console : SphereNet.Core.Interfaces.ITextConsole
+    {
+        public PrivLevel GetPrivLevel() => PrivLevel.Owner;
+        public string GetName() => "test";
+        public void SysMessage(string text) { }
+    }
 }

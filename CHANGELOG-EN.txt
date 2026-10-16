@@ -4,6 +4,38 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - Lightning strikes its target, not the caster; pet commands: RELEASE verb, pet speech, script-tamed pets; pet drill
+------------------------------------------------------------------------
+FIX - Magic: Lightning struck the caster. Every effect but a bolt carries the struck object
+      as the packet's source and 0 as its target (PacketEffect::writeBasicEffect,
+      send.cpp:2019-2023), and the client draws lightning on the source; the caster was
+      written there. The delayed Explosion blast had the same mistake, and so did the
+      guards' lightning, which named no source at all.
+FIX - Pets: the RELEASE verb is NPC_PetRelease (CCharNPCAct.cpp:185) - @PetRelease, the
+      vanish of a conjured or dead bonded pet, the notice sound, owners and friends
+      cleared. It only cleared the master field, so a pack's d_pet_release OKAY button
+      freed nothing and the pet went on obeying. Release by speech, by the context menu
+      and by desertion now share the one path.
+FIX - Pets: each pet that hears a command runs the SPEECHPET blocks on it first, with the
+      words after "ALL " or its name, and a RETURN 1 keeps the command
+      (NPC_OnHearPetCmd -> OnTriggerSpeech(true, ...), CCharNPCPet.cpp:80). The blocks
+      only ran when the line reached an NPC as ordinary speech, so a pack that refuses
+      TRANSFER or swallows RELEASE in its pet speech was obeyed anyway. A pet that took
+      the command is no longer picked to hear the same line again as ordinary speech
+      (CClientEvent.cpp:1989-1996), which ran the pack's pet speech twice.
+FIX - Pets: a pet whose owner is only a MEMORY_IPET memory - what a script that tames with an
+      i_memory leaves - is owned for the pet AI too (NPC_PetGetOwner, CCharNPCStatus.cpp
+      :471). It answered "come" and stood where it was, and attacked nothing it was set on.
+ADD - Functional drill "pet" suite, on both packs: "all stay" keeps a tamed horse in place,
+      a stranger's command goes unheeded, "all come" brings it, "all kill" sets it on a
+      rabbit, "all transfer" hands it to another player and "all release" frees it
+      through the pack's confirmation dialog. On the Sphere 56T custom-version pack,
+      whose pet speech refuses transfer and release, the drill checks those refusals.
+      The lightning drill now checks the bolt is drawn on the target.
+ADD - Tests: the lightning packet names the target as its source; the RELEASE verb frees
+      the pet and runs @PetRelease; pet speech RETURN 1 keeps a command and an empty block
+      lets it through; a memory-owned pet has its master.
+
 [2026-10-16] - Spell glows, Explosion blast, summon vanish, resurrection effect; ghosts refused before the bandage roll
 ------------------------------------------------------------------------
 FIX - Magic: a harmful spell on an invulnerable target, or on a player whose account is a

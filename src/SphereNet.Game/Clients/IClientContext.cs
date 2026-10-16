@@ -245,6 +245,8 @@ internal interface IClientContext : ITextConsole
     bool HasAmmoInBackpack(ItemType ammo);
     void ConsumeAmmoFromBackpack(ItemType ammo);
     bool TryHandlePetCommand(string text);
+    /// <summary>Whether <paramref name="pet"/> took the last spoken pet command.</summary>
+    bool HeardPetCommand(Objects.Characters.Character pet);
     bool ApplyPetCommand(Objects.Characters.Character pet, string verb);
     void DeleteAndForget(uint uid);
     bool TryHandleCommandSpeech(string text);

@@ -58,8 +58,13 @@ public sealed class LightningBoltEffectTests
             .Select(p => p.Build().Span.ToArray())
             .FirstOrDefault(b => b[0] == 0x70 && b[1] == 1);
         Assert.NotNull(bolt);
-        uint dst = (uint)(bolt![6] << 24 | bolt[7] << 16 | bolt[8] << 8 | bolt[9]);
-        Assert.Equal(target.Uid.Value, dst);
+        // The client draws lightning on the packet's SOURCE object; Source-X writes the
+        // struck object there and 0 as the target (send.cpp:2019-2023). The caster in
+        // the source field struck the caster.
+        uint src = (uint)(bolt![2] << 24 | bolt[3] << 16 | bolt[4] << 8 | bolt[5]);
+        uint dst = (uint)(bolt[6] << 24 | bolt[7] << 16 | bolt[8] << 8 | bolt[9]);
+        Assert.Equal(target.Uid.Value, src);
+        Assert.Equal(0u, dst);
     }
 
     private static (SpellEngine Spells, Character Caster, Character Target, List<PacketWriter> Sent) Bench()

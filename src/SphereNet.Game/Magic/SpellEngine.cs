@@ -1924,9 +1924,12 @@ public sealed partial class SpellEngine
     /// <summary>EFFECT_LIGHTNING on a character: the bolt strikes it where it stands.</summary>
     private static void SendLightning(Character? source, Character target)
     {
+        // Every effect but a bolt carries the struck object as its SOURCE and 0 as the
+        // target (PacketEffect::writeBasicEffect, send.cpp:2019-2023); the client draws
+        // lightning on the source. The caster in that field struck the caster.
         var at = target.Position;
         var fx = new SphereNet.Network.Packets.Outgoing.PacketEffect(1,
-            source?.Uid.Value ?? target.Uid.Value, target.Uid.Value, 0,
+            target.Uid.Value, 0, 0,
             at.X, at.Y, at.Z, at.X, at.Y, at.Z, 0, 0, true, false);
         Character.BroadcastNearby?.Invoke(at, 18, fx, 0);
     }

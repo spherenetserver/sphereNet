@@ -4442,6 +4442,7 @@ public sealed class ClientItemUseHandler
     /// </summary>
     internal bool TryHandlePetCommand(string text)
     {
+        PetCommandHearers.Clear();
         if (_character == null) return false;
         string line = text.Trim();
 
@@ -4450,7 +4451,7 @@ public sealed class ClientItemUseHandler
             if (!TryParsePetVerb(line[4..], out string allVerb, out string allArgs))
                 return false;
             _petCommandArgs = allArgs;
-            try { return DispatchAllPets(allVerb); }
+            try { return DispatchAllPets(allVerb, line[4..].Trim()); }
             finally { _petCommandArgs = ""; }
         }
 
@@ -4477,11 +4478,30 @@ public sealed class ClientItemUseHandler
         if (named == null)
             return false;
 
+        PetCommandHearers.Add(named.Uid);
+        // The pet's SPEECHPET blocks hear the command first and may keep it.
+        if (PetSpeechKeepsCommand(named, line[HeardNameAt(named, line)..].Trim()))
+            return true;
         _petCommandArgs = args;
         try { ApplyPetVerb(named, verb); }
         finally { _petCommandArgs = ""; }
         return true;
     }
+
+    /// <summary>NPC_OnHearPetCmd opens with OnTriggerSpeech(true, pszCmd) (CCharNPCPet.cpp:80):
+    /// the SPEECHPET blocks run on the pet with the command as spoken, and a RETURN 1
+    /// ends it there. A pack refuses a command this way - the Sphere 56T custom-version
+    /// pack's pet speech answers TRANSFER with its own message and swallows RELEASE,
+    /// DROP and FRIEND - and the engine went on to carry the command out.</summary>
+    /// <summary>The pets that took the last spoken command, whether they acted on it or
+    /// their pet speech kept it. Upstream skips each of them when it picks the NPC that
+    /// hears the line (CClientEvent.cpp:1989-1996); hearing it again ran the pack's pet
+    /// speech a second time on the same words.</summary>
+    internal HashSet<Serial> PetCommandHearers { get; } = new();
+
+    private bool PetSpeechKeepsCommand(Character pet, string command) =>
+        _character != null && _triggerDispatcher != null &&
+        _triggerDispatcher.FirePetCommandSpeech(pet, _character, command, _client as ITextConsole);
 
     /// <summary>The PC_* verb in what followed the pet's name or "ALL ".</summary>
     private static bool TryParsePetVerb(string phrase, out string verb, out string args)
@@ -4653,16 +4673,23 @@ public sealed class ClientItemUseHandler
     internal bool ApplyPetCommand(Character pet, string verb)
     {
         if (_character == null || pet.IsDeleted) return false;
+        if (PetSpeechKeepsCommand(pet, verb))
+            return true;
         return ApplyPetVerb(pet, verb);
     }
 
     /// <summary>Source-X "ALL &lt;verb&gt;": every nearby pet of mine hears it. Returns
     /// true only when the verb opened the target cursor - the other NPCs in earshot
     /// still hear an untargeted ALL command (CClientEvent.cpp:1989-1996).</summary>
-    private bool DispatchAllPets(string verb)
+    private bool DispatchAllPets(string verb, string command)
     {
         if (_character == null) return false;
-        var pets = CollectCommandablePets(verb).ToList();
+        // Every pet hears the command through its SPEECHPET blocks first; one that a
+        // block keeps it from takes no further part (CClientEvent.cpp:1989-1996).
+        var heard = CollectCommandablePets(verb).ToList();
+        foreach (var pet in heard)
+            PetCommandHearers.Add(pet.Uid);
+        var pets = heard.Where(p => !PetSpeechKeepsCommand(p, command)).ToList();
         if (pets.Count == 0)
             return false;
 
@@ -4917,28 +4944,14 @@ public sealed class ClientItemUseHandler
             SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
             return;
         }
-        if (Character.OnPetRelease?.Invoke(pet, owner) == true)
+        bool vanishes = pet.IsStatFlag(StatFlag.Conjured) || pet.IsSummoned || (pet.IsBonded && pet.IsDead);
+        uint uid = pet.Uid.Value;
+        if (!pet.PetRelease())
             return;
-
-        if (pet.IsStatFlag(StatFlag.Conjured) || pet.IsSummoned || (pet.IsBonded && pet.IsDead))
-        {
-            var at = pet.Position;
-            BroadcastNearby?.Invoke(at, UpdateRange, new PacketEffect(2, 0, 0, 0x3728,
-                at.X, at.Y, (short)at.Z, at.X, at.Y, (short)at.Z, 10, 15, true, false), 0);
-            BroadcastNearby?.Invoke(at, UpdateRange, new PacketSound(0x01FE, at.X, at.Y, at.Z), 0);
-            pet.ClearOwnership(clearFriends: true);
-            BroadcastDeleteObject(pet.Uid.Value);
-            _world.DeleteObject(pet);
-            return;
-        }
-
-        pet.ClearOwnership(clearFriends: true);
-        pet.PetAIMode = PetAIMode.Stay;
-        pet.RemoveTag("ATTACK_TARGET");
-        pet.RemoveTag("GUARD_TARGET");
-        pet.RemoveTag("FOLLOW_TARGET");
-        pet.RemoveTag("GO_TARGET");
-        SysMessage(ServerMessages.Get(Msg.NpcPetSuccess));
+        if (vanishes)
+            BroadcastDeleteObject(uid);
+        else
+            SysMessage(ServerMessages.Get(Msg.NpcPetSuccess));
     }
 
     /// <summary>

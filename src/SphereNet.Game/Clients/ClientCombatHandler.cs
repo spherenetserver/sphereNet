@@ -120,6 +120,7 @@ public sealed class ClientCombatHandler
     private void SendDrawObject(Character ch) => _client.SendDrawObject(ch);
     private Character? DismountCharacter() => _client.DismountCharacter();
     private bool TryHandlePetCommand(string text) => _client.TryHandlePetCommand(text);
+    private bool HeardPetCommand(Character pet) => _client.HeardPetCommand(pet);
     private bool TryHandleCommandSpeech(string text) => _client.TryHandleCommandSpeech(text);
     private void SetWarMode(bool warMode, bool syncClients, bool preserveTarget) => _client.SetWarMode(warMode, syncClients, preserveTarget);
     private void FaceTarget(Character target) => _client.FaceTarget(target);
@@ -734,7 +735,7 @@ public sealed class ClientCombatHandler
             // speaks it first and runs the pet pass in Event_Talk_Common
             // (CClientEvent.cpp:2123-2128). A ghost's pets cannot understand it.
             if (_speech.ProcessSpeech(_character, routeText, (TalkMode)type, hue, font, out finalText,
-                    isGhost ? null : TryHandlePetCommand))
+                    isGhost ? null : TryHandlePetCommand, isGhost ? null : HeardPetCommand))
                 return;
         }
         else if (!isGhost)

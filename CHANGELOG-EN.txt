@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - NPC training the Source-X way; skill sets reach the client; skills by number
+------------------------------------------------------------------------
+FIX - Training: the TRAIN verb follows NPC_OnTrainHear (CCharNPCAct_Vendor.cpp:371). A pack's
+      "train" speech passes the whole line; the skill named in it as a word gets its price
+      ("For 172 gold I will train you in all I know of Magery..."), otherwise the trainer
+      lists what it can teach ("For a fee I can teach thee of ..."), in the npc_trainer_*
+      messages. The line came in as "train train magery" and the trainer said nothing.
+FIX - Training: the offer is the trainer's MEMORY_SPEAK (NPC_MEM_ACT_SPEAK_TRAIN, the skill
+      in the high word), and gold handed over pays it as NPC_OnTrainPay does - a smaller
+      stack buys its share, an exact one ends the lesson ("That is all I can teach."), a
+      larger one ends it and its change is set down beside the student; the trainer keeps
+      the fee in its pack. Two parallel implementations - a TRAIN_PENDING tag on the
+      student with engine-made English lines, and a tag on the trainer - are replaced.
+FIX - Skills: a skill set at run time (GM command, script, property, training) updates the
+      owner's skill window, as Skill_SetBase ends with addSkillWindow (CCharSkill.cpp:223).
+      Only skill gains and losses did; ".magery 0" changed the server and not the client.
+FIX - Scripts: a character key that starts with a digit is a skill number on the write side
+      too (FindSkillKey, CServerConfig.cpp:2357). The Sphere 56T custom-version pack's
+      teacher dialog sets the skill its button stands for with SRC.<EVAL <ARGN>-1> 30.0;
+      only the read knew numbers, so the teacher taught nothing.
+ADD - Functional drill "train" suite, on both packs: on Scripts-X the mage vendor lists,
+      prices and teaches Magery for gold (change set down beside the student); on the 56T
+      pack, whose shopkeepers send students to its Teacher, the Teacher's dialog teaches
+      Magery to 30.0 for 300 gold. The trainer is addressed by name: an unnamed line goes
+      to the nearest NPC, and a wandering animal can be as near.
+ADD - Tests: train hear (skill as a word, the list), pay (more, less, nothing to teach),
+      gold to a trainer through the client, skills set by number.
+
 [2026-10-16] - .ADD takes an amount; bot honours cursor cancels; magic drill
 ------------------------------------------------------------------------
 FIX - Commands: the spoken .ADD takes an amount after a comma, ".add i_reag_garlic,10"

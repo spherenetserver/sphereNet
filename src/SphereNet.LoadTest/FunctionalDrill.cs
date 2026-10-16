@@ -113,6 +113,8 @@ internal static class FunctionalDrill
                 await LockSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "magic")
                 await MagicSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "train")
+                await TrainSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -2492,6 +2494,184 @@ internal static class FunctionalDrill
 
         caster.Disconnect();
         target.Disconnect();
+    }
+
+    // ---- NPC skill training ----------------------------------------------------------
+
+    private const int MagerySkill = 25;
+    private const ushort GoldPile = 0x0EED;
+
+    private static async Task TrainSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        int Sx, Sy, Sz;
+        using (var map = new SphereNet.MapData.MapDataManager(mul))
+        {
+            map.Load();
+            map.InitMap(0, 7168, 4096);
+            (Sx, Sy, Sz) = HouseSites(map, 1360, 1780, 80).FirstOrDefault();
+        }
+        var student = await LoginAsync(1091, port, ct);
+        uint trainer = 0;
+        int price = 0;
+        string trainerDef = "";
+        string trainerName = "";
+
+        string NpcSaid(long since) =>
+            string.Join(" | ", student.World.Journal.ToArray()
+                .Where(e => e.TimestampMs >= since && e.SpeakerSerial == trainer).Select(e => e.Text));
+        string Said(long since) =>
+            string.Join(" | ", student.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => $"{e.Speaker}: {e.Text}"));
+        int Magery() { lock (student.World.SyncRoot) return student.World.SkillBases.GetValueOrDefault(MagerySkill, -1); }
+
+        // Say a line to the trainer, by name - the nearest NPC hears an unnamed line,
+        // and a wandering animal can be as near - and wait for its answer. A vendor
+        // wanders, so a line it was too far to hear is said again from beside it.
+        async Task Talk(string line)
+        {
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                await ApproachAsync(student, trainer, ct);
+                long sent = Environment.TickCount64;
+                await student.Actions.Say($"{trainerName} {line}", ct);
+                for (int i = 0; i < 50 && NpcSaid(sent).Length == 0; i++) await Task.Delay(100, ct);
+                if (NpcSaid(sent).Length > 0) break;
+            }
+            await Task.Delay(300, ct);
+        }
+
+        await RunScenario("train", "setup: a mage trainer and a student with gold", outcomes, async () =>
+        {
+            await AsStaff(server, student.AccountName, async () =>
+            {
+                await SayAsync(student, $".go {Sx},{Sy},{Sz}", ct);
+                await SayAsync(student, ".magery 0", ct);
+                await SayAsync(student, ".newgold 500", ct);
+                // Scripts-X: the mage vendor, taught by the engine's TRAIN. The 56T pack's
+                // shopkeepers send the student to its Teacher, whose own dialog teaches.
+                foreach (string def in new[] { "c_teacher", "c_mageshop" })
+                {
+                    HashSet<uint> before;
+                    lock (student.World.SyncRoot) before = student.World.Mobiles.Keys.ToHashSet();
+                    await student.Actions.Say($".add {def}", ct);
+                    if (await student.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                        continue;
+                    int tx = student.World.X + 1, ty = student.World.Y;
+                    await student.Actions.TargetLocation(tx, ty, student.World.Z, ct);
+                    await Task.Delay(1000, ct);
+                    // The one made on the picked tile, not a passer-by who came into view.
+                    lock (student.World.SyncRoot)
+                        trainer = student.World.Mobiles.Values
+                            .Where(m => !before.Contains(m.Serial) && m.IsHumanBody)
+                            .OrderBy(m => Math.Max(Math.Abs(m.X - tx), Math.Abs(m.Y - ty)))
+                            .FirstOrDefault()?.Serial ?? 0;
+                    if (trainer != 0) { trainerDef = def; break; }
+                }
+            });
+            if (trainer == 0) throw new ScenarioFailed("no trainer was added");
+            await WaitAsync(() => Magery() == 0 ? (object)true : null, 3000, $"magery 0 on the skill list (shows {Magery()})");
+            // Its name, from the label a single click shows.
+            long clicked = Environment.TickCount64;
+            student.SendRaw(BotPacketBuilder.BuildSingleClick(trainer));
+            var label = await WaitAsync(() => student.World.Journal.ToArray().FirstOrDefault(e =>
+                e.TimestampMs >= clicked && e.SpeakerSerial == trainer &&
+                (e.Speaker.Length > 0 || e.Text.Length > 0)), 3000, "the trainer's name");
+            trainerName = (label.Speaker.Length > 0 ? label.Speaker : label.Text).Trim().Split(' ')[0];
+            return $"{trainerDef} 0x{trainer:X} '{trainerName}'";
+        });
+
+        if (trainerDef == "c_teacher")
+        {
+            await RunScenario("train", "56T: 'teach' opens the Teacher's dialog", outcomes, async () =>
+            {
+                long since = Environment.TickCount64;
+                student.World.ActiveGump = null;
+                BotGumpState? gump = null;
+                for (int attempt = 0; attempt < 2 && gump == null; attempt++)
+                {
+                    await ApproachAsync(student, trainer, ct);
+                    await student.Actions.Say($"{trainerName} teach", ct);
+                    for (int i = 0; i < 50 && student.World.ActiveGump == null; i++) await Task.Delay(100, ct);
+                    gump = student.World.ActiveGump;
+                }
+                if (gump == null) throw new ScenarioFailed($"no d_teacher dialog; {Said(since)}");
+                return $"gump 0x{gump.GumpId:X}";
+            });
+
+            await RunScenario("train", "56T: the Magery button teaches it for 300 gold", outcomes, async () =>
+            {
+                var gump = student.World.ActiveGump ?? throw new ScenarioFailed("no dialog");
+                int goldBefore = await RefreshGoldAsync(student, ct);
+                long since = Environment.TickCount64;
+                // The pack's buttons are skill number + 1.
+                student.SendRaw(BotPacketBuilder.BuildGumpResponse(gump.Serial, gump.GumpId, MagerySkill + 1));
+                await WaitAsync(() => Magery() > 0 ? (object)true : null, 5000, $"magery to rise; {Said(since)}");
+                int goldAfter = await WaitGoldChangeAsync(student, goldBefore, ct);
+                if (Magery() != 300 || goldBefore - goldAfter != 300)
+                    throw new ScenarioFailed($"magery {Magery()}, gold {goldBefore} -> {goldAfter}; {Said(since)}");
+                return $"magery 30.0 for 300 gold; {Said(since)}";
+            });
+        }
+        else
+        {
+            await RunScenario("train", "'train' lists what the trainer teaches", outcomes, async () =>
+            {
+                if (trainer == 0) throw new ScenarioFailed("no trainer");
+                long since = Environment.TickCount64;
+                await Talk("train");
+                string said = NpcSaid(since);
+                if (!said.Contains("magery", StringComparison.OrdinalIgnoreCase))
+                    throw new ScenarioFailed($"magery not offered; {Said(since)}");
+                return said;
+            });
+
+            await RunScenario("train", "'train magery' quotes a price", outcomes, async () =>
+            {
+                if (trainer == 0) throw new ScenarioFailed("no trainer");
+                long since = Environment.TickCount64;
+                await Talk("train magery");
+                string said = NpcSaid(since);
+                var m = System.Text.RegularExpressions.Regex.Match(said, @"\d+");
+                if (!m.Success) throw new ScenarioFailed($"no price; {Said(since)}");
+                price = int.Parse(m.Value);
+                return said;
+            });
+
+            await RunScenario("train", "paying the trainer raises the skill", outcomes, async () =>
+            {
+                if (price <= 0) throw new ScenarioFailed("no price");
+                int goldBefore = await RefreshGoldAsync(student, ct);
+                var gold = (await PackContentsAsync(student, ct)).FirstOrDefault(i => i.ItemId == GoldPile)
+                    ?? throw new ScenarioFailed("no gold in the pack");
+                long since = Environment.TickCount64;
+                await student.Actions.PickUp(gold.Serial, gold.Amount, 2000, ct);
+                await student.Actions.DropToContainer(gold.Serial, trainer, 2000, ct);
+                await WaitAsync(() => Magery() > 0 ? (object)true : null, 5000, $"magery to rise; {Said(since)}");
+                int goldAfter = await WaitGoldChangeAsync(student, goldBefore, ct);
+                if (goldBefore - goldAfter != gold.Amount)
+                    throw new ScenarioFailed($"gold {goldBefore} -> {goldAfter} after handing over {gold.Amount}");
+                // The trainer keeps its fee; the change is set down beside the student
+                // (UnStackSplit + MoveNearObj).
+                int changeDue = gold.Amount - price;
+                if (changeDue > 0)
+                    await WaitAsync(() => { lock (student.World.SyncRoot) return student.World.KnownItems.Values.FirstOrDefault(i =>
+                            i.ItemId == GoldPile && i.ContainerSerial == 0 && i.Amount == changeDue &&
+                            student.World.DistanceTo(i.X, i.Y) <= 1); }, 3000,
+                        $"{changeDue} gold change beside the student");
+                return $"magery 0 -> {Magery() / 10.0:F1} for {price}, change {changeDue} set down; {NpcSaid(since)}";
+            });
+        }
+
+        await AsStaff(server, student.AccountName, async () =>
+        {
+            if (trainer == 0) return;
+            await student.Actions.Say(".xremove", ct);
+            if (await student.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                await student.Actions.TargetObject(trainer, ct);
+            await Task.Delay(500, ct);
+        });
+        student.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

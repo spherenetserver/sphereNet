@@ -4085,8 +4085,16 @@ public partial class Character : ObjBase
         if (OnSkillChange != null && OnSkillChange(this, skill, oldValue, ref newValue))
             return false;
         SetSkill(skill, (ushort)Math.Clamp(newValue, 0, ushort.MaxValue));
+        if (GetSkill(skill) != oldValue)
+            OnSkillValueSet?.Invoke(this, skill);
         return true;
     }
+
+    /// <summary>A runtime skill set took effect. Skill_SetBase ends by updating the
+    /// owner's skill list (addSkillWindow(skill), CCharSkill.cpp:223); without it a
+    /// skill set by a GM command, a script or a trainer changed on the server only,
+    /// and the player's skill window kept the old value.</summary>
+    public static Action<Character, SkillType>? OnSkillValueSet { get; set; }
 
     public byte GetSkillLock(SkillType skill)
     {
@@ -7859,7 +7867,17 @@ public partial class Character : ObjBase
 
     private bool TrySetSkillByName(string upperKey, string normalized)
     {
-        if (!TryResolveSkillName(upperKey, out var skillType))
+        // A key that starts with a digit is a skill NUMBER, on the write side as on
+        // the read (FindSkillKey, CServerConfig.cpp:2357): SRC.<EVAL <ARGN>-1> 30.0
+        // sets the skill a dialog button stands for. Only the read knew it.
+        SkillType skillType;
+        if (upperKey.Length > 0 && char.IsAsciiDigit(upperKey[0]))
+        {
+            if (!int.TryParse(upperKey, out int skillNum) || skillNum < 0 || skillNum >= (int)SkillType.Qty)
+                return false;
+            skillType = (SkillType)skillNum;
+        }
+        else if (!TryResolveSkillName(upperKey, out skillType))
             return false;
 
         // A Sphere number, not a plain decimal: upstream reads a skill value through the

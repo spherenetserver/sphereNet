@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -48,12 +48,15 @@ public class ParityWaveH5Tests
         var trainer = world.CreateCharacter();
         trainer.Name = "Anatomy Teacher";
         trainer.NpcBrain = NpcBrainType.Human;
+        trainer.SetSkill(SkillType.Anatomy, 1000); // teaches to 30.0
         world.PlaceCharacter(trainer, new Point3D(101, 100, 0, 0));
+        TestHarness.SeedSkillAdvRates();
 
-        // The speech step ("train anatomy") would have armed this offer.
-        student.SetTag("TRAIN_PENDING", $"{trainer.Uid.Value}|{(int)SkillType.Anatomy}|300");
+        // The speech step: "train anatomy" names the price and arms the offer.
+        Assert.True(SphereNet.Game.Trade.VendorTrainingEngine.OnTrainHear(trainer, student, "train anatomy", _ => { }));
 
-        // First payment: 100 gp = +10.0 skill (0 → 100), gold fully consumed.
+        // First payment: 100 of the 300 fee buys a third of the lesson (0 → 100), and
+        // the trainer takes the whole stack.
         var gold1 = world.CreateItem();
         gold1.ItemType = ItemType.Gold;
         gold1.BaseId = 0x0EED;
@@ -63,11 +66,12 @@ public class ParityWaveH5Tests
         client.HandleItemDrop(gold1.Uid.Value, 0, 0, 0, trainer.Uid.Value);
 
         Assert.Equal(100, student.GetSkill(SkillType.Anatomy));
-        Assert.True(gold1.IsDeleted);
-        Assert.True(student.TryGetTag("TRAIN_PENDING", out _)); // cap not reached yet
+        Assert.NotEqual(pack.Uid, gold1.ContainedIn);
+        Assert.NotNull(SphereNet.Game.Trade.VendorTrainingEngine.FindOffer(trainer, student)); // cap not reached yet
 
-        // Second payment overshoots the 30.0 cap: 300 gp buys only 200 points,
-        // the leftover 100 bounces back and the offer closes.
+        // Second payment overshoots the 30.0 cap: 300 gp buys only the 200 points
+        // left, the offer closes, and the change is set down beside the student
+        // (UnStackSplit + MoveNearObj).
         var gold2 = world.CreateItem();
         gold2.ItemType = ItemType.Gold;
         gold2.BaseId = 0x0EED;
@@ -77,10 +81,10 @@ public class ParityWaveH5Tests
         client.HandleItemDrop(gold2.Uid.Value, 0, 0, 0, trainer.Uid.Value);
 
         Assert.Equal(300, student.GetSkill(SkillType.Anatomy));
-        Assert.False(student.TryGetTag("TRAIN_PENDING", out _));
-        Assert.False(gold2.IsDeleted);
-        Assert.Equal(100, gold2.Amount);                 // refund
-        Assert.Equal(pack.Uid, gold2.ContainedIn);       // back in the pack
+        Assert.Null(SphereNet.Game.Trade.VendorTrainingEngine.FindOffer(trainer, student));
+        var change = world.GetItemsInRange(student.Position, 1)
+            .Single(i => i.BaseId == 0x0EED && !i.ContainedIn.IsValid);
+        Assert.Equal(100, change.Amount);
     }
 
     [Fact]

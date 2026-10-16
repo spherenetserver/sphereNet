@@ -10,6 +10,7 @@ namespace SphereNet.Tests;
 /// NPC_TrainSkill): the teacher's cap, the total-skill headroom throttle with
 /// DOWN-lock sacrifice, and the actual skill raise.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public class VendorTrainingEngineTests
 {
     private static Character MakeChar()
@@ -96,73 +97,109 @@ public class VendorTrainingEngineTests
         finally { VendorTrainingEngine.TrainSkillCost = savedCost; }
     }
 
-    [Fact]
-    public void TryPay_FullPayment_TrainsAndConsumesGold()
+    private static (Character Trainer, Character Student) Pair(SkillType skill, ushort trainerVal, ushort studentVal)
     {
+        TestHarness.SeedSkillAdvRates();
         var world = TestHarness.CreateWorld();
         var trainer = world.CreateCharacter();
+        trainer.NpcBrain = NpcBrainType.Vendor;
         var student = world.CreateCharacter();
+        student.IsPlayer = true;
         for (int i = 0; i < SkillEngine.BaseSkillCount; i++)
         {
             trainer.SetSkill((SkillType)i, 0); student.SetSkill((SkillType)i, 0);
             student.SetSkillLock((SkillType)i, 0);
         }
-        trainer.SetSkill(SkillType.Blacksmithing, 1000); // teaches up to 300
-        student.SetSkill(SkillType.Blacksmithing, 100);  // trainable = 200
+        trainer.SetSkill(skill, trainerVal);
+        student.SetSkill(skill, studentVal);
+        return (trainer, student);
+    }
 
-        VendorTrainingEngine.RememberOffer(trainer, student, SkillType.Blacksmithing);
-
-        var gold = world.CreateItem();
+    private static SphereNet.Game.Objects.Items.Item Gold(int amount)
+    {
+        var gold = TestHarness.CreateWorld().CreateItem();
         gold.ItemType = ItemType.Gold;
-        gold.Amount = 1000; // more than the 200-point cost at 1/pt
+        gold.Amount = (ushort)amount;
+        return gold;
+    }
 
-        var trained = VendorTrainingEngine.TryPay(trainer, student, gold);
+    /// <summary>NPC_OnTrainHear finds the skill named anywhere in the line, as a word
+    /// (FindStrWord): a pack's "train" speech hands the TRAIN verb the whole line,
+    /// "train blacksmithing". The trainer names its price and remembers the offer in
+    /// a MEMORY_SPEAK (NPC_MEM_ACT_SPEAK_TRAIN, the skill in the high word).</summary>
+    [Fact]
+    public void TrainHear_NamesThePriceForASkillInTheLine()
+    {
+        var (trainer, student) = Pair(SkillType.Blacksmithing, 1000, 100);
+        var said = new List<string>();
 
-        Assert.Equal(SkillType.Blacksmithing, trained);
-        Assert.Equal(300, student.GetSkill(SkillType.Blacksmithing)); // reached the cap
-        Assert.Equal(800, gold.Amount);                                // 200 gold spent
-        Assert.False(trainer.TryGetTag(VendorTrainingEngine.PendingTag(student), out _)); // offer cleared
+        Assert.True(VendorTrainingEngine.OnTrainHear(trainer, student, "train blacksmithing", said.Add));
+
+        Assert.Equal(SphereNet.Game.Messages.ServerMessages.GetFormatted(
+            SphereNet.Game.Messages.Msg.NpcTrainerPrice, 200, "Blacksmithing"), Assert.Single(said));
+        var offer = VendorTrainingEngine.FindOffer(trainer, student);
+        Assert.NotNull(offer);
+        Assert.Equal((uint)SkillType.Blacksmithing, offer!.More1 >> 16);
     }
 
     [Fact]
-    public void TryPay_NoOffer_ReturnsNull()
+    public void TrainHear_WithoutASkillListsWhatCanBeTaught()
     {
-        var world = TestHarness.CreateWorld();
-        var trainer = world.CreateCharacter();
-        var student = world.CreateCharacter();
-        var gold = world.CreateItem();
-        gold.ItemType = ItemType.Gold;
-        gold.Amount = 100;
+        var (trainer, student) = Pair(SkillType.Blacksmithing, 1000, 100);
+        trainer.SetSkill(SkillType.Alchemy, 500);
+        var said = new List<string>();
 
-        Assert.Null(VendorTrainingEngine.TryPay(trainer, student, gold));
-        Assert.Equal(100, gold.Amount); // untouched
+        Assert.True(VendorTrainingEngine.OnTrainHear(trainer, student, "train", said.Add));
+
+        Assert.Equal("For a fee I can teach thee of Alchemy and Blacksmithing.", Assert.Single(said));
+        Assert.Null(VendorTrainingEngine.FindOffer(trainer, student));
     }
 
     [Fact]
-    public void TryPay_PartialPayment_TrainsProportionally()
+    public void TrainPay_MoreThanTheFee_TrainsKeepsTheFeeAndEndsTheLesson()
     {
-        var world = TestHarness.CreateWorld();
-        var trainer = world.CreateCharacter();
-        var student = world.CreateCharacter();
-        for (int i = 0; i < SkillEngine.BaseSkillCount; i++)
+        var (trainer, student) = Pair(SkillType.Blacksmithing, 1000, 100); // teaches 200
+        VendorTrainingEngine.OnTrainHear(trainer, student, "train blacksmithing", _ => { });
+        var offer = VendorTrainingEngine.FindOffer(trainer, student)!;
+        var said = new List<string>();
+
+        int keep = VendorTrainingEngine.OnTrainPay(trainer, student, offer, Gold(1000), said.Add);
+
+        Assert.Equal(200, keep);
+        Assert.Equal(300, student.GetSkill(SkillType.Blacksmithing));
+        Assert.Equal(new[]
         {
-            trainer.SetSkill((SkillType)i, 0); student.SetSkill((SkillType)i, 0);
-            student.SetSkillLock((SkillType)i, 0);
-        }
-        trainer.SetSkill(SkillType.Alchemy, 1000);
-        student.SetSkill(SkillType.Alchemy, 100); // trainable 200, cost 200 @1/pt
+            SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.NpcTrainerSuccess),
+            SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.NpcTrainerThatsall2),
+        }, said);
+        Assert.Null(VendorTrainingEngine.FindOffer(trainer, student)); // the lesson is over
+    }
 
-        VendorTrainingEngine.RememberOffer(trainer, student, SkillType.Alchemy);
+    [Fact]
+    public void TrainPay_LessThanTheFee_TrainsThatShareAndTakesTheGold()
+    {
+        var (trainer, student) = Pair(SkillType.Alchemy, 1000, 100); // teaches 200 for 200
+        VendorTrainingEngine.OnTrainHear(trainer, student, "train alchemy", _ => { });
+        var offer = VendorTrainingEngine.FindOffer(trainer, student)!;
 
-        var gold = world.CreateItem();
-        gold.ItemType = ItemType.Gold;
-        gold.Amount = 100; // only half the 200 cost
+        int keep = VendorTrainingEngine.OnTrainPay(trainer, student, offer, Gold(100), _ => { });
 
-        var trained = VendorTrainingEngine.TryPay(trainer, student, gold);
+        Assert.Equal(100, keep);
+        Assert.Equal(200, student.GetSkill(SkillType.Alchemy));
+        Assert.NotNull(VendorTrainingEngine.FindOffer(trainer, student)); // more can be bought
+    }
 
-        Assert.Equal(SkillType.Alchemy, trained);
-        Assert.Equal(200, student.GetSkill(SkillType.Alchemy)); // 100 of 200 points
-        Assert.True(gold.IsDeleted);                             // all 100 gold consumed
+    [Fact]
+    public void TrainPay_NothingLeftToTeach_TakesNothing()
+    {
+        var (trainer, student) = Pair(SkillType.Alchemy, 1000, 300);
+        var memory = trainer.Memory_AddObjTypes(student.Uid, MemoryType.Speak);
+        memory.More1 = ((uint)SkillType.Alchemy << 16) | VendorTrainingEngine.NpcMemActSpeakTrain;
+        var said = new List<string>();
+
+        Assert.Equal(0, VendorTrainingEngine.OnTrainPay(trainer, student, memory, Gold(100), said.Add));
+        Assert.Equal(SphereNet.Game.Messages.ServerMessages.GetFormatted(
+            SphereNet.Game.Messages.Msg.NpcTrainerDunno4, "Alchemy"), Assert.Single(said));
     }
 
     /// <summary>A trainer's own caps win over the shard's.

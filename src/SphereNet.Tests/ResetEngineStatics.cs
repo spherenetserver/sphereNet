@@ -353,6 +353,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnRegenStat = null;
         SphereNet.Game.Objects.Characters.Character.OnArrowQuest = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = null;
+        SphereNet.Game.Objects.Characters.Character.OnSkillValueSet = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuickDetailed = null;
         SphereNet.Game.Objects.Characters.Character.OnScriptSkillUse = null;
         SphereNet.Game.Objects.Characters.Character.OnDamageActionInterrupt = null;

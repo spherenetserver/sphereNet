@@ -1,6 +1,7 @@
 ﻿using SphereNet.Core.Enums;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Messages;
 using SphereNet.Game.Skills;
 using SphereNet.Core.Types;
 
@@ -107,19 +108,19 @@ public static class VendorTrainingEngine
                 int have = student.GetSkill(s);
                 if (have >= need)
                 {
-                    student.SetSkill(s, (ushort)(have - need));
+                    student.SetSkillRuntime(s, have - need);
                     need = 0;
                 }
                 else
                 {
-                    student.SetSkill(s, 0);
+                    student.SetSkillRuntime(s, 0);
                     need -= have;
                 }
             }
         }
 
         int newVal = Math.Min(student.GetSkill(skill) + amount, ushort.MaxValue);
-        student.SetSkill(skill, (ushort)newVal);
+        student.SetSkillRuntime(skill, newVal);
     }
 
     private static int SumDownLockedSkills(Character student)
@@ -133,50 +134,168 @@ public static class VendorTrainingEngine
         return total;
     }
 
-    /// <summary>Tag key under which a teacher NPC records a student's pending
-    /// training offer (skill id), keyed by the student's serial.</summary>
-    public static string PendingTag(Character student) =>
-        "TRAIN." + student.Uid.Value.ToString("X");
+    /// <summary>NPC_MEM_ACT_SPEAK_TRAIN (CItem.h:54): the action a memory keeps in the
+    /// low word of MORE1 once a trainer has named its price; the skill is the high word
+    /// (m_itEqMemory.m_Action / m_Skill). The student's next gold is the fee.</summary>
+    public const uint NpcMemActSpeakTrain = 1;
 
-    /// <summary>Record a pending training offer on the teacher — Source-X
-    /// NPC_OnTrainHear sets a MEMORY_SPEAK with NPC_MEM_ACT_SPEAK_TRAIN + skill.</summary>
-    public static void RememberOffer(Character trainer, Character student, SkillType skill) =>
-        trainer.SetTag(PendingTag(student), ((int)skill).ToString());
-
-    /// <summary>
-    /// Complete a pending training sale when a teacher is handed gold — Source-X
-    /// NPC_OnTrainPay. Consumes up to the quoted cost, raises the student's skill
-    /// by the points actually paid for, clears the offer, and returns the trained
-    /// skill (or null when there was no matching offer / nothing to train).
-    /// </summary>
-    public static SkillType? TryPay(Character trainer, Character student, Item gold)
+    /// <summary>The skill's script KEY (GetSkillKey): what a student names it by.</summary>
+    public static string SkillKey(SkillType skill)
     {
-        string tag = PendingTag(student);
-        if (!trainer.TryGetTag(tag, out string? skillStr) || !ScriptNumber.TryParseInt(skillStr, out int skillId))
-            return null;
+        string? key = Definitions.DefinitionLoader.GetSkillDef((int)skill)?.DefName;
+        return string.IsNullOrWhiteSpace(key) ? skill.ToString() : key;
+    }
 
-        var skill = (SkillType)skillId;
-        int trainable = CalcTrainableAmount(trainer, student, skill);
-        if (trainable <= 0)
+    /// <summary>FindStrWord: <paramref name="word"/> stands in <paramref name="text"/>
+    /// as a whole word, case aside.</summary>
+    private static bool HasWord(string text, string word)
+    {
+        int at = 0;
+        while ((at = text.IndexOf(word, at, StringComparison.OrdinalIgnoreCase)) >= 0)
         {
-            trainer.RemoveTag(tag);
-            return null;
+            bool before = at == 0 || !char.IsLetterOrDigit(text[at - 1]);
+            int after = at + word.Length;
+            if (before && (after >= text.Length || !char.IsLetterOrDigit(text[after])))
+                return true;
+            at++;
+        }
+        return false;
+    }
+
+    private static bool IsTrainableSkill(SkillType skill) =>
+        (int)skill >= 0 && (int)skill < SkillEngine.BaseSkillCount &&
+        Definitions.DefinitionLoader.GetSkillDef((int)skill) != null;
+
+    /// <summary>NPC_OnTrainCheck (CCharNPCAct_Vendor.cpp:212): how much of the skill
+    /// this trainer will teach the student now, or 0 after saying why not.</summary>
+    public static int OnTrainCheck(Character trainer, Character student, SkillType skill, Action<string> speak)
+    {
+        if ((int)skill < 0 || (int)skill >= SkillEngine.BaseSkillCount)
+        {
+            speak(ServerMessages.Get(Msg.NpcTrainerDunno1));
+            return 0;
+        }
+        int amount = CalcTrainableAmount(trainer, student, skill);
+        int trainerVal = trainer.GetSkill(skill);
+        string? why = trainerVal <= 0 ? Msg.NpcTrainerDunno2
+            : student.GetSkill(skill) > trainerVal ? Msg.NpcTrainerDunno3
+            : amount <= 0 ? Msg.NpcTrainerDunno4
+            : null;
+        if (why == null)
+            return amount;
+        speak(ServerMessages.GetFormatted(why, SkillKey(skill)));
+        return 0;
+    }
+
+    /// <summary>NPC_OnTrainHear (CCharNPCAct_Vendor.cpp:371), the TRAIN verb a pack's
+    /// "train" speech calls with the whole line: a skill named in it as a word gets its
+    /// price and the trainer remembers the offer; otherwise the trainer lists what it
+    /// can teach. Answers whether this NPC handled the request.</summary>
+    public static bool OnTrainHear(Character trainer, Character student, string text, Action<string> speak)
+    {
+        int brain = NpcBrainNames.ToScriptNumber(trainer.NpcBrain);
+        if (brain < NpcBrainNames.ToScriptNumber(NpcBrainType.Human) ||
+            brain > NpcBrainNames.ToScriptNumber(NpcBrainType.Stable) ||
+            trainer.NpcBrain == NpcBrainType.Guard)
+            return false;
+
+        if (trainer.Memory_FindObjTypes(student.Uid,
+                MemoryType.Fight | MemoryType.HarmedBy | MemoryType.IrritatedBy | MemoryType.Aggreived) != null)
+        {
+            speak(ServerMessages.Get(Msg.NpcTrainerEnemy));
+            return true;
         }
 
-        int fullCost = TrainCost(trainer, trainable);
-        int paid = Math.Min(gold.Amount, fullCost);
-        int pointsPaid = fullCost > 0 ? (int)((long)trainable * paid / fullCost) : 0;
-        if (pointsPaid <= 0)
-            return null;
+        for (int i = 0; i < SkillEngine.BaseSkillCount; i++)
+        {
+            var skill = (SkillType)i;
+            if (!IsTrainableSkill(skill) || !HasWord(text, SkillKey(skill)))
+                continue;
+            int cost = OnTrainCheck(trainer, student, skill, speak) * TrainSkillCost;
+            if (cost <= 0)
+                return true;
+            speak(ServerMessages.GetFormatted(Msg.NpcTrainerPrice, cost, SkillKey(skill)));
+            var memory = trainer.Memory_AddObjTypes(student.Uid, MemoryType.Speak);
+            memory.More1 = ((uint)i << 16) | NpcMemActSpeakTrain;
+            return true;
+        }
 
-        TrainSkill(student, skill, pointsPaid);
+        // What can it teach? The first six by name, then "more" (the list builds
+        // one name behind, joining with ", " and a final " and ").
+        var line = new System.Text.StringBuilder(ServerMessages.Get(Msg.NpcTrainerPrice1));
+        string? previous = null;
+        int count = 0;
+        for (int i = 0; i < SkillEngine.BaseSkillCount; i++)
+        {
+            var skill = (SkillType)i;
+            if (!IsTrainableSkill(skill) || GetTrainMax(trainer, student, skill) - student.GetSkill(skill) <= 0)
+                continue;
+            if (count > 6)
+            {
+                previous = ServerMessages.Get(Msg.NpcTrainerPrice2);
+                break;
+            }
+            if (count > 1)
+                line.Append(ServerMessages.Get(Msg.NpcTrainerPrice3));
+            if (previous != null)
+                line.Append(previous);
+            previous = SkillKey(skill);
+            count++;
+        }
+        if (count == 0)
+        {
+            speak(ServerMessages.Get(Msg.NpcTrainerThatsall3));
+            return true;
+        }
+        if (count > 1)
+            line.Append(ServerMessages.Get(Msg.NpcTrainerThatsall4));
+        line.Append(previous).Append('.');
+        speak(line.ToString());
+        return true;
+    }
 
-        if (paid >= gold.Amount)
-            gold.RemoveFromWorld();
+    /// <summary>The trainer's offer to this student, when its last word to them was a
+    /// price (NPC_OnItemGive routes gold there, CCharNPCAct.cpp:2081).</summary>
+    public static Item? FindOffer(Character trainer, Character student)
+    {
+        var memory = trainer.Memory_FindObj(student.Uid);
+        return memory != null && (memory.More1 & 0xFFFF) == NpcMemActSpeakTrain ? memory : null;
+    }
+
+    /// <summary>NPC_OnTrainPay (CCharNPCAct_Vendor.cpp:273): gold handed over after
+    /// the price. The fee is the teachable amount times the cost; a smaller stack buys
+    /// that share of it, an exact one finishes the lesson, a larger one has its
+    /// change returned. Answers how much of the stack the trainer keeps, 0 when it
+    /// takes nothing (the gold then goes back).</summary>
+    public static int OnTrainPay(Character trainer, Character student, Item memory, Item gold, Action<string> speak)
+    {
+        var skill = (SkillType)(memory.More1 >> 16);
+        if (!IsTrainableSkill(skill))
+        {
+            speak(ServerMessages.Get(Msg.NpcTrainerForgot));
+            return 0;
+        }
+
+        int amount = OnTrainCheck(trainer, student, skill, speak);
+        int cost = Math.Min(ushort.MaxValue, TrainCost(trainer, amount));
+        if (cost <= 0)
+            return 0;
+
+        speak(ServerMessages.Get(Msg.NpcTrainerSuccess));
+        int keep = cost;
+        if (gold.Amount < cost)
+        {
+            int diffPercent = cost * 100 / gold.Amount;
+            amount = amount * 100 / diffPercent;
+            keep = gold.Amount;
+        }
         else
-            gold.Amount -= (ushort)paid;
+        {
+            speak(ServerMessages.Get(gold.Amount == cost ? Msg.NpcTrainerThatsall1 : Msg.NpcTrainerThatsall2));
+            memory.More1 &= 0xFFFF0000;
+        }
 
-        trainer.RemoveTag(tag);
-        return skill;
+        TrainSkill(student, skill, amount);
+        return keep;
     }
 }

@@ -173,46 +173,34 @@ public sealed class ClientInventoryHandler
             g.Delete();
     }
 
-    private bool TryApplyTrainPayment(Character trainer, Item gold, string pending)
+    /// <summary>Gold handed to a trainer after its price (NPC_OnTrainPay,
+    /// CCharNPCAct_Vendor.cpp:273): the trainer keeps its fee in its pack, any change
+    /// is set down beside the student (UnStackSplit + MoveNearObj), and gold it will
+    /// not take goes back.</summary>
+    private void PayTrainer(Character trainer, Item offer, Item gold)
     {
-        if (_character == null) return false;
-        var parts = pending.Split('|');
-        if (parts.Length < 3 ||
-            !uint.TryParse(parts[0], out uint npcUid) || npcUid != trainer.Uid.Value ||
-            !int.TryParse(parts[1], out int skillId) ||
-            !int.TryParse(parts[2], out int maxTrain) ||
-            skillId < 0 || skillId >= SkillEngine.BaseSkillCount)
-            return false;
-
-        var skill = (SkillType)skillId;
-        int current = _character.GetSkill(skill);
-        if (current >= maxTrain)
+        if (_character == null) return;
+        int keep = Trade.VendorTrainingEngine.OnTrainPay(trainer, _character, offer, gold,
+            line => _client.NpcSpeech(trainer, line));
+        if (keep <= 0)
         {
-            _character.RemoveTag("TRAIN_PENDING");
             PlaceItemInPack(_character, gold);
-            SysMessage("You already know all this trainer can teach.");
-            return true;
+            return;
         }
-
-        int points = Math.Min(gold.Amount, maxTrain - current);
-        _character.SetSkill(skill, (ushort)(current + points));
-        SysMessage($"Your {skill} rises to {(current + points) / 10.0:0.#}.");
-
-        if (current + points >= maxTrain)
-            _character.RemoveTag("TRAIN_PENDING");
-
-        // The trainer keeps the fee; any overpayment returns to the student.
-        if (points >= gold.Amount)
+        if (keep < gold.Amount)
         {
-            gold.RemoveFromWorld();
+            var change = _world.CreateItem();
+            change.CopyStackInstanceStateFrom(gold);
+            change.Amount = (ushort)(gold.Amount - keep);
+            gold.Amount = (ushort)keep;
+            _world.PlaceItemWithDecay(change, _character.Position);
         }
+        if (trainer.Backpack is { } pack)
+            pack.AddItem(gold);
         else
-        {
-            gold.Amount -= (ushort)points;
-            PlaceItemInPack(_character, gold);
-        }
-        return true;
+            gold.Delete();
     }
+
     private void SendTradeUpdateToBoth(SecureTrade trade) => _client.SendTradeUpdateToBoth(trade);
     private Action<Character, Item, Item>? SendTradeItemToPartner => _client.SendTradeItemToPartner;
     private SpellEngine? _spellEngine => _client.Spells;
@@ -1879,14 +1867,13 @@ public sealed class ClientInventoryHandler
                     return;
                 }
 
-                // Source-X NPC_OnTrainPay: gold handed to a trainer with a pending
-                // "train <skill>" offer buys skill points — 1 gp per 0.1, capped
-                // at the trainer's limit. Leftover gold bounces back.
-                if (!charTarget.IsPlayer &&
-                    VendorEngine.IsGold(item) &&
-                    _character.TryGetTag("TRAIN_PENDING", out string? trainPending) &&
-                    TryApplyTrainPayment(charTarget, item, trainPending!))
+                // NPC_OnItemGive (CCharNPCAct.cpp:2079): gold goes where the NPC's
+                // memory of the giver points - a price it named for a lesson makes it
+                // the fee (NPC_OnTrainPay).
+                if (!charTarget.IsPlayer && VendorEngine.IsGold(item) &&
+                    Trade.VendorTrainingEngine.FindOffer(charTarget, _character) is { } offer)
                 {
+                    PayTrainer(charTarget, offer, item);
                     _netState.Send(new PacketDropAck());
                     return;
                 }
@@ -1901,24 +1888,6 @@ public sealed class ClientInventoryHandler
                 {
                     _netState.Send(new PacketDropAck());
                     return;
-                }
-
-                // Source-X NPC_OnTrainPay: gold handed to a teacher NPC with a
-                // pending training offer buys skill points. Any change stays with
-                // the player's gold stack (TryPay trims the amount in place).
-                if (!charTarget.IsPlayer && _character != null &&
-                    VendorEngine.IsGold(item))
-                {
-                    var trained = Trade.VendorTrainingEngine.TryPay(charTarget, _character, item);
-                    if (trained != null)
-                    {
-                        SysMessage($"Thou hast learned something of {trained}.");
-                        SendSkillList();
-                        if (!item.IsDeleted)
-                            PlaceItemInPack(_character!, item); // return the change
-                        _netState.Send(new PacketDropAck());
-                        return;
-                    }
                 }
 
                 // Native give flow (Source-X NPC_OnItemGive tail).

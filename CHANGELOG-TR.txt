@@ -4,6 +4,35 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - Source-X usulu NPC egitimi; yetenek atamalari istemciye ulasir; numarayla yetenek
+------------------------------------------------------------------------
+DUZELTME - Egitim: TRAIN fiili NPC_OnTrainHear'i izler (CCharNPCAct_Vendor.cpp:371). Bir paketin
+       "train" konusmasi tum satiri verir; satirda kelime olarak gecen yetenegin fiyati
+       soylenir ("For 172 gold I will train you in all I know of Magery..."), yoksa egitmen
+       ogretebileceklerini sayar ("For a fee I can teach thee of ..."), npc_trainer_*
+       mesajlariyla. Satir "train train magery" olarak geliyordu ve egitmen hic konusmuyordu.
+DUZELTME - Egitim: teklif egitmenin MEMORY_SPEAK hafizasidir (NPC_MEM_ACT_SPEAK_TRAIN, yetenek
+       ust kelimede); verilen altin NPC_OnTrainPay gibi oder - kucuk yigin payini alir, tam
+       tutar dersi bitirir ("That is all I can teach."), fazlasi da bitirir ve para ustu
+       ogrencinin yanina birakilir; egitmen ucreti cantasinda tutar. Iki paralel uygulama -
+       ogrencide motorun Ingilizce cumleleriyle TRAIN_PENDING tag'i ve egitmende bir tag -
+       kaldirildi.
+DUZELTME - Yetenekler: calisma aninda atanan yetenek (GM komutu, script, ozellik, egitim) sahibinin
+       yetenek penceresini gunceller; Skill_SetBase addSkillWindow ile biter
+       (CCharSkill.cpp:223). Yalnizca kazanc ve kayip guncelliyordu; ".magery 0" sunucuyu
+       degistiriyor, istemciyi degistirmiyordu.
+DUZELTME - Scriptler: rakamla baslayan karakter anahtari yazma tarafinda da yetenek numarasidir
+       (FindSkillKey, CServerConfig.cpp:2357). Sphere 56T ozel surum paketinin ogretmen
+       diyalogu dugmesinin yetenegini SRC.<EVAL <ARGN>-1> 30.0 ile ayarlar; numarayi yalnizca
+       okuma biliyordu, ogretmen hicbir sey ogretmiyordu.
+EKLEME - Fonksiyonel tatbikat "train" paketi, iki pakette: Scripts-X'te buyucu satici Magery'yi
+       sayar, fiyatlar ve altin karsiliginda ogretir (para ustu ogrencinin yanina birakilir);
+       saticilarin ogrenciyi Teacher'a yonlendirdigi 56T paketinde Teacher'in diyalogu
+       Magery'yi 300 altina 30.0'a cikarir. Egitmene adiyla seslenilir: adsiz satiri en
+       yakin NPC duyar ve dolasan bir hayvan da o kadar yakin olabilir.
+EKLEME - Testler: train hear (kelime olarak yetenek, liste), pay (fazla, eksik, ogretecek bir sey
+       yok), istemci uzerinden egitmene altin, numarayla yetenek atama.
+
 [2026-10-16] - .ADD miktar alir; bot imlec iptalini taniyor; buyu tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Komutlar: konusmayla verilen .ADD virgulden sonra miktar alir, ".add i_reag_garlic,10"

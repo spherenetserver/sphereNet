@@ -344,6 +344,11 @@ public static partial class Program
                 if (ch.IsPlayer && _clientsByCharUid.TryGetValue(ch.Uid, out var gc))
                     gc.SendSkillUpdate(skill);
             };
+            Character.OnSkillValueSet = (ch, skill) =>
+            {
+                if (ch.IsPlayer && _clientsByCharUid.TryGetValue(ch.Uid, out var gc))
+                    gc.SendSkillUpdate(skill);
+            };
             SkillEngine.OnSkillDecrease = (ch, skill, newVal) =>
             {
                 _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillChange,

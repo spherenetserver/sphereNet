@@ -81,11 +81,11 @@ public static partial class Program
             return true;
         };
 
-        // TRAIN <skill>: the same handler the "train <skill>" utterance reaches
-        // (NPC_OnTrainHear). Reconstructing the utterance keeps one implementation
-        // of what a trainer will teach and for how much - two would drift.
-        Character.NpcTrainOffer = (npc, src, skillArg) =>
-            src != null && TryHandleTrainKeyword(src, npc, "train " + skillArg);
+        // TRAIN <text>: NPC_OnTrainHear with the verb's argument - a pack's "train"
+        // speech passes the whole line, and a skill named in it is the one asked for.
+        Character.NpcTrainOffer = (npc, src, text) =>
+            src != null && SphereNet.Game.Trade.VendorTrainingEngine.OnTrainHear(npc, src, text,
+                line => NpcSpeak(npc, line));
 
         // SHRINK: the NPC becomes a figurine. Upstream refuses unless the speaker
         // owns it, and an ARGUMENT means "put it in my pack" rather than leaving it

@@ -127,6 +127,8 @@ internal static class FunctionalDrill
                 await FishMedSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "lore")
                 await LoreSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "tracker")
+                await TrackerSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -3560,6 +3562,205 @@ internal static class FunctionalDrill
 
         scholar.Disconnect();
         subject.Disconnect();
+    }
+
+    /// <summary>Tracking (Cmd_Skill_Tracking's item menus and Skill_Tracking's strokes),
+    /// Spirit Speak (a ghost understood) and Begging (its START line).</summary>
+    private static async Task TrackerSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        const int TrackingSkill = 38, SpiritSpeakSkill = 32, BeggingSkill = 6;
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        string spot = OpenCountrySpot(root);
+        var at = spot.Split(',');
+        int sx = int.Parse(at[0]), sy = int.Parse(at[1]);
+        var tracker = await LoginAsync(1171, port, ct);
+        var quarry = await LoginAsync(1172, port, ct);
+        uint rabbit = 0;
+
+        string Said(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        // The engine's tracking menu, or null when the pack's @Select opened a dialog of
+        // its own instead (the 56T pack's d_tracking).
+        async Task<BotMenuState?> OpenTracking()
+        {
+            long since = Environment.TickCount64;
+            await tracker.Actions.UseSkill(TrackingSkill, 3000, ct);
+            var opened = await WaitAsync(() =>
+                tracker.World.ActiveMenu is { } m && m.ReceivedMs >= since ? (object)m
+                : tracker.World.ActiveGump is { IsOpen: true } g && g.ReceivedMs >= since ? g : null,
+                5000, $"the tracking menu (0x7C) or a pack dialog; {Said(tracker, since)}");
+            if (opened is BotGumpState gump)
+            {
+                if (engineWording) throw new ScenarioFailed($"a dialog 0x{gump.GumpId:X} instead of the menu");
+                await tracker.Actions.RespondGump(gump.GumpId, gump.Serial, 0, ct: ct);
+                return null;
+            }
+            return (BotMenuState)opened;
+        }
+        void CancelMenu(BotMenuState menu)
+        {
+            var p = new byte[13];
+            p[0] = 0x7D;
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(p.AsSpan(1), menu.Serial);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(p.AsSpan(5), menu.MenuId);
+            tracker.SendRaw(p);
+        }
+
+        await RunScenario("tracker", "setup: a tracker, a rabbit and a player nearby", outcomes, async () =>
+        {
+            await AsStaff(server, quarry.AccountName, async () =>
+            {
+                await SayAsync(quarry, $".go {sx + 9},{sy},{at[2]}", ct);
+                await SayAsync(quarry, ".hiding 0", ct);
+                await SayAsync(quarry, ".stealth 0", ct);
+            });
+            await AsStaff(server, tracker.AccountName, async () =>
+            {
+                await SayAsync(tracker, $".go {spot}", ct);
+                foreach (string line in new[] { ".tracking 1000", ".spiritspeak 500", ".begging 1000", ".detectinghidden 1000" })
+                    await SayAsync(tracker, line, ct);
+                HashSet<uint> before; lock (tracker.World.SyncRoot) before = tracker.World.Mobiles.Keys.ToHashSet();
+                await tracker.Actions.Say(".add c_rabbit", ct);
+                if (await tracker.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_rabbit");
+                await tracker.Actions.TargetLocation(sx, sy + 6, tracker.World.Z, ct);
+                await Task.Delay(800, ct);
+                var found = await WaitAsync(() => { lock (tracker.World.SyncRoot) return tracker.World.Mobiles.Values.FirstOrDefault(m =>
+                    !before.Contains(m.Serial) && m.Serial != quarry.World.CharUid); }, 4000, "the rabbit");
+                rabbit = found.Serial;
+            });
+            return $"rabbit 0x{rabbit:X}, quarry 0x{quarry.World.CharUid:X}";
+        });
+
+        await RunScenario("tracker", "the tracking menu: four kinds, each with its icon", outcomes, async () =>
+        {
+            var menu = await OpenTracking();
+            if (menu == null) return "the pack tracks in a dialog of its own";
+            CancelMenu(menu);
+            string got = string.Join(" / ", menu.Entries.Select(e => $"0x{e.Model:X4} {e.Text}"));
+            ushort[] icons = [0x2120, 0x20DF, 0x2106, 0x2107];
+            if (menu.Entries.Count != 4 || !menu.Entries.Select(e => e.Model).SequenceEqual(icons))
+                throw new ScenarioFailed($"'{menu.Title}': {got}");
+            if (engineWording && (menu.Title != "Tracking" || menu.Entries[0].Text != "Animals" || menu.Entries[3].Text != "Players"))
+                throw new ScenarioFailed($"'{menu.Title}': {got}");
+            return $"'{menu.Title}': {got}";
+        });
+
+        await RunScenario("tracker", "cancelling the menu says so", outcomes, async () =>
+        {
+            var menu = await OpenTracking();
+            if (menu == null) return "the pack tracks in a dialog of its own";
+            long since = Environment.TickCount64;
+            CancelMenu(menu);
+            await Task.Delay(1000, ct);
+            string heard = Said(tracker, since);
+            if (heard.Length == 0) throw new ScenarioFailed("nothing said");
+            if (engineWording && !heard.Contains("Tracking Cancelled")) throw new ScenarioFailed(heard);
+            return heard;
+        });
+
+        await RunScenario("tracker", "humans include the player nearby", outcomes, async () =>
+        {
+            var menu = await OpenTracking();
+            if (menu == null) return "the pack tracks in a dialog of its own";
+            long since = Environment.TickCount64;
+            ChooseMenu(tracker, menu, 2);
+            var list = await WaitMenuAsync(tracker, since, $"the list of humans; {Said(tracker, since)}");
+            CancelMenu(list);
+            if (!list.Entries.Any(e => e.Text.Contains("SphereBot1172")))
+                throw new ScenarioFailed(string.Join(" / ", list.Entries.Select(e => e.Text)));
+            return string.Join(" / ", list.Entries.Select(e => e.Text));
+        });
+
+        await RunScenario("tracker", "spirit speak lets the tracker understand a ghost", outcomes, async () =>
+        {
+            // 50.0 Spirit Speak: under MEDIUMCANHEARGHOSTS, so only the skill's effect
+            // lets the tracker understand a ghost (CanUnderstandGhost, CCharStatus.cpp:89).
+            await AsStaff(server, quarry.AccountName, () => SayAsync(quarry, $".go {sx + 2},{sy},{at[2]}", ct));
+            await ConsoleAsync(server, $"ACCOUNT {quarry.AccountName} PLEVEL 7");
+            await quarry.Actions.Say(".kill", ct);
+            if (await quarry.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                await quarry.Actions.TargetObject(quarry.World.CharUid, ct);
+            await ConsoleAsync(server, $"ACCOUNT {quarry.AccountName} PLEVEL 1");
+            await WaitAsync(() => quarry.World.IsDead ? (object)true : null, 5000, "the quarry to die");
+            await Task.Delay(1000, ct);
+            long before = Environment.TickCount64;
+            await quarry.Actions.Say("hello from beyond", ct);
+            await Task.Delay(1200, ct);
+            string garbled = Said(tracker, before);
+            // The skill rolls against 0..89 (Skill_SpiritSpeak START, CCharSkill.cpp:2635):
+            // at 50.0 it can fail; try again.
+            string spoke = "";
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                long since = Environment.TickCount64;
+                await tracker.Actions.UseSkill(SpiritSpeakSkill, 3000, ct);
+                await WaitAsync(() => Said(tracker, since).Length > 0 ? (object)true : null, 8000, "a spirit speak answer");
+                await Task.Delay(500, ct);
+                spoke = Said(tracker, since);
+                if (!spoke.Contains("fail", StringComparison.OrdinalIgnoreCase))
+                    break;
+            }
+            long after = Environment.TickCount64;
+            await quarry.Actions.Say("hello from beyond", ct);
+            await Task.Delay(1200, ct);
+            string clear = Said(tracker, after);
+            if (garbled.Contains("hello from beyond")) throw new ScenarioFailed($"a ghost was understood without spirit speak: {garbled}");
+            // A pack may refuse the skill in its @Select (the 56T pack does): the ghost then
+            // stays garbled, which is still checked above.
+            if (!engineWording && !clear.Contains("hello from beyond"))
+                return $"pack refuses spirit speak: {spoke}; the ghost stays garbled: {clear}";
+            if (!clear.Contains("hello from beyond")) throw new ScenarioFailed($"spirit speak: {spoke}; then heard: {clear}");
+            return $"before: {garbled}; {spoke}; after: {clear}";
+        });
+
+        await RunScenario("tracker", "begging grovels before its mark", outcomes, async () =>
+        {
+            if (rabbit == 0) throw new ScenarioFailed("no rabbit");
+            await tracker.Actions.MoveTo(sx, sy + 4, 5000, ct);
+            long since = Environment.TickCount64;
+            await tracker.Actions.UseSkill(BeggingSkill, 3000, ct);
+            if (await tracker.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+            {
+                // A pack may switch begging off in its @Select (the 56T pack does).
+                if (!engineWording && Said(tracker, since).Length > 0)
+                    return $"pack refuses begging: {Said(tracker, since)}";
+                throw new ScenarioFailed($"no cursor for begging; {Said(tracker, since)}");
+            }
+            long picked = Environment.TickCount64;
+            await tracker.Actions.TargetObject(rabbit, ct);
+            await Task.Delay(2500, ct);
+            string heard = Said(tracker, picked);
+            if (heard.Length == 0) throw new ScenarioFailed("nothing said");
+            if (engineWording && !heard.Contains("grovel", StringComparison.OrdinalIgnoreCase)) throw new ScenarioFailed(heard);
+            return heard;
+        });
+
+        // Last: an active Tracking keeps the tracker busy - it is no passive skill
+        // another use may cancel (Skill_Wait, CCharSkill.cpp:4037-4044).
+        await RunScenario("tracker", "tracking an animal says where it is", outcomes, async () =>
+        {
+            if (rabbit == 0) throw new ScenarioFailed("no rabbit");
+            var menu = await OpenTracking();
+            if (menu == null) return "the pack tracks in a dialog of its own";
+            long since = Environment.TickCount64;
+            ChooseMenu(tracker, menu, 0);
+            var list = await WaitMenuAsync(tracker, since, $"the list of animals; {Said(tracker, since)}");
+            int i = list.Entries.FindIndex(e => e.Text.Contains("rabbit", StringComparison.OrdinalIgnoreCase));
+            if (i < 0) throw new ScenarioFailed(string.Join(" / ", list.Entries.Select(e => e.Text)));
+            long picked = Environment.TickCount64;
+            ChooseMenu(tracker, list, i);
+            var line = await WaitAsync(() => tracker.World.Journal.ToArray().FirstOrDefault(e =>
+                e.TimestampMs >= picked && e.Text.Contains("rabbit", StringComparison.OrdinalIgnoreCase)), 8000,
+                $"a tracking line; {Said(tracker, picked)}");
+            if (engineWording && !(line.Text.Contains(" is near to the ") || line.Text.Contains(" is ")))
+                throw new ScenarioFailed(line.Text);
+            return $"{list.Entries[i].Text} (icon 0x{list.Entries[i].Model:X4}): {line.Text}";
+        });
+
+        tracker.Disconnect();
+        quarry.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Tracking as Source-X runs it; Begging's start line and reach; tracker drill
+------------------------------------------------------------------------
+FIX - Tracking opens Source-X's old-style item menus (0x7C, Cmd_Skill_Tracking,
+      CClientUse.cpp:1090-1252): Animals, Monsters, Humans and Players with their track
+      icons, then the creatures found, each by its ICON and name; a cancel says
+      "Tracking Cancelled", an empty search says so by kind. SphereNet drew gumps of its
+      own with English text.
+FIX - Tracking: the search has no success roll - Skill_UseQuick only credits the try
+      (20 + 0..29 when something was found, 10 + 0..29 when not). A roll could refuse a
+      list already found. The reach is Tracking / 10 + 10 (ACTEFFECT when the skill has
+      an EFFECT; a human counts 20.0 under RACIALF_HUMAN_JACKOFTRADES). A kind is the
+      brain group, so Humans holds townsfolk of every trade and players; Players skips
+      ghosts and finds each player by the hiding/stealth difficulty (FEATURESE's update
+      formula, elves at half under RACIALF_ELF_DIFFTRACK); a lesser rank never finds a
+      staff member's insubstantial body.
+FIX - Tracking the picked creature is the active skill: each DELAY a stroke says over the
+      tracker where it is ("Rabbit is near to the East", by distance band and direction,
+      or that it disconnected), until it is gone or out of reach (Skill_Tracking,
+      CCharSkill.cpp:1289-1379). A quest arrow pointed at it for 30 seconds instead.
+FIX - Begging says "You grovel at <mark>'s feet" when it starts (Skill_Begging START,
+      CCharSkill.cpp:2942-2946), not after the DELAY, and asks no reach of its mark. An
+      invented 3-tile reach made it fail without a word.
+ADD - Functional drill "tracker" suite, on both packs: the tracking menu and its icons, a
+      cancel, players among the humans, a tracked rabbit's whereabouts, Spirit Speak
+      making a ghost understood, Begging's start line. The Sphere 56T custom-version pack
+      tracks in a dialog of its own and switches off Begging and Spirit Speak; those
+      refusals are accepted there.
+ADD - Tests: the human brain group in a tracking search, no roll on the list, a stroke's
+      line and its end out of reach, Begging's reach and line.
+
 [2026-10-17] - Information skills: start stage, reach, Item ID wording; lore drill
 ------------------------------------------------------------------------
 FIX - Information skills (Anatomy, Animal Lore, Arms Lore, Evaluating Intelligence,

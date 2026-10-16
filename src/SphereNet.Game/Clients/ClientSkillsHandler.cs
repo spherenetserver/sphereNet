@@ -523,6 +523,13 @@ public sealed class ClientSkillsHandler
         // target now, not after the DELAY; a wrong kind of target is said at once.
         bool startRefused = isInfo && _skillHandlers != null &&
             _skillHandlers.InfoSkillStartStage(new GameClient.InfoSkillSink(_client, _character), skill, target) < 0;
+        if (skill == SkillType.Begging)
+        {
+            if (Skills.Information.ActiveSkillEngine.BeggingStartLine(_character, target) is { } grovel)
+                SysMessage(grovel);
+            else
+                startRefused = true;
+        }
 
         bool gather = SkillEngine.HasFlag(skill, SkillFlag.Gather);
         bool craft = SkillEngine.HasFlag(skill, SkillFlag.Craft);
@@ -827,7 +834,6 @@ public sealed class ClientSkillsHandler
     /// <summary>Advance delayed active skills (@SkillStroke loop + completion).</summary>
     public void TickPendingSkill()
     {
-        TickTrackingArrow();
         if (_character == null || !_character.HasActiveSkillPending())
             return;
 
@@ -859,6 +865,12 @@ public sealed class ClientSkillsHandler
     private void CompletePendingSkill(SkillType skill, int skillId)
     {
         if (_character == null) return;
+
+        if (skill == SkillType.Tracking)
+        {
+            TrackingStroke(skillId);
+            return;
+        }
 
         // Meditation continues on the skill timer until full, instead of
         // completing once and waiting for the unrelated passive mana timer.
@@ -898,129 +910,119 @@ public sealed class ClientSkillsHandler
             _character.ActionEffect = -1;
     }
 
+    private const ushort TrackingSetupMenuId = 0x7C10, TrackingPickMenuId = 0x7C11;
+
+    /// <summary>Cmd_Skill_Tracking's setup menu (CClientUse.cpp:1096-1120): an old-style
+    /// item menu (0x7C) - Animals, Monsters, Humans, Players, each with its track icon -
+    /// after whatever skill was running is cleaned up. SphereNet drew a gump of its own
+    /// with English text.</summary>
     private void ShowTrackingMenu(SkillType skill, int skillId)
     {
         if (_character == null) return;
-        _character.SetTag("SKILL_MENU_PENDING", skillId.ToString());
 
         // @SkillMenu (Source-X) — a skill opened a selection menu. N1 = skill.
         TriggerResult menuResult = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
             new TriggerArgs { CharSrc = _character, N1 = skillId }) ?? TriggerResult.Default;
         if (menuResult == TriggerResult.True)
         {
-            _character.RemoveTag("SKILL_MENU_PENDING");
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
                 new TriggerArgs { CharSrc = _character, N1 = skillId });
             return;
         }
 
-        var gump = new GumpBuilder(_character.Uid.Value, 0, 300, 220);
-        gump.AddResizePic(0, 0, 5054, 300, 220);
-        gump.AddText(30, 15, 0, "What do you wish to track?");
-        gump.AddButton(30, 55, 4005, 4007, 1);
-        gump.AddText(70, 55, 0, "Animals");
-        gump.AddButton(30, 85, 4005, 4007, 2);
-        gump.AddText(70, 85, 0, "Monsters");
-        gump.AddButton(30, 115, 4005, 4007, 3);
-        gump.AddText(70, 115, 0, "Humans");
-        gump.AddButton(30, 145, 4005, 4007, 4);
-        gump.AddText(70, 145, 0, "Players");
-        gump.AddButton(150, 175, 4017, 4019, 0);
-        gump.AddText(190, 175, 0, "Cancel");
+        _character.ClearActiveSkillPending();   // Skill_Cleanup: the menu replaces the skill
+        var items = new List<MenuItemEntry>
+        {
+            new(0x2120, 0, ServerMessages.Get(Msg.TrackingSkillmenuAnimals)),   // ITEMID_TRACK_HORSE
+            new(0x20DF, 0, ServerMessages.Get(Msg.TrackingSkillmenuMonsters)),  // ITEMID_TRACK_OGRE
+            new(0x2106, 0, ServerMessages.Get(Msg.TrackingSkillmenuHumans)),    // ITEMID_TRACK_MAN
+            new(0x2107, 0, ServerMessages.Get(Msg.TrackingSkillmenuPlayers)),   // ITEMID_TRACK_WOMAN
+        };
+        _client.SendEngineMenu(TrackingSetupMenuId, ServerMessages.Get(Msg.TrackingSkillmenuTitle), items,
+            index => PickTrackingCategory(skillId, index));
+    }
 
-        SendGump(gump, (buttonId, switches, textEntries) =>
+    /// <summary>The category answer (Cmd_Skill_Tracking with a selection): the creatures
+    /// of that kind as a second item menu, each by its ICON and name; nothing found, or
+    /// a cancel, is said (sm_Track_FailMsg, :1239-1251).</summary>
+    private void PickTrackingCategory(int skillId, int index)
+    {
+        if (_character == null) return;
+        if (index <= 0)
+        {
+            SysMessage(ServerMessages.Get(Msg.TrackingCancel));
+            return;
+        }
+        var category = index switch
+        {
+            1 => Skills.Information.ActiveSkillEngine.TrackingCategory.Animals,
+            2 => Skills.Information.ActiveSkillEngine.TrackingCategory.Monsters,
+            3 => Skills.Information.ActiveSkillEngine.TrackingCategory.Humans,
+            _ => Skills.Information.ActiveSkillEngine.TrackingCategory.Players,
+        };
+        var sink = new GameClient.InfoSkillSink(_client, _character);
+        if (!Skills.Information.ActiveSkillEngine.Tracking(sink, category, out var targets))
+            return;
+
+        var items = targets.Select(t => new MenuItemEntry(Item.ResolveCharTrackId(t.CharDefIndex), 0, t.GetName())).ToList();
+        _client.SendEngineMenu(TrackingPickMenuId, ServerMessages.Get(Msg.TrackingSkillmenuTitle), items, pick =>
         {
             if (_character == null) return;
-            if (!_character.TryGetTag("SKILL_MENU_PENDING", out string? pendingText) ||
-                !ScriptNumber.TryParseInt(pendingText, out int pendingId) || pendingId != skillId)
-                return;
-            _character.RemoveTag("SKILL_MENU_PENDING");
-            if (buttonId == 0)
+            if (pick <= 0 || pick > targets.Count)
             {
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
-                    new TriggerArgs { CharSrc = _character, N1 = skillId });
+                SysMessage(ServerMessages.Get(Msg.TrackingCancel));
                 return;
             }
-
-            var category = buttonId switch
-            {
-                1 => Skills.Information.ActiveSkillEngine.TrackingCategory.Animals,
-                2 => Skills.Information.ActiveSkillEngine.TrackingCategory.Monsters,
-                3 => Skills.Information.ActiveSkillEngine.TrackingCategory.Humans,
-                4 => Skills.Information.ActiveSkillEngine.TrackingCategory.Players,
-                _ => Skills.Information.ActiveSkillEngine.TrackingCategory.Animals,
-            };
-
-            // The category pick is still menu setup: the search and a Skill_UseQuick
-            // for the credit, no skill stage (Cmd_Skill_Tracking, CClientUse.cpp:
-            // 1123-1236). Skill_Start comes with the creature pick below.
-            var sink = new GameClient.InfoSkillSink(_client, _character);
-            var targets = Skills.Information.ActiveSkillEngine.FindTrackingTargets(sink, category);
-            bool ok = Skills.Information.ActiveSkillEngine.Tracking(sink, category);
-
-            if (ok)
-                ShowTrackingTargets(skillId, targets);
+            StartTracking(skillId, targets[pick - 1]);
         });
     }
 
-    private void ShowTrackingTargets(int skillId, IReadOnlyList<Character> targets)
+    /// <summary>Skill_Start(SKILL_TRACKING) with ACT = the picked creature (CClientUse.cpp
+    /// :1126-1132): @SkillPreStart / @SkillStart may refuse it; then it stays the active
+    /// skill, a stroke every DELAY (Skill_Tracking, CCharSkill.cpp:1369-1379).</summary>
+    private void StartTracking(int skillId, Character quarry)
     {
-        if (_character == null || targets.Count == 0) return;
-        var visible = targets.Take(15).ToArray();
-        int height = 70 + visible.Length * 24;
-        var gump = new GumpBuilder(_character.Uid.Value, 0, 360, height);
-        gump.AddResizePic(0, 0, 5054, 360, height);
-        gump.AddText(25, 15, 0, "What do you wish to track?");
-        for (int i = 0; i < visible.Length; i++)
-        {
-            gump.AddButton(25, 50 + i * 24, 4005, 4007, i + 1);
-            int distance = _character.Position.GetDistanceTo(visible[i].Position);
-            gump.AddText(65, 50 + i * 24, 0, $"{visible[i].Name} ({distance})");
-        }
-        SendGump(gump, (buttonId, switches, entries) =>
-        {
-            if (_character == null || buttonId == 0 || buttonId > (uint)visible.Length) return;
-            var target = visible[(int)buttonId - 1];
-            if (target.IsDeleted || target.IsDead || target.MapIndex != _character.MapIndex) return;
-            // Skill_Start(SKILL_TRACKING) with ACT = the creature (CClientUse.cpp:
-            // 1126-1132): @SkillPreStart / @PreStart / @SkillStart / @Start see it,
-            // and RETURN 1 at any of them means no tracking.
-            _character.Act = target.Uid;
-            if (_triggerDispatcher != null &&
-                (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
-                    new TriggerArgs { CharSrc = _character, N1 = skillId }) == TriggerResult.True ||
-                 _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
-                    new TriggerArgs { CharSrc = _character, N1 = skillId }) == TriggerResult.True))
-                return;
-            _character.SetTag("TRACKING_TARGET", target.Uid.Value.ToString());
-            _character.SetTag("TRACKING_UNTIL", (Environment.TickCount64 + 30_000).ToString());
-            _character.SetTag("TRACKING_ARROW_NEXT", "0");
-            TickTrackingArrow();
-        });
+        if (_character == null) return;
+        int previous = _character.ClearActiveSkillPending();
+        if (previous >= 0)
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
+                new TriggerArgs { CharSrc = _character, N1 = previous });
+        _character.Act = quarry.Uid;
+        if (_triggerDispatcher != null &&
+            (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
+                new TriggerArgs { CharSrc = _character, N1 = skillId }) == TriggerResult.True ||
+             _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
+                new TriggerArgs { CharSrc = _character, N1 = skillId }) == TriggerResult.True))
+            return;
+        _character.BeginSkillPending(skillId, Environment.TickCount64 + TrackingStrokeDelayMs(),
+            long.MaxValue, quarry.Uid, null);
     }
 
-    private void TickTrackingArrow()
+    /// <summary>The skill's DELAY; with none, the second Cmd_Skill_Tracking set
+    /// (SetTimeoutS(1), CClientUse.cpp:1129).</summary>
+    private int TrackingStrokeDelayMs()
     {
-        if (_character == null || !_character.TryGetTag("TRACKING_TARGET", out string? uidText) ||
-            !ScriptNumber.TryParseUInt(uidText, out uint uid))
-            return;
-        long now = Environment.TickCount64;
-        if (_character.TryGetTag("TRACKING_ARROW_NEXT", out string? nextText) &&
-            ScriptNumber.TryParseLong(nextText, out long next) && now < next)
-            return;
-        bool expired = !_character.TryGetTag("TRACKING_UNTIL", out string? untilText) ||
-            !ScriptNumber.TryParseLong(untilText, out long until) || now >= until;
-        var target = expired ? null : _world.FindChar(new Serial(uid));
-        if (target == null || target.IsDeleted || target.IsDead || target.MapIndex != _character.MapIndex)
+        int delay = _character == null ? 0 : SkillEngine.GetSkillDelayMs(SkillType.Tracking, _character.GetSkill(SkillType.Tracking));
+        return delay > 0 ? delay : 1000;
+    }
+
+    /// <summary>One Tracking stroke: Skill_Stroke's triggers, then where the quarry is.
+    /// Either ending it is an abort (Skill_Fail(true): @SkillAbort, no message).</summary>
+    private void TrackingStroke(int skillId)
+    {
+        if (_character == null) return;
+        var quarry = _world.FindChar(_character.SkillPendingTarget);
+        var sink = new GameClient.InfoSkillSink(_client, _character);
+        if (FireActiveSkillStroke(skillId) &&
+            Skills.Information.ActiveSkillEngine.TrackingStroke(sink, quarry,
+                Skills.Information.ActiveSkillEngine.TrackingDistance(_character)))
         {
-            _netState.Send(new PacketArrowQuest(false, 0, 0, _netState.IsClientPost7090));
-            _character.RemoveTag("TRACKING_TARGET");
-            _character.RemoveTag("TRACKING_UNTIL");
-            _character.RemoveTag("TRACKING_ARROW_NEXT");
+            _character.ContinueSkillPending(Environment.TickCount64 + TrackingStrokeDelayMs());
             return;
         }
-        _netState.Send(new PacketArrowQuest(true, (ushort)target.X, (ushort)target.Y, _netState.IsClientPost7090));
-        _character.SetTag("TRACKING_ARROW_NEXT", (now + 1000).ToString());
+        _character.ClearActiveSkillPending();
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
+            new TriggerArgs { CharSrc = _character, N1 = skillId });
     }
 
     /// <summary>Source-X addObjMessage: overhead speech over any ObjBase.</summary>

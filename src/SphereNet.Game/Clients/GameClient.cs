@@ -251,6 +251,21 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
     }
     internal List<MenuOptionEntry>? _pendingMenuOptions;
     internal ushort _pendingMenuId;
+
+    /// <summary>An old-style menu (0x7C) the engine itself opened - Source-X addItemMenu
+    /// with a CLIMODE_MENU_* mode, such as the tracking menus - and what its answer
+    /// does. Index 0 is the cancel.</summary>
+    private ushort _engineMenuId;
+    private Action<int>? _engineMenuChoice;
+
+    internal void SendEngineMenu(ushort menuId, string question,
+        IReadOnlyList<SphereNet.Network.Packets.Outgoing.MenuItemEntry> items, Action<int> onChoice)
+    {
+        if (_character == null) return;
+        _engineMenuId = menuId;
+        _engineMenuChoice = onChoice;
+        _netState.Send(new SphereNet.Network.Packets.Outgoing.PacketMenuDisplay(_character.Uid.Value, menuId, question, items));
+    }
     internal string _pendingMenuDefname = "";
     private const ushort EditMenuId = 0xFFED;
     private uint[]? _pendingEditMenuUids;

@@ -245,6 +245,10 @@ internal interface IClientContext : ITextConsole
     bool HasAmmoInBackpack(ItemType ammo);
     void ConsumeAmmoFromBackpack(ItemType ammo);
     bool TryHandlePetCommand(string text);
+    /// <summary>Open an engine old-style menu (0x7C); <paramref name="onChoice"/> gets the
+    /// picked index, 0 for cancel.</summary>
+    void SendEngineMenu(ushort menuId, string question,
+        IReadOnlyList<SphereNet.Network.Packets.Outgoing.MenuItemEntry> items, Action<int> onChoice);
     /// <summary>Whether <paramref name="pet"/> took the last spoken pet command.</summary>
     bool HeardPetCommand(Objects.Characters.Character pet);
     bool ApplyPetCommand(Objects.Characters.Character pet, string verb);

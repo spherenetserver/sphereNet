@@ -4,6 +4,35 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Tracking Source-X'teki gibi; Begging'in baslangic satiri ve erisimi; tracker tatbikati
+------------------------------------------------------------------------
+DUZELTME - Tracking Source-X'in eski tip esya menulerini acar (0x7C, Cmd_Skill_Tracking,
+       CClientUse.cpp:1090-1252): iz ikonlariyla Animals, Monsters, Humans ve Players,
+       sonra bulunan yaratiklar, her biri ICON'u ve adiyla; iptal "Tracking Cancelled"
+       der, bos arama turune gore soyler. SphereNet Ingilizce metinli kendi gump'larini
+       ciziyordu.
+DUZELTME - Tracking: aramada basari zari yoktur - Skill_UseQuick yalnizca denemeye kredi verir
+       (bir sey bulunduysa 20 + 0..29, bulunmadiysa 10 + 0..29). Zar bulunmus listeyi
+       reddedebiliyordu. Erisim Tracking / 10 + 10'dur (beceride EFFECT varsa ACTEFFECT;
+       RACIALF_HUMAN_JACKOFTRADES altinda insan 20.0 sayilir). Tur beyin grubudur; Humans
+       her meslekten kasabaliyi ve oyunculari kapsar; Players hayaletleri atlar ve her
+       oyuncuyu hiding/stealth zorluguyla bulur (FEATURESE guncelleme formulu,
+       RACIALF_ELF_DIFFTRACK altinda elfler yarida); dusuk rutbe yetkilinin insubstantial
+       bedenini hic bulmaz.
+DUZELTME - Secilen yaratigi izlemek aktif beceridir: her DELAY'de bir stroke izleyicinin
+       uzerinde nerede oldugunu soyler ("Rabbit is near to the East", mesafe bandi ve yon,
+       ya da baglantisi koptugu), yok olana ya da erisim disina cikana kadar (Skill_Tracking,
+       CCharSkill.cpp:1289-1379). Yerine 30 saniye ona bakan bir gorev oku gosteriliyordu.
+DUZELTME - Begging basladiginda "You grovel at <hedef>'s feet" der (Skill_Begging START,
+       CCharSkill.cpp:2942-2946), DELAY'den sonra degil, ve hedefinden erisim istemez.
+       Uydurma 3 karelik erisim beceriyi sessizce basarisiz kiliyordu.
+EKLEME - Fonksiyonel tatbikat "tracker" paketi, iki pakette: tracking menusu ve ikonlari, iptal,
+       insanlar arasinda oyuncular, izlenen tavsanin yeri, Spirit Speak ile hayaletin
+       anlasilmasi, Begging'in baslangic satiri. Sphere 56T ozel surum paketi izlemeyi kendi
+       diyalogunda yapar, Begging ve Spirit Speak'i kapatir; bu retler orada kabul edilir.
+EKLEME - Testler: tracking aramasinda insan beyin grubu, listede zar yok, stroke satiri ve
+       erisim disinda bitisi, Begging'in erisimi ve satiri.
+
 [2026-10-17] - Bilgi becerileri: baslangic asamasi, erisim, Item ID metni; lore tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Bilgi becerileri (Anatomy, Animal Lore, Arms Lore, Evaluating Intelligence,

@@ -201,15 +201,20 @@ public static class ActiveSkillEngine
     public static bool Begging(IActiveSkillSink sink, Character? target)
     {
         var ch = sink.Self;
-        if (target == null || target == ch || target.IsDeleted ||
-            !CanReachPoint(ch, target.Position, sink.World,
-                SkillEngine.GetUseRange(SkillType.Begging, 3)))
+        // Skill_Begging asks only for a mark that is not the beggar (CCharSkill.cpp:2935);
+        // a 3-tile reach was invented. Its START line is said when the skill starts
+        // (BeggingStartLine), not after the DELAY.
+        if (target == null || target == ch || target.IsDeleted)
             return false;
-
-        // Source-X SysMessagef(DEFMSG_BEGGING_START, pChar->GetName()) — CCharSkill.cpp:2944
-        sink.SysMessage(ServerMessages.GetFormatted(Msg.BeggingStart, target.Name));
         return SkillEngine.UseQuick(ch, SkillType.Begging, Combat.CombatEngine.EffectiveInt(target));
     }
+
+    /// <summary>Skill_Begging's START line (CCharSkill.cpp:2942-2946): "You grovel at
+    /// %s's feet", or null when there is no mark to beg from.</summary>
+    public static string? BeggingStartLine(Character self, ObjBase? target) =>
+        target is Character mark && mark != self && !mark.IsDeleted
+            ? ServerMessages.GetFormatted(Msg.BeggingStart, mark.GetName())
+            : null;
 
     // ------------------------------------------------------------- Stealing
 
@@ -1004,50 +1009,135 @@ public static class ActiveSkillEngine
 
     // ------------------------------------------------------------- Tracking
 
-    /// <summary>Source-X CChar::Skill_Tracking (post-menu phase). Counts entities by category in radius.</summary>
-    public static bool Tracking(IActiveSkillSink sink, TrackingCategory category)
+    /// <summary>The category pick of Source-X Cmd_Skill_Tracking (CClientUse.cpp:1123-1252):
+    /// the creatures of that kind within reach, with a Skill_UseQuick only for the gain
+    /// (20 + 0..29 when something was found, 10 + 0..29 when not). An empty search says
+    /// so by category. There is no success roll: SphereNet rolled one and could refuse a
+    /// list it had found, and answered with a count instead of the list.</summary>
+    public static bool Tracking(IActiveSkillSink sink, TrackingCategory category) =>
+        Tracking(sink, category, out _);
+
+    public static bool Tracking(IActiveSkillSink sink, TrackingCategory category, out List<Character> targets)
     {
         var ch = sink.Self;
-        var targets = FindTrackingTargets(sink, category);
-        int count = targets.Count;
-
-        bool success = SkillEngine.UseQuick(ch, SkillType.Tracking, sink.Random.Next(50));
-        if (!success || count == 0)
+        targets = FindTrackingTargets(sink, category, TrackingDistance(ch));
+        if (targets.Count > 0)
         {
-            sink.SysMessage(ServerMessages.Get(category switch
-            {
-                TrackingCategory.Animals => Msg.TrackingFailAnimal,
-                TrackingCategory.Monsters => Msg.TrackingFailMonster,
-                _ => Msg.TrackingFailHuman,
-            }));
-            return false;
+            SkillEngine.UseQuick(ch, SkillType.Tracking, 20 + sink.Random.Next(30));
+            return true;
         }
-
-        // Source-X reports a band: 0/1/2/3/4/disc.
-        string key = count switch
+        SkillEngine.UseQuick(ch, SkillType.Tracking, 10 + sink.Random.Next(30));
+        sink.SysMessage(ServerMessages.Get(category switch
         {
-            1     => Msg.TrackingResult1,
-            2     => Msg.TrackingResult2,
-            3     => Msg.TrackingResult3,
-            >= 4  => Msg.TrackingResult4,
-            _     => Msg.TrackingResult0,
+            TrackingCategory.Animals => Msg.TrackingFailAnimal,
+            TrackingCategory.Monsters => Msg.TrackingFailMonster,
+            _ => Msg.TrackingFailHuman,
+        }));
+        return false;
+    }
+
+    /// <summary>m_atTracking.m_dwDistMax: ACTEFFECT when the skill names an EFFECT, else
+    /// Tracking / 10 + 10 - a human counting at least 20.0 under RACIALF_HUMAN_JACKOFTRADES
+    /// (CClientUse.cpp:1162-1172). A RANGE stood in for it here.</summary>
+    public static int TrackingDistance(Character ch)
+    {
+        if (ch.ActionEffect >= 0)
+            return ch.ActionEffect;
+        int skill = SkillEngine.GetAdjustedSkill(ch, SkillType.Tracking);
+        if ((Character.RacialFlags & (int)RacialFlags.HumanJackOfTrades) != 0 && ch.IsHuman)
+            skill = Math.Max(skill, 200);
+        return skill / 10 + 10;
+    }
+
+    /// <summary>The search of Cmd_Skill_Tracking (CClientUse.cpp:1173-1222). A kind is a
+    /// brain group (GetNPCBrainGroup, dragons and berserkers counting as monsters), so
+    /// Humans holds townsfolk of every trade and players too. Players is the one search
+    /// with a difficulty: no ghosts, players only, and each found with
+    /// 50 * (tracking + detecting hidden + 10 * 0..19) / (hiding + stealth) percent - or,
+    /// under FEATURESE's update, 50 * (2 * tracking + detecting hidden) / (hiding +
+    /// stealth); an elf tracks at half under RACIALF_ELF_DIFFTRACK. A staff member's
+    /// insubstantial body is never found by a lesser one. At most 63 (MAX_MENU_ITEMS - 1).</summary>
+    public static List<Character> FindTrackingTargets(IActiveSkillSink sink, TrackingCategory category, int distMax)
+    {
+        var ch = sink.Self;
+        NpcBrainType wanted = category switch
+        {
+            TrackingCategory.Animals => NpcBrainType.Animal,
+            TrackingCategory.Monsters => NpcBrainType.Monster,
+            TrackingCategory.Humans => NpcBrainType.Human,
+            _ => NpcBrainType.None,
         };
-        sink.SysMessage(ServerMessages.GetFormatted(key, count));
+        var found = new List<Character>();
+        foreach (var c in sink.World.GetCharsInRange(ch.Position, distMax)
+                     .OrderBy(c => ch.Position.GetDistanceTo(c.Position)).ThenBy(c => c.Uid.Value))
+        {
+            if (c == ch || c.IsDeleted)
+                continue;
+            if (ch.PrivLevel < c.PrivLevel && c.IsStatFlag(StatFlag.Insubstantial))
+                continue;
+            var group = c.GetNpcBrainGroup();
+            if (group is NpcBrainType.Dragon or NpcBrainType.Berserk)
+                group = NpcBrainType.Monster;
+            if (group != wanted)
+            {
+                if (category != TrackingCategory.Players || c.IsDead || !c.IsPlayer)
+                    continue;
+                int tracking = ch.GetSkill(SkillType.Tracking);
+                int detect = ch.GetSkill(SkillType.DetectingHidden);
+                if ((Character.RacialFlags & (int)RacialFlags.ElfDifficultTracking) != 0 &&
+                    c.BodyId is 0x025D or 0x025E or 0x025F or 0x0260)
+                    tracking /= 2;
+                int divisor = Math.Max(c.GetSkill(SkillType.Hiding) + c.GetSkill(SkillType.Stealth), 1);
+                int chance = (Character.FeatureSE & 0x02) != 0
+                    ? 50 * (tracking * 2 + detect) / divisor
+                    : 50 * (tracking + detect + 10 * sink.Random.Next(20)) / divisor;
+                if (sink.Random.Next(100) > chance)
+                    continue;
+            }
+            found.Add(c);
+            if (found.Count >= 63)
+                break;
+        }
+        return found;
+    }
+
+    /// <summary>One stroke of an active Tracking (CChar::Skill_Tracking(uid, dir, dist),
+    /// CCharSkill.cpp:1289-1343): over the tracker, where the quarry is - right here, near
+    /// (under 16), at (under 32), far (under 100) or very far, and which way, or that it
+    /// has disconnected. False - the tracking ends - when it is gone, out of reach, or a
+    /// staff member's insubstantial body.</summary>
+    public static bool TrackingStroke(IActiveSkillSink sink, Character? quarry, int distMax)
+    {
+        var ch = sink.Self;
+        if (quarry == null || quarry.IsDeleted || quarry.MapIndex != ch.MapIndex)
+            return false;
+        // GetTopDist3D: the 2D distance or the height difference in half-heights.
+        int dist = Math.Max(ch.Position.GetDistanceTo(quarry.Position), Math.Abs(ch.Z - quarry.Z) / 8);
+        if (dist > distMax)
+            return false;
+        if (quarry.IsStatFlag(StatFlag.Insubstantial) && quarry.PrivLevel > ch.PrivLevel)
+            return false;
+
+        string key = dist <= 0 ? Msg.TrackingResult0
+            : dist < 16 ? Msg.TrackingResult1
+            : dist < 32 ? Msg.TrackingResult2
+            : dist < 100 ? Msg.TrackingResult3
+            : Msg.TrackingResult4;
+        if (ServerMessages.Get(key).Length > 0)
+        {
+            string where = quarry.IsLoggedOut
+                ? ServerMessages.Get(Msg.TrackingResultDisc)
+                : ServerMessages.Get(s_mapDirs[(int)ch.Position.GetDirectionTo(quarry.Position) & 7]);
+            sink.ObjectMessage(ch, ServerMessages.GetFormatted(key, quarry.GetName(), where));
+        }
         return true;
     }
 
-    public static List<Character> FindTrackingTargets(IActiveSkillSink sink,
-        TrackingCategory category)
+    private static readonly string[] s_mapDirs =
     {
-        var ch = sink.Self;
-        int range = SkillEngine.GetUseRange(SkillType.Tracking,
-            10 + SkillEngine.GetAdjustedSkill(ch, SkillType.Tracking) / 10);
-        return sink.World.GetCharsInRange(ch.Position, range)
-            .Where(c => c != ch && !c.IsDeleted && !c.IsDead && MatchesCategory(c, category))
-            .OrderBy(c => ch.Position.GetDistanceTo(c.Position))
-            .ThenBy(c => c.Uid.Value)
-            .ToList();
-    }
+        Msg.MapDir0, Msg.MapDir1, Msg.MapDir2, Msg.MapDir3,
+        Msg.MapDir4, Msg.MapDir5, Msg.MapDir6, Msg.MapDir7,
+    };
 
     public enum TrackingCategory { Animals, Monsters, Humans, Players }
 
@@ -1796,15 +1886,6 @@ public static class ActiveSkillEngine
         var hand = sink.Self.GetEquippedItem(Layer.OneHanded);
         return hand?.ItemType == ItemType.Musical ? hand : null;
     }
-
-    private static bool MatchesCategory(Character c, TrackingCategory cat) => cat switch
-    {
-        TrackingCategory.Animals  => c.NpcBrain == NpcBrainType.Animal,
-        TrackingCategory.Monsters => c.NpcBrain is NpcBrainType.Monster or NpcBrainType.Berserk or NpcBrainType.Dragon,
-        TrackingCategory.Humans   => !c.IsPlayer && c.NpcBrain == NpcBrainType.Human,
-        TrackingCategory.Players  => c.IsPlayer,
-        _ => false,
-    };
 
     // --------------------------------------------------------------- Tinkering
 

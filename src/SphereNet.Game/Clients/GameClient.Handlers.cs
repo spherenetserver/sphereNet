@@ -257,6 +257,14 @@ public sealed partial class GameClient
             return;
         }
 
+        if (_engineMenuChoice != null && menuId == _engineMenuId && serial == _character.Uid.Value)
+        {
+            var choice = _engineMenuChoice;
+            _engineMenuChoice = null;
+            choice(index);
+            return;
+        }
+
         if (_pendingMenuOptions == null || menuId != _pendingMenuId || serial != _character.Uid.Value)
             return;
         var options = _pendingMenuOptions;

@@ -1545,10 +1545,15 @@ public sealed class ClientScriptConsoleHandler
                         {
                             var keyItem = first.ItemType == ItemType.Key ? first : second;
                             var other = keyItem == first ? second : first;
-                            // Copy the lockable's lock id onto the key (MORE1).
-                            keyItem.More1 = other.More1 != 0 ? other.More1 : other.Uid.Value;
-                            if (other.More1 == 0 && other.ItemType != ItemType.Key)
+                            // OnTarg_Item_Link (CClientTarg.cpp:430): the key takes the
+                            // other's lock code; failing that the other takes the key's;
+                            // failing both, both take the other's UID.
+                            if (other.More1 != 0)
+                                keyItem.More1 = other.More1;
+                            else if (keyItem.More1 != 0)
                                 other.More1 = keyItem.More1;
+                            else
+                                keyItem.More1 = other.More1 = other.Uid.Value;
                         }
                         else
                         {
@@ -2921,11 +2926,14 @@ public sealed class ClientScriptConsoleHandler
         // Run on an item (its @DClick: TARGET), the verb arms a USED-ITEM cursor:
         // Source-X OV_TARGET sets m_Targ_UID to the object and opens
         // CLIMODE_TARG_USE_ITEM, so the pick fires that item's
-        // @TargOn_Item/@TargOn_Char/@TargOn_Ground (OnTarg_Use_Item). A script item
-        // has no native use after its triggers, hence the empty callback.
+        // @TargOn_Item/@TargOn_Char/@TargOn_Ground (OnTarg_Use_Item). Unless they
+        // RETURN 1, the pick then gets the item type's own use (the switch after the
+        // trigger, CClientTarg.cpp:1756): a scripted lockpick that leaves an ordinary
+        // chest to the engine picks it. A type with no native use does nothing more.
         if (target is Item usedItem && !usedItem.IsDeleted)
         {
-            _client.ArmTargetCursor(static (_, _, _, _, _) => { }, cursorType, flags, preview, yOff, hue);
+            _client.ArmTargetCursor(_client.ItemUse.NativeTargetUse(usedItem) ?? (static (_, _, _, _, _) => { }),
+                cursorType, flags, preview, yOff, hue);
             Targets.ItemUid = usedItem.Uid;
             Targets.ItemParentUid = usedItem.ContainedIn;
         }

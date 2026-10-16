@@ -103,6 +103,30 @@ public sealed class ClientItemUseHandler
     /// item's @TargOn_Char/@TargOn_Item/@TargOn_Ground triggers (RETURN 1
     /// cancels). Every native "use item → pick target" flow must arm through
     /// this, not the bare SetPendingTarget.</summary>
+    /// <summary>What a used item does with the object or point picked for it - the
+    /// type switch of upstream's OnTarg_Use_Item (CClientTarg.cpp:1756), which runs
+    /// after the item's @TargOn_* triggers whoever opened the cursor: the engine's own
+    /// double-click, or the item's script with TARGET. Null for a type with no native
+    /// targeted use here.</summary>
+    internal Action<uint, short, short, sbyte, ushort>? NativeTargetUse(Item item) => item.ItemType switch
+    {
+        ItemType.Bandage => (serial, _, _, _, _) => RouteSkillTarget(SkillType.Healing, new Serial(serial), tool: item),
+        ItemType.Lockpick => (serial, _, _, _, _) => RouteSkillTarget(SkillType.Lockpicking, new Serial(serial), tool: item),
+        ItemType.Scissors => (serial, _, _, _, _) => HandleScissorsTarget(item, new Serial(serial)),
+        ItemType.BandageBlood => (serial, x, y, _, _) => UseBloodyBandage(item, serial, x, y),
+        ItemType.Tracker => (serial, _, _, _, _) => item.SetTag("LINK", serial.ToString()),
+        ItemType.Key or ItemType.Keyring => (serial, _, _, _, _) => HandleKeyUse(item, new Serial(serial)),
+        ItemType.Dye => (serial, _, _, _, _) => HandleDyePickup(item, new Serial(serial)),
+        ItemType.DyeVat => (serial, _, _, _, _) => HandleDyeApply(item, new Serial(serial)),
+        ItemType.WeaponMacePick => (serial, x, y, z, _) => RouteSkillTarget(SkillType.Mining, new Serial(serial),
+            new Point3D(x, y, z, _character?.MapIndex ?? 0), item),
+        ItemType.FishPole => (serial, x, y, z, _) => RouteSkillTarget(SkillType.Fishing, new Serial(serial),
+            new Point3D(x, y, z, _character?.MapIndex ?? 0), item),
+        ItemType.Seed => (_, x, y, z, _) => PlantSeed(item, x, y, z),
+        ItemType.PitcherEmpty => (serial, x, y, _, _) => FillPitcher(item, serial, x, y),
+        _ => null,
+    };
+
     private void SetPendingItemTarget(Item source, Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1)
     {
         _client.SetPendingTarget(callback, cursorType);
@@ -1126,40 +1150,42 @@ public sealed class ClientItemUseHandler
             // ---- tools that target a follow-up object ----
             case ItemType.Bandage:
                 SysMessage(ServerMessages.Get(Msg.ItemuseBandagePromt));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Healing, new Serial(serial), tool: item));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
             case ItemType.Lockpick:
                 SysMessage(ServerMessages.Get("target_promt"));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Lockpicking, new Serial(serial), tool: item));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
             case ItemType.Scissors:
                 SysMessage(ServerMessages.Get("target_promt"));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleScissorsTarget(item, new Serial(serial)));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
             // Source-X CClientUse.cpp:412 - a bloody bandage asks for a target and
             // is cleaned by using it on water.
             case ItemType.BandageBlood:
                 SysMessage(ServerMessages.Get("target_promt"));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => UseBloodyBandage(item, serial, x, y));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
             case ItemType.Tracker:
                 SysMessage(ServerMessages.Get(Msg.ItemuseTrackerAttune));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => item.SetTag("LINK", serial.ToString()));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
             case ItemType.Key:
             case ItemType.Keyring:
-                if (item.ContainedIn != _character.Backpack?.Uid && _character.PrivLevel < PrivLevel.GM)
+                // Anywhere on the user, a sub-bag or a keyring included (GetTopLevelObj,
+                // CClientUse.cpp:398) - not only loose in the backpack.
+                if (!ReferenceEquals(item.GetTopLevelObj(), _character) && _character.PrivLevel < PrivLevel.GM)
                 {
                     SysMessage(ServerMessages.Get(Msg.ItemuseKeyFail));
                     break;
                 }
                 SysMessage(ServerMessages.Get(Msg.ItemuseKeyPromt));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleKeyUse(item, new Serial(serial)));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
             case ItemType.HairDye:
@@ -1175,12 +1201,12 @@ public sealed class ClientItemUseHandler
 
             case ItemType.Dye:
                 SysMessage(ServerMessages.Get(Msg.ItemuseDyeVat));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleDyePickup(item, new Serial(serial)));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
             case ItemType.DyeVat:
                 SysMessage(ServerMessages.Get(Msg.ItemuseDyeTarg));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleDyeApply(item, new Serial(serial)));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
             // ---- weapons (target prompt for stab/pluck) ----
@@ -1276,13 +1302,13 @@ public sealed class ClientItemUseHandler
 
             case ItemType.WeaponMacePick:
                 SysMessage(ServerMessages.GetFormatted(Msg.ItemuseMacepickTarg, item.Name ?? "pick"));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Mining, new Serial(serial), new Point3D(x, y, z, _character.MapIndex), item));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
             // ---- pole/sextant/spyglass ----
             case ItemType.FishPole:
                 SysMessage(ServerMessages.Get("fishing_promt"));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Fishing, new Serial(serial), new Point3D(x, y, z, _character.MapIndex), item));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
             case ItemType.Fish:
                 SysMessage(ServerMessages.Get(Msg.ItemuseFishFail));
@@ -1923,14 +1949,14 @@ public sealed class ClientItemUseHandler
                 break;
             case ItemType.Seed:
                 SysMessage(ServerMessages.GetFormatted(Msg.ItemusePitcherTarg, item.GetName())); // CClientUse.cpp:498-503
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => PlantSeed(item, x, y, z));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
             case ItemType.Pitcher:
                 UsePotion(item);
                 break;
             case ItemType.PitcherEmpty:
                 SysMessage(ServerMessages.GetFormatted(Msg.ItemusePitcherTarg, item.GetName())); // CClientUse.cpp:498-503
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => FillPitcher(item, serial, x, y));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
             // ---- raw materials ----
@@ -4209,19 +4235,91 @@ public sealed class ClientItemUseHandler
         PlaceItemInPack(_character, bolt);
     }
 
-    /// <summary>Source-X key use: link key, lock/unlock door or container.</summary>
+    /// <summary>A key used on something (Source-X CChar::Use_Key, CCharUse.cpp:1330): on
+    /// another key it copies the cut onto the blank one, on itself it asks for a name,
+    /// on a lock it fits it locks or unlocks it, saying which (Use_KeyChange).</summary>
     private void HandleKeyUse(Item key, Serial target)
     {
+        if (_character == null) return;
         var obj = target.IsValid ? _world.FindObject(target) as Item : null;
-        if (obj == null || !CanReachTargetItem(obj)) { SysMessage(ServerMessages.Get(Msg.ItemuseKeyNolock)); return; }
+        if (obj == null) { SysMessage(ServerMessages.Get(Msg.MsgKeyTarg)); return; }
 
-        if (!KeyFits(key, obj)) { SysMessage(ServerMessages.Get(Msg.ItemuseKeyNokey)); return; }
+        if (obj != key && obj.ItemType == ItemType.Key)
+        {
+            if (!CanReachTargetItem(obj)) { SysMessage(ServerMessages.Get(Msg.MsgKeyTargReach)); return; }
+            bool keyBlank = Item.KeyIsBlank(key), objBlank = Item.KeyIsBlank(obj);
+            if (keyBlank && objBlank) { SysMessage(ServerMessages.Get(Msg.MsgKeyBlanks)); return; }
+            if (!keyBlank && !objBlank) { SysMessage(ServerMessages.Get(Msg.MsgKeyNotblanks)); return; }
+            if (!SkillEngine.UseQuick(_character, SkillType.Tinkering, 30 + Random.Shared.Next(40)))
+            {
+                SysMessage(ServerMessages.Get(Msg.MsgKeyFailc));
+                return;
+            }
+            if (objBlank) Item.CopyKeyCode(key, obj);
+            else Item.CopyKeyCode(obj, key);
+            return;
+        }
 
-        if (obj.ItemType == ItemType.ContainerLocked) obj.ItemType = ItemType.Container;
-        else if (obj.ItemType == ItemType.Container) obj.ItemType = ItemType.ContainerLocked;
-        else if (obj.ItemType == ItemType.DoorLocked) obj.ItemType = ItemType.Door;
-        else if (obj.ItemType == ItemType.Door) obj.ItemType = ItemType.DoorLocked;
-        else { SysMessage(ServerMessages.Get(Msg.ItemuseKeyNolock)); return; }
+        if (Item.KeyIsBlank(key)) { SysMessage(ServerMessages.Get(Msg.MsgKeyIsblank)); return; }
+        if (obj == key)
+        {
+            RenamePrompt(key, ServerMessages.Get(Msg.KeyName), ServerMessages.Get(Msg.KeyTo), ServerMessages.Get(Msg.MsgKeySetname));
+            return;
+        }
+        if (!CanReachTargetItem(obj)) { SysMessage(ServerMessages.Get(Msg.MsgKeyCantreach)); return; }
+        // A key cut to the lock's own UID fits it even when the lock names no code.
+        bool fits = KeyFits(key, obj);
+        if (!fits && !Item.HasLockCode(obj)) { SysMessage(ServerMessages.Get(Msg.MsgKeyNolock)); return; }
+        if (!fits) { SysMessage(ServerMessages.Get(Msg.MsgKeyWronglock)); return; }
+
+        string msg;
+        switch (obj.ItemType)
+        {
+            case ItemType.SignGump:
+                RenamePrompt(obj, "Sign", "", ServerMessages.Get(Msg.MsgKeyTargSign));
+                return;
+            case ItemType.ShipTiller:
+                RenamePrompt(obj, "Ship", "SS ", ServerMessages.Get(Msg.MsgShipnamePromt));
+                return;
+            case ItemType.Container: obj.ItemType = ItemType.ContainerLocked; msg = Msg.MsgKeyTargContLock; break;
+            case ItemType.ContainerLocked: obj.ItemType = ItemType.Container; msg = Msg.MsgKeyTargContUlock; break;
+            case ItemType.ShipHold: obj.ItemType = ItemType.ShipHoldLock; msg = Msg.MsgKeyTargHoldLock; break;
+            case ItemType.ShipHoldLock: obj.ItemType = ItemType.ShipHold; msg = Msg.MsgKeyTargHoldUlock; break;
+            case ItemType.Door:
+            case ItemType.DoorOpen: obj.ItemType = ItemType.DoorLocked; msg = Msg.MsgKeyTargDoorLock; break;
+            case ItemType.DoorLocked: obj.ItemType = ItemType.Door; msg = Msg.MsgKeyTargDoorUlock; break;
+            case ItemType.ShipPlank:
+                // Shut it first; a plank of a locked side is unlocked, any other locked.
+                obj.ClosePlank();
+                if (obj.ItemType == ItemType.ShipSideLocked) { obj.ItemType = ItemType.ShipSide; msg = Msg.MsgKeyTargShipUlock; }
+                else { obj.ItemType = ItemType.ShipSideLocked; msg = Msg.MsgKeyTargShipLock; }
+                break;
+            case ItemType.ShipSide: obj.ItemType = ItemType.ShipSideLocked; msg = Msg.MsgKeyTargShipLock; break;
+            case ItemType.ShipSideLocked: obj.ItemType = ItemType.ShipSide; msg = Msg.MsgKeyTargShipUlock; break;
+            default:
+                SysMessage(ServerMessages.Get(Msg.MsgKeyTargNolock));
+                return;
+        }
+        SysMessage(ServerMessages.Get(msg));
+        var at = obj.GetTopLevelObj().Position;
+        BroadcastNearby?.Invoke(at, UpdateRange, new PacketSound(0x049, at.X, at.Y, at.Z), 0);
+    }
+
+    /// <summary>Ask for an item's new name (the CLIMODE_PROMPT_NAME_* modes,
+    /// CClientEvent.cpp:1747): the answer, behind the prefix, becomes the name; an
+    /// empty answer cancels.</summary>
+    private void RenamePrompt(Item item, string what, string prefix, string question)
+    {
+        _client.SendPrompt(item.Uid.Value, question, (_, _, type, text) =>
+        {
+            if (item.IsDeleted || type == 0 || string.IsNullOrWhiteSpace(text))
+            {
+                SysMessage(ServerMessages.GetFormatted(Msg.MsgRenameCancel, what));
+                return;
+            }
+            item.Name = prefix + text.Trim();
+            SysMessage(ServerMessages.GetFormatted(Msg.MsgRenameSuccess, what, item.Name));
+        });
     }
 
     /// <summary>Open the Source-X hue picker for the targeted dye vat.</summary>

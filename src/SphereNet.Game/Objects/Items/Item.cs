@@ -1480,17 +1480,48 @@ public class Item : ObjBase
     /// Ordinary locks are unaffected.</summary>
     public static int MagicUnlockDoor { get; set; } = 900;
 
-    /// <summary>Whether <paramref name="key"/> opens <paramref name="locked"/>: the key
-    /// links either to the lock itself or to whatever the lock links to.</summary>
+    /// <summary>The lock codes a key carries. Upstream's is MORE1 (m_itKey.m_UIDLock,
+    /// CItem.h:190) and a key fits the lock whose MORE1 is the same (IsKeyLockFit,
+    /// CItem.cpp:4282) - which is how a script cuts a key for a chest, and how .LINK
+    /// joins the two. The keys this engine cuts for houses and ships carry the
+    /// structure as their LINK instead, so both are read.</summary>
+    private static (uint More, uint Link) KeyCodes(Item key)
+    {
+        uint link = key.Link.IsValid ? key.Link.Value : 0;
+        if (link == 0 && key.TryGetTag("LINK", out string? lk))
+            ScriptNumber.TryParseUInt(lk, out link);
+        return (key.More1, link);
+    }
+
+    /// <summary>A key cut for no lock yet (MORE1 not a UID: MSG_KEY_ISBLANK).</summary>
+    public static bool KeyIsBlank(Item key) => KeyCodes(key) is (0, 0);
+
+    /// <summary>Whether the key is cut for <paramref name="structure"/> (a house or a ship).</summary>
+    public static bool KeyIsFor(Item key, Serial structure) =>
+        structure.IsValid && KeyCodes(key) is var (more, link) && (more == structure.Value || link == structure.Value);
+
+    /// <summary>Whether <paramref name="locked"/> carries a lock code at all
+    /// (m_itContainer.m_UIDLock valid; MSG_KEY_NOLOCK otherwise).</summary>
+    public static bool HasLockCode(Item locked) => locked.More1 != 0 || locked.Link.IsValid;
+
+    /// <summary>Whether <paramref name="key"/> opens <paramref name="locked"/>: the
+    /// key's code is the lock's MORE1, the lock itself, or whatever the lock links to.</summary>
     public static bool KeyFits(Item key, Item locked)
     {
-        uint code = key.Link.IsValid ? key.Link.Value : 0;
-        if (code == 0 && key.TryGetTag("LINK", out string? lk))
-            ScriptNumber.TryParseUInt(lk, out code);
-        if (code == 0) return false;
+        var (more, link) = KeyCodes(key);
+        return Fits(more) || Fits(link);
 
-        if (code == locked.Uid.Value) return true;
-        return locked.Link.IsValid && code == locked.Link.Value;
+        bool Fits(uint code) => code != 0 &&
+            (code == locked.More1 || code == locked.Uid.Value || (locked.Link.IsValid && code == locked.Link.Value));
+    }
+
+    /// <summary>Cut a blank key to the code another key carries (Use_Key copy,
+    /// CCharUse.cpp:1366).</summary>
+    public static void CopyKeyCode(Item from, Item blank)
+    {
+        var (more, link) = KeyCodes(from);
+        blank.More1 = more != 0 ? more : link;
+        if (link != 0) blank.Link = new Serial(link);
     }
 
     // Per-item MAXAMOUNT override (Source-X CItem MaxAmount defnum). Null = global.
@@ -2163,6 +2194,43 @@ public class Item : ObjBase
         ItemType.Armor or ItemType.ArmorLeather or ItemType.ArmorChain or
         ItemType.ArmorRing or ItemType.ArmorBone or ItemType.Shield;
 
+    /// <summary>CANSEE / CANSEELOS / CANSEELOSFLAG on an item (OC_CANSEE..., CObjBase.cpp
+    /// :1112 - CObjBase, so items answer too). Without a target it is whether the line's
+    /// SRC sees this item: CanSee, or CanSeeLOS towards it. With one the viewer is this
+    /// object as a character - an item is none, so false. Items did not answer at all,
+    /// so a pack's lockpick check IF !(&lt;ARGO.CANSEELOS&gt;) refused every chest.</summary>
+    private bool TryGetSightProperty(string upper, out string value)
+    {
+        value = "";
+        int len = upper.StartsWith("CANSEELOSFLAG", StringComparison.Ordinal) ? 13
+            : upper.StartsWith("CANSEELOS", StringComparison.Ordinal) ? 9
+            : upper.StartsWith("CANSEE", StringComparison.Ordinal) ? 6 : 0;
+        if (len == 0 || (upper.Length > len && char.IsLetterOrDigit(upper[len])))
+            return false;
+        string rest = upper[len..].TrimStart('.', ' ', '\t');
+        var flags = LosFlags.None;
+        if (len == 13 && rest.Length > 0)
+        {
+            int sep = rest.IndexOfAny([',', ' ', '\t']);
+            if (ScriptNumber.TryParseArgument(sep >= 0 ? rest[..sep] : rest, out long f))
+                flags = (LosFlags)(ushort)f;
+            rest = sep >= 0 ? rest[(sep + 1)..].Trim() : "";
+        }
+        value = "0";
+        if (rest.Length > 0)
+            return true;
+        if (SphereNet.Scripting.Execution.ScriptReadContext.Source is not Character src || src.IsDeleted)
+            return true;
+        if (len == 6)
+        {
+            value = src.CanSee(this) ? "1" : "0";
+            return true;
+        }
+        var world = ResolveWorld?.Invoke();
+        value = world != null && src.CanSee(this) && world.CanSeeLOSFor(src, this, flags, allowGmPass: true) ? "1" : "0";
+        return true;
+    }
+
     public override bool TryGetProperty(string key, out string value)
     {
         // Champion altar read keys (Source-X ICHMPL_*).
@@ -2179,6 +2247,9 @@ public class Item : ObjBase
             value = HasComponentProps(this, upper).ToString();
             return true;
         }
+
+        if (TryGetSightProperty(upper, out value))
+            return true;
 
         if (TryGetStoneProperty(upper, out value))
             return true;

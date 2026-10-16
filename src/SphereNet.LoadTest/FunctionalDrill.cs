@@ -109,6 +109,8 @@ internal static class FunctionalDrill
                 await PlayerVendorSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "mount")
                 await MountSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "lock")
+                await LockSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -2195,6 +2197,150 @@ internal static class FunctionalDrill
         });
 
         rider.Disconnect();
+        stranger.Disconnect();
+    }
+
+    // ---- locks and keys --------------------------------------------------------------
+
+    private static async Task LockSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        string spot;
+        using (var map = new SphereNet.MapData.MapDataManager(mul))
+        {
+            map.Load();
+            map.InitMap(0, 7168, 4096);
+            var site = HouseSites(map, 1300, 1740, 80).FirstOrDefault();
+            spot = $"{site.X},{site.Y},{site.Z}";
+        }
+        var owner = await LoginAsync(1071, port, ct);
+        var stranger = await LoginAsync(1072, port, ct);
+        uint chest = 0, key = 0, blank = 0;
+
+        string Said(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+
+        // Whether a double-click opens the chest for this bot.
+        async Task<bool> Opens(BotClient bot)
+        {
+            lock (bot.World.SyncRoot) bot.World.OpenContainers.Remove(chest);
+            await bot.Actions.DoubleClick(chest, 1000, ct);
+            for (int i = 0; i < 30; i++)
+            {
+                await Task.Delay(50, ct);
+                lock (bot.World.SyncRoot) if (bot.World.OpenContainers.ContainsKey(chest)) return true;
+            }
+            return false;
+        }
+
+        async Task UseOn(BotClient bot, uint used, uint target)
+        {
+            long since = Environment.TickCount64;
+            await bot.Actions.DoubleClick(used, 1000, ct);
+            if (await bot.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no cursor from 0x{used:X}; {Said(bot, since)}");
+            await bot.Actions.TargetObject(target, ct);
+            await Task.Delay(800, ct);
+        }
+
+        await RunScenario("lock", "setup: a chest and its key, a blank key", outcomes, async () =>
+        {
+            await AsStaff(server, owner.AccountName, async () =>
+            {
+                await SayAsync(owner, $".go {spot}", ct);
+                var before = (await PackContentsAsync(owner, ct)).Select(i => i.Serial).ToHashSet();
+                await AddIntoPackAsync(owner, "i_key_iron", ct);
+                await AddIntoPackAsync(owner, "i_key_iron", ct);
+                var keys = (await PackContentsAsync(owner, ct)).Where(i => !before.Contains(i.Serial)).ToList();
+                if (keys.Count != 2) throw new ScenarioFailed($"{keys.Count} new keys in the pack");
+                (key, blank) = (keys[0].Serial, keys[1].Serial);
+                HashSet<uint> seen;
+                lock (owner.World.SyncRoot) seen = owner.World.KnownItems.Keys.ToHashSet();
+                await owner.Actions.Say(".add i_chest_metal", ct);
+                if (await owner.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no cursor for .add i_chest_metal");
+                await owner.Actions.TargetLocation(owner.World.X + 1, owner.World.Y, owner.World.Z, ct);
+                chest = (await WaitAsync(() => { lock (owner.World.SyncRoot) return owner.World.KnownItems.Values.FirstOrDefault(i =>
+                    !seen.Contains(i.Serial) && i.ContainerSerial == 0 && owner.World.DistanceTo(i.X, i.Y) <= 2); }, 4000, "the chest")).Serial;
+                // .LINK cuts the key to the chest (MORE1 = the lock code).
+                await owner.Actions.Say(".link", ct);
+                if (await owner.Actions.WaitForTarget(3000, ct) != BotActionResult.Success) throw new ScenarioFailed("no cursor for .link");
+                await owner.Actions.TargetObject(key, ct);
+                if (await owner.Actions.WaitForTarget(3000, ct) != BotActionResult.Success) throw new ScenarioFailed("no second cursor for .link");
+                await owner.Actions.TargetObject(chest, ct);
+                await Task.Delay(500, ct);
+                await SayAsync(owner, ".tinkering 1000", ct);
+            });
+            await AsStaff(server, stranger.AccountName, async () =>
+            {
+                await SayAsync(stranger, $".go {spot}", ct);
+                await AddIntoPackAsync(stranger, "i_lockpick", ct);
+                await SayAsync(stranger, ".lockpicking 1000", ct);
+            });
+            return $"chest 0x{chest:X}, key 0x{key:X}, blank 0x{blank:X}";
+        });
+
+        await RunScenario("lock", "the key locks the chest; a stranger cannot open it", outcomes, async () =>
+        {
+            if (chest == 0) throw new ScenarioFailed("no chest");
+            if (!await Opens(stranger)) throw new ScenarioFailed("the unlocked chest did not open for the stranger");
+            long since = Environment.TickCount64;
+            await UseOn(owner, key, chest);
+            string said = Said(owner, since);
+            long since2 = Environment.TickCount64;
+            if (await Opens(stranger)) throw new ScenarioFailed($"the stranger opened the chest; key: {said}");
+            return $"key: '{said}'; stranger: '{Said(stranger, since2)}'";
+        });
+
+        // Upstream does not open a locked container for its key's carrier: it says the
+        // key is there to be used (LOCK_HAS_KEY, CClientUse.cpp:187).
+        await RunScenario("lock", "the key's carrier is told to use it", outcomes, async () =>
+        {
+            if (chest == 0) throw new ScenarioFailed("no chest");
+            long since = Environment.TickCount64;
+            if (await Opens(owner)) throw new ScenarioFailed($"a locked chest opened; {Said(owner, since)}");
+            await Task.Delay(300, ct);
+            string said = Said(owner, since);
+            if (said.Count(c => c == '|') < 1) throw new ScenarioFailed($"no 'locked' + 'you have the key' lines; {said}");
+            return said;
+        });
+
+        await RunScenario("lock", "a blank key cut from the first unlocks it", outcomes, async () =>
+        {
+            if (chest == 0) throw new ScenarioFailed("no chest");
+            long since = Environment.TickCount64;
+            await UseOn(owner, blank, chest);
+            string blankSaid = Said(owner, since);
+            if (await Opens(stranger)) throw new ScenarioFailed("the blank key unlocked the chest");
+            since = Environment.TickCount64;
+            await UseOn(owner, blank, key);
+            string copySaid = Said(owner, since);
+            since = Environment.TickCount64;
+            await UseOn(owner, blank, chest);
+            string unlockSaid = Said(owner, since);
+            if (!await Opens(stranger)) throw new ScenarioFailed($"the copy did not unlock it; copy: '{copySaid}', unlock: '{unlockSaid}'");
+            await UseOn(owner, blank, chest); // locked again, for the lockpick
+            return $"blank: '{blankSaid}'; copy: '{copySaid}'; unlock: '{unlockSaid}'";
+        });
+
+        await RunScenario("lock", "a lockpick opens it for the stranger", outcomes, async () =>
+        {
+            if (chest == 0) throw new ScenarioFailed("no chest");
+            if (await Opens(stranger)) throw new ScenarioFailed("the chest was not locked again");
+            var pick = (await PackContentsAsync(stranger, ct)).FirstOrDefault(i => i.ItemId is >= 0x14FB and <= 0x14FE)
+                ?? throw new ScenarioFailed("no lockpick in the stranger's pack");
+            long since = Environment.TickCount64;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                await UseOn(stranger, pick.Serial, chest);
+                await Task.Delay(4000, ct);
+                if (await Opens(stranger)) return $"picked; {Said(stranger, since)}";
+            }
+            throw new ScenarioFailed($"still locked; {Said(stranger, since)}");
+        });
+
+        owner.Disconnect();
         stranger.Disconnect();
     }
 

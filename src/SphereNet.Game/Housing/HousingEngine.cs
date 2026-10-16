@@ -1462,7 +1462,7 @@ public sealed class HousingEngine
         foreach (var child in container.Contents.ToList())
         {
             RemoveStructureKeys(child, structureUid);
-            if (child.ItemType is not (ItemType.Key or ItemType.Keyring) || child.Link != structureUid)
+            if (child.ItemType is not (ItemType.Key or ItemType.Keyring) || !Item.KeyIsFor(child, structureUid))
                 continue;
             container.RemoveItem(child);
             _world.RemoveItem(child);

@@ -774,6 +774,20 @@ public sealed class CommandHandler
     /// (Source-X CAccounts::Account_OnCmd is the same command from anywhere).</summary>
     public static Func<Character, string, bool>? AccountCommandBridge { get; set; }
 
+    /// <summary>A command as a verb on the speaker (CChar::r_Verb, CChar.cpp:4391):
+    /// the client's own verbs first (LINK, the target-cursor tools), then the
+    /// character's, then - for staff - a property assignment.</summary>
+    private bool TryObjectVerb(Character gm, string verb, string args)
+    {
+        var console = SphereNet.Game.Objects.ObjBase.ResolveClientConsole?.Invoke(gm);
+        if (console != null && console.TryExecuteScriptCommand(gm, verb, args, null))
+            return true;
+        if (gm.TryExecuteCommand(verb, args, console ?? NullConsole.Instance))
+            return true;
+        return gm.PrivLevel >= PropertyCommandMinLevel && args.Length > 0 && !IsBlockedPropertyVerb(verb)
+            && gm.TrySetProperty(verb, args);
+    }
+
     public CommandResult TryExecute(Character gm, string commandLine)
     {
         if (string.IsNullOrWhiteSpace(commandLine))
@@ -833,7 +847,10 @@ public sealed class CommandHandler
                     return CommandResult.InsufficientPriv;
                 if (ScriptFallbackExecutor?.Invoke(gm, commandLine) == true)
                     return CommandResult.Executed;
-                return CommandResult.NotFound;
+                // [PLEVEL] grants the verb; it need not be a script's. Upstream runs
+                // an allowed command through m_pChar->r_Verb (CClientEvent.cpp:1123),
+                // so a native verb - LINK, listed under [PLEVEL 4] - works too.
+                return TryObjectVerb(gm, verb, args) ? CommandResult.Executed : CommandResult.NotFound;
             }
 
             // Compatibility fallback: function exists but isn't listed under [PLEVEL].
@@ -847,14 +864,8 @@ public sealed class CommandHandler
             // This allows ".events +e_human_player", ".name NewName", etc. Same
             // staff-privilege gate as the "verb=value" path above — a plain player
             // must not be able to run object/property verbs on themselves.
-            if (gm.PrivLevel >= PropertyCommandMinLevel)
-            {
-                if (gm.TryExecuteCommand(verb, args, NullConsole.Instance))
-                    return CommandResult.Executed;
-                if (args.Length > 0 && !IsBlockedPropertyVerb(verb)
-                    && gm.TrySetProperty(verb, args))
-                    return CommandResult.Executed;
-            }
+            if (gm.PrivLevel >= PropertyCommandMinLevel && TryObjectVerb(gm, verb, args))
+                return CommandResult.Executed;
 
             // Source-X CClient.cpp:921 — generic X-prefix targeting fallback.
             // Any unknown verb starting with 'X' (.xhits, .xkill, .xinvul,

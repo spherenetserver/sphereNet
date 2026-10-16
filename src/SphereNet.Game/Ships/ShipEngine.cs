@@ -354,7 +354,7 @@ public sealed class ShipEngine
         foreach (var child in container.Contents.ToList())
         {
             RemoveShipKeys(child, shipUid);
-            if (child.ItemType is not (ItemType.Key or ItemType.Keyring) || child.Link != shipUid)
+            if (child.ItemType is not (ItemType.Key or ItemType.Keyring) || !Item.KeyIsFor(child, shipUid))
                 continue;
             container.RemoveItem(child);
             _world.RemoveItem(child);

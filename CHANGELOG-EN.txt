@@ -4,6 +4,38 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - Keys by MORE1; Source-X key use; [PLEVEL] native verbs; item CANSEELOS; lock drill
+------------------------------------------------------------------------
+FIX - Keys: a key's lock code is its MORE1 and it fits the lock whose MORE1 is the same
+      (m_itKey / m_itContainer.m_UIDLock, IsKeyLockFit, CItem.cpp:4282). Only LINK was read,
+      so a key cut by script (NEW.MORE1, as a pack's locked-chest type does) or by .LINK
+      fitted nothing. Engine house and ship keys still fit by their LINK, and a redeed or
+      transfer removes copies cut by MORE1 too.
+FIX - Using a key follows Use_Key (CCharUse.cpp:1330): on another key it copies the cut onto
+      the blank one (a tinkering check; "Both keys are blank." / "Neither key is blank."),
+      a blank key says so, on itself it asks for the key's name, and locking or unlocking a
+      container, door, ship hold or ship side says which ("You lock the container.") with
+      the lock sound. A sign or tiller asks for a new name. A key anywhere on the user - a
+      sub-bag included - can be used, not only one loose in the backpack.
+FIX - .LINK between a key and a lock takes the lock's code, else gives it the key's, else
+      cuts both to the lock's UID (OnTarg_Item_Link, CClientTarg.cpp:430).
+FIX - Commands: a command the pack's [PLEVEL] grants but no script defines runs as a verb on
+      the speaker - the client's verbs first, then the character's (Event_Command ->
+      CChar::r_Verb, CChar.cpp:4399). .LINK, listed under [PLEVEL 4], answered "not a valid
+      command" to staff.
+FIX - Scripts: CANSEE / CANSEELOS / CANSEELOSFLAG answer on an item too (they are CObjBase
+      keys, CObjBase.cpp:1112): without an argument, whether SRC sees the item. A pack's
+      lockpick that tests <ARGO.CANSEELOS> on the chest refused every chest as out of reach.
+FIX - Scripts: an item whose script opens a cursor with TARGET gives the pick its type's own
+      use after @TargOn_Item, unless that trigger RETURNs 1 (OnTarg_Use_Item,
+      CClientTarg.cpp:1756). A scripted lockpick leaving an ordinary locked chest to the
+      engine picked nothing.
+ADD - Functional drill "lock" suite, on both packs: .LINK cuts a key to a chest, the key
+      locks it and a stranger cannot open it, the key's carrier is told to use it, a blank
+      key copied from the first unlocks it, and a lockpick opens it for the stranger.
+ADD - Tests: key use (MORE1 fit, wrong key, copying, blanks), .LINK through [PLEVEL],
+      CANSEELOS on an item, a script cursor's native use after @TargOn_Item.
+
 [2026-10-16] - A worn MEMORY_IPET memory makes a pet; Source-X mount refusals; mount drill
 ------------------------------------------------------------------------
 FIX - Pets: wearing a memory that holds MEMORY_IPET makes its wearer a pet (STATF_PET), as

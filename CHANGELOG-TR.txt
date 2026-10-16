@@ -4,6 +4,41 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - MORE1 ile anahtar; Source-X anahtar kullanimi; [PLEVEL] yerel fiilleri; item CANSEELOS; kilit tatbikati
+------------------------------------------------------------------------
+DUZELTME - Anahtarlar: anahtarin kilit kodu MORE1'idir ve MORE1'i ayni olan kilide uyar
+       (m_itKey / m_itContainer.m_UIDLock, IsKeyLockFit, CItem.cpp:4282). Yalnizca LINK
+       okunuyordu; script ile (NEW.MORE1, bir paketin kilitli sandik tipi gibi) ya da .LINK
+       ile kesilen anahtar hicbir seye uymuyordu. Motorun ev ve gemi anahtarlari LINK ile
+       uymaya devam eder; redeed ya da devir MORE1 ile kesilmis kopyalari da siler.
+DUZELTME - Anahtar kullanimi Use_Key'i izler (CCharUse.cpp:1330): baska bir anahtar uzerinde
+       kesimi bos olana kopyalar (tinkering kontrolu; "Both keys are blank." / "Neither key
+       is blank."), bos anahtar bunu soyler, kendisi uzerinde isim sorar; konteyner, kapi,
+       gemi ambari ya da gemi yani kilitlenince veya acilinca hangisi oldugunu kilit sesiyle
+       soyler ("You lock the container."). Tabela ya da dumen yeni isim sorar. Kullanicinin
+       uzerinde herhangi bir yerdeki anahtar - alt canta dahil - kullanilabilir, yalnizca
+       cantada acikta duran degil.
+DUZELTME - Anahtar ile kilit arasinda .LINK kilidin kodunu alir; yoksa anahtarinkini kilide
+       verir; o da yoksa ikisini kilidin UID'sine keser (OnTarg_Item_Link, CClientTarg.cpp:430).
+DUZELTME - Komutlar: paketin [PLEVEL]'inin izin verdigi ama hicbir scriptin tanimlamadigi komut
+       konusanin uzerinde fiil olarak calisir - once istemcinin fiilleri, sonra karakterin
+       (Event_Command -> CChar::r_Verb, CChar.cpp:4399). [PLEVEL 4] altindaki .LINK
+       yetkililere "gecersiz komut" diyordu.
+DUZELTME - Scriptler: CANSEE / CANSEELOS / CANSEELOSFLAG item uzerinde de cevap verir (CObjBase
+       anahtarlaridir, CObjBase.cpp:1112): argumansiz, SRC'nin item'i gorup gormedigi.
+       Sandik uzerinde <ARGO.CANSEELOS> sinayan bir paket maymuncugu her sandigi uzak sayip
+       reddediyordu.
+DUZELTME - Scriptler: scripti TARGET ile imlec acan bir item, @TargOn_Item RETURN 1 donmedikce
+       secilen hedefe kendi tipinin kullanimini uygular (OnTarg_Use_Item,
+       CClientTarg.cpp:1756). Siradan kilitli sandigi motora birakan script'li maymuncuk
+       hicbir sey acmiyordu.
+EKLEME - Fonksiyonel tatbikat "lock" paketi, iki pakette: .LINK anahtari sandiga keser, anahtar
+       sandigi kilitler ve yabanci acamaz, anahtari tasiyana kullanmasi soylenir, ilkinden
+       kopyalanan bos anahtar kilidi acar, maymuncuk sandigi yabanci icin acar.
+EKLEME - Testler: anahtar kullanimi (MORE1 uyumu, yanlis anahtar, kopyalama, bos anahtarlar),
+       [PLEVEL] uzerinden .LINK, item uzerinde CANSEELOS, script imlecinin @TargOn_Item
+       sonrasi yerel kullanimi.
+
 [2026-10-16] - Giyilen MEMORY_IPET hafizasi pet yapar; Source-X binek retleri; binek tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Petler: MEMORY_IPET tasiyan bir hafizayi giyen karakter pet olur (STATF_PET); LayerAdd

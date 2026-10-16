@@ -59,6 +59,26 @@ public sealed class CanSeeLosSourceTests
         Assert.Equal("0", player.Tags.Get("LOS") ?? "0");
     }
 
+    /// <summary>The key is CObjBase's, so an item answers it too: a pack's lockpick
+    /// tests IF !(&lt;ARGO.CANSEELOS&gt;) on the chest it targets, and read nothing.</summary>
+    [Fact]
+    public void AnItemAnswersForTheLinesSrcToo()
+    {
+        var (stack, player, _) = Bench();
+        var world = Item.ResolveWorld!()!;
+        var chest = world.CreateItem();
+        chest.BaseId = 0x0E7C;
+        world.PlaceItem(chest, new Point3D(101, 100, 0, 0));
+        stack.Interpreter.Execute([new ScriptKey("TAG.LOS", "<argo.canseelos>"), new ScriptKey("TAG.SEE", "<argo.cansee>")],
+            player, null, new TriggerArgs { Source = player, Object1 = chest }, new ScriptScope());
+        Assert.Equal("1", player.Tags.Get("LOS"));
+        Assert.Equal("1", player.Tags.Get("SEE"));
+
+        stack.Interpreter.Execute([new ScriptKey("TAG.LOS", "<argo.canseelos>")], player, null,
+            new TriggerArgs { Object1 = chest }, new ScriptScope());
+        Assert.Equal("0", player.Tags.Get("LOS"));
+    }
+
     [Fact]
     public void TheSrcDoesNotLeakOutOfTheRead()
     {

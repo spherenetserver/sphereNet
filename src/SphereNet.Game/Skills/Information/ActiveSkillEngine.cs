@@ -645,6 +645,21 @@ public static class ActiveSkillEngine
             return false;
         }
 
+        // A ghost that has not manifested cannot be raised. Upstream refuses it among
+        // the preconditions, before the bandage is spent or the skill rolled
+        // (IsCorpseResurrectable, CItemCorpse.cpp:42, run from Skill_Healing :2796).
+        // Checked after the roll, a failed roll answered "they barely help" instead
+        // and the bandage was lost to a ghost that could never have been raised.
+        // Source-X asks for STATF_INSUBSTANTIAL, which death sets only on a PLAYER who
+        // was not already in war mode (CCharAct.cpp:4468) and never on an NPC;
+        // SphereNet uses war mode as the manifest signal for players, so a bonded pet
+        // that died out of combat can still be revived by Veterinary.
+        if (target.IsStatFlag(StatFlag.Dead) && target.IsPlayer && !target.IsInWarMode)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.HealingResManifest));
+            return false;
+        }
+
         // START emote.
         sink.Emote(target == ch
             ? ServerMessages.Get(Msg.HealingSelf)
@@ -704,19 +719,6 @@ public static class ActiveSkillEngine
 
         if (target.IsStatFlag(StatFlag.Dead))
         {
-            // Source-X asks for STATF_INSUBSTANTIAL, which death sets only on a PLAYER
-            // who was not already in war mode - "manifest war mode for ghosts"
-            // (CCharAct.cpp:4468) - and never on an NPC. SphereNet has no ghost
-            // insubstantial flag and uses war mode as the manifest signal for players,
-            // so that half stands; but holding a dead NPC to it meant a bonded pet
-            // that died out of combat could not be revived by Veterinary at all, and
-            // no part of a pet's life makes it die in war mode.
-            if (target.IsPlayer && !target.IsInWarMode)
-            {
-                sink.SysMessage(ServerMessages.Get(Msg.HealingResManifest));
-                return false;
-            }
-
             var corpse = selectedCorpse?.ItemType == ItemType.Corpse
                 ? selectedCorpse
                 : FindCorpseFor(sink.World, target);

@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - Buyu parlamalari, Explosion patlamasi, cagrilan yaratigin kaybolmasi, diriltme efekti; hayalet bandaj zarindan once reddedilir
+------------------------------------------------------------------------
+DUZELTME - Buyu: olumsuz (invul) hedefe ya da hesabi misafir olan oyuncuya atilan zarar buyusu onun
+       uzerinde parlar ve hicbir sey yapmaz (CCharSpell.cpp:3832-3846); misafire vuran
+       uyarilir. Hicbir sey gorunmuyor, buyu saldiri ve yansima kontrollerine devam ediyordu.
+DUZELTME - Buyu: harcanan yansima tasiyicisinin uzerinde parlar - hedefte, ve buyucunun kendi
+       yansimasi da harcanirsa buyucude (CCharSpell.cpp:3855, :3862, :3872).
+DUZELTME - Buyu: gecikmeli Explosion patladiginda kurbanin uzerinde patlamasini gosterir
+       (ITEMID_FX_EXPLODE_3, CCharSpell.cpp:1954); yalnizca hasar iniyordu.
+DUZELTME - Buyu: suresi biten cagrilan yaratik isinlanma dumaniyla kaybolur (ITEMID_FX_TELE_VANISH,
+       CCharSpell.cpp:601) ve sesi calar; yalnizca ses caliyordu.
+DUZELTME - Diriltme, nasil olursa olsun - sifaci, tapinak, bandaj ya da buyu - Resurrection
+       buyusunun EFFECT_ID'sini gosterir ve SOUND'unu calar (Spell_Resurrection,
+       CCharSpell.cpp:519-525). Karakter ikisi de olmadan hayata donuyordu.
+DUZELTME - Healing: gorunur olmamis (manifest etmemis) hayalet on kosullar arasinda, bandaj
+       harcanmadan ve zar atilmadan reddedilir; Source-X'in IsCorpseResurrectable'i gibi
+       (CItemCorpse.cpp:42). Zardan sonra kontrol edildiginde basarisiz zar "they barely help"
+       diyor ve bandaj kayboluyordu; healing tatbikati bu yuzden yaklasik yari yari
+       basarisiz oluyordu.
+EKLEME - Testler: olumsuz hedef parlamasi, harcanan yansima parlamasi, diriltme efekti ve sesi,
+       zardan once reddedilen ve bandaji korunan gorunmez hayalet.
+
 [2026-10-16] - Lightning gorunur bir simsekle vurur
 ------------------------------------------------------------------------
 DUZELTME - Buyu: Lightning ve Chain Lightning vurdugu karakterin uzerinde simsegi cizer,

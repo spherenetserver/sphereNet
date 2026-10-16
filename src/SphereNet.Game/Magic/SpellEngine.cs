@@ -1910,6 +1910,17 @@ public sealed partial class SpellEngine
 
     private static bool IsTopLevelItem(Item item) => !item.ContainedIn.IsValid && !item.IsEquipped;
 
+    /// <summary>Effect(EFFECT_OBJ, ITEMID_FX_GLOW, this, speed, loop) on a character: the
+    /// glow of a spell that did not take hold, or of a reflection being spent.</summary>
+    private static void SendGlow(Character ch, byte speed, byte loop)
+    {
+        const ushort FxGlow = 0x37B9;
+        var at = ch.Position;
+        var fx = new SphereNet.Network.Packets.Outgoing.PacketEffect(3, ch.Uid.Value, ch.Uid.Value, FxGlow,
+            at.X, at.Y, at.Z, at.X, at.Y, at.Z, speed, loop, true, false);
+        Character.BroadcastNearby?.Invoke(at, 18, fx, 0);
+    }
+
     /// <summary>EFFECT_LIGHTNING on a character: the bolt strikes it where it stands.</summary>
     private static void SendLightning(Character? source, Character target)
     {
@@ -2233,16 +2244,31 @@ public sealed partial class SpellEngine
         // upstream keeps pSpellDef (:3732-3748).
         var effectDef = spellId == def.Id ? def : GetSpellDef(spellId) ?? def;
 
+        // Harming oneself: allowed for a reflected spell (with no disturb) and otherwise
+        // only under MAGICF_CANHARMSELF (:3750-3759).
+        if (harmful && !sourceless && caster == target &&
+            !reflecting && !IsMagicFlag(MagicConfigFlags.CanHarmSelf))
+            return false;
+
+        // An invulnerable target, or a guest, shrugs a harmful spell off in a glow; a
+        // guest's attacker is told (CCharSpell.cpp:3832-3846). Nothing showed, and the
+        // spell went on to the attack and reflection checks.
+        // A guest is a player whose ACCOUNT is at PLEVEL_Guest (GetPrivLevel reads the
+        // account, and gives an NPC Player, CChar.cpp:859-864); the bare field defaults
+        // to Guest, which would make every account-less character one.
+        bool guest = target.IsPlayer &&
+            Character.ResolveAccountForChar?.Invoke(target.Uid) is { PrivLevel: PrivLevel.Guest };
+        if (harmful && (target.IsStatFlag(StatFlag.Invul) || guest))
+        {
+            if (!target.IsStatFlag(StatFlag.Invul) && !sourceless)
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.MsgAccGuesthit));
+            SendGlow(target, 10, 16);
+            return false;
+        }
+
         if (harmful && !sourceless)
         {
-            if (caster == target)
-            {
-                // Harming oneself: allowed for a reflected spell (with no disturb) and
-                // otherwise only under MAGICF_CANHARMSELF (:3750-3759).
-                if (!reflecting && !IsMagicFlag(MagicConfigFlags.CanHarmSelf))
-                    return false;
-            }
-            else
+            if (caster != target)
             {
                 // The victim learns it was attacked - memory, attacker list, an NPC
                 // turns on the caster, and whether harming it was a crime (:3777).
@@ -2258,17 +2284,23 @@ public sealed partial class SpellEngine
                 // LOCAL.BypassMagicReflection skips the whole check (:3851).
                 if (!bypassMagicReflection && target.IsStatFlag(StatFlag.Reflection))
                 {
+                    // Each reflection that is spent glows on its bearer (:3855, :3862, :3872).
+                    SendGlow(target, 10, 5);
                     ConsumeMagicReflection(target);
                     if (caster.IsStatFlag(StatFlag.Reflection) &&
                         !IsMagicFlag(MagicConfigFlags.NoReflectOwn))
                     {
+                        SendGlow(caster, 10, 5);
                         ConsumeMagicReflection(caster);
                     }
                     else
                     {
                         if (caster.IsStatFlag(StatFlag.Reflection) &&
                             IsMagicFlag(MagicConfigFlags.DeleteReflectOwn))
+                        {
+                            SendGlow(caster, 10, 5);
                             ConsumeMagicReflection(caster);
+                        }
                         else
                             ApplyCharEffect(caster, caster, effectDef, level, durationTenths, reflecting: true);
                         return true;

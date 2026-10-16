@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - Spell glows, Explosion blast, summon vanish, resurrection effect; ghosts refused before the bandage roll
+------------------------------------------------------------------------
+FIX - Magic: a harmful spell on an invulnerable target, or on a player whose account is a
+      guest, glows on it and does nothing (CCharSpell.cpp:3832-3846); a guest's attacker
+      is told. Nothing showed, and the spell went on to the attack and reflection checks.
+FIX - Magic: a reflection that is spent glows on its bearer - the target, and the caster
+      when its own reflection is used too (CCharSpell.cpp:3855, :3862, :3872).
+FIX - Magic: a delayed Explosion shows its blast (ITEMID_FX_EXPLODE_3) on the victim when
+      it goes off (CCharSpell.cpp:1954); only the damage landed.
+FIX - Magic: a summoned creature whose time runs out vanishes in the teleport puff
+      (ITEMID_FX_TELE_VANISH, CCharSpell.cpp:601) with its sound; only the sound played.
+FIX - Resurrection, however it comes - healer, shrine, bandage or spell - shows the
+      Resurrection spell's EFFECT_ID and plays its SOUND (Spell_Resurrection,
+      CCharSpell.cpp:519-525). The character came back to life with neither.
+FIX - Healing: a ghost that has not manifested is refused among the preconditions, before
+      the bandage is spent or the skill rolled, as upstream's IsCorpseResurrectable is
+      (CItemCorpse.cpp:42). Checked after the roll, a failed roll said "they barely help"
+      and the bandage was lost; the healing drill failed on that about half the time.
+ADD - Tests: invulnerable target glow, spent reflection glow, resurrection effect and
+      sound, an unmanifested ghost refused before the roll with the bandage kept.
+
 [2026-10-16] - Lightning strikes with a visible bolt
 ------------------------------------------------------------------------
 FIX - Magic: Lightning and Chain Lightning draw the bolt on the character they strike,

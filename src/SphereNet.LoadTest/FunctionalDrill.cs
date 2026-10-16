@@ -1469,7 +1469,7 @@ internal static class FunctionalDrill
             await Task.Delay(1500, ct);
             string unmanifested = JournalSince(healer, since);
             if (!unmanifested.Contains("manifest", StringComparison.OrdinalIgnoreCase))
-                throw new ScenarioFailed($"an unmanifested ghost was not refused; healer: {unmanifested}");
+                throw new ScenarioFailed($"an unmanifested ghost was not refused; healer: {unmanifested}; patient: {JournalSince(patient, since - 8000)}; body 0x{patient.World.Body:X}");
             await patient.Actions.SetWarMode(true, ct);
             await Task.Delay(800, ct);
             since = Environment.TickCount64;

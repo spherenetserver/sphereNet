@@ -4756,6 +4756,21 @@ public partial class Character : ObjBase
         }
 
         MarkDirty(DirtyFlag.StatFlags | DirtyFlag.Stats);
+
+        // However it was raised - healer, shrine, bandage or spell - the resurrection
+        // shows the Resurrection spell's effect and plays its sound
+        // (Spell_Resurrection, CCharSpell.cpp:519-525). It came back to life silently.
+        if (ResolveSpellDef?.Invoke(SpellType.Resurrection) is { } rezDef)
+        {
+            var at = Position;
+            if (rezDef.EffectId != 0)
+                BroadcastNearby?.Invoke(at, 18, new Network.Packets.Outgoing.PacketEffect(3,
+                    Uid.Value, Uid.Value, rezDef.EffectId, at.X, at.Y, at.Z, at.X, at.Y, at.Z,
+                    10, 16, true, false), 0);
+            if (rezDef.Sound > 0)
+                BroadcastNearby?.Invoke(at, 18, new Network.Packets.Outgoing.PacketSound(
+                    (ushort)rezDef.Sound, at.X, at.Y, at.Z), 0);
+        }
     }
 
     public void Delete()

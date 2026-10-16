@@ -61,4 +61,77 @@ public sealed class LightningBoltEffectTests
         uint dst = (uint)(bolt![6] << 24 | bolt[7] << 16 | bolt[8] << 8 | bolt[9]);
         Assert.Equal(target.Uid.Value, dst);
     }
+
+    private static (SpellEngine Spells, Character Caster, Character Target, List<PacketWriter> Sent) Bench()
+    {
+        var world = TestHarness.CreateWorld();
+        var registry = new SpellRegistry();
+        registry.Register(new SpellDef
+        {
+            Id = SpellType.Lightning,
+            Name = "Lightning",
+            Flags = SpellFlag.TargObj | SpellFlag.Harm | SpellFlag.Damage,
+            ManaCost = 0,
+            CastTimeBase = 1,
+            EffectBase = 10,
+            EffectScale = 10,
+        });
+        var spells = new SpellEngine(world, registry);
+        var caster = world.CreateCharacter();
+        caster.IsPlayer = true;
+        caster.PrivLevel = PrivLevel.GM;
+        caster.MaxMana = 100;
+        caster.Mana = 100;
+        world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
+        var target = world.CreateCharacter();
+        target.MaxHits = 100;
+        target.Hits = 100;
+        world.PlaceCharacter(target, new Point3D(102, 100, 0, 0));
+        return (spells, caster, target, new List<PacketWriter>());
+    }
+
+    private static bool GlowedOn(List<PacketWriter> sent, Character ch) =>
+        sent.OfType<SphereNet.Network.Packets.Outgoing.PacketEffect>()
+            .Select(p => p.Build().Span.ToArray())
+            .Any(b => b[0] == 0x70 && b[1] == 3 && (b[10] << 8 | b[11]) == 0x37B9 &&
+                      (uint)(b[2] << 24 | b[3] << 16 | b[4] << 8 | b[5]) == ch.Uid.Value);
+
+    /// <summary>An invulnerable target shrugs a harmful spell off in a glow and takes
+    /// nothing (CCharSpell.cpp:3832-3836).</summary>
+    [Fact]
+    public void AnInvulnerableTargetGlowsAndTakesNothing()
+    {
+        var (spells, caster, target, sent) = Bench();
+        target.SetStatFlag(StatFlag.Invul);
+        var saved = Character.BroadcastNearby;
+        Character.BroadcastNearby = (_, _, p, _) => sent.Add(p);
+        try
+        {
+            caster.BeginCast(SpellType.Lightning, target.Uid, target.Position);
+            spells.CastDone(caster);
+        }
+        finally { Character.BroadcastNearby = saved; }
+
+        Assert.Equal(100, target.Hits);
+        Assert.True(GlowedOn(sent, target));
+    }
+
+    /// <summary>A reflection that is spent glows on its bearer (CCharSpell.cpp:3855).</summary>
+    [Fact]
+    public void ASpentReflectionGlowsOnItsBearer()
+    {
+        var (spells, caster, target, sent) = Bench();
+        target.SetStatFlag(StatFlag.Reflection);
+        var saved = Character.BroadcastNearby;
+        Character.BroadcastNearby = (_, _, p, _) => sent.Add(p);
+        try
+        {
+            caster.BeginCast(SpellType.Lightning, target.Uid, target.Position);
+            spells.CastDone(caster);
+        }
+        finally { Character.BroadcastNearby = saved; }
+
+        Assert.False(target.IsStatFlag(StatFlag.Reflection));
+        Assert.True(GlowedOn(sent, target));
+    }
 }

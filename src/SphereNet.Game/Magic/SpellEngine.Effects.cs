@@ -1088,10 +1088,31 @@ public sealed partial class SpellEngine
                 // dispel brings it here; deleting it again would destroy it twice).
                 if (t.IsPlayer || t.IsDead || t.IsDeleted)
                     break;
+                // The creature vanishes in the teleport puff, with its sound
+                // (Effect(EFFECT_XYZ, ITEMID_FX_TELE_VANISH, this, 8, 20), :601).
+                SendVanishEffect(t);
                 OnPlaySound?.Invoke(t.Position, 0x201);
                 _world.DeleteObject(t);
                 break;
         }
+    }
+
+    /// <summary>ITEMID_FX_EXPLODE_3 on the victim of a delayed Explosion.</summary>
+    private static void SendExplodeEffect(Character victim, uint sourceUid)
+    {
+        var at = victim.Position;
+        Character.BroadcastNearby?.Invoke(at, 18,
+            new SphereNet.Network.Packets.Outgoing.PacketEffect(3, sourceUid, victim.Uid.Value, 0x36B0,
+                at.X, at.Y, at.Z, at.X, at.Y, at.Z, 10, 16, true, false), 0);
+    }
+
+    /// <summary>ITEMID_FX_TELE_VANISH where a summoned creature stood.</summary>
+    private static void SendVanishEffect(Character creature)
+    {
+        var at = creature.Position;
+        Character.BroadcastNearby?.Invoke(at, 18,
+            new SphereNet.Network.Packets.Outgoing.PacketEffect(2, creature.Uid.Value, creature.Uid.Value, 0x3728,
+                at.X, at.Y, at.Z, at.X, at.Y, at.Z, 8, 20, true, false), 0);
     }
 
     /// <summary>The runtime half of an effect that a save does not carry - put back when
@@ -1303,6 +1324,10 @@ public sealed partial class SpellEngine
                 effect = level;
                 damageType = DamageType.Magic | DamageType.Fire;
                 harm = true;
+                // The blast shows on the victim when it goes off (Effect(EFFECT_OBJ,
+                // ITEMID_FX_EXPLODE_3, caster, 10, 16), CCharSpell.cpp:1954); only the
+                // damage landed here.
+                SendExplodeEffect(t, mem.Link.IsValid ? mem.Link.Value : t.Uid.Value);
                 break;
             case SpellType.Strangle:
             {

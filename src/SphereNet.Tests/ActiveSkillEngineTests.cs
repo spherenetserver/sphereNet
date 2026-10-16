@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -201,6 +201,29 @@ public class ActiveSkillEngineTests
 
         Assert.False(ok);
         Assert.Equal(ServerMessages.Get(Msg.HealingHealthy), sink.Log[0].Text);
+    }
+
+    /// <summary>An unmanifested ghost is refused before the roll and keeps the bandage
+    /// (IsCorpseResurrectable, CItemCorpse.cpp:42, a Skill_Healing precondition).
+    /// Checked after the roll, a failed roll answered "they barely help" and spent the
+    /// bandage on a ghost that could never have been raised.</summary>
+    [Fact]
+    public void Healing_UnmanifestedGhost_IsRefusedBeforeTheRoll()
+    {
+        var world = MakeWorld();
+        var healer = MakeChar("Healer");
+        healer.SetSkill(SkillType.Healing, (ushort)0);   // every roll would fail
+        var ghost = MakeChar("Ghost", hits: 0);
+        ghost.Position = new Point3D(101, 100, 0, 0);
+        ghost.SetStatFlag(StatFlag.Dead);
+        var sink = new RecordingActiveSink(healer, world);
+        sink.Pack[ItemType.Bandage] = new Item { ItemType = ItemType.Bandage, Amount = 3 };
+
+        bool ok = ActiveSkillEngine.Healing(sink, ghost);
+
+        Assert.False(ok);
+        Assert.Equal(ServerMessages.Get(Msg.HealingResManifest), Assert.Single(sink.Log).Text);
+        Assert.Empty(sink.Consumed);
     }
 
     [Fact]

@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - Yeni karakter govdesinin tanimini alir
+------------------------------------------------------------------------
+DUZELTME - Karakterler: giriste olusturulan karakter govdesinin tanimini alir - insan erkek icin
+       c_man, c_woman, elf ve gargoyle govdeleri de ayni sekilde - Source-X karakteri
+       CreateBasic(id) -> SetID ile olusturdugu gibi. Kayittan yuklenen karakterde tanim
+       zaten vardi ([WORLDCHAR c_man]); bu sunucuda olusturulanda yoktu, bu yuzden tanimdan
+       okunan her kural (FOODTYPE, MAXFOOD, CAN bayraklari, wrestling DAM, HEIGHT, direnc ust
+       sinirlari) bos donuyordu ve kaydina da tanim yazilmiyordu.
+EKLEME - Testler: yeni karakterin tanimi govdesininkidir. Bu yolla olusturulan karakterlerle
+       tekrar kosulan economy, combat, death, mount, magic ve food tatbikatlari Scripts-X'te,
+       mount ve food 56T paketinde gecer.
+
 [2026-10-16] - Oyuncu govdesinin FOODTYPE'ina gore yer; Source-X yeme mesajlari; yemek tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Yemek: oyuncunun diyeti ve yemek ust siniri govdesinin taniminden gelir; Source-X'in

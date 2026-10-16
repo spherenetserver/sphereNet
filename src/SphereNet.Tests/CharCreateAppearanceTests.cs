@@ -51,6 +51,23 @@ public sealed class CharCreateAppearanceTests
         Assert.Equal((ushort)(expected | 0x8000), ch.Hue.Value);
     }
 
+    /// <summary>A new character's definition is its body's (CreateBasic(id) -> SetID):
+    /// c_man for a human male, as a character loaded from a save already has. One
+    /// created here had none, and every rule read from it - FOODTYPE, MAXFOOD -
+    /// found nothing.</summary>
+    [Fact]
+    public void ANewCharacterTakesItsBodysDefinition()
+    {
+        SphereNet.Game.Definitions.DefinitionLoader.SetCharDef(0x0190,
+            new SphereNet.Scripting.Definitions.CharDef(ResourceId.Invalid) { DefName = "c_man" });
+
+        var ch = Create(Info(1));
+
+        Assert.Equal(0x0190, ch.BodyId);
+        Assert.Equal(0x0190, ch.CharDefIndex);
+        Assert.Equal("c_man", ch.GetRuleCharDef()?.DefName);
+    }
+
     [Fact]
     public void ElfSkin_NotInTable_FallsBackToFirstEntry()
     {

@@ -651,6 +651,17 @@ public sealed partial class GameClient
                 _character.Str = 50; _character.Dex = 50; _character.Int = 50;
             }
 
+            // The new character's definition is its body's: upstream creates it with
+            // CreateBasic(id) -> SetID, so Char_GetDef is c_man for 0x190, the same as a
+            // character loaded from a save ([WORLDCHAR c_man]). One created here had no
+            // definition, and every rule read from it - FOODTYPE, MAXFOOD, the
+            // chardef's events - found nothing.
+            if (Definitions.DefinitionLoader.GetCharDef(_character.BodyId) != null)
+            {
+                _character.CharDefIndex = _character.BodyId;
+                _character.BaseId = _character.BodyId;
+            }
+
             _character.MaxHits = _character.Str; _character.MaxMana = (short)_character.Int; _character.MaxStam = _character.Dex;
             _character.Hits = _character.MaxHits; _character.Mana = _character.MaxMana; _character.Stam = _character.MaxStam;
 

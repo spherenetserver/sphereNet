@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - A new character takes its body's definition
+------------------------------------------------------------------------
+FIX - Characters: a character created at login takes its body's definition - c_man for a
+      human male, c_woman, the elf and gargoyle bodies likewise - as upstream creates it
+      with CreateBasic(id) -> SetID. A character loaded from a save already carried it
+      ([WORLDCHAR c_man]); one created on this server had none, so every rule read from
+      the definition (FOODTYPE, MAXFOOD, CAN flags, wrestling DAM, HEIGHT, resistance
+      caps) found nothing, and its save wrote no definition either.
+ADD - Tests: a new character's definition is its body's. The economy, combat, death,
+      mount, magic and food drills, run again with characters created this way, pass on
+      Scripts-X; mount and food on the 56T pack.
+
 [2026-10-16] - Players eat by their body's FOODTYPE; Source-X eating messages; food drill
 ------------------------------------------------------------------------
 FIX - Food: a player's diet and food maximum come from its body's definition, as

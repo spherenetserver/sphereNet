@@ -117,6 +117,8 @@ internal static class FunctionalDrill
                 await TrainSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "food")
                 await FoodSuite(server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "poison")
+                await PoisonSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -2352,7 +2354,7 @@ internal static class FunctionalDrill
 
     // ---- offensive magic -------------------------------------------------------------
 
-    private const int MagicArrow = 5, Cure = 11, PoisonSpell = 20, MagicReflection = 36, Paralyze = 38;
+    private const int MagicArrow = 5, Cure = 11, PoisonSpell = 20, Lightning = 30, MagicReflection = 36, Paralyze = 38;
 
     private static async Task MagicSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
     {
@@ -2436,6 +2438,26 @@ internal static class FunctionalDrill
             return $"hits {before} -> {target.World.Hits}";
         });
 
+        // EFFECT_LIGHTNING on the target (CCharSpell.cpp:4081): a 0x70 of type 1.
+        await RunScenario("magic", "lightning strikes with a visible bolt", outcomes, async () =>
+        {
+            await Heal(target);
+            int bolts = 0;
+            target.ServerPacketObserver = p => { if (p[0] == 0x70 && p.Length > 1 && p[1] == 1) Interlocked.Increment(ref bolts); };
+            try
+            {
+                int before = target.World.Hits;
+                long since = Environment.TickCount64;
+                await Cast(caster, Lightning, target.World.CharUid);
+                await WaitAsync(() => target.World.Hits < before ? (object)true : null, 8000,
+                    $"the lightning to hit; caster: {Said(caster, since)}");
+                await Task.Delay(300, ct);
+                if (Volatile.Read(ref bolts) == 0) throw new ScenarioFailed($"hit {before} -> {target.World.Hits} with no bolt drawn");
+                return $"bolt seen, hits {before} -> {target.World.Hits}";
+            }
+            finally { target.ServerPacketObserver = null; }
+        });
+
         await RunScenario("magic", "poison poisons, cure cures", outcomes, async () =>
         {
             await Heal(target);
@@ -2445,13 +2467,15 @@ internal static class FunctionalDrill
                 $"the target to be poisoned; caster: {Said(caster, since)}; target: {Said(target, since)}");
             await Task.Delay(500, ct);
             // Curing is a chance against the poison's level (Calc_CurePoisonChance), as
-            // upstream rolls it; a failed attempt says so and is tried again.
-            for (int attempt = 0; attempt < 4 && IsPoisoned(target); attempt++)
+            // upstream rolls it - with the OSI table as low as 15-25% against a strong
+            // poison - so a failed attempt says so and is tried again.
+            for (int attempt = 0; attempt < 10 && IsPoisoned(target); attempt++)
             {
+                if (attempt == 5) await Heal(target);
                 await Cast(target, Cure, target.World.CharUid);
                 for (int i = 0; i < 40 && IsPoisoned(target); i++) await Task.Delay(100, ct);
             }
-            if (IsPoisoned(target)) throw new ScenarioFailed($"still poisoned after four cures; target: {Said(target, since)}");
+            if (IsPoisoned(target)) throw new ScenarioFailed($"still poisoned after ten cures; target: {Said(target, since)}");
             return Said(target, since);
         });
 
@@ -2740,6 +2764,133 @@ internal static class FunctionalDrill
         });
 
         eater.Disconnect();
+    }
+
+    // ---- poisoning ----------------------------------------------------------------------
+
+    private const int PoisoningSkill = 30;
+    private const string ServerMessagesDefaultPoisonPrompt = "To what do you wish to apply the poison?";
+
+    private static async Task PoisonSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        int Wx, Wy, Wz;
+        using (var map = new SphereNet.MapData.MapDataManager(mul))
+        {
+            map.Load();
+            map.InitMap(0, 7168, 4096);
+            (Wx, Wy, Wz) = HouseSites(map, 1340, 1760, 80).FirstOrDefault();
+        }
+        var poisoner = await LoginAsync(1111, port, ct);
+        var victim = await LoginAsync(1112, port, ct);
+        uint dagger = 0, bread = 0;
+        var potions = new List<uint>();
+        // A pack that runs the skill through its own script says so in its own prompt
+        // (PROMPT_MSG); the 56T pack's poisons weapons only.
+        bool packScripted = false;
+
+        string Said(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        bool IsPoisoned(BotClient bot) { lock (bot.World.SyncRoot) return bot.World.Poisoned.Contains(bot.World.CharUid); }
+
+        // The skill asks for the thing to poison, then for the poison (OnTarg_Skill_Poison).
+        async Task<string> Coat(uint target, uint potion)
+        {
+            long since = Environment.TickCount64;
+            await poisoner.Actions.UseSkill(PoisoningSkill, 3000, ct);
+            if (await poisoner.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no cursor for the thing to poison; {Said(poisoner, since)}");
+            await poisoner.Actions.TargetObject(target, ct);
+            if (await poisoner.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no cursor for the poison; {Said(poisoner, since)}");
+            await poisoner.Actions.TargetObject(potion, ct);
+            await Task.Delay(4000, ct);
+            return Said(poisoner, since);
+        }
+
+        await RunScenario("poison", "setup: a poisoner with a dagger, bread and poison", outcomes, async () =>
+        {
+            await AsStaff(server, poisoner.AccountName, async () =>
+            {
+                await SayAsync(poisoner, $".go {Wx},{Wy},{Wz}", ct);
+                var before = (await PackContentsAsync(poisoner, ct)).Select(i => i.Serial).ToHashSet();
+                await AddIntoPackAsync(poisoner, "i_dagger", ct);
+                await AddIntoPackAsync(poisoner, "i_bread_loaf", ct);
+                // Lesser poison: the 56T pack allows only it on a non-magic weapon.
+                await AddIntoPackAsync(poisoner, "i_potion_PoisonLess", ct);
+                await AddIntoPackAsync(poisoner, "i_potion_PoisonLess", ct);
+                var added = (await PackContentsAsync(poisoner, ct)).Where(i => !before.Contains(i.Serial)).ToList();
+                dagger = added.FirstOrDefault(i => i.ItemId is 0x0F51 or 0x0F52)?.Serial ?? 0;
+                bread = added.FirstOrDefault(i => i.ItemId == 0x103B)?.Serial ?? 0;
+                potions = added.Where(i => i.Serial != dagger && i.Serial != bread).Select(i => i.Serial).ToList();
+                foreach (string line in new[] { ".poisoning 1000", ".fencing 1000", ".tactics 1000", ".food 0" })
+                    await SayAsync(poisoner, line, ct);
+            });
+            await AsStaff(server, victim.AccountName, async () =>
+            {
+                await SayAsync(victim, $".go {Wx + 1},{Wy},{Wz}", ct);
+                foreach (string line in new[] { ".str 100", ".hits 100", ".parrying 0", ".wrestling 0", ".poisoning 0" })
+                    await SayAsync(victim, line, ct);
+            });
+            if (dagger == 0 || bread == 0 || potions.Count < 2)
+                throw new ScenarioFailed($"dagger 0x{dagger:X}, bread 0x{bread:X}, {potions.Count} potions");
+            return $"dagger 0x{dagger:X}, bread 0x{bread:X}, potions {potions.Count}";
+        });
+
+        await RunScenario("poison", "poisoning coats the dagger and uses up the potion", outcomes, async () =>
+        {
+            if (dagger == 0) throw new ScenarioFailed("no dagger");
+            string said = await Coat(dagger, potions[0]);
+            packScripted = !said.StartsWith(ServerMessagesDefaultPoisonPrompt, StringComparison.Ordinal);
+            if ((await PackContentsAsync(poisoner, ct)).Any(i => i.Serial == potions[0]))
+                throw new ScenarioFailed($"the potion is still there; {said}");
+            return said;
+        });
+
+        await RunScenario("poison", "poisoned bread poisons whoever eats it", outcomes, async () =>
+        {
+            if (bread == 0) throw new ScenarioFailed("no bread");
+            string said = await Coat(bread, potions[1]);
+            if (packScripted)
+            {
+                // The pack's script coats weapons only.
+                if (!(await PackContentsAsync(poisoner, ct)).Any(i => i.Serial == potions[1]))
+                    throw new ScenarioFailed($"the pack's weapon-only poisoning used the potion on bread; {said}");
+                return $"the pack refuses food: {said}";
+            }
+            long since = Environment.TickCount64;
+            await poisoner.Actions.DoubleClick(bread, 1000, ct);
+            await WaitAsync(() => IsPoisoned(poisoner) ? (object)true : null, 5000,
+                $"the eater to be poisoned; coat: {said}; eat: {Said(poisoner, since)}");
+            // Cure for the next scenario.
+            await AsStaff(server, poisoner.AccountName, () => SayAsync(poisoner, ".cure", ct));
+            return $"coat: {said}; eat: {Said(poisoner, since)}";
+        });
+
+        await RunScenario("poison", "a hit with the poisoned dagger poisons the target", outcomes, async () =>
+        {
+            if (dagger == 0) throw new ScenarioFailed("no dagger");
+            await poisoner.Actions.PickUp(dagger, 1, 2000, ct);
+            poisoner.SendRaw(BotPacketBuilder.BuildWearItem(dagger, 1, poisoner.World.CharUid));
+            await Task.Delay(800, ct);
+            long since = Environment.TickCount64;
+            await poisoner.Actions.SetWarMode(true, ct);
+            await poisoner.Actions.Attack(victim.World.CharUid, ct);
+            try
+            {
+                await WaitAsync(() => IsPoisoned(victim) ? (object)true : null, 30000,
+                    $"the target to be poisoned (hits {victim.World.Hits})");
+            }
+            finally
+            {
+                await poisoner.Actions.SetWarMode(false, ct);
+            }
+            return $"poisoned at hits {victim.World.Hits}; {Said(victim, since)}";
+        });
+
+        poisoner.Disconnect();
+        victim.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

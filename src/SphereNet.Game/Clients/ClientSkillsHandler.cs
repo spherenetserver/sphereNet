@@ -378,6 +378,11 @@ public sealed class ClientSkillsHandler
             var uid = new Serial(serial);
             var poison = uid.IsValid ? _world.FindObject(uid) : null;
             if (poison == null) return;
+            // The second pick goes to ACT only: TARG stays the thing to poison, as
+            // OnTarg_Skill set it and OnTarg_Skill_Poison leaves it (CClientTarg.cpp
+            // :1368, :1446). A pack's @Start reading <SRC.TARG.TYPE> saw the potion and
+            // refused every weapon.
+            _character.SetTag("TARG.UID", $"0{poisonThis.Uid.Value:x}");
             _character.ActPrv = poisonThis.Uid;
             StartSkill(skill, uid, poison, null, isInfo: false);
         });

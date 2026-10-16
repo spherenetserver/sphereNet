@@ -245,6 +245,17 @@ public static class BotPacketBuilder
         return packet;
     }
 
+    /// <summary>0x13 wear item: the held item onto a mobile's layer (after a 0x07 lift).</summary>
+    public static byte[] BuildWearItem(uint itemSerial, byte layer, uint mobileSerial)
+    {
+        var packet = new byte[10];
+        packet[0] = 0x13;
+        WriteUInt32BE(packet, 1, itemSerial);
+        packet[5] = layer;
+        WriteUInt32BE(packet, 6, mobileSerial);
+        return packet;
+    }
+
     /// <summary>0x09 single click: asks the server for the object's name label.</summary>
     public static byte[] BuildSingleClick(uint serial)
     {

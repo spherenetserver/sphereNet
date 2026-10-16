@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - Lightning strikes with a visible bolt
+------------------------------------------------------------------------
+FIX - Magic: Lightning and Chain Lightning draw the bolt on the character they strike,
+      Effect(EFFECT_LIGHTNING, ITEMID_NOTHING, pCharSrc) after the light flash
+      (CCharSpell.cpp:4078-4081). The packs give the spell EFFECT_ID=0, so nothing else
+      draws it: only the flash went out and the damage landed with no lightning seen.
+ADD - Functional drill "magic": lightning strikes the target and the target's client is
+      sent the bolt, on both packs. Cure is tried up to ten times, as the OSI cure table
+      gives a strong poison only 15-25%.
+ADD - Tests: a lightning strike sends the bolt on its target.
+
+[2026-10-16] - Poisoning: scripted potions, TARG stays the poisoned thing, spells by number; poison drill
+------------------------------------------------------------------------
+FIX - Poisoning: a potion is a poison when its spell is s_poison however it was written
+      (ResGetIndex(m_itPotion.m_Type), CCharSkill.cpp:2181). Only a numeric MORE1 was
+      read, so every potion whose @Create wrote MORE1=s_poison was refused with "What
+      poison do you want to use?" and the skill failed.
+FIX - Poisoning: the second pick (the poison) goes to ACT only; TARG stays the thing to
+      poison, as OnTarg_Skill set it and OnTarg_Skill_Poison leaves it (CClientTarg.cpp
+      :1368, :1446). A pack's @Start reading <SRC.TARG.TYPE> saw the potion and refused
+      every weapon.
+FIX - Items: a spell named in MORE1 (MORE1=s_poison) is stored as the spell's number - the
+      number the same name evaluates to in a script - so <ACT.MORE1> == s_poison holds.
+      It was parked in a tag with MORE1 left at 0.
+ADD - Functional drill "poison" suite, on both packs: poisoning coats a dagger and uses up
+      the potion, poisoned bread poisons its eater (on the Sphere 56T custom-version pack,
+      whose script coats weapons only, the bread is refused), and a hit with the poisoned
+      dagger poisons the target. The bot now has a 0x13 wear-item packet.
+ADD - Tests: a spell named in MORE1 is its number and compares equal to the name.
+
 [2026-10-16] - A new character takes its body's definition
 ------------------------------------------------------------------------
 FIX - Characters: a character created at login takes its body's definition - c_man for a

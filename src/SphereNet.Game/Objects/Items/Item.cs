@@ -3328,6 +3328,17 @@ public class Item : ObjBase
                     _more1 = unchecked((uint)creatureRid.Index);
                     return true;
                 }
+                // A spell named here - a potion's, a wand's, a scroll's m_Type - is kept
+                // as the number the same name evaluates to in a script, so a pack's
+                // <ACT.MORE1> == s_poison holds. It was parked in a tag with MORE1 left
+                // at 0, and the comparison never did.
+                if (v == 0 && value.Any(char.IsLetter) &&
+                    Definitions.DefinitionLoader.StaticResources?.ResolveDefName(value.Trim()) is
+                        { IsValid: true, Type: ResType.SpellDef } spellRid)
+                {
+                    _more1 = unchecked((uint)spellRid.Index);
+                    return true;
+                }
                 if (v == 0 && value.Length > 0 && value.Any(char.IsLetter) && ResolveDefName != null)
                 {
                     ushort resolved = ResolveDefName(value);

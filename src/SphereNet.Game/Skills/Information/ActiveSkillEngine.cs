@@ -1126,9 +1126,13 @@ public static class ActiveSkillEngine
     /// <summary>A poison potion: IT_POTION whose m_itPotion.m_Type (MORE1) is
     /// SPELL_Poison (CCharSkill.cpp:2185, CItem.h:279), or a bottle carrying the
     /// older POTION_SPELL=Poison tag.</summary>
+    /// <summary>A potion of s_poison (ResGetIndex(m_itPotion.m_Type) == SPELL_Poison,
+    /// CCharSkill.cpp:2181). A pack's potion names its spell by defname in @Create
+    /// (MORE1=s_poison), which only the shared resolver reads; the numeric MORE1
+    /// alone refused every scripted poison potion.</summary>
     private static bool IsPoisonPotion(Item potion) =>
         potion.ItemType == ItemType.Potion &&
-        (potion.More1 == (uint)SpellType.Poison ||
+        (Combat.ItemDamageEngine.ResolvePotionSpell(potion) == SpellType.Poison ||
          (potion.TryGetTag("POTION_SPELL", out string? spell) &&
           string.Equals(spell, "Poison", StringComparison.OrdinalIgnoreCase)));
 

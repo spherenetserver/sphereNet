@@ -4,6 +4,36 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - Lightning gorunur bir simsekle vurur
+------------------------------------------------------------------------
+DUZELTME - Buyu: Lightning ve Chain Lightning vurdugu karakterin uzerinde simsegi cizer,
+       isik parlamasindan sonra Effect(EFFECT_LIGHTNING, ITEMID_NOTHING, pCharSrc)
+       (CCharSpell.cpp:4078-4081). Paketler buyuye EFFECT_ID=0 verir, baska hicbir sey onu
+       cizmez: yalnizca parlama gidiyor, hasar simsek gorunmeden iniyordu.
+EKLEME - Fonksiyonel tatbikat "magic": lightning hedefi vurur ve hedefin istemcisine simsek
+       gonderilir, iki pakette. Cure on kereye kadar denenir; OSI cure tablosu guclu zehre
+       yalnizca %15-25 sans verir.
+EKLEME - Testler: lightning vurusu hedefin uzerine simsegi gonderir.
+
+[2026-10-16] - Poisoning: script'li iksirler, TARG zehirlenen esya kalir, numarayla buyu; zehir tatbikati
+------------------------------------------------------------------------
+DUZELTME - Poisoning: buyusu s_poison olan iksir, nasil yazilmis olursa olsun zehirdir
+       (ResGetIndex(m_itPotion.m_Type), CCharSkill.cpp:2181). Yalnizca sayisal MORE1
+       okunuyordu; @Create'i MORE1=s_poison yazan her iksir "What poison do you want to
+       use?" ile reddediliyor ve yetenek basarisiz oluyordu.
+DUZELTME - Poisoning: ikinci secim (zehir) yalnizca ACT'e gider; TARG zehirlenecek esya kalir,
+       OnTarg_Skill'in koydugu ve OnTarg_Skill_Poison'in degistirmedigi gibi
+       (CClientTarg.cpp:1368, :1446). Bir paketin <SRC.TARG.TYPE> okuyan @Start'i iksiri
+       goruyor ve her silahi reddediyordu.
+DUZELTME - Esyalar: MORE1'de adi gecen buyu (MORE1=s_poison) buyunun numarasi olarak saklanir -
+       ayni adin scriptte esit oldugu sayi - boylece <ACT.MORE1> == s_poison tutar. Bir
+       tag'e konup MORE1 0 birakiliyordu.
+EKLEME - Fonksiyonel tatbikat "poison" paketi, iki pakette: poisoning hancere zehir surer ve
+       iksiri tuketir, zehirli ekmek yiyeni zehirler (scripti yalnizca silahlara zehir suren
+       Sphere 56T ozel surum paketinde ekmek reddedilir), zehirli hancerle vurus hedefi
+       zehirler. Bota 0x13 esya giydirme paketi eklendi.
+EKLEME - Testler: MORE1'de adi gecen buyu numarasidir ve adla esit karsilastirilir.
+
 [2026-10-16] - Yeni karakter govdesinin tanimini alir
 ------------------------------------------------------------------------
 DUZELTME - Karakterler: giriste olusturulan karakter govdesinin tanimini alir - insan erkek icin

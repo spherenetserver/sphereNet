@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - .ADD takes an amount; bot honours cursor cancels; magic drill
+------------------------------------------------------------------------
+FIX - Commands: the spoken .ADD takes an amount after a comma, ".add i_reag_garlic,10"
+      (CV_ADD, CClient.cpp:937 - Str_ParseCmds). The whole argument reached the cursor and
+      was looked up as a definition of that name, so nothing was made.
+FIX - Diagnostics bot: a target packet with cursor type 3 is the server cancelling the
+      cursor, as the client reads it; the bot took it for a new cursor, answered its next
+      wait at once and sent the pick before the real cursor arrived.
+ADD - Functional drill "magic" suite, on both packs, two mages at an open site out of
+      town: a magic arrow wounds, poison poisons and cure cures (retried, as the cure is a
+      chance against the poison's level), magic reflection turns an arrow back on its
+      caster, and paralyze holds the target in place.
+ADD - Tests: .ADD with an amount.
+
 [2026-10-16] - Keys by MORE1; Source-X key use; [PLEVEL] native verbs; item CANSEELOS; lock drill
 ------------------------------------------------------------------------
 FIX - Keys: a key's lock code is its MORE1 and it fits the lock whose MORE1 is the same

@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - .ADD miktar alir; bot imlec iptalini taniyor; buyu tatbikati
+------------------------------------------------------------------------
+DUZELTME - Komutlar: konusmayla verilen .ADD virgulden sonra miktar alir, ".add i_reag_garlic,10"
+       (CV_ADD, CClient.cpp:937 - Str_ParseCmds). Tum arguman imlece gidip o adda bir tanim
+       olarak araniyordu, hicbir sey olusmuyordu.
+DUZELTME - Teshis botu: imlec tipi 3 olan hedef paketi, istemcinin okudugu gibi sunucunun imleci
+       iptal etmesidir; bot bunu yeni imlec saniyor, sonraki beklemeyi hemen bitiriyor ve
+       secimi gercek imlec gelmeden gonderiyordu.
+EKLEME - Fonksiyonel tatbikat "magic" paketi, iki pakette, sehir disinda acik bir alanda iki
+       buyucu: magic arrow yaralar, poison zehirler ve cure iyilestirir (cure zehrin
+       seviyesine karsi bir sans oldugu icin tekrar denenir), magic reflection oku atana
+       dondurur, paralyze hedefi yerinde tutar.
+EKLEME - Testler: miktarli .ADD.
+
 [2026-10-16] - MORE1 ile anahtar; Source-X anahtar kullanimi; [PLEVEL] yerel fiilleri; item CANSEELOS; kilit tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Anahtarlar: anahtarin kilit kodu MORE1'idir ve MORE1'i ayni olan kilide uyar

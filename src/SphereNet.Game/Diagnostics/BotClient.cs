@@ -690,6 +690,15 @@ public sealed class BotClient : IDisposable
                 break;
 
             case 0x6C: // Target Cursor (19 bytes)
+                // Cursor type 3 is the server cancelling the cursor (ClassicUO
+                // TargetManager: cursorType >= Cancel ends targeting). Read as a new
+                // cursor, it made the next WaitForTarget answer at once and the pick
+                // went out before the real cursor arrived.
+                if (packet.Length >= 7 && packet[6] == 3)
+                {
+                    _world.HasPendingTarget = false;
+                    break;
+                }
                 if (packet.Length >= 7)
                 {
                     _world.HasPendingTarget = true;

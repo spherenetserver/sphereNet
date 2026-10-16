@@ -262,6 +262,18 @@ public sealed partial class GameClient
         if (Targets.CursorActive)
             return;
 
+        // ".ADD <def>[,amount]" (CV_ADD, CClient.cpp:937 - Str_ParseCmds): the spoken
+        // command hands the whole argument over, amount included, so it is split here.
+        // "i_gold,100" was looked up as a definition of that name and made nothing.
+        string[] parts = addToken.Split([',', ' ', '\t'], 2,
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length > 1)
+        {
+            addToken = parts[0];
+            if (ushort.TryParse(parts[1], out ushort qty))
+                amount = qty;
+        }
+
         ClearPendingTargetState();
         Targets.AddToken = addToken.Trim();
         Targets.AddAmount = Math.Max((ushort)1, amount);

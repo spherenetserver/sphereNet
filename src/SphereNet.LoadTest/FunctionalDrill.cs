@@ -111,6 +111,8 @@ internal static class FunctionalDrill
                 await MountSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "lock")
                 await LockSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "magic")
+                await MagicSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -2342,6 +2344,154 @@ internal static class FunctionalDrill
 
         owner.Disconnect();
         stranger.Disconnect();
+    }
+
+    // ---- offensive magic -------------------------------------------------------------
+
+    private const int MagicArrow = 5, Cure = 11, PoisonSpell = 20, MagicReflection = 36, Paralyze = 38;
+
+    private static async Task MagicSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        // A house site: out of town, and nothing standing between the two mages.
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        int Wx, Wy, Wz;
+        using (var map = new SphereNet.MapData.MapDataManager(mul))
+        {
+            map.Load();
+            map.InitMap(0, 7168, 4096);
+            (Wx, Wy, Wz) = HouseSites(map, 1340, 1760, 80).FirstOrDefault();
+        }
+        var caster = await LoginAsync(1081, port, ct);
+        var target = await LoginAsync(1082, port, ct);
+
+        string Said(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        bool IsPoisoned(BotClient bot) { lock (bot.World.SyncRoot) return bot.World.Poisoned.Contains(bot.World.CharUid); }
+
+        async Task Equip(BotClient bot, int x)
+        {
+            await AsStaff(server, bot.AccountName, async () =>
+            {
+                await SayAsync(bot, $".go {x},{Wy},{Wz}", ct);
+                await AddIntoPackAsync(bot, "i_spellbook", ct);
+                foreach (string reg in new[] { "i_reag_sulfur_ash", "i_reag_nightshade", "i_reag_garlic", "i_reag_ginseng",
+                                               "i_reag_mandrake_root", "i_reag_spider_silk" })
+                    await AddIntoPackAsync(bot, $"{reg},10", ct);
+                var book = (await PackContentsAsync(bot, ct)).FirstOrDefault(i => i.ItemId == Spellbook)
+                    ?? throw new ScenarioFailed("no spellbook after .add");
+                foreach (string verb in new[] { ".xmore1 0ffffffff", ".xmore2 0ffffffff" })
+                {
+                    await bot.Actions.Say(verb, ct);
+                    if (await bot.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                        throw new ScenarioFailed($"no target cursor for {verb}");
+                    await bot.Actions.TargetObject(book.Serial, ct);
+                    await Task.Delay(400, ct);
+                }
+                foreach (string line in new[] { ".str 100", ".int 100", ".hits 100", ".mana 100", ".magery 1000",
+                                                ".evaluatingintel 1000", ".magicresistance 0" })
+                    await SayAsync(bot, line, ct);
+            });
+        }
+
+        // Cast and wait until the cursor is answered or the spell needs none.
+        async Task Cast(BotClient bot, int spell, uint? at)
+        {
+            bot.SendRaw(BotPacketBuilder.BuildCastSpell(spell));
+            if (at is uint serial)
+            {
+                if (await bot.Actions.WaitForTarget(6000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no cursor for spell {spell}; {Said(bot, Environment.TickCount64 - 6000)}");
+                await bot.Actions.TargetObject(serial, ct);
+            }
+        }
+
+        async Task Heal(BotClient bot)
+        {
+            await AsStaff(server, bot.AccountName, async () => { await SayAsync(bot, ".hits 100", ct); await SayAsync(bot, ".mana 100", ct); });
+            // Setting a stat updates the owner's status bar (UpdateStatVal).
+            await WaitAsync(() => bot.World.Hits == 100 && bot.World.Mana == 100 ? (object)true : null, 3000,
+                $"the status bar to show 100 hits / 100 mana (shows {bot.World.Hits}/{bot.World.Mana})");
+        }
+
+        await RunScenario("magic", "setup: two mages out of town", outcomes, async () =>
+        {
+            await Equip(caster, Wx);
+            await Equip(target, Wx + 3);
+            await Task.Delay(500, ct);
+            return $"caster hits {caster.World.Hits} mana {caster.World.Mana}; target hits {target.World.Hits}";
+        });
+
+        await RunScenario("magic", "a magic arrow wounds the target", outcomes, async () =>
+        {
+            int before = target.World.Hits;
+            long since = Environment.TickCount64;
+            await Cast(caster, MagicArrow, target.World.CharUid);
+            await WaitAsync(() => target.World.Hits < before ? (object)true : null, 6000,
+                $"the target's hit points to drop ({before}); caster: {Said(caster, since)}");
+            return $"hits {before} -> {target.World.Hits}";
+        });
+
+        await RunScenario("magic", "poison poisons, cure cures", outcomes, async () =>
+        {
+            await Heal(target);
+            long since = Environment.TickCount64;
+            await Cast(caster, PoisonSpell, target.World.CharUid);
+            await WaitAsync(() => IsPoisoned(target) ? (object)true : null, 6000,
+                $"the target to be poisoned; caster: {Said(caster, since)}; target: {Said(target, since)}");
+            await Task.Delay(500, ct);
+            // Curing is a chance against the poison's level (Calc_CurePoisonChance), as
+            // upstream rolls it; a failed attempt says so and is tried again.
+            for (int attempt = 0; attempt < 4 && IsPoisoned(target); attempt++)
+            {
+                await Cast(target, Cure, target.World.CharUid);
+                for (int i = 0; i < 40 && IsPoisoned(target); i++) await Task.Delay(100, ct);
+            }
+            if (IsPoisoned(target)) throw new ScenarioFailed($"still poisoned after four cures; target: {Said(target, since)}");
+            return Said(target, since);
+        });
+
+        await RunScenario("magic", "magic reflection turns an arrow back on its caster", outcomes, async () =>
+        {
+            await Heal(target);
+            await Heal(caster);
+            await Task.Delay(800, ct);
+            long since = Environment.TickCount64;
+            // A pack may make it targeted (Scripts-X: spellflag_targ_char); then it is
+            // cast on oneself.
+            target.SendRaw(BotPacketBuilder.BuildCastSpell(MagicReflection));
+            if (await target.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                await target.Actions.TargetObject(target.World.CharUid, ct);
+            await Task.Delay(3500, ct);
+            int targetBefore = target.World.Hits, casterBefore = caster.World.Hits;
+            await Cast(caster, MagicArrow, target.World.CharUid);
+            await WaitAsync(() => caster.World.Hits < casterBefore ? (object)true : null, 6000,
+                $"the caster to be hit by its own arrow; target: {Said(target, since)}; caster: {Said(caster, since)}");
+            await Task.Delay(500, ct);
+            if (target.World.Hits < targetBefore)
+                throw new ScenarioFailed($"the target was hit too: {targetBefore} -> {target.World.Hits}");
+            return $"caster {casterBefore} -> {caster.World.Hits}, target untouched at {target.World.Hits}";
+        });
+
+        await RunScenario("magic", "paralyze holds the target in place", outcomes, async () =>
+        {
+            await Heal(caster);
+            await Task.Delay(800, ct);
+            long since = Environment.TickCount64;
+            // A reflection still standing would turn this back too; the arrow used it up.
+            await Cast(caster, Paralyze, target.World.CharUid);
+            // The spell lands after its CAST_TIME, 3 seconds on the 56T pack.
+            await Task.Delay(4500, ct);
+            int x = target.World.X, y = target.World.Y;
+            for (int i = 0; i < 3; i++) await target.Actions.MoveDirection(2, ct); // east
+            await Task.Delay(500, ct);
+            if (target.World.X != x || target.World.Y != y)
+                throw new ScenarioFailed($"the target walked from {x},{y} to {target.World.X},{target.World.Y}; {Said(target, since)}");
+            return $"held at {x},{y}; {Said(target, since)}";
+        });
+
+        caster.Disconnect();
+        target.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

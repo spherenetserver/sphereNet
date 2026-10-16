@@ -30,7 +30,10 @@ public sealed class MountEngine
         if (rider.IsDead || rider.IsMounted || npc.IsDead)
             return false;
         if (!Definitions.CharDefHelper.IsMountCapable(rider))
+        {
+            Character.SendOwnerMessage?.Invoke(rider, Messages.ServerMessages.Get(Messages.Msg.MsgMountUnable));
             return false;
+        }
         // Source-X builds the mount item with Make_Figurine, which refuses a creature
         // that is already disconnected - carrying someone, sitting in a stable, or
         // shrunk into a figurine - and refuses a player outright (CCharAct.cpp:3619);
@@ -47,7 +50,10 @@ public sealed class MountEngine
         // Source-X Horse_Mount requires NPC_IsOwnedBy. Mounting must never tame
         // or transfer a wild/foreign creature as a side effect.
         if (rider.PrivLevel < PrivLevel.GM && !npc.CanAcceptPetCommandFrom(rider, allowFriends: true))
+        {
+            Character.SendOwnerMessage?.Invoke(rider, Messages.ServerMessages.Get(Messages.Msg.MsgMountDontown));
             return false;
+        }
         // MOUNTHEIGHT: no mounting under a ceiling too low for rider plus horse
         // (Horse_Mount, CCharAct.cpp:3968-3975; IsVerticalSpace with fForceMount).
         if (Movement.WalkCheck.MountHeight && _world.MapData != null &&

@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - Giyilen MEMORY_IPET hafizasi pet yapar; Source-X binek retleri; binek tatbikati
+------------------------------------------------------------------------
+DUZELTME - Petler: MEMORY_IPET tasiyan bir hafizayi giyen karakter pet olur (STATF_PET); LayerAdd
+       her giyilen hafiza icin Memory_UpdateFlags calistirir (CCharAct.cpp:377,
+       CCharMemory.cpp:122). Sphere 56T ozel surum paketi boyle evcillestirir (memory_ipet
+       renkli i_memory, ardindan yalnizca o bayragi tutan "flags <flags>&statf_pet") ve
+       evcillestirilen at kimsenin olmuyordu: sahibine "at senin degil" deniyordu.
+DUZELTME - Binmek nedenini soyler, Horse_Mount gibi (CCharAct.cpp:3950): uzakta "You can't reach
+       the creature.", baskasinin bineginde "You dont own that horse.", binemeyene "You are
+       not physically capable of riding a horse." - "That is too far away." ve her retten
+       sonra genel "That target cannot be mounted." yerine.
+EKLEME - Fonksiyonel tatbikat "mount" paketi, iki pakette: at evcillestir, yabanci reddedilir,
+       sahibi cift tikla biner (at seyircinin gorusunden cikar) ve kendine cift tiklayarak
+       iner. 56T paketinde tatbikat paketin taming staff'ini tasir ve kademeli
+       evcillestirme boyunca hayvani izler.
+EKLEME - Testler: script'in giydirdigi MEMORY_IPET sahipli pet yapar; yabanciya at onun degil
+       denir.
+
 [2026-10-16] - Pet'in sahibi MEMORY_IPET baglantisidir; .ADD ad vermez; oyuncu saticisi tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Petler: motorun kendi kaydi yoksa pet'in sahibi, Source-X'in yalnizca okudugu gibi,

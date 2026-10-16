@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - A worn MEMORY_IPET memory makes a pet; Source-X mount refusals; mount drill
+------------------------------------------------------------------------
+FIX - Pets: wearing a memory that holds MEMORY_IPET makes its wearer a pet (STATF_PET), as
+      LayerAdd runs Memory_UpdateFlags on every worn memory (CCharAct.cpp:377,
+      CCharMemory.cpp:122). The Sphere 56T custom-version pack tames this way (an i_memory
+      coloured memory_ipet, then "flags <flags>&statf_pet", which keeps only that flag), and
+      its tamed horse was nobody's: the owner was told the horse was not theirs.
+FIX - Mounting says why, as Horse_Mount does (CCharAct.cpp:3950): "You can't reach the
+      creature." out of reach, "You dont own that horse." for another's mount, "You are not
+      physically capable of riding a horse." - instead of "That is too far away." and a
+      generic "That target cannot be mounted." after every refusal.
+ADD - Functional drill "mount" suite, on both packs: tame a horse, a stranger is refused,
+      the owner mounts by double-click (the horse leaves the bystander's view) and
+      dismounts by double-clicking themself. On the 56T pack the drill carries the
+      pack's taming staff and follows the animal through its staged taming.
+ADD - Tests: a script-worn MEMORY_IPET makes a pet with an owner; a stranger is told the
+      horse is not theirs.
+
 [2026-10-16] - A pet's owner is its MEMORY_IPET link; .ADD names nothing; player vendor drill
 ------------------------------------------------------------------------
 FIX - Pets: a pet's owner is read, as upstream reads it alone, from the link of its

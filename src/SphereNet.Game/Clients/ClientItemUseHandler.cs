@@ -567,7 +567,8 @@ public sealed class ClientItemUseHandler
                     int dy = Math.Abs(_character.Y - ch.Y);
                     if (_character.MapIndex != ch.MapIndex || dx > 1 || dy > 1)
                     {
-                        SysMessage("That is too far away.");
+                        // Horse_Mount's CanTouch refusal (CCharAct.cpp:3956).
+                        SysMessage(ServerMessages.Get(Msg.MsgMountDist));
                         return;
                     }
 
@@ -601,7 +602,8 @@ public sealed class ClientItemUseHandler
                         return;
                     }
 
-                    SysMessage(ServerMessages.Get("gm_mount_failed"));
+                    // Horse_Mount says why itself (unable, not yours, ceiling); the
+                    // double-click adds no line of its own (CClientEvent.cpp:2397).
                     return;
                 }
 

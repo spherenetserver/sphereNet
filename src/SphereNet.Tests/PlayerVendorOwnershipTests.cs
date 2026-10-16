@@ -12,7 +12,7 @@ using Xunit;
 namespace SphereNet.Tests;
 
 /// <summary>
-/// A player vendor hired by a script, and the items a GM adds to stock it.
+/// A player vendor hired by a script, a mount tamed by one, and the items a GM adds.
 ///
 /// Upstream's owner of a pet IS the link of its MEMORY_IPET memory (NPC_PetGetOwner,
 /// CCharNPCStatus.cpp:471). A vendor deed that hires the Source-X way - an i_memory
@@ -40,11 +40,16 @@ public sealed class PlayerVendorOwnershipTests
         Assert.True(memory.TrySetProperty("COLOR", ((ushort)MemoryType.IPet).ToString()));
         memory.Link = owner.Uid;
         vendor.Equip(memory, Layer.Special);
-        Assert.False(vendor.OwnerSerial.IsValid); // not a pet (STATF_PET) - no owner
 
-        vendor.SetStatFlag(StatFlag.Pet);
+        // Wearing a MEMORY_IPET memory makes the wearer a pet (Memory_UpdateFlags,
+        // CCharMemory.cpp:122), and its link is the owner.
+        Assert.True(vendor.IsStatFlag(StatFlag.Pet));
         Assert.Equal(owner.Uid, vendor.OwnerSerial);
         Assert.True(vendor.HasOwner(owner.Uid));
+
+        // NPC_PetGetOwner reads the memory only for a pet.
+        vendor.ClearStatFlag(StatFlag.Pet);
+        Assert.False(vendor.OwnerSerial.IsValid);
     }
 
     [Fact]

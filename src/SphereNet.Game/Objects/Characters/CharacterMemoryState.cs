@@ -173,6 +173,12 @@ public sealed class CharacterMemoryState
         mem.IsEquipped = true;
         mem.EquipLayer = Layer.Special;
         mem.ContainedIn = _owner.Uid;
+        // Memory_UpdateFlags on every worn memory (LayerAdd, CCharAct.cpp:377): one that
+        // holds MEMORY_IPET makes its wearer a pet. A script that hires or tames with an
+        // i_memory coloured memory_ipet relies on it - the 56T pack's taming then keeps
+        // only that flag with "flags <flags>&statf_pet".
+        if (mem.IsMemoryTypes(MemoryType.IPet))
+            _owner.SetStatFlag(StatFlag.Pet);
         if (_memories.Contains(mem))
             return;
         _memories.Add(mem);

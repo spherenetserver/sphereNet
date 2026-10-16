@@ -107,6 +107,8 @@ internal static class FunctionalDrill
                 await GuildSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "pvendor")
                 await PlayerVendorSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "mount")
+                await MountSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -2069,6 +2071,131 @@ internal static class FunctionalDrill
 
         owner.Disconnect();
         buyer.Disconnect();
+    }
+
+    // ---- mounts ----------------------------------------------------------------------
+
+    private const byte MountLayer = 0x19;
+
+    private static bool IsRiding(BotClient bot)
+    {
+        lock (bot.World.SyncRoot)
+            return bot.World.Equipment.TryGetValue(MountLayer, out var m) && bot.World.KnownItems.ContainsKey(m.Serial);
+    }
+
+    private static async Task MountSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        string spot;
+        using (var map = new SphereNet.MapData.MapDataManager(mul))
+        {
+            map.Load();
+            map.InitMap(0, 7168, 4096);
+            var site = HouseSites(map, 1260, 1720, 80).FirstOrDefault();
+            spot = $"{site.X},{site.Y},{site.Z}";
+        }
+        var rider = await LoginAsync(1061, port, ct);
+        var stranger = await LoginAsync(1062, port, ct);
+        uint horse = 0;
+
+        string Said(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        bool Sees(BotClient bot, uint serial) { lock (bot.World.SyncRoot) return bot.World.Mobiles.ContainsKey(serial); }
+        // Riding takes a horse within reach: step up next to it first.
+        async Task NextTo(BotClient bot, uint serial)
+        {
+            var m = await WaitAsync(() => { lock (bot.World.SyncRoot) return bot.World.Mobiles.GetValueOrDefault(serial); }, 4000, "the horse in view");
+            if (bot.World.DistanceTo(m.X, m.Y) > 1)
+                await bot.Actions.MoveTo(m.X, m.Y, 6000, ct);
+        }
+
+        await RunScenario("mount", "setup: a tamed horse", outcomes, async () =>
+        {
+            HashSet<uint> before;
+            await AsStaff(server, rider.AccountName, async () =>
+            {
+                await SayAsync(rider, $".go {spot}", ct);
+                await SayAsync(rider, ".taming 1000", ct);
+                await SayAsync(rider, ".animallore 1000", ct);
+                // A pack whose taming wants a staff in the pack (Sphere 56T custom version)
+                // defines i_staff_taming; elsewhere the .add simply finds nothing.
+                try { await AddIntoPackAsync(rider, "i_staff_taming", ct); } catch (ScenarioFailed) { }
+                lock (rider.World.SyncRoot) before = rider.World.Mobiles.Keys.ToHashSet();
+                await rider.Actions.Say(".add c_horse_tan", ct);
+                if (await rider.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_horse_tan");
+                await rider.Actions.TargetLocation(rider.World.X + 1, rider.World.Y, rider.World.Z, ct);
+                await Task.Delay(800, ct);
+            });
+            lock (rider.World.SyncRoot) before = rider.World.Mobiles.Keys.Where(k => rider.World.Mobiles[k].Body != 0x00C8).ToHashSet();
+            var found = await WaitAsync(() => { lock (rider.World.SyncRoot) return rider.World.Mobiles.Values.FirstOrDefault(m =>
+                m.Body == 0x00C8 && rider.World.DistanceTo(m.X, m.Y) <= 2); }, 5000, "the horse");
+            horse = found.Serial;
+            await AsStaff(server, stranger.AccountName, () => SayAsync(stranger, $".go {spot}", ct));
+            long since = Environment.TickCount64;
+            // A pack may tame in timed stages (the 56T pack does); let each attempt run.
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                await NextTo(rider, horse);
+                await rider.Actions.UseSkill(35, 3000, ct);
+                if (await rider.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                    await rider.Actions.TargetObject(horse, ct);
+                for (int i = 0; i < 60; i++)
+                {
+                    await Task.Delay(500, ct);
+                    // Stay beside it: the animal wanders while a staged taming runs.
+                    if (i % 4 == 3) await NextTo(rider, horse);
+                    string heard = Said(rider, since);
+                    // "accept you as master" (Source-X) or the 56T pack's "sizi sahibi olarak kabul etti".
+                    if (heard.Contains("master", StringComparison.OrdinalIgnoreCase) ||
+                        heard.Contains("sahibi", StringComparison.OrdinalIgnoreCase))
+                        return $"horse 0x{horse:X} tamed";
+                }
+            }
+            throw new ScenarioFailed($"not tamed; {Said(rider, since)}");
+        });
+
+        await RunScenario("mount", "a stranger cannot ride another's horse", outcomes, async () =>
+        {
+            if (horse == 0) throw new ScenarioFailed("no horse");
+            await NextTo(stranger, horse);
+            long since = Environment.TickCount64;
+            await stranger.Actions.DoubleClick(horse, 1000, ct);
+            await Task.Delay(1500, ct);
+            if (IsRiding(stranger)) throw new ScenarioFailed($"the stranger rides it; {Said(stranger, since)}");
+            if (!Sees(stranger, horse)) throw new ScenarioFailed("the horse vanished for the stranger");
+            // Horse_Mount: MSG_MOUNT_DONTOWN, "You dont own that horse."
+            if (!Said(stranger, since).Contains("own", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed($"not refused for ownership; {Said(stranger, since)}");
+            return $"refused: {Said(stranger, since)}";
+        });
+
+        await RunScenario("mount", "the owner mounts by double-click", outcomes, async () =>
+        {
+            if (horse == 0) throw new ScenarioFailed("no horse");
+            await NextTo(rider, horse);
+            long since = Environment.TickCount64;
+            await rider.Actions.DoubleClick(horse, 1000, ct);
+            await WaitAsync(() => IsRiding(rider) ? (object)true : null, 4000, $"a mount on layer 0x19; {Said(rider, since)}");
+            await WaitAsync(() => !Sees(stranger, horse) ? (object)true : null, 4000, "the horse to leave the stranger's view (now ridden)");
+            return "riding; the bystander sees the horse gone into the rider";
+        });
+
+        await RunScenario("mount", "double-clicking oneself dismounts", outcomes, async () =>
+        {
+            if (horse == 0) throw new ScenarioFailed("no horse");
+            if (!IsRiding(rider)) throw new ScenarioFailed("not riding to begin with");
+            long since = Environment.TickCount64;
+            await rider.Actions.DoubleClick(rider.World.CharUid, 1000, ct);
+            await WaitAsync(() => !IsRiding(rider) ? (object)true : null, 4000, $"the mount item to go; {Said(rider, since)}");
+            await WaitAsync(() => Sees(rider, horse) && Sees(stranger, horse) ? (object)true : null, 4000,
+                "the horse back on the ground for both");
+            return "dismounted; the horse stands again";
+        });
+
+        rider.Disconnect();
+        stranger.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

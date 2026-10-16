@@ -24,6 +24,7 @@ namespace SphereNet.Tests;
 ///
 /// A negative NPCDISTANCEHEAR still means "this far, never mind sight", as upstream.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class NpcHearingRangeTests
 {
     private const ushort WallGraphic = 0x0080;
@@ -206,7 +207,9 @@ public sealed class NpcHearingRangeTests
         Assert.Equal(["shopkeeper:buy"], b.Heard);
     }
 
-    /// <summary>Addressing one by name reaches that one even with others closer.</summary>
+    /// <summary>Addressing one by name reaches that one even with others closer, and it
+    /// hears the line past its name (NPC_OnHear(&amp;pszText[i]), CClientEvent.cpp:2019):
+    /// a pack's ON=hello answers "Bob hello". The whole line was passed on.</summary>
     [Fact]
     public void AnNpcAddressedByNameAnswers()
     {
@@ -217,7 +220,63 @@ public sealed class NpcHearingRangeTests
 
         b.Speech.ProcessSpeech(speaker, "Bob hello", TalkMode.Say);
 
-        Assert.Equal(["Bob:Bob hello"], b.Heard);
+        Assert.Equal(["Bob:hello"], b.Heard);
+    }
+
+    /// <summary>The name counts as a word anywhere in the line (FindStrWord,
+    /// NPC_OnHearName), and what follows it is what the NPC hears.</summary>
+    [Fact]
+    public void ANameInsideTheLineAddressesToo()
+    {
+        var b = Build();
+        var speaker = Player(b, 100, 100);
+        Npc(b, "Bob", 106, 100);
+        Npc(b, "closer", 101, 100);
+
+        b.Speech.ProcessSpeech(speaker, "hi Bob buy", TalkMode.Say);
+        Assert.Equal(["Bob:buy"], b.Heard);
+
+        // Part of a longer word is not the name.
+        b.Heard.Clear();
+        b.Speech.ProcessSpeech(speaker, "Bobby buy", TalkMode.Say);
+        Assert.Equal(["closer:Bobby buy"], b.Heard);
+    }
+
+    /// <summary>"VENDOR " opens a line to a vendor, healer, banker or stablemaster, and
+    /// "GUARD " to a guard (NPC_OnHearName, CCharNPCStatus.cpp:385-394).</summary>
+    [Fact]
+    public void VendorAndGuardAddressTheirKind()
+    {
+        var b = Build();
+        var speaker = Player(b, 100, 100);
+        var vendor = Npc(b, "Ann", 106, 100);
+        vendor.NpcBrain = SphereNet.Core.Enums.NpcBrainType.Vendor;
+        var guard = Npc(b, "Ned", 107, 100);
+        guard.NpcBrain = SphereNet.Core.Enums.NpcBrainType.Guard;
+        Npc(b, "closer", 101, 100);
+
+        b.Speech.ProcessSpeech(speaker, "vendor buy", TalkMode.Say);
+        b.Speech.ProcessSpeech(speaker, "guard help", TalkMode.Say);
+
+        Assert.Equal(["Ann:buy", "Ned:help"], b.Heard);
+    }
+
+    /// <summary>A line that opens with the NPC's trade name - its NAME past
+    /// "#names... the" - addresses it (GetTradeName, NPC_OnHearName).</summary>
+    [Fact]
+    public void TheTradeNameAddressesTheNpc()
+    {
+        var b = Build();
+        var def = new SphereNet.Scripting.Definitions.CharDef(ResourceId.Invalid) { Name = "#names_humanmale the mage" };
+        SphereNet.Game.Definitions.DefinitionLoader.SetCharDef(0x7F01, def);
+        var speaker = Player(b, 100, 100);
+        var mage = Npc(b, "Rhys", 106, 100);
+        mage.CharDefIndex = 0x7F01;
+        Npc(b, "closer", 101, 100);
+
+        b.Speech.ProcessSpeech(speaker, "mage train", TalkMode.Say);
+
+        Assert.Equal(["Rhys:train"], b.Heard);
     }
 
     /// <summary>The shard's own requirement, kept as a named setting rather than a

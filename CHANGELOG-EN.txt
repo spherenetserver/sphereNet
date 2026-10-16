@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - Addressing an NPC the Source-X way; it hears the line past its address
+------------------------------------------------------------------------
+FIX - Speech: an NPC is addressed as NPC_OnHearName decides (CCharNPCStatus.cpp:369) - its
+      name as a word anywhere in the line ("hi Bob, buy"), "VENDOR " opening a line to a
+      vendor, healer, banker or stablemaster, "GUARD " to a guard, or the line opening
+      with its trade name ("mage, train"). Only the first word of the name at the start
+      of the line counted, and part of a longer word ("Bobby") did too.
+FIX - Speech: the addressed NPC hears the line past its address (NPC_OnHear(&pszText[i]),
+      CClientEvent.cpp:2019): "Bob hello" reaches Bob as "hello", so a pack's ON=hello
+      answers it. The whole line was passed on.
+ADD - Tests: name inside the line, a longer word is not the name, VENDOR / GUARD, the
+      trade name; the addressed NPC hears the rest of the line.
+
 [2026-10-16] - NPC training the Source-X way; skill sets reach the client; skills by number
 ------------------------------------------------------------------------
 FIX - Training: the TRAIN verb follows NPC_OnTrainHear (CCharNPCAct_Vendor.cpp:371). A pack's

@@ -96,24 +96,21 @@ public sealed class SpeechEngine
     /// shopkeepers in one building all answered the same sentence, and why the keyword
     /// and script chain ran once per NPC for anything anyone said nearby.
     /// </summary>
-    private void ConsiderNpcListener(Character speaker, Character listener, string lowerText,
-        ref Character? chosen, ref int chosenDist, ref bool decided)
+    private void ConsiderNpcListener(Character speaker, Character listener, string text, string lowerText,
+        ref Character? chosen, ref int chosenDist, ref bool decided, ref int chosenSkip)
     {
         if (decided)
             return;
 
-        // Addressed by name: that one, and no further looking.
-        string? name = listener.Name;
-        if (!string.IsNullOrEmpty(name))
+        // Addressed: that one, and no further looking. It hears the line from past
+        // the words that addressed it.
+        int skip = HearNameIndex(listener, text);
+        if (skip > 0)
         {
-            int space = name.IndexOf(' ');
-            string first = space > 0 ? name[..space] : name;
-            if (first.Length > 1 && lowerText.StartsWith(first, StringComparison.OrdinalIgnoreCase))
-            {
-                chosen = listener;
-                decided = true;
-                return;
-            }
+            chosen = listener;
+            chosenSkip = skip;
+            decided = true;
+            return;
         }
 
         // A banker asked for the bank wins over whoever is nearer.
@@ -131,6 +128,64 @@ public sealed class SpeechEngine
             chosen = listener;
             chosenDist = dist;
         }
+    }
+
+    /// <summary>NPC_OnHearName (CCharNPCStatus.cpp:369): where the words that addressed
+    /// this NPC end, or 0 when the line did not address it. Its own name as a word
+    /// anywhere in the line ("hi Dennis, buy"); "GUARD " opening the line to a guard and
+    /// "VENDOR " to a vendor, healer, banker or stablemaster; or the line opening with
+    /// its trade name, the NAME after "#names... the" ("mage, buy"). Whitespace after
+    /// the address is skipped too.</summary>
+    internal static int HearNameIndex(Character npc, string text)
+    {
+        string name = npc.Name ?? "";
+        if (name.Length > 0)
+        {
+            int end = FindStrWord(text, name);
+            if (end > 0)
+                return SkipSpaces(text, end);
+        }
+
+        if (npc.NpcBrain == Core.Enums.NpcBrainType.Guard)
+        {
+            if (text.StartsWith("GUARD ", StringComparison.OrdinalIgnoreCase))
+                return SkipSpaces(text, 6);
+        }
+        else if (npc.NpcBrain is Core.Enums.NpcBrainType.Healer or Core.Enums.NpcBrainType.Banker
+                 or Core.Enums.NpcBrainType.Vendor or Core.Enums.NpcBrainType.Stable)
+        {
+            if (text.StartsWith("VENDOR ", StringComparison.OrdinalIgnoreCase))
+                return SkipSpaces(text, 7);
+        }
+
+        string trade = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex)?.TradeName ?? "";
+        if (trade.Length > 0 && text.Length > trade.Length &&
+            text.StartsWith(trade, StringComparison.OrdinalIgnoreCase))
+            return SkipSpaces(text, trade.Length);
+        return 0;
+
+        static int SkipSpaces(string s, int i)
+        {
+            while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
+            return i;
+        }
+    }
+
+    /// <summary>FindStrWord (sstring.cpp:774): the end of the first place
+    /// <paramref name="word"/> stands in <paramref name="text"/> as a whole word - not
+    /// after a letter, and followed by whitespace or the end - or 0.</summary>
+    private static int FindStrWord(string text, string word)
+    {
+        int at = 0;
+        while ((at = text.IndexOf(word, at, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            int end = at + word.Length;
+            bool start = at == 0 || !char.IsLetter(text[at - 1]);
+            if (start && (end == text.Length || char.IsWhiteSpace(text[end])))
+                return end;
+            at++;
+        }
+        return 0;
     }
 
     /// <summary>Word match with an open tail: the packs and their players write "banka",
@@ -336,6 +391,7 @@ public sealed class SpeechEngine
         Character? chosen = null;
         int chosenDist = int.MaxValue;
         bool chosenIsDecided = false;
+        int chosenSkip = 0;
         string lowerForPick = text.ToLowerInvariant();
 
         foreach (var listener in listeners)
@@ -359,13 +415,15 @@ public sealed class SpeechEngine
                     !_world.CanSeeLOSFor(speaker, listener))
                     continue;
 
-                ConsiderNpcListener(speaker, listener, lowerForPick, ref chosen, ref chosenDist,
-                                    ref chosenIsDecided);
+                ConsiderNpcListener(speaker, listener, text, lowerForPick, ref chosen, ref chosenDist,
+                                    ref chosenIsDecided, ref chosenSkip);
             }
         }
 
+        // The addressed NPC hears the line past its address (NPC_OnHear(&pszText[i]),
+        // CClientEvent.cpp:2019): "Bob hello" reaches Bob as "hello".
         if (chosen != null && !petCommandTaken)
-            OnNpcHear?.Invoke(speaker, chosen, text, mode);
+            OnNpcHear?.Invoke(speaker, chosen, chosenSkip > 0 ? text[chosenSkip..] : text, mode);
 
         // Items within hearing range receive @Hear (Source-X item/multi OnHear).
         // Source-X gates this scan on the per-sector listen-item count

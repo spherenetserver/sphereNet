@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - NPC'ye Source-X usulu seslenme; NPC satiri seslenmeden sonrasiyla duyar
+------------------------------------------------------------------------
+DUZELTME - Konusma: NPC'ye seslenme NPC_OnHearName'in karar verdigi gibidir (CCharNPCStatus.cpp:369) -
+       satirin herhangi bir yerinde kelime olarak adi ("selam Bob, buy"), satici, sifaci,
+       bankaci ya da ahirciya satiri acan "VENDOR ", muhafiza "GUARD ", ya da satirin meslek
+       adiyla acilmasi ("mage, train"). Yalnizca adin ilk kelimesinin satir basinda olmasi
+       sayiliyordu, daha uzun bir kelimenin parcasi ("Bobby") da sayiliyordu.
+DUZELTME - Konusma: seslenilen NPC satiri seslenmeden sonrasiyla duyar (NPC_OnHear(&pszText[i]),
+       CClientEvent.cpp:2019): "Bob hello" Bob'a "hello" olarak ulasir, boylece bir paketin
+       ON=hello deseni cevap verir. Satirin tamami iletiliyordu.
+EKLEME - Testler: satir icinde ad, daha uzun kelime ad degildir, VENDOR / GUARD, meslek adi;
+       seslenilen NPC satirin geri kalanini duyar.
+
 [2026-10-16] - Source-X usulu NPC egitimi; yetenek atamalari istemciye ulasir; numarayla yetenek
 ------------------------------------------------------------------------
 DUZELTME - Egitim: TRAIN fiili NPC_OnTrainHear'i izler (CCharNPCAct_Vendor.cpp:371). Bir paketin

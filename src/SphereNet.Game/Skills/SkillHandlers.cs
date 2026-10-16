@@ -55,17 +55,7 @@ public sealed class SkillHandlers
             return false;
 
         int level = SkillEngine.GetAdjustedSkill(ch, skill);
-        int difficulty = skill switch
-        {
-            SkillType.Anatomy when target is Character c => InfoSkillEngine.Anatomy(sink, c, level, true),
-            SkillType.AnimalLore when target is Character c => InfoSkillEngine.AnimalLore(sink, c, _world, level, true),
-            SkillType.ArmsLore when target is Item item => InfoSkillEngine.ArmsLore(sink, item, level, true),
-            SkillType.EvalInt when target is Character c => InfoSkillEngine.EvalInt(sink, c, level, true),
-            SkillType.Forensics when target is Item corpse => InfoSkillEngine.Forensics(sink, corpse, null, 0, false, false, level, true),
-            SkillType.ItemId => InfoSkillEngine.ItemID(sink, target, level, true),
-            SkillType.TasteId => InfoSkillEngine.TasteID(sink, target, level, true),
-            _ => -1,
-        };
+        int difficulty = InfoSkillStartStage(sink, skill, target);
         if (difficulty < 0 || !SkillEngine.UseQuick(ch, skill, difficulty))
             return false;
 
@@ -79,6 +69,28 @@ public sealed class SkillHandlers
             SkillType.ItemId => InfoSkillEngine.ItemID(sink, target, level) >= 0,
             SkillType.TasteId => InfoSkillEngine.TasteID(sink, target, level) >= 0,
             _ => false,
+        };
+    }
+
+    /// <summary>The START stage of an information skill (Skill_Information with fTest,
+    /// CCharSkill.cpp:3221): the difficulty, or below zero - having said why - when the
+    /// target is the wrong kind: a thing for Anatomy, Animal Lore or Evaluating
+    /// Intelligence ("does not appear to be a living being"), anything but a weapon or
+    /// armor for Arms Lore, anything but a corpse for Forensics (OnSkill_*,
+    /// CClientTarg.cpp:760-1250). The wrong kind used to end silently.</summary>
+    public int InfoSkillStartStage(IInfoSkillSink sink, SkillType skill, ObjBase? target)
+    {
+        int level = SkillEngine.GetAdjustedSkill(sink.Self, skill);
+        return skill switch
+        {
+            SkillType.Anatomy => InfoSkillEngine.Anatomy(sink, (target as Character)!, level, true),
+            SkillType.AnimalLore => InfoSkillEngine.AnimalLore(sink, (target as Character)!, _world, level, true),
+            SkillType.ArmsLore => InfoSkillEngine.ArmsLore(sink, target as Item, level, true),
+            SkillType.EvalInt => InfoSkillEngine.EvalInt(sink, (target as Character)!, level, true),
+            SkillType.Forensics => InfoSkillEngine.Forensics(sink, target as Item, null, 0, false, false, level, true),
+            SkillType.ItemId => target != null ? InfoSkillEngine.ItemID(sink, target, level, true) : -1,
+            SkillType.TasteId => target != null ? InfoSkillEngine.TasteID(sink, target, level, true) : -1,
+            _ => -1,
         };
     }
 
@@ -123,9 +135,11 @@ public sealed class SkillHandlers
         }
 
     resolved:
-        int range = SkillEngine.GetUseRange(skill, 3);
-        return position.Map == ch.MapIndex && ch.Position.GetDistanceTo(position) <= range &&
-            _world.CanSeeLOSFor(ch, ch.Position, position);
+        // A target need only be in sight: Event_Target asks CanSee of the picked
+        // object (CClientEvent.cpp:2513), and OnTarg_Skill and the OnSkill_* stages
+        // add no reach of their own. A 3-tile reach with a line-of-sight test stood
+        // here; an animal that wandered off a step failed the skill without a word.
+        return position.Map == ch.MapIndex && ch.Position.GetDistanceTo(position) <= ch.VisualRange;
     }
 
     private static Serial ResolveKillerUid(Item corpse)

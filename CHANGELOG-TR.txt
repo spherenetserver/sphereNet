@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Bilgi becerileri: baslangic asamasi, erisim, Item ID metni; lore tatbikati
+------------------------------------------------------------------------
+DUZELTME - Bilgi becerileri (Anatomy, Animal Lore, Arms Lore, Evaluating Intelligence,
+       Forensics, Item ID, Taste ID) hedefi START asamasinda, beceri kullanildiginda
+       degerlendirir (fTest ile Skill_Information, CCharSkill.cpp:3221) ve yanlis turde
+       hedefin nedenini soyler - Anatomy, Animal Lore ya da Evaluating Intelligence'ta
+       bir esya icin "That does not appear to be a living being." (OnSkill_*,
+       CClientTarg.cpp:760-1250). Test yalnizca becerinin DELAY'inden sonra calisiyordu,
+       yanlis hedef sessizce bitiyor, reddedilen baslangic ustune paketin @Fail'ini
+       calistiriyordu; @SkillStart ya da @Start kullaniliyorsa reddedilen baslangic artik
+       Meditation'daki gibi sessizce biter (Skill_Cleanup, :4505-4520).
+DUZELTME - Bilgi becerileri gorus alanindaki her seye erisir: Event_Target secilen nesne icin
+       yalnizca CanSee sorar (CClientEvent.cpp:2513). Uydurma 3 karelik erisim ve gorus
+       hatti testi, birkac adim otedeki hayvanda beceriyi sessizce basarisiz kiliyordu.
+DUZELTME - Item ID esyayi GetNameFull gibi adlandirir - kendi adi yoksa taniminin adiyla
+       ("'an item'" degil "You estimate 21 gold for 'a dagger'") - ve neyden yapildigini
+       WriteNames gibi yazar ("DefName:13413794" degil "4 iron ingots"). NAME= tasimayan
+       kaynak tanimi karosunun adiyla adlanir.
+EKLEME - Fonksiyonel tatbikat "lore" paketi, iki pakette: uygun hedeflerde Anatomy, Evaluating
+       Intelligence, Arms Lore, Item ID ve Animal Lore; yanlis turde hedefte Anatomy ve
+       Arms Lore. Bunlari motora birakan Scripts-X'te Source-X metni kontrol edilir.
+EKLEME - Testler: Item ID'nin adi ve kaynaklari, baslangictaki yanlis hedef mesaji, bilgi
+       becerisinin erisimi.
+
 [2026-10-17] - Mana doluyken Meditation baslangicta reddeder; balikcilik ve meditasyon tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Meditation: mana doluyken START asamasi "You are at peace." der ve hemen reddeder

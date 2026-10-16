@@ -168,13 +168,7 @@ public sealed class ClientSkillsHandler
             }
             if (startRefused)
             {
-                // With @SkillStart / @Start in use a negative difficulty ends the skill
-                // there, quietly (Skill_Cleanup, :4505-4520); with neither it goes on to
-                // fail (Skill_Done on the negative difficulty).
-                if (_triggerDispatcher == null || !_triggerDispatcher.IsTriggerNameUsed("SkillStart") &&
-                    !_triggerDispatcher.IsTriggerNameUsed("Start"))
-                    FireActiveSkillResult(skillId, false);
-                _character.ActionEffect = -1;
+                EndRefusedStart(skillId);
                 return;
             }
             int startEffect = _character.ActionEffect;
@@ -525,6 +519,10 @@ public sealed class ClientSkillsHandler
             return;
         // Skill_Stage(SKTRIG_START) runs before @SkillStart (:4447).
         PlaySkillStageStartAnimation(skill);
+        // An information skill's START (Skill_Information with fTest, :3221) judges the
+        // target now, not after the DELAY; a wrong kind of target is said at once.
+        bool startRefused = isInfo && _skillHandlers != null &&
+            _skillHandlers.InfoSkillStartStage(new GameClient.InfoSkillSink(_client, _character), skill, target) < 0;
 
         bool gather = SkillEngine.HasFlag(skill, SkillFlag.Gather);
         bool craft = SkillEngine.HasFlag(skill, SkillFlag.Craft);
@@ -553,6 +551,12 @@ public sealed class ClientSkillsHandler
             return;
         }
 
+        if (startRefused)
+        {
+            EndRefusedStart(skillId);
+            return;
+        }
+
         // m_Act_Effect = LOCAL.Effect (:4526): the local wins over an ACTEFFECT write.
         _character.ActionEffect = (int)Math.Clamp(locals.GetInt("Effect", -1), int.MinValue, int.MaxValue);
         sound = (ushort)Math.Clamp(locals.GetInt("Sound"), 0, ushort.MaxValue);
@@ -570,6 +574,19 @@ public sealed class ClientSkillsHandler
 
         RunActiveSkill(skill, skillId, targetUid, target, point, startWaitMs, gather ? strokes : null, isInfo,
             actionEffect: _character.ActionEffect);
+    }
+
+    /// <summary>A START stage that answered a negative difficulty. With @SkillStart or
+    /// @Start in use the skill ends there, quietly (Skill_Cleanup, CCharSkill.cpp
+    /// :4505-4520); with neither it goes on to fail (Skill_Done on the negative
+    /// difficulty), and @Fail runs.</summary>
+    private void EndRefusedStart(int skillId)
+    {
+        if (_character == null) return;
+        if (_triggerDispatcher == null || !_triggerDispatcher.IsTriggerNameUsed("SkillStart") &&
+            !_triggerDispatcher.IsTriggerNameUsed("Start"))
+            FireActiveSkillResult(skillId, false);
+        _character.ActionEffect = -1;
     }
 
     /// <summary>The START stage of a gathering skill (Skill_Mining :1402-1466,

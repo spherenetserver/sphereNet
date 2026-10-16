@@ -35,8 +35,19 @@ public static class ResourceText
             long qty = ScriptNumber.TryParseToken(qtyToken, out long q) ? q : 1;
             string display = name;
             if (rid.IsValid && rid.Type == ResType.ItemDef &&
-                DefinitionLoader.GetItemDef(rid.Index) is { } def && !string.IsNullOrEmpty(def.Name))
-                display = ItemDef.Pluralize(def.Name, qty > 1);
+                DefinitionLoader.GetItemDef(rid.Index) is { } def)
+            {
+                // A definition without NAME= reads its tile's name, as the item itself
+                // does (CItemBase::GetName); "4 i_ingot_iron" was shown for 4 iron ingots.
+                string baseName = def.Name;
+                if (string.IsNullOrEmpty(baseName))
+                {
+                    int tile = def.DispIndex != 0 ? def.DispIndex : rid.Index;
+                    baseName = Objects.Items.Item.ResolveWorld?.Invoke()?.MapData?.GetItemTileData(tile).Name ?? "";
+                }
+                if (!string.IsNullOrEmpty(baseName))
+                    display = ItemDef.Pluralize(baseName, qty > 1);
+            }
             parts.Add(qty != 0 ? $"{qty} {display}" : display);
         }
         return string.Join(", ", parts);

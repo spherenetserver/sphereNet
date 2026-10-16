@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Information skills: start stage, reach, Item ID wording; lore drill
+------------------------------------------------------------------------
+FIX - Information skills (Anatomy, Animal Lore, Arms Lore, Evaluating Intelligence,
+      Forensics, Item ID, Taste ID) judge their target at the START stage, when the skill
+      is used (Skill_Information with fTest, CCharSkill.cpp:3221), and say why a wrong
+      kind of target will not do - "That does not appear to be a living being." for a
+      thing under Anatomy, Animal Lore or Evaluating Intelligence (OnSkill_*,
+      CClientTarg.cpp:760-1250). The test ran only after the skill's DELAY, a wrong
+      target ended without a word, and a refused start ran the pack's @Fail on top;
+      with @SkillStart or @Start in use a refused start now ends quietly
+      (Skill_Cleanup, :4505-4520), as Meditation's does.
+FIX - Information skills reach anything in sight: Event_Target asks only CanSee of the
+      picked object (CClientEvent.cpp:2513). An invented 3-tile reach with a line-of-
+      sight test failed them silently on an animal a few steps off.
+FIX - Item ID names the item as GetNameFull does - its definition's name when it has
+      none of its own ("You estimate 21 gold for 'a dagger'", not "'an item'") - and
+      lists what it is made of as WriteNames writes it ("4 iron ingots", not
+      "DefName:13413794"). A resource definition with no NAME= is named by its tile.
+ADD - Functional drill "lore" suite, on both packs: Anatomy, Evaluating Intelligence,
+      Arms Lore, Item ID and Animal Lore on fitting targets, and Anatomy and Arms Lore
+      on the wrong kind. On Scripts-X, which leaves them to the engine, the Source-X
+      wording is checked.
+ADD - Tests: Item ID's name and resources, the wrong-target message at the start, the
+      reach of an information skill.
+
 [2026-10-17] - Meditation at full mana refuses at the start; fishing and meditation drill
 ------------------------------------------------------------------------
 FIX - Meditation: at full mana the START stage says "You are at peace." and refuses at once

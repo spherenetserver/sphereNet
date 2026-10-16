@@ -197,13 +197,16 @@ public static class InfoSkillEngine
         }
 
         // High-skill check: list base resources if any.
+        // The resources as WriteNames writes them, "qty name, ..." (CResourceQty.cpp:253);
+        // the raw resource ids were printed ("DefName:13413794").
         if (iSkillLevel > 40)
         {
             var def = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
             if (def != null && def.BaseResources.Count > 0)
             {
-                var resources = string.Join(", ", def.BaseResources.ConvertAll(r => r.ToString()));
-                sink.SysMessage(ServerMessages.Get(Msg.ItemidMadeof) + resources);
+                string resources = Definitions.ResourceText.Names(def.ResourcesRaw);
+                if (resources.Length > 0)
+                    sink.SysMessage(ServerMessages.Get(Msg.ItemidMadeof) + resources);
             }
         }
 

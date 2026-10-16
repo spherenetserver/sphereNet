@@ -6,6 +6,7 @@ using SphereNet.Game.Clients;
 using SphereNet.Game.Crafting;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Magic;
+using SphereNet.Game.Messages;
 using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
@@ -220,6 +221,87 @@ public class SkillAuditRegressionTests
 
         Assert.False(result);
         Assert.Empty(sink.Messages);
+    }
+
+    /// <summary>OnSkill_ItemID (CClientTarg.cpp:845-915): the item by its full name -
+    /// its definition's when it has none of its own - and, above 40.0, what it is made
+    /// of as WriteNames writes it. "an item" and "DefName:..." were printed.</summary>
+    [Fact]
+    public void ItemId_NamesTheItemAndItsResources()
+    {
+        LoadDefinitions("""
+            [ITEMDEF 0f51]
+            DEFNAME=i_test_dagger
+            NAME=dagger
+            VALUE=20
+            RESOURCES=4 i_test_ingot
+
+            [ITEMDEF 01bef]
+            DEFNAME=i_test_ingot
+            NAME=iron ingot%s
+            """);
+        var world = CreateWorld();
+        var examiner = world.CreateCharacter();
+        world.PlaceCharacter(examiner, new Point3D(100, 100, 0, 0));
+        var dagger = world.CreateItem();
+        dagger.BaseId = 0x0F51;
+        world.PlaceItem(dagger, new Point3D(101, 100, 0, 0));
+        var sink = new InfoSink(examiner);
+
+        InfoSkillEngine.ItemID(sink, dagger, 1000);
+
+        Assert.Contains(sink.Messages, m => m.Contains("'a dagger'", StringComparison.Ordinal));
+        Assert.Contains(sink.Messages, m => m.EndsWith("4 iron ingots", StringComparison.Ordinal));
+    }
+
+    /// <summary>The START stage judges the target: a thing is "not a living being" to
+    /// Anatomy (OnSkill_Anatomy, CClientTarg.cpp:1123-1127) and the skill stops there.
+    /// It ended without a word.</summary>
+    [Fact]
+    public void InformationSkill_WrongKindOfTarget_SaysWhyAtTheStart()
+    {
+        LoadDefinitions("""
+            [SKILL 1]
+            FLAGS=skf_selectable
+            """);
+        var world = CreateWorld();
+        var examiner = world.CreateCharacter();
+        world.PlaceCharacter(examiner, new Point3D(100, 100, 0, 0));
+        var thing = world.CreateItem();
+        world.PlaceItem(thing, new Point3D(101, 100, 0, 0));
+        var sink = new InfoSink(examiner);
+
+        int difficulty = new SkillHandlers(world).InfoSkillStartStage(sink, SkillType.Anatomy, thing);
+
+        Assert.True(difficulty < 0);
+        Assert.Equal([ServerMessages.Get(Msg.NonAlive)], sink.Messages);
+    }
+
+    /// <summary>A target need only be in sight (Event_Target's CanSee,
+    /// CClientEvent.cpp:2513): the information skills add no reach of their own. An
+    /// invented 3-tile reach failed them silently on anything a few steps off.</summary>
+    [Fact]
+    public void InformationSkill_ReachesAnythingInSight()
+    {
+        LoadDefinitions("""
+            [SKILL 1]
+            FLAGS=skf_selectable
+            """);
+        var world = CreateWorld();
+        var examiner = world.CreateCharacter();
+        examiner.SetSkill(SkillType.Anatomy, 1000);
+        var target = world.CreateCharacter();
+        world.PlaceCharacter(examiner, new Point3D(100, 100, 0, 0));
+        world.PlaceCharacter(target, new Point3D(110, 100, 0, 0));
+        var sink = new InfoSink(examiner);
+        Character.OnSkillUseQuickDetailed =
+            (Character _, int _, ref int _, int _) => 1;
+        try
+        {
+            Assert.True(new SkillHandlers(world).UseInfoSkill(sink, SkillType.Anatomy, target));
+            Assert.NotEmpty(sink.Messages);
+        }
+        finally { Character.OnSkillUseQuickDetailed = null; }
     }
 
     [Fact]

@@ -125,6 +125,8 @@ internal static class FunctionalDrill
                 await StealthSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "fishmed")
                 await FishMedSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "lore")
+                await LoreSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -3456,6 +3458,108 @@ internal static class FunctionalDrill
         });
 
         bot.Disconnect();
+    }
+
+    /// <summary>The information skills (Skill_Information -> OnSkill_*, CClientTarg.cpp
+    /// :760-1190). On a pack that leaves them to the engine (Scripts-X) the Source-X
+    /// wording is checked; a pack that answers them in its own scripts must answer.</summary>
+    private static async Task LoreSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        const int Anatomy = 1, AnimalLore = 2, ItemId = 3, ArmsLore = 4, EvalInt = 16;
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        string spot = OpenCountrySpot(root);
+        var scholar = await LoginAsync(1161, port, ct);
+        var subject = await LoginAsync(1162, port, ct);
+        uint dagger = 0, bandage = 0, rabbit = 0;
+
+        string Said(long since) =>
+            string.Join(" | ", scholar.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+
+        // Use the skill on the target; retry a failed roll. Returns what was said.
+        async Task<string> Lore(int skill, uint target, params string[] expect)
+        {
+            string last = "";
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                long asked = Environment.TickCount64;
+                await scholar.Actions.UseSkill(skill, 3000, ct);
+                if (await scholar.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no cursor for skill {skill}; {Said(asked)}");
+                // The answer is what follows the pick, not the prompt; a pack's skill may
+                // take its DELAY first.
+                long since = Environment.TickCount64;
+                await scholar.Actions.TargetObject(target, ct);
+                for (int i = 0; i < 40 && Said(since).Length == 0; i++) await Task.Delay(250, ct);
+                await Task.Delay(1500, ct); // the rest of the answer
+                last = Said(since);
+                if (last.Length == 0) continue;
+                if (!engineWording || expect.All(e => last.Contains(e, StringComparison.OrdinalIgnoreCase)))
+                    return last;
+            }
+            throw new ScenarioFailed(last.Length == 0
+                ? $"no answer to skill {skill}"
+                : $"expected [{string.Join("; ", expect)}], heard: {last}");
+        }
+
+        await RunScenario("lore", "setup: a scholar, a subject, a rabbit, a dagger", outcomes, async () =>
+        {
+            var at = spot.Split(',');
+            await AsStaff(server, subject.AccountName, async () =>
+            {
+                await SayAsync(subject, $".go {int.Parse(at[0]) + 2},{at[1]},{at[2]}", ct);
+                foreach (string line in new[] { ".str 100", ".dex 100", ".int 100", ".mana 100", ".magery 1000" })
+                    await SayAsync(subject, line, ct);
+            });
+            await AsStaff(server, scholar.AccountName, async () =>
+            {
+                await SayAsync(scholar, $".go {spot}", ct);
+                foreach (string line in new[] { ".anatomy 1000", ".animallore 1000", ".itemid 1000", ".armslore 1000",
+                                                ".evaluatingintel 1000" })
+                    await SayAsync(scholar, line, ct);
+                await AddIntoPackAsync(scholar, "i_dagger", ct);
+                await AddIntoPackAsync(scholar, "i_bandage", ct);
+                HashSet<uint> before; lock (scholar.World.SyncRoot) before = scholar.World.Mobiles.Keys.ToHashSet();
+                await scholar.Actions.Say(".add c_rabbit", ct);
+                if (await scholar.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_rabbit");
+                await scholar.Actions.TargetLocation(scholar.World.X, scholar.World.Y + 2, scholar.World.Z, ct);
+                await Task.Delay(800, ct);
+                var found = await WaitAsync(() => { lock (scholar.World.SyncRoot) return scholar.World.Mobiles.Values.FirstOrDefault(m =>
+                    !before.Contains(m.Serial) && m.Serial != subject.World.CharUid); }, 4000, "the rabbit");
+                rabbit = found.Serial;
+            });
+            var pack = await PackContentsAsync(scholar, ct);
+            dagger = pack.FirstOrDefault(i => i.ItemId is 0x0F51 or 0x0F52)?.Serial ?? 0;
+            bandage = pack.FirstOrDefault(i => i.ItemId is 0x0E21 or 0x0EE9)?.Serial ?? 0;
+            if (dagger == 0 || bandage == 0)
+                throw new ScenarioFailed($"pack: {string.Join(",", pack.Select(i => $"0x{i.ItemId:X}"))}");
+            return $"engine wording checked: {engineWording}";
+        });
+
+        await RunScenario("lore", "anatomy judges strength and dexterity", outcomes, async () =>
+            await Lore(Anatomy, subject.World.CharUid, "superhumanly strong", "superhumanly agile"));
+
+        await RunScenario("lore", "anatomy on a thing: not a living being", outcomes, async () =>
+            await Lore(Anatomy, dagger, "does not appear to be a living being"));
+
+        await RunScenario("lore", "evaluating intelligence judges the mind and its magic", outcomes, async () =>
+            await Lore(EvalInt, subject.World.CharUid, "superhumanly intelligent", "They look"));
+
+        await RunScenario("lore", "arms lore rates a weapon", outcomes, async () =>
+            await Lore(ArmsLore, dagger, "Attack ["));
+
+        await RunScenario("lore", "arms lore on a bandage: not a weapon or armor", outcomes, async () =>
+            await Lore(ArmsLore, bandage, "does not appear to be a weapon or armor"));
+
+        await RunScenario("lore", "item identification values an item", outcomes, async () =>
+            await Lore(ItemId, dagger, "You estimate"));
+
+        await RunScenario("lore", "animal lore on a wild rabbit", outcomes, async () =>
+            await Lore(AnimalLore, rabbit, "own master"));
+
+        scholar.Disconnect();
+        subject.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

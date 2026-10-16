@@ -179,12 +179,15 @@ internal static class InfoSkillExtensions
     public static int GetPoisonSkill(this Item it) => Combat.CombatEngine.GetWeaponPoisonSkill(it);
 
     /// <summary>
-    /// Item full name (Source-X CItem::GetNameFull). Falls back to <see cref="Item.Name"/>
-    /// with a "an" / "a" article prefix, applying the standard vowel rule.
+    /// Item full name (Source-X CItem::GetNameFull): the item's name as GetName resolves
+    /// it - its own, else its definition's, else the tile's, pluralised for the amount -
+    /// with "an" / "a" by the vowel rule. Only a name stamped on the item itself was
+    /// read, so an item carrying its definition's name came out as "an item".
     /// </summary>
     public static string GetNameFull(this Item it, bool addArticle)
     {
-        string name = string.IsNullOrEmpty(it.Name) ? "item" : it.Name;
+        string name = it.GetName();
+        if (string.IsNullOrEmpty(name)) name = "item";
         if (it.Amount > 1)
             return $"{it.Amount} {name}";
         if (!addArticle) return name;

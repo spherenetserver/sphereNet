@@ -1910,6 +1910,16 @@ public sealed partial class SpellEngine
 
     private static bool IsTopLevelItem(Item item) => !item.ContainedIn.IsValid && !item.IsEquipped;
 
+    /// <summary>EFFECT_LIGHTNING on a character: the bolt strikes it where it stands.</summary>
+    private static void SendLightning(Character? source, Character target)
+    {
+        var at = target.Position;
+        var fx = new SphereNet.Network.Packets.Outgoing.PacketEffect(1,
+            source?.Uid.Value ?? target.Uid.Value, target.Uid.Value, 0,
+            at.X, at.Y, at.Z, at.X, at.Y, at.Z, 0, 0, true, false);
+        Character.BroadcastNearby?.Invoke(at, 18, fx, 0);
+    }
+
     /// <summary>CObjBase::Effect on an item: 0 = a bolt from the source to it,
     /// 1 = lightning on it, 2 = at its location, 3 = on the item itself.</summary>
     private static void SendItemEffect(byte type, ushort effectId, Character? source, Item item,
@@ -2271,8 +2281,15 @@ public sealed partial class SpellEngine
         if (scripted)
             return true;
 
+        // The flash, then the bolt itself: Effect(EFFECT_LIGHTNING, ITEMID_NOTHING,
+        // pCharSrc) on the target (CCharSpell.cpp:4078-4081). The spell's EFFECT_ID is
+        // 0 in the packs, so nothing else draws it - only the flash went out, and the
+        // strike landed with no lightning seen.
         if (spellId is SpellType.Lightning or SpellType.ChainLightning)
+        {
             _world.LightFlash(target.Position);                              // :4006-4010
+            SendLightning(caster, target);
+        }
 
         int prevSkillLevel = _effectSkillLevel;
         int? prevDuration = _effectDurationTenths;

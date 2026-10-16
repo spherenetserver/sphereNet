@@ -4,6 +4,14 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Gizlilik tatbikati
+------------------------------------------------------------------------
+EKLEME - Fonksiyonel tatbikat "stealth" paketi, iki pakette: stealth olmadan gizliyken atilan
+       adim yuruyeni gosterir, Stealth gizliyi gorunmeden yurutur ve adimlari paketin
+       STEPSTEALTH degeri kadar surer (Scripts-X'te 10.0'da iki; Sphere 56T ozel surum
+       paketinde 2 +/- 5), Detecting Hidden zayif saklanani bulur, Invisibility gizler,
+       Reveal gosterir.
+
 [2026-10-16] - Lightning hedefe vurur, buyucuye degil; pet komutlari: RELEASE verb'u, pet konusmasi, script ile evcillesen petler; pet tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Buyu: Lightning buyucuye vuruyordu. Bolt disindaki her efekt, vurulan nesneyi paketin

@@ -121,6 +121,8 @@ internal static class FunctionalDrill
                 await PoisonSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "pet")
                 await PetSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "stealth")
+                await StealthSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -3111,6 +3113,183 @@ internal static class FunctionalDrill
 
         owner.Disconnect();
         stranger.Disconnect();
+    }
+
+    /// <summary>Hidden movement and finding the hidden: a step taken hidden reveals
+    /// (CheckRevealOnMove), Stealth buys steps (the pack's @Success sets STEPSTEALTH),
+    /// Detecting Hidden finds a poor hider (Skill_DetectHidden), Invisibility hides and
+    /// Reveal shows.</summary>
+    private static async Task StealthSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        const int DetectHiddenSkill = 14, StealthSkill = 47, InvisibilitySpell = 44, RevealSpell = 48;
+        string spot = OpenCountrySpot(root);
+        var sneak = await LoginAsync(1141, port, ct);
+        var seeker = await LoginAsync(1142, port, ct);
+
+        string Said(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        bool SeekerSees() { lock (seeker.World.SyncRoot) return seeker.World.Mobiles.ContainsKey(sneak.World.CharUid); }
+        async Task Gone(string what)
+        {
+            for (int i = 0; i < 20 && SeekerSees(); i++) await Task.Delay(200, ct);
+            if (SeekerSees()) throw new ScenarioFailed($"the seeker still sees the sneak ({what})");
+        }
+        async Task Hide()
+        {
+            long since = Environment.TickCount64;
+            for (int attempt = 0; attempt < 6 && SeekerSees(); attempt++)
+            {
+                await sneak.Actions.UseSkill(HidingSkill, 3000, ct);
+                for (int i = 0; i < 16 && SeekerSees(); i++)
+                    await Task.Delay(250, ct);
+            }
+            if (SeekerSees()) throw new ScenarioFailed($"could not hide; {Said(sneak, since)}");
+        }
+        async Task Setup(BotClient bot, int dx, string skills)
+        {
+            await AsStaff(server, bot.AccountName, async () =>
+            {
+                var at = spot.Split(',');
+                await SayAsync(bot, $".go {int.Parse(at[0]) + dx},{at[1]},{at[2]}", ct);
+                await AddIntoPackAsync(bot, "i_spellbook", ct);
+                foreach (string reg in new[] { "i_reag_blood_moss", "i_reag_nightshade", "i_reag_sulfur_ash" })
+                    await AddIntoPackAsync(bot, $"{reg},10", ct);
+                var book = (await PackContentsAsync(bot, ct)).FirstOrDefault(i => i.ItemId == Spellbook)
+                    ?? throw new ScenarioFailed("no spellbook after .add");
+                foreach (string verb in new[] { ".xmore1 0ffffffff", ".xmore2 0ffffffff" })
+                {
+                    await bot.Actions.Say(verb, ct);
+                    if (await bot.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                        throw new ScenarioFailed($"no target cursor for {verb}");
+                    await bot.Actions.TargetObject(book.Serial, ct);
+                    await Task.Delay(400, ct);
+                }
+                foreach (string line in (".str 100,.dex 100,.int 100,.mana 100,.magery 1000," + skills).Split(','))
+                    await SayAsync(bot, line, ct);
+            });
+        }
+        async Task Cast(BotClient bot, int spell, uint? at)
+        {
+            bot.SendRaw(BotPacketBuilder.BuildCastSpell(spell));
+            if (at is uint serial)
+            {
+                if (await bot.Actions.WaitForTarget(8000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no cursor for spell {spell}; {Said(bot, Environment.TickCount64 - 8000)}");
+                await bot.Actions.TargetObject(serial, ct);
+            }
+        }
+
+        await RunScenario("stealth", "setup: a sneak and a seeker out of town", outcomes, async () =>
+        {
+            await Setup(sneak, 0, ".hiding 1000,.stealth 1000,.detectinghidden 0");
+            await Setup(seeker, 4, ".hiding 0,.detectinghidden 1000");
+            await WaitAsync(() => SeekerSees() ? (object)true : null, 4000, "the seeker to see the sneak");
+            return $"sneak 0x{sneak.World.CharUid:X}, seeker 0x{seeker.World.CharUid:X}";
+        });
+
+        await RunScenario("stealth", "a step taken hidden, without stealth, reveals", outcomes, async () =>
+        {
+            // Face east first: a walk request in a new direction only turns.
+            await sneak.Actions.MoveDirection(2, ct);
+            await Task.Delay(300, ct);
+            await Hide();
+            int x0 = sneak.World.X;
+            await sneak.Actions.MoveDirection(2, ct); // east
+            await Task.Delay(500, ct);
+            if (sneak.World.X == x0) throw new ScenarioFailed("the step was not taken");
+            await WaitAsync(() => SeekerSees() ? (object)true : null, 4000, "the sneak to show after one step");
+            return "one step and the seeker sees the sneak again";
+        });
+
+        await RunScenario("stealth", "stealth lets the hidden walk unseen", outcomes, async () =>
+        {
+            // Face west, away from the seeker, while still in sight.
+            await sneak.Actions.MoveDirection(6, ct);
+            await Task.Delay(300, ct);
+            await Hide();
+            long since = Environment.TickCount64;
+            await sneak.Actions.UseSkill(StealthSkill, 3000, ct);
+            await Task.Delay(3000, ct); // the skill's DELAY
+            if (SeekerSees()) throw new ScenarioFailed($"stealth revealed the sneak; {Said(sneak, since)}");
+            int x0 = sneak.World.X;
+            for (int i = 0; i < 4; i++)
+            {
+                await sneak.Actions.MoveDirection(6, ct); // west, already faced
+                await Task.Delay(400, ct);
+                if (SeekerSees())
+                    throw new ScenarioFailed($"seen after {i + 1} stealthy steps; {Said(sneak, since)}");
+            }
+            if (sneak.World.X == x0) throw new ScenarioFailed($"the sneak did not move; {Said(sneak, since)}");
+            return $"4 steps unseen; {Said(sneak, since)}";
+        });
+
+        await RunScenario("stealth", "the stealthy steps run out", outcomes, async () =>
+        {
+            // 10.0 Stealth buys 10.0*10/50 = 2 steps in Scripts-X (2 +/- 5 in the 56T pack):
+            // each hidden step spends one and the last one shows the walker
+            // (CheckRevealOnMove, CCharAct.cpp:4876).
+            await AsStaff(server, sneak.AccountName, () => SayAsync(sneak, ".stealth 100", ct));
+            await sneak.Actions.Say("hello", ct);
+            await WaitAsync(() => SeekerSees() ? (object)true : null, 4000, "the sneak to show");
+            await sneak.Actions.MoveDirection(6, ct);
+            await Task.Delay(300, ct);
+            await Hide();
+            long since = Environment.TickCount64;
+            await sneak.Actions.UseSkill(StealthSkill, 3000, ct);
+            await Task.Delay(3000, ct);
+            bool quiet = Said(sneak, since).Contains("move quietly", StringComparison.OrdinalIgnoreCase);
+            int steps = 0;
+            while (!SeekerSees() && steps < 12)
+            {
+                await sneak.Actions.MoveDirection(6, ct);
+                steps++;
+                for (int i = 0; i < 4 && !SeekerSees(); i++) await Task.Delay(150, ct);
+            }
+            if (!SeekerSees()) throw new ScenarioFailed($"still hidden after {steps} steps; {Said(sneak, since)}");
+            if (quiet && steps != 2) throw new ScenarioFailed($"shown at step {steps}, not 2; {Said(sneak, since)}");
+            await AsStaff(server, sneak.AccountName, () => SayAsync(sneak, ".stealth 1000", ct));
+            return $"shown at step {steps}; {Said(sneak, since)}";
+        });
+
+        await RunScenario("stealth", "detecting hidden finds a poor hider", outcomes, async () =>
+        {
+            // Skill against hiding, each with -100..+109 (Skill_DetectHidden): 70.0 hiding
+            // never beats 100.0 detecting.
+            await AsStaff(server, sneak.AccountName, () => SayAsync(sneak, ".hiding 700", ct));
+            await sneak.Actions.Say("hello", ct); // show, then hide again at the lower skill
+            await WaitAsync(() => SeekerSees() ? (object)true : null, 4000, "the sneak to show");
+            await Hide();
+            long since = Environment.TickCount64;
+            for (int attempt = 0; attempt < 4 && !SeekerSees(); attempt++)
+            {
+                await seeker.Actions.UseSkill(DetectHiddenSkill, 3000, ct);
+                for (int i = 0; i < 16 && !SeekerSees(); i++)
+                    await Task.Delay(250, ct);
+            }
+            if (!SeekerSees()) throw new ScenarioFailed($"not found; seeker: {Said(seeker, since)}");
+            return $"found; seeker: {Said(seeker, since)}";
+        });
+
+        await RunScenario("stealth", "invisibility hides, reveal shows", outcomes, async () =>
+        {
+            // Reveal works around the caster (1 + Magery/200 tiles in Scripts-X): come close.
+            await seeker.Actions.MoveTo(sneak.World.X + 2, sneak.World.Y, 6000, ct);
+            long since = Environment.TickCount64;
+            // A pack may cast it on oneself without a cursor (Scripts-X does).
+            await Cast(sneak, InvisibilitySpell, null);
+            if (await sneak.Actions.WaitForTarget(4000, ct) == BotActionResult.Success)
+                await sneak.Actions.TargetObject(sneak.World.CharUid, ct);
+            await Gone($"after Invisibility; sneak: {Said(sneak, since)}");
+            await Cast(seeker, RevealSpell, null);
+            if (await seeker.Actions.WaitForTarget(4000, ct) == BotActionResult.Success)
+                await seeker.Actions.TargetLocation(seeker.World.X, seeker.World.Y, seeker.World.Z, ct);
+            await WaitAsync(() => SeekerSees() ? (object)true : null, 8000,
+                $"Reveal to show the sneak; seeker: {Said(seeker, since)}");
+            return $"hidden by Invisibility, shown by Reveal";
+        });
+
+        sneak.Disconnect();
+        seeker.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Stealth drill
+------------------------------------------------------------------------
+ADD - Functional drill "stealth" suite, on both packs: a step taken hidden without stealth
+      shows the walker, Stealth lets the hidden walk unseen and its steps run out as the
+      pack's STEPSTEALTH says (two at 10.0 in Scripts-X; 2 +/- 5 on the Sphere 56T
+      custom-version pack), Detecting Hidden finds a poor hider, Invisibility hides and
+      Reveal shows.
+
 [2026-10-16] - Lightning strikes its target, not the caster; pet commands: RELEASE verb, pet speech, script-tamed pets; pet drill
 ------------------------------------------------------------------------
 FIX - Magic: Lightning struck the caster. Every effect but a bolt carries the struck object

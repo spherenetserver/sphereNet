@@ -1747,6 +1747,13 @@ public partial class Character : ObjBase
         set => _charDefIndex = value;
     }
     private int _charDefIndex;
+
+    /// <summary>The definition this character's rules come from (Char_GetDef). A
+    /// player carries no BaseId, and upstream reads the char's ID - for a player, the
+    /// body (c_man for 0x190). <see cref="CharDefIndex"/> stays what is saved; this
+    /// only answers the lookup.</summary>
+    public SphereNet.Scripting.Definitions.CharDef? GetRuleCharDef() =>
+        DefinitionLoader.GetCharDef(CharDefIndex) ?? (CharDefIndex == 0 ? DefinitionLoader.GetCharDef(_bodyId) : null);
     public Direction Direction
     {
         get => _direction;
@@ -2646,7 +2653,8 @@ public partial class Character : ObjBase
             // creature declared to eat nothing has no room for food, and the reference
             // refuses to feed it at all (Use_Eat, CCharUse.cpp:934). Reading that zero
             // as "nothing was said, use 60" gave such a creature a full appetite.
-            var def = DefinitionLoader.GetCharDef(CharDefIndex);
+            // A player's definition is its body's (GetRuleCharDef).
+            var def = GetRuleCharDef();
             if (def is { MaxFoodExplicit: true })
                 return def.MaxFood;
 

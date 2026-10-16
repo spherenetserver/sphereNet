@@ -115,6 +115,8 @@ internal static class FunctionalDrill
                 await MagicSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "train")
                 await TrainSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "food")
+                await FoodSuite(server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -2672,6 +2674,72 @@ internal static class FunctionalDrill
             await Task.Delay(500, ct);
         });
         student.Disconnect();
+    }
+
+    // ---- food -------------------------------------------------------------------------
+
+    private static async Task FoodSuite(ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        var eater = await LoginAsync(1101, port, ct);
+        uint bread = 0, ribs = 0;
+
+        string Said(long since) =>
+            string.Join(" | ", eater.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        async Task<int> AmountOf(uint serial) =>
+            (await PackContentsAsync(eater, ct)).FirstOrDefault(i => i.Serial == serial)?.Amount ?? 0;
+
+        await RunScenario("food", "setup: a hungry character with bread and raw ribs", outcomes, async () =>
+        {
+            await AsStaff(server, eater.AccountName, async () =>
+            {
+                var before = (await PackContentsAsync(eater, ct)).Select(i => i.Serial).ToHashSet();
+                await AddIntoPackAsync(eater, "i_bread_loaf,3", ct);
+                await AddIntoPackAsync(eater, "i_ribs_raw", ct);
+                var added = (await PackContentsAsync(eater, ct)).Where(i => !before.Contains(i.Serial)).ToList();
+                bread = added.FirstOrDefault(i => i.Amount == 3)?.Serial ?? 0;
+                ribs = added.FirstOrDefault(i => i.Serial != bread)?.Serial ?? 0;
+                await SayAsync(eater, ".food 0", ct);
+            });
+            if (bread == 0 || ribs == 0) throw new ScenarioFailed($"bread 0x{bread:X}, ribs 0x{ribs:X}");
+            return $"bread 0x{bread:X} x3, ribs 0x{ribs:X}";
+        });
+
+        await RunScenario("food", "a hungry character eats one loaf", outcomes, async () =>
+        {
+            if (bread == 0) throw new ScenarioFailed("no bread");
+            long since = Environment.TickCount64;
+            await eater.Actions.DoubleClick(bread, 1000, ct);
+            await Task.Delay(800, ct);
+            int left = await AmountOf(bread);
+            if (left != 2) throw new ScenarioFailed($"{left} loaves left of 3; {Said(since)}");
+            return $"3 -> 2 loaves; {Said(since)}";
+        });
+
+        // FOODTYPE lists t_food / t_fruit (and drink, grain on the 56T pack) for a
+        // human: raw meat is not on it (Food_CanEat).
+        await RunScenario("food", "raw ribs are not eaten", outcomes, async () =>
+        {
+            if (ribs == 0) throw new ScenarioFailed("no ribs");
+            long since = Environment.TickCount64;
+            await eater.Actions.DoubleClick(ribs, 1000, ct);
+            await Task.Delay(800, ct);
+            if (await AmountOf(ribs) != 1) throw new ScenarioFailed($"the ribs were eaten; {Said(since)}");
+            return Said(since);
+        });
+
+        await RunScenario("food", "a full character cannot eat", outcomes, async () =>
+        {
+            if (bread == 0) throw new ScenarioFailed("no bread");
+            await AsStaff(server, eater.AccountName, () => SayAsync(eater, ".food 1000", ct));
+            long since = Environment.TickCount64;
+            await eater.Actions.DoubleClick(bread, 1000, ct);
+            await Task.Delay(800, ct);
+            int left = await AmountOf(bread);
+            if (left != 2) throw new ScenarioFailed($"a full character ate: {left} loaves left; {Said(since)}");
+            return Said(since);
+        });
+
+        eater.Disconnect();
     }
 
     /// <summary>.add a definition, targeting the bot's own backpack.</summary>

@@ -3524,6 +3524,12 @@ public sealed class ClientItemUseHandler
             SysMessage(ServerMessages.Get(Msg.FoodRcanteat));
             return;
         }
+        // Already full: "simply too full", and nothing is taken (:953).
+        if (_character.Food >= _character.MaxFood)
+        {
+            SysMessage(ServerMessages.Get(Msg.FoodCanteatf));
+            return;
+        }
         EatOneUnit(food);
     }
 
@@ -3541,11 +3547,22 @@ public sealed class ClientItemUseHandler
         int eaten = SphereNet.Game.NPCs.EatEngine.Eat(_character, food, _triggerDispatcher, 1);
         if (eaten <= 0)
         {
-            SysMessage(ServerMessages.Get(Msg.FoodFull6));
+            SysMessage(ServerMessages.Get(Msg.FoodCanteatf));
             return;
         }
 
-        SysMessage(ServerMessages.Get("itemuse_eat_food"));
+        // How full the meal left the eater, in sixths (Use_Eat, CCharUse.cpp:968):
+        // "still extremely hungry" up to "You are stuffed!".
+        int fullness = _character.MaxFood > 0 ? _character.Food * 5 / _character.MaxFood : 5;
+        SysMessage(ServerMessages.Get(fullness switch
+        {
+            0 => Msg.FoodFull1,
+            1 => Msg.FoodFull2,
+            2 => Msg.FoodFull3,
+            3 => Msg.FoodFull4,
+            4 => Msg.FoodFull5,
+            _ => Msg.FoodFull6,
+        }));
         PlayAnimation(_character, (ushort)AnimationType.Eat);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange,
             new PacketSound(0x003A, _character.X, _character.Y, _character.Z), 0);

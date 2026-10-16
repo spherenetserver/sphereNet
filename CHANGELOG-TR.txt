@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-16] - Oyuncu govdesinin FOODTYPE'ina gore yer; Source-X yeme mesajlari; yemek tatbikati
+------------------------------------------------------------------------
+DUZELTME - Yemek: oyuncunun diyeti ve yemek ust siniri govdesinin taniminden gelir; Source-X'in
+       Char_GetDef'i karakterin ID'sini okur ve oyuncu icin bu govdedir (0x190 icin c_man).
+       Oyuncuda BaseId yok, arama hicbir sey bulmuyordu: ac bir oyuncuya ekmek icin "You
+       can't really eat this." deniyordu ve paketin insanlar icin MAXFOOD'u (Sphere 56T ozel
+       surum paketinde 20) hic uygulanmiyordu. Kaydedilen CHARDEFINDEX degismedi; govde
+       tanimini yalnizca kurallar okur.
+DUZELTME - Yemek: duz sayi olan FOODTYPE girdisi - paketler t_food'u [DEFNAME] t_food 8 olarak
+       tanimlar - numaraladigi esya tipidir. Hicbir seyle eslesmiyordu.
+DUZELTME - Yemek, Use_Eat'in soyledigini soyler (CCharUse.cpp:953-990): tok olan "simply too full to
+       eat any more!" alir ve yiyecek eksilmez; yemek, yiyeni ne kadar doyurdugunu altida
+       birlerle soyler ("You eat the food, but are still extremely hungry." ile "You are
+       stuffed!" arasi). Tok oyuncuya "You are stuffed!", her yemekte "You eat the food."
+       deniyordu.
+EKLEME - Fonksiyonel tatbikat "food" paketi, iki pakette: ac karakter bir ekmek yer, cig kaburga
+       yenmez (56T paketinde kendi pisirme scripti cevap verir), tok karakter yiyemez.
+EKLEME - Testler: govdeden oyuncu FOODTYPE'i, numarali t_food, tok ve ac yeme mesajlari.
+
 [2026-10-16] - NPC'ye Source-X usulu seslenme; NPC satiri seslenmeden sonrasiyla duyar
 ------------------------------------------------------------------------
 DUZELTME - Konusma: NPC'ye seslenme NPC_OnHearName'in karar verdigi gibidir (CCharNPCStatus.cpp:369) -

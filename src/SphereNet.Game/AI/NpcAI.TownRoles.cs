@@ -505,7 +505,7 @@ public sealed partial class NpcAI
     /// name counts 1 (CResourceQty::Load).</summary>
     public int NpcFoodQty(Character npc, Item item)
     {
-        var def = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex);
+        var def = npc.GetRuleCharDef();
         string? diet = def != null && !string.IsNullOrWhiteSpace(def.FoodTypeRaw)
             ? def.FoodTypeRaw
             : (npc.TryGetTag("FOODTYPE", out string? tagDiet) ? tagDiet : null);
@@ -538,11 +538,13 @@ public sealed partial class NpcAI
                     qty = trailQty;
             }
             var rid = resources?.ResolveDefName(name) ?? ResourceId.Invalid;
-            if (!rid.IsValid)
+            if (!rid.IsValid || rid.Type == ResType.DefName)
             {
-                // A t_* name with no [TYPEDEF] section behind it still names the
-                // built-in item type it spells (IT_FOOD for t_food).
-                if (TryParseItemTypeName(name, out var builtIn) && builtIn == item.ItemType)
+                // A t_* name with no [TYPEDEF] section behind it names the item type it
+                // spells (IT_FOOD for t_food); the packs list them as plain numbers
+                // ([DEFNAME] t_food 8), which is the type number itself.
+                if ((TryParseItemTypeName(name, out var builtIn) && builtIn == item.ItemType) ||
+                    (rid.IsValid && rid.Index == (int)item.ItemType))
                     return Math.Max(0, qty);
                 continue;
             }

@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-16] - Players eat by their body's FOODTYPE; Source-X eating messages; food drill
+------------------------------------------------------------------------
+FIX - Food: a player's diet and food maximum come from its body's definition, as
+      upstream's Char_GetDef reads the char's ID - for a player, the body (c_man for
+      0x190). A player carries no BaseId, so the lookup found nothing: a hungry player was
+      told "You can't really eat this." about a loaf of bread, and a pack's MAXFOOD for
+      humans (20 on the Sphere 56T custom-version pack) never applied. The saved
+      CHARDEFINDEX is unchanged; only the rules read the body's definition.
+FIX - Food: a FOODTYPE entry that is a plain number - the packs define t_food as
+      [DEFNAME] t_food 8 - is the item type it numbers. It matched nothing.
+FIX - Eating says what Use_Eat says (CCharUse.cpp:953-990): a full eater is "simply too
+      full to eat any more!" and keeps the food, and a meal answers how full it left the
+      eater, in sixths ("You eat the food, but are still extremely hungry." up to "You
+      are stuffed!"). A full player was told "You are stuffed!" and every meal "You eat
+      the food."
+ADD - Functional drill "food" suite, on both packs: a hungry character eats a loaf, raw
+      ribs are not eaten (on the 56T pack its own cooking script answers), and a full
+      character cannot eat.
+ADD - Tests: a player's FOODTYPE from its body, the numbered t_food, the full and hungry
+      eating messages.
+
 [2026-10-16] - Addressing an NPC the Source-X way; it hears the line past its address
 ------------------------------------------------------------------------
 FIX - Speech: an NPC is addressed as NPC_OnHearName decides (CCharNPCStatus.cpp:369) - its

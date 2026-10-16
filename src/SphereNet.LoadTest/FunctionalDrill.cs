@@ -123,6 +123,8 @@ internal static class FunctionalDrill
                 await PetSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "stealth")
                 await StealthSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "fishmed")
+                await FishMedSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -3290,6 +3292,170 @@ internal static class FunctionalDrill
 
         sneak.Disconnect();
         seeker.Disconnect();
+    }
+
+    /// <summary>A dry, flat, open tile with open water two tiles off in some direction:
+    /// where to stand and where to cast a line.</summary>
+    private static ((int X, int Y, int Z) Stand, (int X, int Y, int Z) Water) ShoreSite(string root, int cx, int cy, int radius)
+    {
+        string mul = ReadIniValue(Path.Combine(root, "sphere.ini"), "MulFiles") ?? "";
+        if (!Path.IsPathRooted(mul)) mul = Path.Combine(root, mul);
+        using var map = new SphereNet.MapData.MapDataManager(mul);
+        map.Load();
+        map.InitMap(0, 7168, 4096);
+        // Open water: wet land with nothing but more water on it.
+        bool Wet(int x, int y) => map.GetLandTileData(map.GetTerrainTile(0, x, y).TileId).IsWet &&
+                                  map.GetStatics(0, x, y).All(st => map.GetItemTileData(st.TileId).IsWet);
+        for (int r = 0; r <= radius; r++)
+        for (int dx = -r; dx <= r; dx++)
+        for (int dy = -r; dy <= r; dy++)
+        {
+            if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != r) continue;
+            int x = cx + dx, y = cy + dy;
+            if (Wet(x, y))
+                continue;
+            int z = map.GetEffectiveZ(0, x, y);   // a dock stands over the water
+            if (!map.IsPassable(0, x, y, z))
+                continue;
+            foreach (var (ux, uy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            for (int d = 2; d <= 3; d++)
+            {
+                int wx = x + d * ux, wy = y + d * uy;
+                if (Wet(wx, wy) && Wet(wx + ux, wy + uy) && Wet(wx + uy, wy + ux) && Wet(wx - uy, wy - ux))
+                    return ((x, y, z), (wx, wy, map.GetTerrainTile(0, wx, wy).Z));
+            }
+        }
+        throw new ScenarioFailed("no shore found");
+    }
+
+    /// <summary>Fishing (Skill_Fishing: water within reach gives a catch) and
+    /// Meditation (Skill_Meditation: peace at full mana, mana back faster than resting).</summary>
+    private static async Task FishMedSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        const int MeditationSkill = 46;
+        var (stand, water) = ShoreSite(root, 1792, 2600, 40);
+        var bot = await LoginAsync(1151, port, ct);
+        string Said(long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        uint pole = 0;
+
+        await RunScenario("fishmed", "setup: a fisher on the shore with a pole", outcomes, async () =>
+        {
+            await AsStaff(server, bot.AccountName, async () =>
+            {
+                await SayAsync(bot, $".go {stand.X},{stand.Y},{stand.Z}", ct);
+                await AddIntoPackAsync(bot, "i_fishing_pole", ct);
+                foreach (string line in new[] { ".fishing 1000", ".meditation 1000", ".str 100", ".int 100", ".mana 100" })
+                    await SayAsync(bot, line, ct);
+            });
+            var items = await PackContentsAsync(bot, ct);
+            pole = items.FirstOrDefault(i => i.ItemId is 0x0DBF or 0x0DC0)?.Serial
+                ?? throw new ScenarioFailed($"no fishing pole in the pack ({string.Join(",", items.Select(i => $"0x{i.ItemId:X}"))})");
+            return $"at {stand}, water at {water}";
+        });
+
+        await RunScenario("fishmed", "fishing the water lands a catch", outcomes, async () =>
+        {
+            if (pole == 0) throw new ScenarioFailed("no pole");
+            long since = Environment.TickCount64;
+            // Anything already known - in the pack or worn - is no catch: the pole goes
+            // into both hands when used, and what they held drops into the pack.
+            await PackContentsAsync(bot, ct);
+            HashSet<uint> had;
+            lock (bot.World.SyncRoot) had = bot.World.KnownItems.Keys.ToHashSet();
+            // A water tile may hold nothing for hours (Scripts-X: 60% mr_nothing, REGEN
+            // 10 h): move the line along the water, staying within the reach of 4.
+            int ux = Math.Sign(water.X - stand.X), uy = Math.Sign(water.Y - stand.Y);
+            var spots = new List<(int X, int Y)>();
+            foreach (int side in new[] { 0, 1, -1, 2, -2 })
+            foreach (int depth in new[] { 0, 1 })
+                spots.Add((water.X + ux * depth + uy * side, water.Y + uy * depth + ux * side));
+            for (int attempt = 0; attempt < spots.Count; attempt++)
+            {
+                var (tx, ty) = spots[attempt];
+                await bot.Actions.DoubleClick(pole, 1000, ct);
+                if (await bot.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no cursor from the pole; {Said(since)}");
+                long cast = Environment.TickCount64;
+                await bot.Actions.TargetLocation(tx, ty, water.Z, ct);
+                // Wait for the cast to end - a new one would pull the line back in.
+                for (int i = 0; i < 80; i++)
+                {
+                    await Task.Delay(250, ct);
+                    string heard = Said(cast);
+                    if (heard.Contains("no fish", StringComparison.OrdinalIgnoreCase) ||
+                        heard.Contains("pull out", StringComparison.OrdinalIgnoreCase) ||
+                        heard.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
+                        heard.Contains("yakala", StringComparison.OrdinalIgnoreCase))
+                        break;
+                }
+                await Task.Delay(800, ct);
+                var caught = (await PackContentsAsync(bot, ct)).Where(i => !had.Contains(i.Serial)).ToList();
+                if (caught.Count > 0)
+                    return $"caught {string.Join(",", caught.Select(i => $"0x{i.ItemId:X}"))} on cast {attempt + 1}; {Said(since)}";
+            }
+            throw new ScenarioFailed($"nothing caught; {Said(since)}");
+        });
+
+        await RunScenario("fishmed", "fishing out of reach is refused", outcomes, async () =>
+        {
+            if (pole == 0) throw new ScenarioFailed("no pole");
+            long since = Environment.TickCount64;
+            int before = (await PackContentsAsync(bot, ct)).Count;
+            await bot.Actions.DoubleClick(pole, 1000, ct);
+            if (await bot.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no cursor from the pole; {Said(since)}");
+            await bot.Actions.TargetLocation(water.X + 12, water.Y, water.Z, ct);
+            await Task.Delay(6000, ct);
+            int now = (await PackContentsAsync(bot, ct)).Count;
+            if (now > before) throw new ScenarioFailed($"caught something 14 tiles away; {Said(since)}");
+            if (Said(since).Length == 0) throw new ScenarioFailed("nothing was said");
+            return $"refused: {Said(since)}";
+        });
+
+        await RunScenario("fishmed", "meditation at full mana finds peace", outcomes, async () =>
+        {
+            await AsStaff(server, bot.AccountName, () => SayAsync(bot, ".mana 100", ct));
+            await WaitAsync(() => bot.World.Mana == 100 ? (object)true : null, 3000, "mana 100");
+            long since = Environment.TickCount64;
+            await bot.Actions.UseSkill(MeditationSkill, 3000, ct);
+            await Task.Delay(2500, ct);
+            if (Said(since).Length == 0) throw new ScenarioFailed("nothing was said");
+            if (bot.World.Mana != 100) throw new ScenarioFailed($"mana moved to {bot.World.Mana}");
+            return Said(since);
+        });
+
+        await RunScenario("fishmed", "meditation brings mana back faster than resting", outcomes, async () =>
+        {
+            await AsStaff(server, bot.AccountName, () => SayAsync(bot, ".mana 10", ct));
+            await WaitAsync(() => bot.World.Mana <= 12 ? (object)true : null, 3000, "mana 10");
+            int m0 = bot.World.Mana;
+            await Task.Delay(8000, ct);
+            int resting = bot.World.Mana - m0;
+            await AsStaff(server, bot.AccountName, () => SayAsync(bot, ".mana 10", ct));
+            await WaitAsync(() => bot.World.Mana <= 12 ? (object)true : null, 3000, "mana 10 again");
+            long since = Environment.TickCount64;
+            int m1 = bot.World.Mana;
+            // The trance may not take at once: the start rolls a random difficulty against
+            // the skill (Skill_Meditation, CCharSkill.cpp:2683).
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                long tried = Environment.TickCount64;
+                await bot.Actions.UseSkill(MeditationSkill, 3000, ct);
+                await Task.Delay(3000, ct);
+                if (!Said(tried).Contains("lose your concentration", StringComparison.OrdinalIgnoreCase))
+                    break;
+                await AsStaff(server, bot.AccountName, () => SayAsync(bot, ".mana 10", ct));
+                m1 = 10;
+            }
+            await Task.Delay(5000, ct);
+            int meditating = bot.World.Mana - m1;
+            if (meditating <= resting)
+                throw new ScenarioFailed($"meditating +{meditating} vs resting +{resting} in 8 s; {Said(since)}");
+            return $"meditating +{meditating} vs resting +{resting} in 8 s; {Said(since)}";
+        });
+
+        bot.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

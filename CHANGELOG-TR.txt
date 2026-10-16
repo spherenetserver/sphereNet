@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Mana doluyken Meditation baslangicta reddeder; balikcilik ve meditasyon tatbikati
+------------------------------------------------------------------------
+DUZELTME - Meditation: mana doluyken START asamasi "You are at peace." der ve hemen reddeder
+       (Skill_Meditation, CCharSkill.cpp:2673-2679). @SkillStart ya da [SKILL] @Start
+       kullaniliyorsa beceri sessizce biter (Skill_Cleanup, :4505-4520); ikisi de yoksa
+       basarisiz olur. Kontrol yalnizca becerinin DELAY'inden sonra ve basarisizlik olarak
+       calisiyordu; paketin @Fail'i huzur mesajina "You lose your concentration." ekliyordu.
+EKLEME - Fonksiyonel tatbikat "fishmed" paketi, iki pakette: iskeleden acik suya atilan olta
+       av getirir (bir kare saatlerce bos kalabildiginden olta su boyunca kaydirilir),
+       erisim disina atis reddedilir, mana doluyken Meditation huzur bulur, Meditation
+       manayi dinlenmekten hizli doldurur.
+EKLEME - Testler: mana doluyken Meditation hemen reddeder - @Start varsa sessizce, yoksa
+       @Fail ile.
+
 [2026-10-17] - Gizlilik tatbikati
 ------------------------------------------------------------------------
 EKLEME - Fonksiyonel tatbikat "stealth" paketi, iki pakette: stealth olmadan gizliyken atilan

@@ -128,16 +128,38 @@ public sealed class MeditationContinuationTests
         });
     }
 
-    private static void WithClient(Action<SphereNet.Game.Clients.GameClient, Character> action)
+    /// <summary>At full mana the START stage says the meditator is at peace and refuses
+    /// (Skill_Meditation, CCharSkill.cpp:2673-2679), at once - not after the DELAY. With
+    /// @SkillStart / @Start in use the refusal ends the skill quietly (Skill_Cleanup,
+    /// :4505-4520); with neither it fails, and @Fail runs.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AtFullManaTheStartRefusesAtOnce(bool startHooked)
+    {
+        string script = "ON=@Fail\nSRC.TAG.FAILED=1\n" + (startHooked ? "ON=@Start\nSRC.TAG.STARTED=1\n" : "");
+        WithClient((client, player) =>
+        {
+            player.Mana = player.MaxMana;
+            client.HandleUseSkill(46);
+            Assert.False(player.HasActiveSkillPending());
+            Assert.False(player.IsStatFlag(StatFlag.Meditation));
+            Assert.Equal(startHooked, !player.TryGetTag("FAILED", out _));
+            Assert.Equal(startHooked, player.TryGetTag("STARTED", out _));
+        }, script);
+    }
+
+    private static void WithClient(Action<SphereNet.Game.Clients.GameClient, Character> action, string triggers = "")
     {
         var runtime = ScriptTestBootstrap.CreateRuntimeStack();
         string path = Path.Combine(Path.GetTempPath(), $"meditation_{Guid.NewGuid():N}.scp");
         var previous = Character.OnSkillUseQuick;
         try
         {
-            File.WriteAllText(path, "[SKILL 46]\nKEY=Meditation\nDELAY=2.0,1.0\nADV_RATE=0\n");
+            File.WriteAllText(path, "[SKILL 46]\nKEY=Meditation\nDELAY=2.0,1.0\nADV_RATE=0\n" + triggers);
             runtime.Resources.LoadResourceFile(path);
             ScriptTestBootstrap.LoadDefinitions(runtime.Resources);
+            runtime.Dispatcher.BuildUsedTriggerCache();
             var world = TestHarness.CreateWorld();
             using var logs = TestHarness.CreateLoggerFactory();
             var client = TestHarness.CreateClient(logs, world, new AccountManager(logs), 8997);

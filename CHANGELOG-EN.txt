@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Meditation at full mana refuses at the start; fishing and meditation drill
+------------------------------------------------------------------------
+FIX - Meditation: at full mana the START stage says "You are at peace." and refuses at once
+      (Skill_Meditation, CCharSkill.cpp:2673-2679). With @SkillStart or a [SKILL] @Start
+      in use the skill then ends quietly (Skill_Cleanup, :4505-4520); with neither it
+      fails. The check only ran after the skill's DELAY, and as a failure, so the pack's
+      @Fail added "You lose your concentration." to the peace message.
+ADD - Functional drill "fishmed" suite, on both packs: fishing open water from a dock lands
+      a catch (moving the line along the water, since a tile may hold nothing for hours),
+      fishing out of reach is refused, Meditation at full mana finds peace, and Meditation
+      brings mana back faster than resting.
+ADD - Tests: Meditation at full mana refuses at once - quietly with @Start in use, through
+      @Fail without.
+
 [2026-10-17] - Stealth drill
 ------------------------------------------------------------------------
 ADD - Functional drill "stealth" suite, on both packs: a step taken hidden without stealth

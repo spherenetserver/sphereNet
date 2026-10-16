@@ -142,6 +142,15 @@ public sealed class ClientSkillsHandler
                 if (pre == TriggerResult.True) return;
             }
 
+            // Skill_Stage(SKTRIG_START) runs before @SkillStart / @Start: Meditation at full
+            // mana says it is at peace and answers -SKTRIG_QTY (Skill_Meditation,
+            // CCharSkill.cpp:2673-2679). It was only noticed after the skill's DELAY,
+            // and then as a failure that ran the pack's @Fail ("You lose your
+            // concentration").
+            bool startRefused = skill == SkillType.Meditation && _character.Mana >= _character.MaxMana;
+            if (startRefused)
+                SysMessage(ServerMessages.Get(Msg.MeditationPeace1));
+
             // m_Act_Effect before @SkillStart, LOCAL.Effect read back (:4456-4477, :4526).
             _character.ActionEffect = SkillEngine.GetStartActionEffect(_character, skill);
             if (_triggerDispatcher != null)
@@ -156,6 +165,17 @@ public sealed class ClientSkillsHandler
                     return;
                 }
                 _character.ActionEffect = (int)Math.Clamp(startLocals.GetInt("Effect", -1), int.MinValue, int.MaxValue);
+            }
+            if (startRefused)
+            {
+                // With @SkillStart / @Start in use a negative difficulty ends the skill
+                // there, quietly (Skill_Cleanup, :4505-4520); with neither it goes on to
+                // fail (Skill_Done on the negative difficulty).
+                if (_triggerDispatcher == null || !_triggerDispatcher.IsTriggerNameUsed("SkillStart") &&
+                    !_triggerDispatcher.IsTriggerNameUsed("Start"))
+                    FireActiveSkillResult(skillId, false);
+                _character.ActionEffect = -1;
+                return;
             }
             int startEffect = _character.ActionEffect;
 

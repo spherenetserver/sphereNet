@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Herding as Source-X runs it; TARG stays the herded creature; herd drill
+------------------------------------------------------------------------
+FIX - A herded animal walks to the spot (NPCACT_GOTO, Skill_Herding SUCCESS,
+      CCharSkill.cpp:2600-2611); staff in GM mode teleport the creature, anyone of no
+      higher rank. It was teleported for everyone, and two tags nothing read were left
+      on it.
+FIX - Herding's START runs when the skill starts (CCharSkill.cpp:2551-2577): line of sight
+      to the creature and the spot (DEFMSG_MSG_MOUNT_DIST), a pet refused as already
+      tame (DEFMSG_TAMING_TAME), an invalid spot (DEFMSG_LOCATION_INVALID), difficulty
+      INT/2 + rand(INT/2) as ACTDIFF. What is not an animal is refused at SUCCESS, after
+      the roll (DEFMSG_HERDING_PLAYER). An invented 8-tile reach and a kind check before
+      the roll were dropped.
+FIX - The herding spot pick leaves TARG on the creature (m_Targ_UID, OnTarg_Skill_Herd_Dest,
+      CClientTarg.cpp:1455-1466), so @Start reading <TARG> sees the animal; it saw the
+      ground, and a pack's "animals only" check refused every herd. The skill-list path
+      no longer puts the creature in ACTPRV, which is the crook's.
+FIX - A crook pick that is no creature says DEFMSG_ITEMUSE_CROOK_TRY, and the spot prompt is
+      DEFMSG_ITEMUSE_CROOK_TARGET; both were missing or English text of SphereNet's own.
+ADD - Functional drill "herd" suite, on both packs: a crook on a thing, a goat herded and
+      walking there step by step, kindling becoming a campfire.
+ADD - Tests: the animal walks, GM mode teleports, a non-animal refused after the roll, a pet
+      already tame at START.
+
 [2026-10-17] - Bard skills play at START; instrument double-click starts Musicianship; provoked fights remembered; bard drill
 ------------------------------------------------------------------------
 FIX - Musicianship, Peacemaking, Enticement and Provocation play their instrument at START,

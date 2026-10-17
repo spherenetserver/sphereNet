@@ -131,6 +131,8 @@ internal static class FunctionalDrill
                 await TrackerSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "bard")
                 await BardSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "herd")
+                await HerdSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -4010,6 +4012,133 @@ internal static class FunctionalDrill
         bard.ServerPacketObserver = null;
         bard.Disconnect();
         empty.Disconnect();
+    }
+
+    /// <summary>Herding with a crook (the animal walks where it is sent) and Camping
+    /// (kindling on the ground becomes a campfire).</summary>
+    private static async Task HerdSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        string spot = OpenCountrySpot(root);
+        var at = spot.Split(',');
+        int sx = int.Parse(at[0]), sy = int.Parse(at[1]);
+        var herder = await LoginAsync(1191, port, ct);
+        uint crook = 0, goat = 0;
+
+        string Said(long since) =>
+            string.Join(" | ", herder.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        KnownMobile? Mob(uint serial) { lock (herder.World.SyncRoot) return herder.World.Mobiles.GetValueOrDefault(serial); }
+
+        await RunScenario("herd", "setup: a herder with a crook and a goat", outcomes, async () =>
+        {
+            await AsStaff(server, herder.AccountName, async () =>
+            {
+                await SayAsync(herder, $".go {spot}", ct);
+                await SayAsync(herder, ".herding 1000", ct);
+                await SayAsync(herder, ".camping 1000", ct);
+                await AddIntoPackAsync(herder, "i_crook_thin", ct);
+                HashSet<uint> before; lock (herder.World.SyncRoot) before = herder.World.Mobiles.Keys.ToHashSet();
+                await herder.Actions.Say(".add c_goat", ct);
+                if (await herder.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_goat");
+                await herder.Actions.TargetLocation(sx + 2, sy, herder.World.Z, ct);
+                var found = await WaitAsync(() => { lock (herder.World.SyncRoot) return herder.World.Mobiles.Values.FirstOrDefault(m =>
+                    !before.Contains(m.Serial)); }, 4000, "the goat");
+                goat = found.Serial;
+            });
+            var pack = await PackContentsAsync(herder, ct);
+            crook = pack.FirstOrDefault(i => i.ItemId is 0x0E81 or 0x0E82)?.Serial ?? 0;
+            if (crook == 0) throw new ScenarioFailed($"no crook; pack: {string.Join(",", pack.Select(i => $"0x{i.ItemId:X}"))}");
+            return $"crook 0x{crook:X}, goat 0x{goat:X}";
+        });
+
+        await RunScenario("herd", "a crook on a thing: pick up things instead", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            await herder.Actions.DoubleClick(crook, 1000, ct);
+            if (await herder.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no crook cursor; {Said(since)}");
+            long picked = Environment.TickCount64;
+            await herder.Actions.TargetObject(crook, ct);
+            await Task.Delay(1000, ct);
+            string heard = Said(picked);
+            if (heard.Length == 0) throw new ScenarioFailed($"nothing said; {Said(since)}");
+            if (engineWording && !heard.Contains("inanimate", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed(heard);
+            return heard;
+        });
+
+        await RunScenario("herd", "a herded goat walks where it is sent", outcomes, async () =>
+        {
+            int tx = sx + 2, ty = sy + 6;
+            string last = "";
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                long since = Environment.TickCount64;
+                await herder.Actions.DoubleClick(crook, 1000, ct);
+                if (await herder.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no crook cursor; {Said(since)}");
+                await herder.Actions.TargetObject(goat, ct);
+                if (await herder.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no destination cursor; {Said(since)}");
+                await herder.Actions.TargetLocation(tx, ty, herder.World.Z, ct);
+                // Track the goat: a walk shows positions in between, a teleport does not.
+                var path = new List<(short X, short Y)>();
+                for (int i = 0; i < 40; i++)
+                {
+                    await Task.Delay(200, ct);
+                    if (Mob(goat) is { } g && (path.Count == 0 || path[^1] != (g.X, g.Y))) path.Add((g.X, g.Y));
+                }
+                last = Said(since);
+                var end = path.Count > 0 ? path[^1] : ((short)0, (short)0);
+                int left = Math.Max(Math.Abs(end.Item1 - tx), Math.Abs(end.Item2 - ty));
+                if (left <= 1)
+                {
+                    if (path.Count < 3) throw new ScenarioFailed($"the goat jumped there: {string.Join(" ", path)}; {last}");
+                    return $"walked {path.Count - 1} steps to {end}; {last}";
+                }
+            }
+            throw new ScenarioFailed($"the goat did not arrive; {last}");
+        });
+
+        await RunScenario("herd", "kindling on the ground becomes a campfire", outcomes, async () =>
+        {
+            uint kindling = 0;
+            await AsStaff(server, herder.AccountName, async () =>
+            {
+                await herder.Actions.Say(".add i_kindling", ct);
+                if (await herder.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add i_kindling");
+                await herder.Actions.TargetLocation(herder.World.X + 1, herder.World.Y, herder.World.Z, ct);
+                var found = await WaitAsync(() => { lock (herder.World.SyncRoot) return herder.World.KnownItems.Values.FirstOrDefault(i =>
+                    i.ItemId == 0x0DE1 && i.ContainerSerial == 0); }, 4000, "the kindling");
+                kindling = found.Serial;
+            });
+            string last = "";
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                long since = Environment.TickCount64;
+                await herder.Actions.DoubleClick(kindling, 1000, ct);
+                await Task.Delay(1500, ct);
+                last = Said(since);
+                ushort id; lock (herder.World.SyncRoot) id = herder.World.KnownItems.GetValueOrDefault(kindling)?.ItemId ?? 0;
+                if (id == 0x0DE3) return $"campfire; {last}";
+            }
+            throw new ScenarioFailed($"no campfire; {last}");
+        });
+
+        await AsStaff(server, herder.AccountName, async () =>
+        {
+            if (goat != 0)
+            {
+                await herder.Actions.Say(".remove", ct);
+                if (await herder.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                    await herder.Actions.TargetObject(goat, ct);
+                await Task.Delay(300, ct);
+            }
+        });
+        herder.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

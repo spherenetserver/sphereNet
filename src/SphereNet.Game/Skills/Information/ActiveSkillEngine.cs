@@ -903,66 +903,108 @@ public static class ActiveSkillEngine
 
     // -------------------------------------------------------------- Herding
 
-    /// <summary>Source-X CChar::Skill_Herding. Targets animal then a point; pets are immune.</summary>
-    public static bool Herding(IActiveSkillSink sink, Character? animal, Point3D? destination)
+    /// <summary>What every Skill_Herding stage asks first (CCharSkill.cpp:2535-2546): the
+    /// creature (DEFMSG_HERDING_LTARG) and the crook, ACTPRV (DEFMSG_HERDING_NOCROOK).
+    /// A start with no crook in ACTPRV takes one from the pack.</summary>
+    private static Item? HerdingCrook(IActiveSkillSink sink, Character? animal)
     {
         var ch = sink.Self;
-        if (animal == null)
+        if (animal == null || animal.IsDeleted)
         {
             sink.SysMessage(ServerMessages.Get(Msg.HerdingLtarg));
-            return false;
+            return null;
         }
-        if (animal.IsStatFlag(StatFlag.Pet) || animal.NpcBrain != NpcBrainType.Animal)
-        {
-            // Source-X SysMessagef("%s %s", name, DEFMSG_HERDING_PLAYER).
-            sink.SysMessage($"{animal.Name} {ServerMessages.Get(Msg.HerdingPlayer)}");
-            return false;
-        }
-        // START refuses on line of sight to the animal and to the destination, with
-        // DEFMSG_MSG_MOUNT_DIST (CCharSkill.cpp:2551-2556).
-        if (!CanReachPoint(ch, animal.Position, sink.World,
-                SkillEngine.GetUseRange(SkillType.Herding, 8)))
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.MsgMountDist));
-            return false;
-        }
-        // Upstream herds with the crook that started the skill, m_Act_Prv_UID
-        // (Skill_Herding, CCharSkill.cpp:2536). Searched for in the backpack only,
-        // the crook a double-click had just put in the hand was never found.
         var crook = (ch.ActPrv.IsValid ? sink.World.FindItem(ch.ActPrv) : null) is
             { ItemType: ItemType.WeaponMaceCrook, IsDeleted: false } actCrook
             ? actCrook
             : FindGatherTool(sink, ItemType.WeaponMaceCrook);
         if (crook == null)
-        {
             sink.SysMessage(ServerMessages.Get(Msg.HerdingNocrook));
-            return false;
-        }
+        return crook;
+    }
 
-        // The destination needs to be a valid point in sight - no distance limit
-        // (:2551-2570). The crook takes no wear: only a SKF_GATHER success damages
-        // a tool (:3947-3961).
-        if (!destination.HasValue || destination.Value.Map != ch.MapIndex)
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.LocationInvalid));
-            return false;
-        }
-        if (!sink.World.CanSeeLOSFor(ch, ch.Position, destination.Value))
+    /// <summary>Skill_Herding START (CCharSkill.cpp:2551-2577): the creature and the
+    /// spot must be in line of sight (DEFMSG_MSG_MOUNT_DIST), a pet cannot be herded
+    /// (DEFMSG_TAMING_TAME), the spot must be valid (DEFMSG_LOCATION_INVALID); the
+    /// difficulty is INT/2 + rand(INT/2). Run when the skill starts.</summary>
+    public static int HerdingStart(IActiveSkillSink sink, Character? animal, Point3D? destination)
+    {
+        var ch = sink.Self;
+        if (HerdingCrook(sink, animal) == null)
+            return -3;
+        if (!sink.World.CanSeeLOSFor(ch, animal!) ||
+            destination.HasValue && destination.Value.Map == ch.MapIndex &&
+            !sink.World.CanSeeLOSFor(ch, ch.Position, destination.Value))
         {
             sink.SysMessage(ServerMessages.Get(Msg.MsgMountDist));
-            return false;
+            return -2;
         }
-
-        int diff = animal.Int / 2 + sink.Random.Next(Math.Max(1, animal.Int / 2));
-        bool success = SkillEngine.UseQuick(ch, SkillType.Herding, diff);
-        if (success)
+        if (animal!.IsStatFlag(StatFlag.Pet))
         {
-            sink.MoveCharacter(animal, destination.Value);
-            animal.SetTag("HERD_MASTER", ch.Uid.Value.ToString());
-            animal.SetTag("HERD_MASTER_UUID", ch.Uuid.ToString("D"));
-            sink.ObjectMessage(animal, ServerMessages.Get(Msg.HerdingSuccess));
+            sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingTame, animal.GetName()));
+            return -2;
         }
-        return success;
+        if (!destination.HasValue || destination.Value.Map != ch.MapIndex ||
+            !IsValidMapPoint(sink.World, destination.Value))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.LocationInvalid));
+            return -2;
+        }
+        int intVal = Combat.CombatEngine.EffectiveInt(animal) / 2;
+        return intVal + RandVal(sink.Random, intVal);
+    }
+
+    /// <summary>CPointBase::IsValidPoint: inside the map and the Z range.</summary>
+    private static bool IsValidMapPoint(GameWorld world, Point3D p)
+    {
+        var (w, h) = world.MapData?.GetMapSize(p.Map) ?? (7168, 4096);
+        return p.X >= 0 && p.X < w && p.Y >= 0 && p.Y < h && p.Z > -127 && p.Z < 127;
+    }
+
+    /// <summary>Source-X CChar::Skill_Herding (CCharSkill.cpp:2522-2619). START is
+    /// <see cref="HerdingStart"/>. SUCCESS: a disconnected or ridden creature is
+    /// left alone; staff in GM mode teleport it there (anyone of no higher rank); a
+    /// player otherwise moves only an animal-brained NPC (DEFMSG_HERDING_PLAYER for
+    /// anything else, after the roll), which WALKS to the spot (NPCACT_GOTO), and
+    /// DEFMSG_HERDING_SUCCESS is said over it. The animal used to be teleported,
+    /// and its kind and the reach (an invented 8 tiles) were judged before the roll.</summary>
+    public static bool Herding(IActiveSkillSink sink, Character? animal, Point3D? destination,
+        int? startDifficulty = null)
+    {
+        var ch = sink.Self;
+        if (HerdingCrook(sink, animal) == null)
+            return false;
+        int diff = startDifficulty ?? HerdingStart(sink, animal, destination);
+        if (diff < 0)
+            return false;
+        if (!SkillEngine.UseQuick(ch, SkillType.Herding, diff))
+            return false;
+
+        if (animal!.IsLoggedOut || animal.IsStatFlag(StatFlag.Ridden) || !destination.HasValue)
+            return false;
+        if (ch.IsGmMode)
+        {
+            if (animal.PrivLevel > ch.PrivLevel)
+            {
+                sink.SysMessage($"{animal.GetName()} {ServerMessages.Get(Msg.HerdingPlayer)}");
+                return false;
+            }
+            sink.MoveCharacter(animal, destination.Value);   // Spell_Teleport
+        }
+        else
+        {
+            if (animal.IsPlayer || animal.NpcBrain != NpcBrainType.Animal)
+            {
+                sink.SysMessage($"{animal.GetName()} {ServerMessages.Get(Msg.HerdingPlayer)}");
+                return false;
+            }
+            animal.ActP = destination.Value;
+            animal.Action = (SkillType)NpcAction.GoTo;
+            animal.NextNpcActionTime = 0;
+            Character.WakeNpc?.Invoke(animal);
+        }
+        sink.ObjectMessage(animal, ServerMessages.Get(Msg.HerdingSuccess));
+        return true;
     }
 
     // ------------------------------------------------------------ Poisoning
@@ -1567,9 +1609,11 @@ public static class ActiveSkillEngine
     /// for enticement, the target for provocation), <paramref name="provoked"/> ACTPRV.
     /// The whole skill used to run after the DELAY, so the tune came seconds late and
     /// a missing instrument was only said at the end.</summary>
-    public static int BardStart(IActiveSkillSink sink, SkillType skill, ObjBase? act, Character? provoked) =>
+    public static int BardStart(IActiveSkillSink sink, SkillType skill, ObjBase? act, Character? provoked,
+        Point3D? point = null) =>
         skill switch
         {
+            SkillType.Herding => HerdingStart(sink, act as Character, point),
             SkillType.Musicianship => MusicianshipStart(sink, act as Item),
             SkillType.Peacemaking => PeacemakingStart(sink),
             SkillType.Enticement => EnticementStart(sink, act as Character),
@@ -1577,9 +1621,11 @@ public static class ActiveSkillEngine
             _ => 0,
         };
 
-    /// <summary>The bard skills, whose START plays the instrument.</summary>
+    /// <summary>The skills whose START stage runs at Skill_Start here: the bard skills,
+    /// which play the instrument, and herding, which judges the creature and the spot.</summary>
     public static bool IsBardSkill(SkillType skill) =>
-        skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation;
+        skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation
+            or SkillType.Herding;
 
     /// <summary>Skill_Musicianship START (CCharSkill.cpp:1786-1787): play ACT, the
     /// instrument double-clicked, or any carried, against rand(90).</summary>

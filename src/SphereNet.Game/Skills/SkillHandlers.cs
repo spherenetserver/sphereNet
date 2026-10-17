@@ -297,7 +297,8 @@ public sealed class SkillHandlers
                 return ActiveSkillEngine.Poisoning(sink,
                     ch.ActPrv.IsValid ? _world.FindItem(ch.ActPrv) : null,
                     target as Item);
-            case SkillType.Herding:          return ActiveSkillEngine.Herding(sink, target as Character, point);
+            case SkillType.Herding:
+                return ActiveSkillEngine.Herding(sink, target as Character, point, ch.TakeStartStageDifficulty());
             case SkillType.Veterinary:
                 // Source-X SKILL_VETERINARY routes to Skill_Healing (bandages,
                 // poison cure, pet resurrect) rather than a separate weak path.

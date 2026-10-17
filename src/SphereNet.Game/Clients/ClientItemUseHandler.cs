@@ -1291,12 +1291,24 @@ public sealed class ClientItemUseHandler
                 SysMessage(ServerMessages.Get(Msg.ItemuseCrookPromt));
                 SetPendingTarget((serial, x, y, z, gfx) =>
                 {
+                    // OnTarg_Use_Item IT_WEAPON_MACE_CROOK (CClientTarg.cpp:1837-1848):
+                    // a pick that is no creature is told to pick up things instead.
                     var animalUid = new Serial(serial);
-                    if (_world.FindChar(animalUid) == null) return;
-                    SysMessage("Where do you wish the animal to go?");
+                    if (_world.FindChar(animalUid) == null)
+                    {
+                        SysMessage(ServerMessages.Get(Msg.ItemuseCrookTry));
+                        return;
+                    }
+                    SysMessage(ServerMessages.Get(Msg.ItemuseCrookTarget));
                     SetPendingTarget((destSerial, dx, dy, dz, destGfx) =>
+                    {
+                        // The spot pick leaves TARG on the creature (m_Targ_UID,
+                        // OnTarg_Skill_Herd_Dest, CClientTarg.cpp:1462): @Start
+                        // reading <TARG> sees the animal, not the ground.
+                        _character?.SetTag("TARG.UID", $"0{animalUid.Value:x}");
                         RouteSkillTarget(SkillType.Herding, animalUid,
-                            new Point3D(dx, dy, dz, _character.MapIndex), item));
+                            new Point3D(dx, dy, dz, _character!.MapIndex), item);
+                    });
                 });
                 break;
 

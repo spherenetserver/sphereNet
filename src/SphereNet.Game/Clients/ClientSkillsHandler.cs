@@ -345,12 +345,15 @@ public sealed class ClientSkillsHandler
     private void BeginHerdingDestination(SkillType skill, int skillId, Character animal)
     {
         if (_character == null) return;
-        SysMessage("Where do you wish the animal to go?");
+        SysMessage(ServerMessages.Get(Msg.ItemuseCrookTarget));
         SetPendingTarget((serial, x, y, z, graphic) =>
         {
             if (_character == null) return;
             Targets.SkillCancelId = -1;
-            _character.ActPrv = animal.Uid;
+            // CLIMODE_TARG_SKILL_HERD_DEST (CClientTarg.cpp:1455-1466): the spot is
+            // ACTP and TARG stays the creature; ACTPRV is the crook, which a start
+            // from the skill list does not have (the pack's crook is taken).
+            _character.SetTag("TARG.UID", $"0{animal.Uid.Value:x}");
             var point = new Point3D(x, y, z, _character.MapIndex);
             StartSkill(skill, animal.Uid, animal, point, isInfo: false);
         });
@@ -533,7 +536,7 @@ public sealed class ClientSkillsHandler
             else
                 startRefused = true;
         }
-        if (BardStartBoundToFail(skill, target))
+        if (BardStartBoundToFail(skill, target, point))
             startRefused = true;
 
         bool gather = SkillEngine.HasFlag(skill, SkillFlag.Gather);
@@ -592,7 +595,7 @@ public sealed class ClientSkillsHandler
     /// <summary>A bard skill's START stage, run when the skill starts: the instrument
     /// plays now and the answer is kept for the roll after the DELAY. True when it
     /// came back negative.</summary>
-    private bool BardStartBoundToFail(SkillType skill, Objects.ObjBase? target)
+    private bool BardStartBoundToFail(SkillType skill, Objects.ObjBase? target, Point3D? point = null)
     {
         if (_character == null) return false;
         _character.StartStageRan = false;
@@ -602,7 +605,7 @@ public sealed class ClientSkillsHandler
         // m_Act_Difficulty = Skill_Stage(SKTRIG_START) (CCharSkill.cpp:4447): ACTDIFF in
         // the start triggers.
         _character.ActDiff = Skills.Information.ActiveSkillEngine.BardStart(
-            new GameClient.InfoSkillSink(_client, _character), skill, target, provoked);
+            new GameClient.InfoSkillSink(_client, _character), skill, target, provoked, point);
         _character.StartStageRan = true;
         return _character.ActDiff < 0;
     }

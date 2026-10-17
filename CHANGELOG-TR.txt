@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Herding Source-X'teki gibi; TARG guden yaratikta kalir; herd tatbikati
+------------------------------------------------------------------------
+DUZELTME - Gudulen hayvan noktaya yurur (NPCACT_GOTO, Skill_Herding SUCCESS,
+       CCharSkill.cpp:2600-2611); GM modundaki yetkili yaratigi isinlar, rutbesi daha yuksek
+       olmayan herkesi. Herkes icin isinlaniyor ve uzerinde hicbir seyin okumadigi iki tag
+       birakiliyordu.
+DUZELTME - Herding'in START'i beceri basladiginda calisir (CCharSkill.cpp:2551-2577): yaratiga ve
+       noktaya gorus hatti (DEFMSG_MSG_MOUNT_DIST), evcil hayvan zaten evcil diye reddedilir
+       (DEFMSG_TAMING_TAME), gecersiz nokta (DEFMSG_LOCATION_INVALID), zorluk ACTDIFF olarak
+       INT/2 + rand(INT/2). Hayvan olmayan SUCCESS'te, zardan sonra reddedilir
+       (DEFMSG_HERDING_PLAYER). Uydurma 8 karelik erisim ve zardan onceki tur kontrolu
+       kaldirildi.
+DUZELTME - Herding nokta secimi TARG'i yaratikta birakir (m_Targ_UID, OnTarg_Skill_Herd_Dest,
+       CClientTarg.cpp:1455-1466); boylece <TARG> okuyan @Start hayvani gorur. Zemini
+       goruyordu ve paketin "yalnizca hayvanlar" kontrolu her gudulmeyi reddediyordu. Beceri
+       listesi yolu yaratigi artik ACTPRV'ye koymaz; ACTPRV crook'undur.
+DUZELTME - Crook ile yaratik olmayan bir secim DEFMSG_ITEMUSE_CROOK_TRY der, nokta istemi
+       DEFMSG_ITEMUSE_CROOK_TARGET'tir; ikisi de eksikti ya da SphereNet'in kendi Ingilizce
+       metniydi.
+EKLEME - Fonksiyonel tatbikat "herd" paketi, iki pakette: esyaya crook, gudulen ve adim adim
+       yuruyen keci, kamp atesine donusen kindling.
+EKLEME - Testler: hayvan yurur, GM modu isinlar, hayvan olmayan zardan sonra reddedilir,
+       evcil hayvan START'ta zaten evcil.
+
 [2026-10-17] - Bard becerileri START'ta calar; enstrumana cift tik Musicianship baslatir; kiskirtilan kavga hatirlanir; bard tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Musicianship, Peacemaking, Enticement ve Provocation enstrumanini START'ta, beceri

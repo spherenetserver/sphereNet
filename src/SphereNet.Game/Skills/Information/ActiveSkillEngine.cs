@@ -147,28 +147,67 @@ public static class ActiveSkillEngine
 
     // ----------------------------------------------------------- Meditation
 
-    /// <summary>Source-X CChar::Skill_Meditation. STAT_INT cap rejects, success regens mana.</summary>
-    public static bool Meditation(IActiveSkillSink sink)
+    /// <summary>Skill_Meditation START (CCharSkill.cpp:2673-2682): at full mana it is at
+    /// peace (DEFMSG_MEDITATION_PEACE_1); otherwise DEFMSG_MEDITATION_TRY and a difficulty
+    /// of rand(100). Run when the skill starts - the try line used to wait for the
+    /// DELAY.</summary>
+    public static int MeditationStart(IActiveSkillSink sink)
     {
         var ch = sink.Self;
         if (ch.Mana >= ch.MaxMana)
         {
-            bool completed = ch.IsStatFlag(StatFlag.Meditation);
+            sink.SysMessage(ServerMessages.Get(Msg.MeditationPeace1));
+            return -3;
+        }
+        sink.SysMessage(ServerMessages.Get(Msg.MeditationTry));
+        return sink.Random.Next(100);
+    }
+
+    /// <summary>Source-X CChar::Skill_Meditation. STAT_INT cap rejects, success regens mana.</summary>
+    public static bool Meditation(IActiveSkillSink sink, int? startDifficulty = null)
+    {
+        var ch = sink.Self;
+        // A START that came back negative is bound to fail (Skill_Done, :3928): the FAIL
+        // stage, which says nothing - the peace line was said again here.
+        if (startDifficulty is < 0)
+            return false;
+        bool first = !ch.IsStatFlag(StatFlag.Meditation);
+        if (first && !startDifficulty.HasValue && ch.Mana >= ch.MaxMana)
+        {
+            // Called with no START behind it: START's own refusal.
+            sink.SysMessage(ServerMessages.Get(Msg.MeditationPeace1));
+            return false;
+        }
+        if (!first && ch.Mana >= ch.MaxMana)
+        {
+            // SUCCESS at full mana: at peace, and only now the skill credit (:2690-2697).
             ch.ClearStatFlag(StatFlag.Meditation);
-            sink.SysMessage(ServerMessages.Get(completed ? Msg.MeditationPeace2 : Msg.MeditationPeace1));
-            if (completed)
-                SkillEngine.GainExperience(ch, SkillType.Meditation, ch.ActDiff);
-            return completed;
+            sink.SysMessage(ServerMessages.Get(Msg.MeditationPeace2));
+            SkillEngine.GainExperience(ch, SkillType.Meditation, ch.ActDiff);
+            return true;
         }
 
-        if (!ch.IsStatFlag(StatFlag.Meditation))
+        if (first)
         {
-            sink.SysMessage(ServerMessages.Get(Msg.MeditationTry));
-            ch.ActDiff = sink.Random.Next(100);
+            if (startDifficulty.HasValue)
+                ch.ActDiff = startDifficulty.Value;
+            else
+            {
+                sink.SysMessage(ServerMessages.Get(Msg.MeditationTry));
+                ch.ActDiff = sink.Random.Next(100);
+            }
             if (!SkillEngine.UseQuick(ch, SkillType.Meditation, ch.ActDiff, allowGain: false))
             {
                 SkillEngine.GainExperience(ch, SkillType.Meditation, -ch.ActDiff);
                 return false;
+            }
+            // The first SUCCESS may find the mana full already - a pack's @Start that set
+            // ACTDIFF back to 0 over the peace refusal lets it get here.
+            if (ch.Mana >= ch.MaxMana)
+            {
+                sink.SysMessage(ServerMessages.Get(Msg.MeditationPeace2));
+                SkillEngine.GainExperience(ch, SkillType.Meditation, ch.ActDiff);
+                return true;
             }
             ch.SetStatFlag(StatFlag.Meditation);
             if (!SkillEngine.HasFlag(SkillType.Meditation, SkillFlag.NoSfx))
@@ -185,13 +224,16 @@ public static class ActiveSkillEngine
 
     // ---------------------------------------------------------- SpiritSpeak
 
-    /// <summary>Source-X CChar::Skill_SpiritSpeak. Success sets STATF_SPIRITSPEAK + sound 0x24A.</summary>
-    public static bool SpiritSpeak(IActiveSkillSink sink)
+    /// <summary>Source-X CChar::Skill_SpiritSpeak (CCharSkill.cpp:2623-2650): START is a
+    /// difficulty of rand(90), set when the skill starts; SUCCESS sets STATF_SPIRITSPEAK
+    /// for 24 seconds with sound 0x24A.</summary>
+    public static bool SpiritSpeak(IActiveSkillSink sink, int? startDifficulty = null)
     {
         var ch = sink.Self;
         if (ch.IsStatFlag(StatFlag.SpiritSpeak)) return false;
 
-        bool success = SkillEngine.UseQuick(ch, SkillType.SpiritSpeak, sink.Random.Next(90));
+        int diff = startDifficulty ?? sink.Random.Next(90);
+        bool success = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.SpiritSpeak, diff);
         if (success)
         {
             if (!SkillEngine.HasFlag(SkillType.SpiritSpeak, SkillFlag.NoSfx))
@@ -1945,6 +1987,8 @@ public static class ActiveSkillEngine
             SkillType.Stealing => StealingStart(sink, act),
             SkillType.Taming => TamingStart(sink, act as Character),
             SkillType.Hiding => HidingStart(sink),
+            SkillType.Meditation => MeditationStart(sink),
+            SkillType.SpiritSpeak => sink.Random.Next(90),
             SkillType.DetectingHidden => 10,
             SkillType.Healing or SkillType.Veterinary =>
                 HealingStart(sink, HealPatientOf(sink.World, act), skill, act as Item),
@@ -1974,7 +2018,7 @@ public static class ActiveSkillEngine
         skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation
             or SkillType.Herding or SkillType.RemoveTrap or SkillType.Healing or SkillType.Veterinary
             or SkillType.Lockpicking or SkillType.Snooping or SkillType.Stealing or SkillType.Taming
-            or SkillType.Hiding or SkillType.DetectingHidden;
+            or SkillType.Hiding or SkillType.DetectingHidden or SkillType.Meditation or SkillType.SpiritSpeak;
 
     /// <summary>Skill_Musicianship START (CCharSkill.cpp:1786-1787): play ACT, the
     /// instrument double-clicked, or any carried, against rand(90).</summary>

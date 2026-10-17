@@ -18,7 +18,8 @@ public sealed class HidingStageTests
         public Character Self { get; } = self;
         public GameWorld World { get; } = world;
         public Random Random { get; } = new(2);
-        public void SysMessage(string text) { }
+        public List<string> Messages { get; } = [];
+        public void SysMessage(string text) => Messages.Add(text);
         public void ObjectMessage(ObjBase target, string text) { }
         public void Emote(string text) { }
         public void Sound(ushort soundId) { }
@@ -87,5 +88,39 @@ public sealed class HidingStageTests
             Character.ActiveRevealFlags = saved;
             Character.OnSkillUseQuick = null;
         }
+    }
+
+    /// <summary>Meditation's START says DEFMSG_MEDITATION_TRY when the skill starts and
+    /// answers rand(100); at full mana it is at peace (DEFMSG_MEDITATION_PEACE_1).</summary>
+    [Fact]
+    public void MeditationTriesAtStart()
+    {
+        var (ch, sink) = Setup();
+        ch.MaxMana = 50;
+        ch.Mana = 10;
+        Assert.InRange(ActiveSkillEngine.StartStage(sink, SkillType.Meditation, null, null), 0, 99);
+        Assert.Equal(SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.MeditationTry), sink.Messages.Single());
+
+        ch.Mana = 50;
+        Assert.True(ActiveSkillEngine.MeditationStart(sink) < 0);
+        Assert.Equal(SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.MeditationPeace1), sink.Messages.Last());
+    }
+
+    /// <summary>A pack's @Start that sets ACTDIFF back to 0 over the peace refusal lets
+    /// the skill reach SUCCESS at full mana: at peace (PEACE_2), a success.</summary>
+    [Fact]
+    public void ASuccessAtFullManaIsPeace()
+    {
+        var (ch, sink) = Setup();
+        ch.MaxMana = 50;
+        ch.Mana = 50;
+        Character.OnSkillUseQuick = (_, _, _, _) => 1;
+        try
+        {
+            Assert.True(ActiveSkillEngine.Meditation(sink, 0));
+            Assert.Equal(SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.MeditationPeace2), sink.Messages.Single());
+            Assert.False(ch.IsStatFlag(StatFlag.Meditation));
+        }
+        finally { Character.OnSkillUseQuick = null; }
     }
 }

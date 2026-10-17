@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Meditation ve Spirit Speak START'i Skill_Start'ta; meditasyon asamalari Skill_Meditation'in sirasiyla
+------------------------------------------------------------------------
+DUZELTME - Meditation'in START'i beceri basladiginda DEFMSG_MEDITATION_TRY der ve ACTDIFF olarak rand(100)
+       verir (CCharSkill.cpp:2673-2682); deneme satiri DELAY'i bekliyordu. Dolu manada ret diger her
+       becerininki gibi ayni START asamasidir: @SkillStart / @Start yoksa DELAY'i bekleyip basarisiz
+       olur ve baska bir sey demez - huzur satiri ikinci kez soyleniyordu.
+DUZELTME - Manayi dolu bulan SUCCESS - paketin @Start'i huzur reddinin ustune ACTDIFF'i 0 yaparsa
+       buraya gelinir - beceri kazanciyla DEFMSG_MEDITATION_PEACE_2'dir, basaridir (:2688-2697);
+       baslangicin reddi tekrar ve basarisizlikti.
+DUZELTME - Spirit Speak'in START'i, beceri basladiginda belirlenen rand(90) zorlugudur.
+EKLEME - Testler: Meditation START'i, dolu manada basari; baslangic tetigi yokken DELAY'i bekleyen dolu
+       mana reddi.
+
 [2026-10-17] - Hiding ve Detecting Hidden START'i Skill_Start'ta; basarisiz saklanma Reveal()'dir
 ------------------------------------------------------------------------
 DUZELTME - Hiding'in START'i beceri basladiginda calisir (CCharSkill.cpp:2500-2516): gorunur bir

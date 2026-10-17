@@ -131,7 +131,8 @@ public sealed class MeditationContinuationTests
     /// <summary>At full mana the START stage says the meditator is at peace and refuses
     /// (Skill_Meditation, CCharSkill.cpp:2673-2679), at once - not after the DELAY. With
     /// @SkillStart / @Start in use the refusal ends the skill quietly (Skill_Cleanup,
-    /// :4505-4520); with neither it fails, and @Fail runs.</summary>
+    /// :4505-4520); with neither it waits out the DELAY and fails then ("bound to fail,
+    /// but we had to wait for the timer anyhow", Skill_Done :3927), and @Fail runs.</summary>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -142,6 +143,12 @@ public sealed class MeditationContinuationTests
         {
             player.Mana = player.MaxMana;
             client.HandleUseSkill(46);
+            if (!startHooked)
+            {
+                Assert.True(player.HasActiveSkillPending());
+                player.ContinueSkillPending(0);
+                client.TickPendingSkill();
+            }
             Assert.False(player.HasActiveSkillPending());
             Assert.False(player.IsStatFlag(StatFlag.Meditation));
             Assert.Equal(startHooked, !player.TryGetTag("FAILED", out _));

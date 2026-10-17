@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Meditation and Spirit Speak START at Skill_Start; meditation stages as Skill_Meditation orders them
+------------------------------------------------------------------------
+FIX - Meditation's START says DEFMSG_MEDITATION_TRY when the skill starts and answers rand(100)
+      as ACTDIFF (CCharSkill.cpp:2673-2682); the try line waited for the DELAY. At full mana the
+      refusal is the same START stage as every other skill's: with no @SkillStart / @Start it waits
+      out the DELAY and fails, with nothing more said - the peace line was said a second time.
+FIX - A SUCCESS that finds the mana full - a pack's @Start setting ACTDIFF back to 0 over the
+      peace refusal gets there - is DEFMSG_MEDITATION_PEACE_2 with the skill credit, a success
+      (:2688-2697); it was the start's refusal again and a failure.
+FIX - Spirit Speak's START is its difficulty of rand(90), set when the skill starts.
+ADD - Tests: Meditation's START, a success at full mana; the full-mana refusal with no start
+      trigger waiting out the DELAY.
+
 [2026-10-17] - Hiding and Detecting Hidden START at Skill_Start; a failed hide is Reveal()
 ------------------------------------------------------------------------
 FIX - Hiding's START runs when the skill starts (CCharSkill.cpp:2500-2516): a light worn on a

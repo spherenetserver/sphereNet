@@ -142,16 +142,10 @@ public sealed class ClientSkillsHandler
                 if (pre == TriggerResult.True) return;
             }
 
-            // Skill_Stage(SKTRIG_START) runs before @SkillStart / @Start: Meditation at full
-            // mana says it is at peace and answers -SKTRIG_QTY (Skill_Meditation,
-            // CCharSkill.cpp:2673-2679). It was only noticed after the skill's DELAY,
-            // and then as a failure that ran the pack's @Fail ("You lose your
-            // concentration").
-            bool startRefused = skill == SkillType.Meditation && _character.Mana >= _character.MaxMana;
-            if (startRefused)
-                SysMessage(ServerMessages.Get(Msg.MeditationPeace1));
-            if (StartStageBoundToFail(skill, null))
-                startRefused = true;
+            // Skill_Stage(SKTRIG_START) runs before @SkillStart / @Start - Meditation at
+            // full mana says it is at peace and answers -SKTRIG_QTY there (Skill_Meditation,
+            // CCharSkill.cpp:2673-2679), not after the DELAY as a failure.
+            bool startRefused = StartStageBoundToFail(skill, null);
 
             // m_Act_Effect before @SkillStart, LOCAL.Effect read back (:4456-4477, :4526).
             _character.ActionEffect = SkillEngine.GetStartActionEffect(_character, skill);

@@ -270,8 +270,8 @@ public sealed class SkillHandlers
             case SkillType.Hiding:           return ActiveSkillEngine.Hiding(sink, ch.TakeStartStageDifficulty());
             case SkillType.Stealth:          return ActiveSkillEngine.Stealth(sink);
             case SkillType.DetectingHidden:  return ActiveSkillEngine.DetectHidden(sink, ch.TakeStartStageDifficulty());
-            case SkillType.Meditation:       return ActiveSkillEngine.Meditation(sink);
-            case SkillType.SpiritSpeak:      return ActiveSkillEngine.SpiritSpeak(sink);
+            case SkillType.Meditation:       return ActiveSkillEngine.Meditation(sink, ch.TakeStartStageDifficulty());
+            case SkillType.SpiritSpeak:      return ActiveSkillEngine.SpiritSpeak(sink, ch.TakeStartStageDifficulty());
             case SkillType.Begging:          return ActiveSkillEngine.Begging(sink, target as Character);
             case SkillType.Healing:
                 return ActiveSkillEngine.Healing(sink, ResolveHealTarget(target), SkillType.Healing,

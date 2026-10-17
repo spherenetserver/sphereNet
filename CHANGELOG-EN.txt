@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Hiding and Detecting Hidden START at Skill_Start; a failed hide is Reveal()
+------------------------------------------------------------------------
+FIX - Hiding's START runs when the skill starts (CCharSkill.cpp:2500-2516): a light worn on a
+      visible layer is DEFMSG_HIDING_TOOLIT at once, the difficulty rand(70) is ACTDIFF; it was
+      judged after the DELAY. A failed hide is Reveal() - its @Reveal and hooks run - where the
+      hidden and invisible flags were cleared directly.
+FIX - Detecting Hidden's START is its difficulty of 10, as ACTDIFF in the start triggers; with
+      REVEALF_DETECTINGHIDDEN off a successful look succeeds and does nothing (CCharSkill.cpp:
+      1716) - it was a failure.
+ADD - Tests: Hiding's START, a failed hide revealing, Detecting Hidden with the effect off.
+
 [2026-10-17] - Animal Taming as Skill_Taming runs it: START at Skill_Start, 2-5 strokes said aloud
 ------------------------------------------------------------------------
 FIX - Taming's START runs when the skill starts (CCharSkill.cpp:2337-2345): the creature judged,

@@ -33,22 +33,31 @@ public static class ActiveSkillEngine
 {
     // ---------------------------------------------------------------- Hiding
 
-    /// <summary>Source-X CChar::Skill_Hiding. Light source aborts; success sets STATF_HIDDEN.</summary>
-    public static bool Hiding(IActiveSkillSink sink)
+    /// <summary>Skill_Hiding START (CCharSkill.cpp:2500-2516): nothing worn on a visible
+    /// layer may be a light (DEFMSG_HIDING_TOOLIT); the difficulty is rand(70). No
+    /// war-mode refusal. Run when the skill starts.</summary>
+    public static int HidingStart(IActiveSkillSink sink)
     {
-        var ch = sink.Self;
-        // No war-mode refusal: Skill_Hiding START checks only for a carried light
-        // (CCharSkill.cpp:2500-2516).
-
-        // Nothing worn on a visible layer may be a light (Skill_Hiding START,
-        // CCharSkill.cpp:2503-2514). The old LIGHT_CARRIED tag was set by nothing.
-        if (IsCarryingLight(ch, sink.World))
+        if (IsCarryingLight(sink.Self, sink.World))
         {
             sink.SysMessage(ServerMessages.Get(Msg.HidingToolit));
-            return false;
+            return -3;
         }
+        return sink.Random.Next(70);
+    }
 
-        bool success = SkillEngine.UseQuick(ch, SkillType.Hiding, sink.Random.Next(70));
+    /// <summary>Source-X CChar::Skill_Hiding (CCharSkill.cpp:2468-2518). START is
+    /// <see cref="HidingStart"/> - the light was judged after the DELAY. SUCCESS hides
+    /// (DEFMSG_HIDING_SUCCESS over the hider) and drops an invisibility; FAIL is
+    /// Reveal(), with its @Reveal and its hooks - the flags used to be cleared
+    /// directly.</summary>
+    public static bool Hiding(IActiveSkillSink sink, int? startDifficulty = null)
+    {
+        var ch = sink.Self;
+        int diff = startDifficulty ?? HidingStart(sink);
+        if (diff < -1)
+            return false;
+        bool success = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.Hiding, diff);
         if (success)
         {
             ch.SetStatFlag(StatFlag.Hidden);
@@ -57,11 +66,8 @@ public static class ActiveSkillEngine
         }
         else
         {
-            ch.ClearStatFlag(StatFlag.Hidden);
-            ch.ClearStatFlag(StatFlag.Invisible);
-            // Source-X Skill_Hiding FAIL just Reveal()s (CCharSkill.cpp:2481) —
-            // DEFMSG_HIDING_STUMBLE belongs to walking into a hidden char and
-            // takes that char's name; it was printed here with a raw %s.
+            // DEFMSG_HIDING_STUMBLE belongs to walking into a hidden char, not here.
+            ch.ClearHiddenState();
         }
         return success;
     }
@@ -105,12 +111,19 @@ public static class ActiveSkillEngine
 
     // ---------------------------------------------------------- DetectHidden
 
-    /// <summary>Source-X CChar::Skill_DetectHidden. Reveals hidden chars in radius based on skill diff.</summary>
-    public static bool DetectHidden(IActiveSkillSink sink)
+    /// <summary>Source-X CChar::Skill_DetectHidden (CCharSkill.cpp:1700-1755): START is a
+    /// difficulty of 10. SUCCESS looks around (radius ACTEFFECT, else skill/100) and
+    /// reveals whoever loses the contest; finding nobody is a FAIL. With
+    /// REVEALF_DETECTINGHIDDEN off the skill succeeds and does nothing (:1716) - it was
+    /// a failure.</summary>
+    public static bool DetectHidden(IActiveSkillSink sink, int? startDifficulty = null)
     {
         var ch = sink.Self;
-        bool succeeded = SkillEngine.UseQuick(ch, SkillType.DetectingHidden, 10);
+        int diff = startDifficulty ?? 10;
+        bool succeeded = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.DetectingHidden, diff);
         if (!succeeded) return false;
+        if ((Character.ActiveRevealFlags & RevealFlags.DetectingHidden) == 0)
+            return true;
 
         int detectSkill = SkillEngine.GetAdjustedSkill(ch, SkillType.DetectingHidden);
         int radius = Math.Max(0, SkillEngine.GetEffect(SkillType.DetectingHidden,
@@ -1931,6 +1944,8 @@ public static class ActiveSkillEngine
             SkillType.Snooping => SnoopingStart(sink, act as Item),
             SkillType.Stealing => StealingStart(sink, act),
             SkillType.Taming => TamingStart(sink, act as Character),
+            SkillType.Hiding => HidingStart(sink),
+            SkillType.DetectingHidden => 10,
             SkillType.Healing or SkillType.Veterinary =>
                 HealingStart(sink, HealPatientOf(sink.World, act), skill, act as Item),
             _ => 0,
@@ -1958,7 +1973,8 @@ public static class ActiveSkillEngine
     public static bool HasStartStage(SkillType skill) =>
         skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation
             or SkillType.Herding or SkillType.RemoveTrap or SkillType.Healing or SkillType.Veterinary
-            or SkillType.Lockpicking or SkillType.Snooping or SkillType.Stealing or SkillType.Taming;
+            or SkillType.Lockpicking or SkillType.Snooping or SkillType.Stealing or SkillType.Taming
+            or SkillType.Hiding or SkillType.DetectingHidden;
 
     /// <summary>Skill_Musicianship START (CCharSkill.cpp:1786-1787): play ACT, the
     /// instrument double-clicked, or any carried, against rand(90).</summary>

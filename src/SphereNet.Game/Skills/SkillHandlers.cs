@@ -267,9 +267,9 @@ public sealed class SkillHandlers
 
         switch (skill)
         {
-            case SkillType.Hiding:           return ActiveSkillEngine.Hiding(sink);
+            case SkillType.Hiding:           return ActiveSkillEngine.Hiding(sink, ch.TakeStartStageDifficulty());
             case SkillType.Stealth:          return ActiveSkillEngine.Stealth(sink);
-            case SkillType.DetectingHidden:  return ActiveSkillEngine.DetectHidden(sink);
+            case SkillType.DetectingHidden:  return ActiveSkillEngine.DetectHidden(sink, ch.TakeStartStageDifficulty());
             case SkillType.Meditation:       return ActiveSkillEngine.Meditation(sink);
             case SkillType.SpiritSpeak:      return ActiveSkillEngine.SpiritSpeak(sink);
             case SkillType.Begging:          return ActiveSkillEngine.Begging(sink, target as Character);

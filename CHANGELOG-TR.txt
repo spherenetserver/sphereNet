@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Hiding ve Detecting Hidden START'i Skill_Start'ta; basarisiz saklanma Reveal()'dir
+------------------------------------------------------------------------
+DUZELTME - Hiding'in START'i beceri basladiginda calisir (CCharSkill.cpp:2500-2516): gorunur bir
+       katmanda tasinan isik hemen DEFMSG_HIDING_TOOLIT'tir, zorluk rand(70) ACTDIFF'tir; DELAY'den
+       sonra degerlendiriliyordu. Basarisiz saklanma Reveal()'dir - @Reveal ve kancalari calisir -
+       saklanma ve gorunmezlik bayraklari dogrudan temizleniyordu.
+DUZELTME - Detecting Hidden'in START'i 10 zorlugudur, baslangic tetiklerinde ACTDIFF olarak;
+       REVEALF_DETECTINGHIDDEN kapaliyken basarili bakis basarili sayilir ve hicbir sey yapmaz
+       (CCharSkill.cpp:1716) - basarisizlikti.
+EKLEME - Testler: Hiding START'i, basarisiz saklanmanin acik etmesi, etkisi kapali Detecting Hidden.
+
 [2026-10-17] - Animal Taming, Skill_Taming'in calistirdigi gibi: START Skill_Start'ta, 2-5 vurus sesli
 ------------------------------------------------------------------------
 DUZELTME - Taming'in START'i beceri basladiginda calisir (CCharSkill.cpp:2337-2345): yaratik

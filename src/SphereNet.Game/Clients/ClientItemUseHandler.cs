@@ -1399,7 +1399,7 @@ public sealed class ClientItemUseHandler
                 OpenCraftingGump(SkillType.Tailoring);
                 break;
             case ItemType.ScrollBlank:
-                OpenCraftingGump(SkillType.Inscription);
+                _client.InscriptionMenu();   // Cmd_Skill_Inscription (CClientUse.cpp:559)
                 break;
 
             // ---- ship / sign / shrine / runes ----

@@ -119,6 +119,20 @@ public sealed class ClientWorldFeaturesHandler
 
     public void OpenCraftingGump(SkillType craftSkill) => OpenCraftingMenu(craftSkill, DefaultSkillMenu(craftSkill), 0);
 
+    /// <summary>CClient::Cmd_Skill_Inscription (CClientUse.cpp:1293-1312), from the skill
+    /// button and a blank scroll double-clicked: a blank scroll must be among the
+    /// character's things (DEFMSG_INSCRIPTION_FAIL), then the sm_inscription menu.</summary>
+    internal void InscriptionMenu()
+    {
+        if (_character == null) return;
+        if (new GameClient.InfoSkillSink(_client, _character).FindBackpackItem(ItemType.ScrollBlank) == null)
+        {
+            SysMessage(ServerMessages.Get(Msg.InscriptionFail));
+            return;
+        }
+        OpenCraftingGump(SkillType.Inscription);
+    }
+
     /// <summary>The menu a crafting tool opens (CClientUse.cpp:382-549, 1290, 1311,
     /// CClientTarg.cpp:2396).</summary>
     private static string DefaultSkillMenu(SkillType skill) => skill switch
@@ -3090,17 +3104,6 @@ public sealed class ClientWorldFeaturesHandler
         if (skill is not (SkillType.Stealth or SkillType.Snooping or SkillType.Stealing))
             _character.ClearHiddenState();
 
-        // Opening a craft menu is selection/UI. The chosen recipe owns the
-        // single SkillSelect/PreStart/Start/Stroke/Success chain.
-        if (!SkillEngine.HasFlag(skill, SkillFlag.Scripted) && SkillHandlers.IsCraftSkill(skill))
-        {
-            _character.Act = Serial.Invalid;
-            _character.ActPrv = Serial.Invalid;
-            _character.ActP = _character.Position;
-            _skillHandlers?.UseSkill(_character, skill);
-            return;
-        }
-
         var selectResult = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillSelect,
             new TriggerArgs { CharSrc = _character, N1 = skillId }) ?? TriggerResult.Default;
         if (selectResult == TriggerResult.True)
@@ -3111,6 +3114,16 @@ public sealed class ClientWorldFeaturesHandler
         if (!SkillHandlers.IsClientUsable(skill))
         {
             SysMessage("There is no such skill. Please tell support you saw this message.");
+            return;
+        }
+
+        // The crafting skills with a button (CClientEvent.cpp:709-719): Inscription
+        // opens its menu once a blank scroll is found; Cartography's button does
+        // nothing. The chosen recipe owns the SkillPreStart/Start/Stroke chain.
+        if (!SkillEngine.HasFlag(skill, SkillFlag.Scripted) && skill is SkillType.Inscription or SkillType.Cartography)
+        {
+            if (skill == SkillType.Inscription)
+                InscriptionMenu();
             return;
         }
 

@@ -176,6 +176,7 @@ internal interface IClientContext : ITextConsole
 
     // --- gump / dialog entry points ---
     void OpenCraftingGump(SkillType craftSkill);
+    void InscriptionMenu();
     void OpenGuildStoneGump(Item stone);
     bool IsInGuild(Objects.Characters.Character ch);
     void FoundGuildAtNewStone(Item stone);

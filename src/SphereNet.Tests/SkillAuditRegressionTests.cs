@@ -121,6 +121,86 @@ public class SkillAuditRegressionTests
         Assert.False(ch.HasActiveSkillPending());
     }
 
+    /// <summary>CANCAST takes a spell defname and an antimagic argument
+    /// (CChar.cpp:2771-2793): TESTIF=&lt;cancast s_magic_arrow 00&gt; resolved to no spell
+    /// and was always false.</summary>
+    [Fact]
+    public void CanCast_TakesADefnameAndTheAntiMagicArgument()
+    {
+        LoadDefinitions("""
+            [SPELL 5]
+            DEFNAME=s_magic_arrow
+            NAME=Magic Arrow
+            """);
+        var world = CreateWorld();
+        var ch = world.CreateCharacter();
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+        var asked = new List<(int Spell, bool AntiMagic)>();
+        Character.OnCanCastProbe = (_, spell, antiMagic) => { asked.Add((spell, antiMagic)); return true; };
+
+        Assert.True(ch.TryGetProperty("CANCAST s_magic_arrow 00", out string v1));
+        Assert.Equal("1", v1);
+        Assert.True(ch.TryGetProperty("CANCAST 5", out string v2));
+        Assert.Equal("1", v2);
+
+        Assert.Equal([(5, false), (5, true)], asked);
+    }
+
+    /// <summary>The Inscription button wants a blank scroll first (Cmd_Skill_Inscription,
+    /// CClientUse.cpp:1304-1309); a crafting skill with no button gets the default
+    /// answer (Event_Skill_Use, CClientEvent.cpp:721) rather than its menu.</summary>
+    [Fact]
+    public void InscriptionButton_WantsABlankScroll_AndCraftSkillsHaveNoButton()
+    {
+        LoadDefinitions("""
+            [SKILL 23]
+            FLAGS=skf_craft
+            [SKILL 7]
+            FLAGS=skf_craft
+            """);
+        var world = CreateWorld();
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var client = TestHarness.CreateClient(loggerFactory, world, new AccountManager(loggerFactory), 3105);
+        var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+        TestHarness.AttachCharacter(client, ch);
+        int menus = 0;
+        var dispatcher = new SphereNet.Game.Scripting.TriggerDispatcher();
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "SkillMenu", (_, _) => { menus++; return TriggerResult.True; });
+        client.SetEngines(skillHandlers: new SkillHandlers(world), triggerDispatcher: dispatcher);
+
+        string Sent()
+        {
+            var text = new System.Text.StringBuilder();
+            foreach (var packet in TestHarness.GetQueuedPackets(client.NetState))
+            {
+                text.Append(System.Text.Encoding.BigEndianUnicode.GetString(packet.Span.ToArray()));
+                text.Append(System.Text.Encoding.ASCII.GetString(packet.Span.ToArray()));
+            }
+            TestHarness.ClearQueuedPackets(client.NetState);
+            return text.ToString();
+        }
+
+        TestHarness.ClearQueuedPackets(client.NetState);
+        client.HandleUseSkill((int)SkillType.Inscription);
+        Assert.Contains(ServerMessages.Get(Msg.InscriptionFail), Sent());
+        Assert.Equal(0, menus);
+
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        ch.Backpack = pack;
+        var blank = world.CreateItem();
+        blank.ItemType = ItemType.ScrollBlank;
+        pack.AddItem(blank);
+        client.HandleUseSkill((int)SkillType.Inscription);
+        Assert.Equal(1, menus);
+
+        client.HandleUseSkill((int)SkillType.Blacksmithing);
+        Assert.Contains("There is no such skill", Sent());
+        Assert.Equal(1, menus);
+    }
+
     /// <summary>SKF_SELECTABLE only tells the skill menu; a scripted skill without it
     /// is used like any other (Event_Skill_Use, CClientEvent.cpp:612-668).</summary>
     [Fact]

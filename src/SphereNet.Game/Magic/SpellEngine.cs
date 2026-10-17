@@ -856,6 +856,11 @@ public sealed partial class SpellEngine
         return false;
     }
 
+    /// <summary>CANCAST (CChar.cpp:2791): Spell_CanCast(spell, fTest = true, the caster
+    /// as the source, no message, fCheckAntiMagic).</summary>
+    public bool CanCastTest(Character caster, SpellType spell, bool checkAntiMagic) =>
+        SpellCanCast(caster, ref spell, test: true, failMsg: false, CastSourceKind.Self, null, checkAntiMagic);
+
     /// <summary>The port of Source-X Spell_CanCast (CCharSpell.cpp:2325-2541), shared by
     /// the start phase (<paramref name="test"/> = true: check only) and the completion
     /// (<paramref name="test"/> = false: Spell_CastDone :3010 consumes the wand charge,
@@ -869,7 +874,7 @@ public sealed partial class SpellEngine
     /// read back as the spell and the bills (:2398-2406). A GM passes right after the
     /// source's ownership check and before any cost (:2430, :2461).</summary>
     private bool SpellCanCast(Character caster, ref SpellType spell, bool test, bool failMsg,
-        CastSourceKind kind, Item? source)
+        CastSourceKind kind, Item? source, bool checkAntiMagic = true)
     {
         var def = _spells.Get(spell);
         if (def == null || def.IsFlag(SpellFlag.Disabled))
@@ -959,6 +964,17 @@ public sealed partial class SpellEngine
                 return true;
             if (caster.IsPlayer)
             {
+                // The spell's SKILLREQ (m_SkillReq.IsResourceMatchAll, :2468).
+                foreach (var (reqSkill, reqVal) in def.SkillReq)
+                {
+                    if (caster.GetSkill(reqSkill) < reqVal)
+                    {
+                        if (failMsg)
+                            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryDead));
+                        return false;
+                    }
+                }
+
                 if (Character.SpellbookRequiredEnabled && !HasSpellInBook(caster, (int)spell))
                 {
                     if (failMsg)
@@ -990,7 +1006,7 @@ public sealed partial class SpellEngine
         }
 
         // fCheckAntiMagic (:2517): the caster's own area. Only non-GMs reach here.
-        if (_world != null && _world.FindRegion(caster.Position) is { } region &&
+        if (checkAntiMagic && _world != null && _world.FindRegion(caster.Position) is { } region &&
             RegionBlocksSpell(region, def))
         {
             if (failMsg)

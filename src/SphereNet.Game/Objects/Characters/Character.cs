@@ -126,6 +126,12 @@ public partial class Character : ObjBase
     /// wired to a SpellEngine check (mana, skill req, region antimagic).</summary>
     public static Func<Character, int, bool>? OnCanCastCheck;
 
+    /// <summary>CANCAST backend: Spell_CanCast(spell, fTest, the char as source, no
+    /// message, fCheckAntiMagic) (CChar.cpp:2771-2793) - the spellbook, reagents,
+    /// tithing, the area's antimagic when asked, and mana. Falls back to
+    /// <see cref="OnCanCastCheck"/> when not wired.</summary>
+    public static Func<Character, int, bool, bool>? OnCanCastProbe;
+
     /// <summary>SKILLUSEQUICK.&lt;skill&gt;,&lt;difficulty&gt;[,&lt;noBellCurve&gt;][,&lt;force&gt;]
     /// backend (Source-X CHC_SKILLUSEQUICK). Unlike its neighbours this is NOT a
     /// question: it rolls, it can raise the skill, and it fires @SkillUseQuick. Args:
@@ -6532,16 +6538,33 @@ public partial class Character : ObjBase
 
         // Source-X CHC_CANCAST.<spell>: could this char cast the spell right
         // now (mana / skill req / region antimagic — via the engine hook).
+        // CANCAST <spell>[ <antimagic>] (CChar.cpp:2771-2793): the spell is a number or a
+        // defname (s_magic_arrow); a second argument below 1 skips the antimagic test.
+        // A defname with an argument after it used to resolve to nothing, so every
+        // TESTIF=<cancast s_x 00> was false.
         if (upper.StartsWith("CANCAST.", StringComparison.Ordinal) ||
             upper.StartsWith("CANCAST ", StringComparison.Ordinal))
         {
-            string spellStr = upper[8..].Trim();
+            var parts = key[8..].Split([' ', ',', '	'], 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             int spellId = 0;
-            if (int.TryParse(spellStr, out int sid) && sid > 0)
-                spellId = sid;
-            else if (Enum.TryParse(spellStr.Replace(" ", ""), ignoreCase: true, out SpellType spEnum))
-                spellId = (int)spEnum;
-            value = spellId > 0 && (OnCanCastCheck?.Invoke(this, spellId) ?? false) ? "1" : "0";
+            bool antiMagic = true;
+            if (parts.Length > 0)
+            {
+                string spellStr = parts[0];
+                if (ScriptNumber.TryParseInt(spellStr, out int sid) && sid > 0)
+                    spellId = sid;
+                else if (DefinitionLoader.StaticResources?.ResolveDefName(spellStr) is { IsValid: true } rid &&
+                         rid.Type == SphereNet.Core.Enums.ResType.SpellDef)
+                    spellId = rid.Index;
+                else if (Enum.TryParse(spellStr.Replace("_", ""), ignoreCase: true, out SpellType spEnum))
+                    spellId = (int)spEnum;
+                if (parts.Length > 1 && ScriptNumber.TryParseLong(parts[1], out long am))
+                    antiMagic = am >= 1;
+            }
+            bool can = spellId > 0 && (OnCanCastProbe != null
+                ? OnCanCastProbe(this, spellId, antiMagic)
+                : OnCanCastCheck?.Invoke(this, spellId) ?? false);
+            value = can ? "1" : "0";
             return true;
         }
 

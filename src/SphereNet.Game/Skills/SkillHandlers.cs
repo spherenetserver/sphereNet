@@ -191,7 +191,10 @@ public sealed class SkillHandlers
         if (IsInfoSkill(skill) || GetActiveSkillTarget(skill) != ActiveSkillTargetKind.Unsupported)
             return true;
 
-        return IsCraftSkill(skill) || skill is SkillType.Camping or SkillType.Cartography;
+        // Of the rest only Inscription and Cartography have a button (Event_Skill_Use,
+        // CClientEvent.cpp:709-719); a crafting skill is used through its tool and
+        // Camping through kindling, and their buttons get the default answer.
+        return skill is SkillType.Inscription or SkillType.Cartography;
     }
 
     public static bool IsCraftSkill(SkillType skill)

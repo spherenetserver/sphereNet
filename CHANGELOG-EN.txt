@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - CANCAST takes a spell defname and the antimagic argument; the Inscription button wants a blank scroll; inscribe drill
+------------------------------------------------------------------------
+FIX - CANCAST <spell> <antimagic> (CChar.cpp:2771-2793) resolves a spell defname and reads the
+      second argument; "CANCAST s_magic_arrow 00" resolved to no spell and was always 0, so
+      every menu entry gated by TESTIF=<cancast ...> was hidden - the inscription circles
+      opened empty and no scroll could be written.
+FIX - CANCAST answers as Spell_CanCast with fTest does: the spellbook, reagents, tithing, the
+      area's antimagic when asked, and mana; it checked only mana, skill and a no-magic
+      region. A player's raw cast now also checks the spell's SKILLREQ
+      (DEFMSG_SPELL_TRY_DEAD, CCharSpell.cpp:2468).
+FIX - The Inscription button and a blank scroll double-clicked look for a blank scroll first
+      (Cmd_Skill_Inscription, CClientUse.cpp:1293-1312; DEFMSG_INSCRIPTION_FAIL) and run after
+      @SkillSelect / @Select. The Cartography button does nothing; any other crafting skill,
+      and Camping, have no button and get the default answer - their menus opened from the
+      skill list, which upstream never does.
+ADD - Functional drill "inscribe" suite, on both packs: no blank scroll refused, a magic arrow
+      scroll written through the circles from a blank scroll and sulfurous ash, the button
+      opening the same menu, a crafting skill with no button.
+ADD - Tests: CANCAST with a defname and the antimagic argument; the Inscription button with
+      and without a blank scroll; a crafting skill's button.
+
 [2026-10-17] - Bandages pick Healing or Veterinary by the patient; Skill_Healing START at Skill_Start; vet drill
 ------------------------------------------------------------------------
 FIX - A bandage picks its skill by the patient (OnTarg_Use_Item, CClientTarg.cpp:2006-2043):

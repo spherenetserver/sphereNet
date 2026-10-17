@@ -137,6 +137,8 @@ internal static class FunctionalDrill
                 await TrapSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "vet")
                 await VetSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "inscribe")
+                await InscribeSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -4425,6 +4427,123 @@ internal static class FunctionalDrill
             }
         });
         vet.Disconnect();
+    }
+
+    /// <summary>Inscription: the skill button asks for a blank scroll first, a blank scroll
+    /// double-clicked opens the circles and a scroll is written from a blank and a
+    /// reagent; a crafting skill with no button of its own gets the default answer.</summary>
+    private static async Task InscribeSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        const int Inscription = 23, Blacksmithing = 7;
+        const ushort BlankScroll = 0x0E34, MagicArrowScroll = 0x1F32;
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        string spot = OpenCountrySpot(root);
+        var scribe = await LoginAsync(1221, port, ct);
+
+        string Said(long since) =>
+            string.Join(" | ", scribe.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+
+        await RunScenario("inscribe", "the inscription button with no blank scroll", outcomes, async () =>
+        {
+            await AsStaff(server, scribe.AccountName, async () =>
+            {
+                await SayAsync(scribe, $".go {spot}", ct);
+                foreach (string line in new[] { ".inscription 1000", ".magery 1000", ".int 100", ".mana 100" })
+                    await SayAsync(scribe, line, ct);
+            });
+            long since = Environment.TickCount64;
+            await scribe.Actions.UseSkill(Inscription, 3000, ct);
+            await Task.Delay(1500, ct);
+            string heard = Said(since);
+            if (scribe.World.ActiveMenu is { } m && m.ReceivedMs >= since)
+                throw new ScenarioFailed($"a menu opened with no blank scroll: {m.Title}");
+            if (heard.Length == 0) throw new ScenarioFailed("nothing said");
+            if (engineWording && !heard.Contains("blank scroll", StringComparison.OrdinalIgnoreCase)) throw new ScenarioFailed(heard);
+            return heard;
+        });
+
+        await RunScenario("inscribe", "setup: a spellbook, blank scrolls, sulfurous ash", outcomes, async () =>
+        {
+            await AsStaff(server, scribe.AccountName, async () =>
+            {
+                await AddIntoPackAsync(scribe, "i_spellbook", ct);
+                for (int i = 0; i < 3; i++)
+                {
+                    await AddIntoPackAsync(scribe, "i_scroll_blank", ct);
+                    await AddIntoPackAsync(scribe, "i_reag_sulfur_ash", ct);
+                }
+                var book = (await PackContentsAsync(scribe, ct)).FirstOrDefault(i => i.ItemId == Spellbook)
+                    ?? throw new ScenarioFailed("no spellbook in the pack after .add");
+                foreach (string verb in new[] { ".xmore1 0ffffffff", ".xmore2 0ffffffff" })
+                {
+                    await scribe.Actions.Say(verb, ct);
+                    if (await scribe.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                        throw new ScenarioFailed($"no target cursor for {verb}");
+                    await scribe.Actions.TargetObject(book.Serial, ct);
+                    await Task.Delay(500, ct);
+                }
+            });
+            var pack = await PackContentsAsync(scribe, ct);
+            return $"blank {CountOf(pack, BlankScroll)}, ash {CountOf(pack, SulfurAsh)}";
+        });
+
+        await RunScenario("inscribe", "a blank scroll opens the circles and writes a magic arrow", outcomes, async () =>
+        {
+            var before = await PackContentsAsync(scribe, ct);
+            uint blank = before.FirstOrDefault(i => i.ItemId == BlankScroll)?.Serial ?? throw new ScenarioFailed("no blank scroll");
+            long t0 = Environment.TickCount64;
+            await scribe.Actions.DoubleClick(blank, 1000, ct);
+            BotMenuState top;
+            try { top = await WaitMenuAsync(scribe, t0, "the inscription menu (0x7C)"); }
+            catch (TimeoutException) when (!engineWording)
+            {
+                // No sm_inscription in the pack: the engine's own recipe list, a gump.
+                var g = scribe.World.ActiveGump;
+                return $"no skill menu in the pack; gump {(g != null && g.ReceivedMs >= t0 ? $"0x{g.GumpId:X}" : "none")}; {Said(t0)}";
+            }
+            long t1 = Environment.TickCount64;
+            ChooseMenu(scribe, top, 0);
+            var circle = await WaitMenuAsync(scribe, t1, "the first circle");
+            int pick = circle.Entries.FindIndex(e => e.Text.Contains("arrow", StringComparison.OrdinalIgnoreCase));
+            if (pick < 0) throw new ScenarioFailed($"no magic arrow in '{circle.Title}': {string.Join(" / ", circle.Entries.Select(e => e.Text))}");
+            ChooseMenu(scribe, circle, pick);
+            await WaitAsync(() => { lock (scribe.World.SyncRoot)
+                return scribe.World.KnownItems.Values.Count(i => i.ItemId == MagicArrowScroll) > CountOf(before, MagicArrowScroll) ? (object)true : null; },
+                15_000, $"a magic arrow scroll; {Said(t0)}");
+            await Task.Delay(500, ct);
+            var after = await PackContentsAsync(scribe, ct);
+            string detail = $"blank {CountOf(before, BlankScroll)} -> {CountOf(after, BlankScroll)}, ash {CountOf(before, SulfurAsh)} -> {CountOf(after, SulfurAsh)}";
+            if (CountOf(after, BlankScroll) != CountOf(before, BlankScroll) - 1 || CountOf(after, SulfurAsh) != CountOf(before, SulfurAsh) - 1)
+                throw new ScenarioFailed(detail);
+            return $"'{top.Title}' -> '{circle.Title}'; {detail}";
+        });
+
+        await RunScenario("inscribe", "the inscription button opens the same menu", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            await scribe.Actions.UseSkill(Inscription, 3000, ct);
+            try { return $"'{(await WaitMenuAsync(scribe, since, "the inscription menu (0x7C)")).Title}'"; }
+            catch (TimeoutException) when (!engineWording)
+            {
+                var g = scribe.World.ActiveGump;
+                return $"no skill menu in the pack; gump {(g != null && g.ReceivedMs >= since ? $"0x{g.GumpId:X}" : "none")}; {Said(since)}";
+            }
+        });
+
+        await RunScenario("inscribe", "a crafting skill has no button of its own", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            await scribe.Actions.UseSkill(Blacksmithing, 3000, ct);
+            await Task.Delay(1500, ct);
+            string heard = Said(since);
+            if (scribe.World.ActiveMenu is { } m && m.ReceivedMs >= since)
+                throw new ScenarioFailed($"a menu opened: {m.Title}");
+            if (engineWording && !heard.Contains("no such skill", StringComparison.OrdinalIgnoreCase)) throw new ScenarioFailed(heard);
+            return heard.Length == 0 ? "nothing" : heard;
+        });
+
+        scribe.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

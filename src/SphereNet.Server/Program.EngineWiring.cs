@@ -1335,6 +1335,8 @@ public static partial class Program
                 (ch, rid, amount) =>
                     SphereNet.Game.Crafting.CraftingEngine.CountStock(ch, rid) >= amount;
 
+            SphereNet.Game.Objects.Characters.Character.OnCanCastProbe = (ch, spellId, antiMagic) =>
+                _spellEngine != null && _spellEngine.CanCastTest(ch, (SpellType)spellId, antiMagic);
             SphereNet.Game.Objects.Characters.Character.OnCanCastCheck = (ch, spellId) =>
             {
                 var canCastDef = _spellEngine?.GetSpellDef((SpellType)spellId);

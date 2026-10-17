@@ -4,6 +4,27 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - CANCAST buyu defname'ini ve antimagic argumanini alir; Inscription dugmesi bos parsomen ister; inscribe tatbikati
+------------------------------------------------------------------------
+DUZELTME - CANCAST <buyu> <antimagic> (CChar.cpp:2771-2793) buyu defname'ini cozer ve ikinci
+       argumani okur; "CANCAST s_magic_arrow 00" hicbir buyuye cozulmuyor ve hep 0 donuyordu,
+       bu yuzden TESTIF=<cancast ...> ile korunan her menu girdisi gizleniyordu - inscription
+       daireleri bos aciliyor ve hicbir parsomen yazilamiyordu.
+DUZELTME - CANCAST, fTest'li Spell_CanCast gibi cevap verir: buyu kitabi, reagent, tithing,
+       istenirse bolgenin antimagic'i ve mana; yalnizca mana, beceri ve buyusuz bolgeye
+       bakiyordu. Oyuncunun ham buyusu artik buyunun SKILLREQ'ini de kontrol eder
+       (DEFMSG_SPELL_TRY_DEAD, CCharSpell.cpp:2468).
+DUZELTME - Inscription dugmesi ve cift tiklanan bos parsomen once bos parsomen arar
+       (Cmd_Skill_Inscription, CClientUse.cpp:1293-1312; DEFMSG_INSCRIPTION_FAIL) ve
+       @SkillSelect / @Select'ten sonra calisir. Cartography dugmesi hicbir sey yapmaz; diger
+       uretim becerilerinin ve Camping'in dugmesi yoktur, varsayilan cevabi alir - menuleri
+       beceri listesinden aciliyordu, upstream bunu hic yapmaz.
+EKLEME - Fonksiyonel tatbikat "inscribe" paketi, iki pakette: bos parsomensiz ret, bos parsomen
+       ve sulfurous ash ile dairelerden yazilan magic arrow parsomeni, ayni menuyu acan dugme,
+       dugmesi olmayan uretim becerisi.
+EKLEME - Testler: defname ve antimagic argumanli CANCAST; bos parsomenli ve parsomensiz
+       Inscription dugmesi; uretim becerisinin dugmesi.
+
 [2026-10-17] - Bandaj hastaya gore Healing ya da Veterinary secer; Skill_Healing START'i Skill_Start'ta; vet tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Bandaj becerisini hastaya gore secer (OnTarg_Use_Item, CClientTarg.cpp:2006-2043):

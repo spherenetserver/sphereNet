@@ -14,6 +14,7 @@ public sealed partial class GameClient
     private ClientWorldFeaturesHandler? _worldFeatures;
 
     public void OpenCraftingGump(SkillType craftSkill) => WorldFeatures.OpenCraftingGump(craftSkill);
+    public void InscriptionMenu() => WorldFeatures.InscriptionMenu();
 
     public void HandleVendorBuy(uint vendorSerial, byte flag,
         List<SphereNet.Network.Packets.Incoming.VendorBuyEntry> buyItems) =>

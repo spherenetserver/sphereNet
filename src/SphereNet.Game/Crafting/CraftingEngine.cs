@@ -385,8 +385,11 @@ public sealed class CraftingEngine
         item.Crafter = crafter.Uid;
         // No material colour: Skill_MakeItem_Success never colours the result
         // (CCharSkill.cpp:674-865); a pack does that from @SkillMakeItem through ACT.
+        // @Create runs with the maker as SRC (CreateTemplate(id, nullptr, this), :679):
+        // a drawn map reads <SRC.P> and <SRC.CARTOGRAPHY> for its area, and without a
+        // SRC every map came out blank.
         if (resultDef != null)
-            item.FireCreateTrigger();
+            item.FireCreateTrigger(crafter);
         return item;
     }
 

@@ -329,10 +329,11 @@ public sealed class ClientWorldFeaturesHandler
         }
 
         // No @SkillMakeItem here: it belongs to the finished item, and fires from
-        // CompleteCraft once that item exists.
-        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillSelect,
-                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True ||
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillPreStart,
+        // CompleteCraft once that item exists. Nor @SkillSelect / @Select: they belong
+        // to the skill button alone (Event_Skill_Use, CClientEvent.cpp:632-647), and a
+        // pack's @Select refusing the button ("cannot be used directly") stopped every
+        // menu craft of that skill.
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillPreStart,
                 new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True)
             return false;
 

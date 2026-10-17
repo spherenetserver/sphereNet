@@ -55,6 +55,10 @@ public class Item : ObjBase
     /// that don't exercise triggers. The world load never routes through the
     /// creation helper, so reloaded items never re-fire @Create.</summary>
     public static Action<Item>? CreateTriggerHook;
+
+    /// <summary>@Create with a SRC: GenerateScript(pSrc) (CItem.cpp), as a crafted item
+    /// is made with its maker (CreateTemplate(id, nullptr, this), CCharSkill.cpp:679).</summary>
+    public static Action<Item, Characters.Character>? CreateTriggerSourceHook;
     private bool _createTriggerFired;
 
     /// <summary>Run the itemdef <c>@Create</c> trigger exactly once for this
@@ -80,11 +84,14 @@ public class Item : ObjBase
         SetAttr(ObjAttributes.Decay);
     }
 
-    public void FireCreateTrigger()
+    public void FireCreateTrigger(Characters.Character? src = null)
     {
         if (_createTriggerFired) return;
         _createTriggerFired = true;
-        CreateTriggerHook?.Invoke(this);
+        if (src != null && CreateTriggerSourceHook != null)
+            CreateTriggerSourceHook(this, src);
+        else
+            CreateTriggerHook?.Invoke(this);
     }
 
     // Resolves a MULTIDEF defname (e.g. "m_small_ship_n") to its multi id.

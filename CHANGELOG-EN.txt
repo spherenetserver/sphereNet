@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - A crafted item's @Create has its maker as SRC; menu crafts skip @SkillSelect; a blank map has no use; carto drill
+------------------------------------------------------------------------
+FIX - A crafted item's @Create runs with its maker as SRC (CreateTemplate(id, nullptr, this),
+      CCharSkill.cpp:679). It had none, so a drawn map's area (<SRC.P> and <SRC.CARTOGRAPHY>
+      in the map's @Create) was never set and every map came out blank.
+FIX - Starting a craft from a menu no longer fires @SkillSelect / @Select; they belong to the
+      skill button alone (Event_Skill_Use, CClientEvent.cpp:632-647). A pack whose @Select
+      refuses the button ("This skill cannot be used directly") could not craft that skill
+      from its menu at all - Cartography in Scripts-X.
+FIX - A blank map double-clicked has no use of its own and says DEFMSG_ITEMUSE_CANTTHINK (it is
+      not in the double-click list, CClientUse.cpp:461); a map with no area says
+      DEFMSG_MAP_IS_BLANK instead of fixed English text.
+ADD - Functional drill "carto" suite, on both packs: a mapmaker's pen drawing a local map from a
+      blank one, the map showing the land around where it was drawn, a blank map double-clicked.
+ADD - Tests: a crafted item's @Create SRC; a blank map double-clicked.
+
 [2026-10-17] - CANCAST takes a spell defname and the antimagic argument; the Inscription button wants a blank scroll; inscribe drill
 ------------------------------------------------------------------------
 FIX - CANCAST <spell> <antimagic> (CChar.cpp:2771-2793) resolves a spell defname and reads the

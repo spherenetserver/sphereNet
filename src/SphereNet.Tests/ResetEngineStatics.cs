@@ -326,6 +326,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.ResolveGuildCharacter = null;
         SphereNet.Game.Objects.Characters.Character.OnCanCastCheck = null;
         SphereNet.Game.Objects.Characters.Character.OnCanCastProbe = null;
+        SphereNet.Game.Objects.Items.Item.CreateTriggerSourceHook = null;
         SphereNet.Game.Objects.Characters.Character.OnCanMakeCheck = null;
         SphereNet.Game.Objects.Characters.Character.OnResourcePossessionCheck = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuickProperty = null;

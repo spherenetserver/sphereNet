@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Uretilen esyanin @Create'inde SRC ureticidir; menu uretimi @SkillSelect calistirmaz; bos haritanin kullanimi yok; carto tatbikati
+------------------------------------------------------------------------
+DUZELTME - Uretilen esyanin @Create'i ureticisi SRC olarak calisir (CreateTemplate(id, nullptr,
+       this), CCharSkill.cpp:679). SRC yoktu; bu yuzden cizilen haritanin alani (haritanin
+       @Create'indeki <SRC.P> ve <SRC.CARTOGRAPHY>) hic ayarlanmiyor ve her harita bos cikiyordu.
+DUZELTME - Menuden uretim baslatmak artik @SkillSelect / @Select calistirmaz; bunlar yalnizca beceri
+       dugmesine aittir (Event_Skill_Use, CClientEvent.cpp:632-647). @Select'i dugmeyi reddeden
+       ("This skill cannot be used directly") bir paket o beceriyi menusunden hic uretemiyordu -
+       Scripts-X'te Cartography.
+DUZELTME - Cift tiklanan bos haritanin kendi kullanimi yoktur ve DEFMSG_ITEMUSE_CANTTHINK der (cift
+       tiklama listesinde yoktur, CClientUse.cpp:461); alani olmayan harita sabit Ingilizce metin
+       yerine DEFMSG_MAP_IS_BLANK der.
+EKLEME - Fonksiyonel tatbikat "carto" paketi, iki pakette: haritaci kalemiyle bos haritadan yerel
+       harita cizimi, haritanin cizildigi yerin cevresini gostermesi, cift tiklanan bos harita.
+EKLEME - Testler: uretilen esyanin @Create SRC'si; cift tiklanan bos harita.
+
 [2026-10-17] - CANCAST buyu defname'ini ve antimagic argumanini alir; Inscription dugmesi bos parsomen ister; inscribe tatbikati
 ------------------------------------------------------------------------
 DUZELTME - CANCAST <buyu> <antimagic> (CChar.cpp:2771-2793) buyu defname'ini cozer ve ikinci

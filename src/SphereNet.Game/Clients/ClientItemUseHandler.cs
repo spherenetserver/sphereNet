@@ -1355,8 +1355,9 @@ public sealed class ClientItemUseHandler
             case ItemType.SpyGlass:
                 UseSpyGlass(item);
                 break;
+            // A blank map has no use of its own (it is not in OnTarg_Use_Item's
+            // list, CClientUse.cpp:461): it falls to "can't think of a way".
             case ItemType.Map:
-            case ItemType.MapBlank:
                 OpenMapGump(item);
                 break;
 
@@ -2466,7 +2467,7 @@ public sealed class ClientItemUseHandler
         ushort right = (ushort)(item.More2 >> 16);
         if (item.ItemType == ItemType.MapBlank || right <= left || bottom <= top)
         {
-            SysMessage("This map is blank.");
+            SysMessage(ServerMessages.Get(Msg.MapIsBlank));
             return;
         }
 

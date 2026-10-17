@@ -86,6 +86,47 @@ public sealed class SourceXCartographyCraftWave233Tests
         Assert.DoesNotContain(blankMap, crafter.Backpack!.Contents);
     }
 
+    /// <summary>A crafted item's @Create runs with its maker as SRC
+    /// (CreateTemplate(id, nullptr, this), CCharSkill.cpp:679): a drawn map reads
+    /// &lt;SRC.P&gt; for its area, and without a SRC every map came out blank.</summary>
+    [Fact]
+    public void CraftedItem_CreateRunsWithTheMakerAsSrc()
+    {
+        var (_, engine, crafter, _, _) = CreateCrafter();
+        var recipe = Assert.Single(engine.GetRecipesBySkill(SkillType.Cartography));
+        Character? seen = null;
+        int plain = 0;
+        Item.CreateTriggerSourceHook = (_, src) => seen = src;
+        Item.CreateTriggerHook = _ => plain++;
+
+        Assert.NotNull(engine.TryCraft(crafter, recipe));
+
+        Assert.Same(crafter, seen);
+        Assert.Equal(0, plain);
+    }
+
+    /// <summary>A blank map has no use of its own (it is not in the double-click
+    /// list, CClientUse.cpp:461), and a map with no area says DEFMSG_MAP_IS_BLANK.</summary>
+    [Fact]
+    public void BlankMap_DoubleClick_CannotThinkOfAWay()
+    {
+        var (world, _, crafter, blankMap, _) = CreateCrafter();
+        using var loggerFactory = LoggerFactory.Create(_ => { });
+        var state = TestHarness.CreateActiveNetState(loggerFactory, 234);
+        var client = new GameClient(state, world, new AccountManager(loggerFactory),
+            loggerFactory.CreateLogger<GameClient>());
+        TestHarness.AttachCharacter(client, crafter);
+        TestHarness.ClearQueuedPackets(state);
+
+        client.HandleDoubleClick(blankMap.Uid.Value);
+
+        string sent = string.Concat(TestHarness.GetQueuedPackets(state).Select(p =>
+            System.Text.Encoding.BigEndianUnicode.GetString(p.Span.ToArray()) +
+            System.Text.Encoding.ASCII.GetString(p.Span.ToArray())));
+        Assert.Contains(SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.ItemuseCantthink), sent);
+        Assert.DoesNotContain(TestHarness.GetQueuedPackets(state), p => p.Span.Length > 0 && p.Span[0] is 0x90 or 0xF5);
+    }
+
     [Fact]
     public void CartographyCraftStroke_UsesSourceXDrawingSound()
     {

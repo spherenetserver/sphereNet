@@ -263,6 +263,9 @@ public static partial class Program
             SphereNet.Game.Objects.Items.Item.CreateTriggerHook = item =>
                 _triggerDispatcher.FireItemTrigger(item, ItemTrigger.Create,
                     new SphereNet.Game.Scripting.TriggerArgs { ItemSrc = item });
+            SphereNet.Game.Objects.Items.Item.CreateTriggerSourceHook = (item, src) =>
+                _triggerDispatcher.FireItemTrigger(item, ItemTrigger.Create,
+                    new SphereNet.Game.Scripting.TriggerArgs { ItemSrc = item, CharSrc = src });
             _systemHooks = new ScriptSystemHooks(_triggerRunner);
             RegisterDbProviders();
             _scriptDb = new ScriptDbAdapter(_loggerFactory.CreateLogger<ScriptDbAdapter>());

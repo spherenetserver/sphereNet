@@ -139,6 +139,8 @@ internal static class FunctionalDrill
                 await VetSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "inscribe")
                 await InscribeSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "carto")
+                await CartoSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -4544,6 +4546,105 @@ internal static class FunctionalDrill
         });
 
         scribe.Disconnect();
+    }
+
+    /// <summary>Cartography: a mapmaker's pen draws a local map from a blank one, the map
+    /// shows the land around where it was drawn (0x90 / 0xF5), and a blank map has no
+    /// use of its own.</summary>
+    private static async Task CartoSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        const ushort BlankMap = 0x14EB;
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        string spot = OpenCountrySpot(root);
+        var carto = await LoginAsync(1231, port, ct);
+        uint pen = 0, drawn = 0;
+        short drewX = 0, drewY = 0;
+        // Map displays (0x90 old, 0xF5 new): [serial][gump][left][top][right][bottom]...
+        var shown = new System.Collections.Concurrent.ConcurrentDictionary<uint, (int L, int T, int R, int B)>();
+        carto.ServerPacketObserver = p =>
+        {
+            if ((p[0] == 0x90 || p[0] == 0xF5) && p.Length >= 15)
+            {
+                int W(int at) => p[at] << 8 | p[at + 1];
+                shown[(uint)(p[1] << 24 | p[2] << 16 | p[3] << 8 | p[4])] = (W(7), W(9), W(11), W(13));
+            }
+        };
+
+        string Said(long since) =>
+            string.Join(" | ", carto.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+
+        await RunScenario("carto", "setup: a mapmaker's pen and blank maps", outcomes, async () =>
+        {
+            await AsStaff(server, carto.AccountName, async () =>
+            {
+                await SayAsync(carto, $".go {spot}", ct);
+                await SayAsync(carto, ".cartography 1000", ct);
+                await AddIntoPackAsync(carto, "i_mapmakers_pen", ct);
+                for (int i = 0; i < 2; i++)
+                    await AddIntoPackAsync(carto, "i_map_blank", ct);
+            });
+            var pack = await PackContentsAsync(carto, ct);
+            pen = pack.FirstOrDefault(i => i.ItemId is 0x0FBF or 0x0FC0)?.Serial ?? 0;
+            if (CountOf(pack, BlankMap) < 2) throw new ScenarioFailed($"{CountOf(pack, BlankMap)} blank maps");
+            if (pen == 0 && engineWording) throw new ScenarioFailed("no mapmaker's pen");
+            return $"pen 0x{pen:X}, {CountOf(pack, BlankMap)} blank maps";
+        });
+
+        await RunScenario("carto", "the pen draws a local map from a blank one", outcomes, async () =>
+        {
+            if (pen == 0) return "the pack has no mapmaker's pen";
+            var before = await PackContentsAsync(carto, ct);
+            var serials = before.Select(i => i.Serial).ToHashSet();
+            long t0 = Environment.TickCount64;
+            await carto.Actions.DoubleClick(pen, 1000, ct);
+            BotMenuState menu;
+            try { menu = await WaitMenuAsync(carto, t0, "the cartography menu (0x7C)"); }
+            catch (TimeoutException) when (!engineWording) { return $"the pack answers: {Said(t0)}"; }
+            int local = menu.Entries.FindIndex(e => e.Text.Contains("Local", StringComparison.OrdinalIgnoreCase));
+            if (local < 0) throw new ScenarioFailed($"no local map in '{menu.Title}': {string.Join(" / ", menu.Entries.Select(e => e.Text))}");
+            (drewX, drewY) = (carto.World.X, carto.World.Y);
+            ChooseMenu(carto, menu, local);
+            for (int i = 0; i < 40 && drawn == 0; i++)
+            {
+                await Task.Delay(500, ct);
+                var now = await PackContentsAsync(carto, ct);
+                drawn = now.FirstOrDefault(it => it.ItemId == BlankMap && !serials.Contains(it.Serial))?.Serial ?? 0;
+            }
+            if (drawn == 0) throw new ScenarioFailed($"no map drawn; {Said(t0)}");
+            var after = await PackContentsAsync(carto, ct);
+            return $"map 0x{drawn:X}; blank maps {CountOf(before, BlankMap)} -> {CountOf(after, BlankMap) - 1} (+1 drawn)";
+        });
+
+        await RunScenario("carto", "the drawn map shows the land around where it was drawn", outcomes, async () =>
+        {
+            if (drawn == 0) return "no map was drawn";
+            long t0 = Environment.TickCount64;
+            await carto.Actions.DoubleClick(drawn, 1000, ct);
+            var rect = await WaitAsync(() => shown.TryGetValue(drawn, out var r) ? (object)r : null, 4000,
+                $"a map display (0x90 / 0xF5); {Said(t0)}");
+            var (l, t, r, b) = ((int, int, int, int))rect;
+            if (!(l < drewX && drewX < r && t < drewY && drewY < b))
+                throw new ScenarioFailed($"rect {l},{t}-{r},{b} misses {drewX},{drewY}");
+            return $"rect {l},{t}-{r},{b} around {drewX},{drewY}";
+        });
+
+        await RunScenario("carto", "a blank map has no use of its own", outcomes, async () =>
+        {
+            uint blank = (await PackContentsAsync(carto, ct)).FirstOrDefault(i => i.ItemId == BlankMap && i.Serial != drawn)?.Serial
+                ?? throw new ScenarioFailed("no blank map left");
+            long t0 = Environment.TickCount64;
+            await carto.Actions.DoubleClick(blank, 1000, ct);
+            await Task.Delay(1500, ct);
+            string heard = Said(t0);
+            if (shown.ContainsKey(blank)) throw new ScenarioFailed("a blank map was displayed");
+            if (engineWording && !heard.Contains("think of a way", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed(heard.Length == 0 ? "nothing said" : heard);
+            return heard.Length == 0 ? "nothing" : heard;
+        });
+
+        carto.ServerPacketObserver = null;
+        carto.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Begging START stage
+------------------------------------------------------------------------
+FIX - Begging runs through the shared START stage (Skill_Begging, CCharSkill.cpp:2934-2946): the
+      difficulty is the mark's adjusted INT taken at START and the roll uses ACTDIFF as
+      @SkillStart / @Start left it, not the INT read again after the DELAY.
+FIX - The begging bow and the herding crook swing play only once START accepts its target; a
+      thing or oneself for a mark used to bow anyway (the stage returns before UpdateAnimate).
+ADD - Functional drill "beg" suite, on both packs: groveling at a townsman's feet, and begging
+      from a thing is silent; a pack that closes the skill on @Select is accepted.
+
 [2026-10-17] - Guards drill
 ------------------------------------------------------------------------
 ADD - Functional drill "guards" suite, on both packs: in a guarded area (found by asking the pack's

@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Dilencilik START asamasi
+------------------------------------------------------------------------
+DUZELTME - Dilencilik ortak START asamasindan gecer (Skill_Begging, CCharSkill.cpp:2934-2946): zorluk
+       hedefin START anindaki ayarli INT degeridir ve zar, DELAY sonrasi yeniden okunan INT ile degil
+       @SkillStart / @Start'in biraktigi ACTDIFF ile atilir.
+DUZELTME - Dilenci egilmesi ve coban degnegi savurma animasyonu yalnizca START hedefi kabul edince
+       oynar; esya ya da kendisi hedeflenince de egiliyordu (asama UpdateAnimate'ten once doner).
+EKLEME - Fonksiyonel tatbikat "beg" paketi, iki pakette: kasabalinin ayaklarina kapanma ve bir
+       esyadan dilenmenin sessiz kalmasi; becerisini @Select'te kapatan paket kabul edilir.
+
 [2026-10-17] - Muhafiz tatbikati
 ------------------------------------------------------------------------
 EKLEME - Fonksiyonel tatbikat "guards" paketi, iki pakette: korunan bir bolgede (paketin kendi bolgelerine

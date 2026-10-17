@@ -405,11 +405,12 @@ public sealed class ClientSkillsHandler
 
     /// <summary>The animations a skill's own START stage plays - begging bows to
     /// the mark (Skill_Begging, CCharSkill.cpp:2943, not gated by SKF_NOANIM) and
-    /// herding swings the crook (Skill_Herding, :2573-2574, unless SKF_NOANIM).
-    /// Neither animated here before: the skills resolved with no gesture at all.</summary>
+    /// herding swings the crook (Skill_Herding, :2573-2574, unless SKF_NOANIM) - both
+    /// only once the stage has accepted its target: a refused START returns before
+    /// the gesture.</summary>
     private void PlaySkillStageStartAnimation(SkillType skill)
     {
-        if (_character == null) return;
+        if (_character is not { StartStageRan: true, ActDiff: >= 0 }) return;
         if (skill == SkillType.Begging)
             PlayAnimation(_character, (ushort)AnimationType.Bow);
         else if (skill == SkillType.Herding && !SkillEngine.HasFlag(skill, SkillFlag.NoAnim))
@@ -517,21 +518,14 @@ public sealed class ClientSkillsHandler
 
         if (!GatherNodeAnswers(skill, point, skillId))
             return;
-        // Skill_Stage(SKTRIG_START) runs before @SkillStart (:4447).
-        PlaySkillStageStartAnimation(skill);
         // An information skill's START (Skill_Information with fTest, :3221) judges the
         // target now, not after the DELAY; a wrong kind of target is said at once.
         bool startRefused = isInfo && _skillHandlers != null &&
             _skillHandlers.InfoSkillStartStage(new GameClient.InfoSkillSink(_client, _character), skill, target) < 0;
-        if (skill == SkillType.Begging)
-        {
-            if (Skills.Information.ActiveSkillEngine.BeggingStartLine(_character, target) is { } grovel)
-                SysMessage(grovel);
-            else
-                startRefused = true;
-        }
         if (StartStageBoundToFail(skill, target, point))
             startRefused = true;
+        // Skill_Stage(SKTRIG_START) runs before @SkillStart (:4447).
+        PlaySkillStageStartAnimation(skill);
 
         bool gather = SkillEngine.HasFlag(skill, SkillFlag.Gather);
         bool craft = SkillEngine.HasFlag(skill, SkillFlag.Craft);

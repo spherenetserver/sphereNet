@@ -248,28 +248,29 @@ public static class ActiveSkillEngine
 
     // -------------------------------------------------------------- Begging
 
-    /// <summary>Source-X CChar::Skill_Begging (CCharSkill.cpp:2929-2962): any
-    /// character but the beggar may be targeted; the difficulty is the target's
-    /// adjusted INT (:2946) and SUCCESS does nothing (:2958 - "Not sure how to make
-    /// begging successful"). The human-brain gate and the 1-10 gold reward were
-    /// invented; a pack that wants a reward scripts it on @Success.</summary>
-    public static bool Begging(IActiveSkillSink sink, Character? target)
+    /// <summary>Skill_Begging START (CCharSkill.cpp:2935-2946): a mark that is a
+    /// character and not the beggar, "You grovel at %s's feet", and the mark's adjusted
+    /// INT as the difficulty; anything else answers -SKTRIG_QTY, silently.</summary>
+    public static int BeggingStart(IActiveSkillSink sink, ObjBase? act)
     {
-        var ch = sink.Self;
-        // Skill_Begging asks only for a mark that is not the beggar (CCharSkill.cpp:2935);
-        // a 3-tile reach was invented. Its START line is said when the skill starts
-        // (BeggingStartLine), not after the DELAY.
-        if (target == null || target == ch || target.IsDeleted)
-            return false;
-        return SkillEngine.UseQuick(ch, SkillType.Begging, Combat.CombatEngine.EffectiveInt(target));
+        if (act is not Character mark || mark == sink.Self || mark.IsDeleted)
+            return -1;
+        sink.SysMessage(ServerMessages.GetFormatted(Msg.BeggingStart, mark.GetName()));
+        return Combat.CombatEngine.EffectiveInt(mark);
     }
 
-    /// <summary>Skill_Begging's START line (CCharSkill.cpp:2942-2946): "You grovel at
-    /// %s's feet", or null when there is no mark to beg from.</summary>
-    public static string? BeggingStartLine(Character self, ObjBase? target) =>
-        target is Character mark && mark != self && !mark.IsDeleted
-            ? ServerMessages.GetFormatted(Msg.BeggingStart, mark.GetName())
-            : null;
+    /// <summary>Source-X CChar::Skill_Begging (CCharSkill.cpp:2929-2962): the skill is
+    /// rolled against what START answered and SUCCESS does nothing (:2958 - "Not sure
+    /// how to make begging successful"). The human-brain gate, the 3-tile reach and the
+    /// 1-10 gold reward were invented; a pack that wants a reward scripts it on @Success.
+    /// <paramref name="startDifficulty"/> is what START answered when it already ran.</summary>
+    public static bool Begging(IActiveSkillSink sink, Character? target, int? startDifficulty = null)
+    {
+        int diff = startDifficulty ?? BeggingStart(sink, target);
+        if (diff < 0)
+            return false;
+        return SkillEngine.UseQuick(sink.Self, SkillType.Begging, diff);
+    }
 
     // ------------------------------------------------------------- Stealing
 
@@ -1977,6 +1978,7 @@ public static class ActiveSkillEngine
         skill switch
         {
             SkillType.Herding => HerdingStart(sink, act as Character, point),
+            SkillType.Begging => BeggingStart(sink, act),
             SkillType.Musicianship => MusicianshipStart(sink, act as Item),
             SkillType.Peacemaking => PeacemakingStart(sink),
             SkillType.Enticement => EnticementStart(sink, act as Character),
@@ -2018,7 +2020,8 @@ public static class ActiveSkillEngine
         skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation
             or SkillType.Herding or SkillType.RemoveTrap or SkillType.Healing or SkillType.Veterinary
             or SkillType.Lockpicking or SkillType.Snooping or SkillType.Stealing or SkillType.Taming
-            or SkillType.Hiding or SkillType.DetectingHidden or SkillType.Meditation or SkillType.SpiritSpeak;
+            or SkillType.Hiding or SkillType.DetectingHidden or SkillType.Meditation or SkillType.SpiritSpeak
+            or SkillType.Begging;
 
     /// <summary>Skill_Musicianship START (CCharSkill.cpp:1786-1787): play ACT, the
     /// instrument double-clicked, or any carried, against rand(90).</summary>

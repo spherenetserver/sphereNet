@@ -133,6 +133,8 @@ internal static class FunctionalDrill
                 await BardSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "herd")
                 await HerdSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "beg")
+                await BegSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "trap")
                 await TrapSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "vet")
@@ -4054,6 +4056,86 @@ internal static class FunctionalDrill
 
     /// <summary>Herding with a crook (the animal walks where it is sent) and Camping
     /// (kindling on the ground becomes a campfire).</summary>
+    /// <summary>Begging (Skill_Begging, CCharSkill.cpp:2929-2962): the START line names
+    /// the mark and the skill waits out its DELAY; a thing for a mark is refused at
+    /// START without a word. A pack may close the skill on @Select.</summary>
+    private static async Task BegSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        const int BeggingSkill = 6;
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        string spot = OpenCountrySpot(root);
+        var beggar = await LoginAsync(1271, port, ct);
+        uint mark = 0;
+
+        string Said(long since) =>
+            string.Join(" | ", beggar.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+
+        await RunScenario("beg", "setup: a beggar and a townsman", outcomes, async () =>
+        {
+            await AsStaff(server, beggar.AccountName, async () =>
+            {
+                await SayAsync(beggar, $".go {spot}", ct);
+                await SayAsync(beggar, ".begging 500", ct);
+                int tx = beggar.World.X + 1, ty = beggar.World.Y;
+                HashSet<uint> before; lock (beggar.World.SyncRoot) before = beggar.World.Mobiles.Keys.ToHashSet();
+                await beggar.Actions.Say(".add c_actor", ct);
+                if (await beggar.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_actor");
+                await beggar.Actions.TargetLocation(tx, ty, beggar.World.Z, ct);
+                var found = await WaitAsync(() => { lock (beggar.World.SyncRoot) return beggar.World.Mobiles.Values.FirstOrDefault(m =>
+                    !before.Contains(m.Serial) && Math.Abs(m.X - tx) <= 1 && Math.Abs(m.Y - ty) <= 1); }, 4000, "the townsman");
+                mark = found.Serial;
+            });
+            return $"townsman 0x{mark:X}";
+        });
+
+        await RunScenario("beg", "groveling at a townsman's feet", outcomes, async () =>
+        {
+            if (mark == 0) throw new ScenarioFailed("no townsman");
+            long since = Environment.TickCount64;
+            await beggar.Actions.UseSkill(BeggingSkill, 3000, ct);
+            if (await beggar.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+            {
+                // A pack that closes the skill says so on @Select and asks for no mark.
+                string closed = Said(since);
+                if (!engineWording && closed.Length > 0) return $"the pack closes begging: {closed}";
+                throw new ScenarioFailed($"no begging cursor; {closed}");
+            }
+            long picked = Environment.TickCount64;
+            await beggar.Actions.TargetObject(mark, ct);
+            await Task.Delay(3500, ct);   // DELAY=2.0
+            string heard = Said(picked);
+            if (!heard.Contains("grovel", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed($"no START line; {heard}");
+            return heard;
+        });
+
+        await RunScenario("beg", "begging from a thing says nothing", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            await beggar.Actions.UseSkill(BeggingSkill, 3000, ct);
+            if (await beggar.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+            {
+                string closed = Said(since);
+                if (!engineWording && closed.Length > 0) return $"the pack closes begging: {closed}";
+                throw new ScenarioFailed($"no begging cursor; {closed}");
+            }
+            var pack = await PackContentsAsync(beggar, ct);
+            uint thing = pack.FirstOrDefault()?.Serial ?? 0;
+            if (thing == 0) throw new ScenarioFailed("nothing in the pack to target");
+            long picked = Environment.TickCount64;
+            await beggar.Actions.TargetObject(thing, ct);
+            await Task.Delay(3500, ct);
+            string heard = Said(picked);
+            if (heard.Contains("grovel", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed($"groveled at a thing; {heard}");
+            return heard.Length == 0 ? "silent" : heard;
+        });
+
+        beggar.Disconnect();
+    }
+
     private static async Task HerdSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
     {
         bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")

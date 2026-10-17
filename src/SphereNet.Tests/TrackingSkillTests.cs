@@ -110,10 +110,13 @@ public sealed class TrackingSkillTests
         Character.OnSkillUseQuickDetailed = (Character _, int _, ref int _, int _) => 1;
         try
         {
-            Assert.True(ActiveSkillEngine.Begging(new Sink(beggar, world), mark));
-            Assert.Equal(ServerMessages.GetFormatted(Msg.BeggingStart, "Merchant"),
-                ActiveSkillEngine.BeggingStartLine(beggar, mark));
-            Assert.Null(ActiveSkillEngine.BeggingStartLine(beggar, beggar));
+            var sink = new Sink(beggar, world);
+            Assert.True(ActiveSkillEngine.Begging(sink, mark));
+            Assert.Equal(ServerMessages.GetFormatted(Msg.BeggingStart, "Merchant"), sink.Messages.Single());
+
+            var self = new Sink(beggar, world);
+            Assert.True(ActiveSkillEngine.BeggingStart(self, beggar) < 0);
+            Assert.Empty(self.Messages);
         }
         finally { Character.OnSkillUseQuickDetailed = null; }
     }

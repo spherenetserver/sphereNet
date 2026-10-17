@@ -201,6 +201,31 @@ public sealed class SkillInventedValueParityTests : IDisposable
         Assert.Empty(rolls);
     }
 
+    /// <summary>Begging is rolled against what its START answered - ACTDIFF as
+    /// @SkillStart left it - not the mark's INT read again after the DELAY; an item
+    /// for a mark is refused at START without a word (CCharSkill.cpp:2934-2946,
+    /// :4447).</summary>
+    [Fact]
+    public void Begging_RollsTheStartDifficulty_AndAnItemIsRefusedQuietly()
+    {
+        var world = TestHarness.CreateWorld();
+        var beggar = Place(world);
+        var dog = Place(world, 101, 100, player: false);
+        dog.Int = 77;
+        var rolls = Rolls(_ => 1);
+        var sink = new Sink(beggar, world);
+
+        Assert.Equal(77, ActiveSkillEngine.StartStage(sink, SkillType.Begging, dog, null));
+        Assert.Single(sink.Messages);
+        Assert.True(ActiveSkillEngine.Begging(sink, dog, 12));
+        Assert.Equal((SkillType.Begging, 12), rolls.Single());
+
+        var quiet = new Sink(beggar, world);
+        Assert.True(ActiveSkillEngine.StartStage(quiet, SkillType.Begging, new Item(), null) < 0);
+        Assert.Empty(quiet.Messages);
+        Assert.True(ActiveSkillEngine.HasStartStage(SkillType.Begging));
+    }
+
     // ------------------------------------------------------------ Stealing
 
     [Fact]

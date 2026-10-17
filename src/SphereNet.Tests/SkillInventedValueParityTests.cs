@@ -406,6 +406,52 @@ public sealed class SkillInventedValueParityTests : IDisposable
         Assert.True(ch.Hits < 100);
     }
 
+    [Fact]
+    public void RemoveTrapJudgesTheTrapAtStart()
+    {
+        // START (CCharSkill.cpp:2900-2914): nothing or no trap is DEFMSG_REMOVETRAPS_WITEM,
+        // one out of touch DEFMSG_REMOVETRAPS_REACH; a trap gets rand(95).
+        var world = TestHarness.CreateWorld();
+        var ch = Place(world);
+        var sink = new Sink(ch, world);
+        Assert.True(ActiveSkillEngine.StartStage(sink, SkillType.RemoveTrap, null, null) < 0);
+        Assert.Equal(ServerMessages.Get(Msg.RemovetrapsWitem), sink.Messages.Last());
+
+        var trap = world.CreateItem();
+        trap.BaseId = 0x1125;
+        trap.ItemType = ItemType.Trap;
+        world.PlaceItem(trap, new Point3D(110, 100, 0, 0));
+        Assert.True(ActiveSkillEngine.StartStage(sink, SkillType.RemoveTrap, trap, null) < 0);
+        Assert.Equal(ServerMessages.Get(Msg.RemovetrapsReach), sink.Messages.Last());
+
+        world.PlaceItem(trap, new Point3D(101, 100, 0, 0));
+        int diff = ActiveSkillEngine.StartStage(sink, SkillType.RemoveTrap, trap, null);
+        Assert.InRange(diff, 0, 95);
+        Assert.True(ActiveSkillEngine.HasStartStage(SkillType.RemoveTrap));
+    }
+
+    [Fact]
+    public void RemoveTrapRollsTheStartDifficultyAndABoundToFailStartSetsItOff()
+    {
+        var world = TestHarness.CreateWorld();
+        var ch = Place(world);
+        var trap = world.CreateItem();
+        trap.BaseId = 0x1125;
+        trap.ItemType = ItemType.Trap;
+        world.PlaceItem(trap, new Point3D(101, 100, 0, 0));
+        var rolls = Rolls(_ => 1);
+
+        Assert.True(ActiveSkillEngine.RemoveTrap(new Sink(ch, world), trap, 42));
+        Assert.Equal([(SkillType.RemoveTrap, 42)], rolls);
+
+        // Bound to fail (Skill_Done :3928): no roll, the FAIL stage sets it off.
+        trap.ItemType = ItemType.Trap;
+        rolls.Clear();
+        Assert.False(ActiveSkillEngine.RemoveTrap(new Sink(ch, world), trap, -1));
+        Assert.Empty(rolls);
+        Assert.Equal(ItemType.TrapActive, trap.ItemType);
+    }
+
     // ------------------------------------------------------ Hiding/Stealth
 
     [Fact]

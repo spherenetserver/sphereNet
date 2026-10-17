@@ -591,10 +591,10 @@ public sealed class DeathEngine
         // enforces a container's MODMAXWEIGHT, it just had none to enforce.
         corpse.ModMaxWeight = victim.MaxWeight;
 
-        // Forensics reads DEATH_TIME / CORPSE_CARVED / CORPSE_SLEEPING. Stamp the
-        // death time so the skill can report how long ago the death occurred; the
-        // carved/sleeping flags default to unset and are set when carved/sleeping.
-        corpse.SetTag("DEATH_TIME", Environment.TickCount64.ToString());
+        // Forensics reads DEATH_TIME / CORPSE_CARVED / CORPSE_SLEEPING. The death time
+        // is on the world clock (SetTimeStampS(CWorldGameTime), CItemCorpse.cpp:203),
+        // which a save keeps; machine uptime did not survive a restart.
+        corpse.SetTag("DEATH_TIME", _world.GameClockMs.ToString());
         if (wasSleeping || victim.IsStatFlag(StatFlag.Sleeping))
             corpse.SetTag("CORPSE_SLEEPING", "1");
 

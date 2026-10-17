@@ -196,6 +196,34 @@ public class InfoSkillEngineTests
         Assert.Equal(ServerMessages.Get(Msg.ForensicsCorpse), sink.Log[0].Text);
     }
 
+    /// <summary>START on one's own corpse (m_uidLink) is difficulty 2
+    /// (CClientTarg.cpp:1210).</summary>
+    [Fact]
+    public void Forensics_OwnCorpse_StartIsTwo()
+    {
+        var self = MakeChar();
+        var corpse = new Item { ItemType = ItemType.Corpse };
+        corpse.SetTag("OWNER_UID", self.Uid.Value.ToString());
+        var sink = new RecordingSink(self);
+
+        Assert.Equal(2, InfoSkillEngine.Forensics(sink, corpse, null, null, false, false, 500, true));
+    }
+
+    /// <summary>A death time is told even under a second old (GetTimeStampS() &gt; 0,
+    /// CClientTarg.cpp:1231); a fresh corpse said nothing.</summary>
+    [Fact]
+    public void Forensics_FreshDeath_TellsTheTimer()
+    {
+        var self = MakeChar();
+        var corpse = new Item { ItemType = ItemType.Corpse, Name = "a corpse" };
+        var sink = new RecordingSink(self);
+
+        InfoSkillEngine.Forensics(sink, corpse, null, 0, false, false, 500);
+
+        Assert.Equal(ServerMessages.GetFormatted(Msg.ForensicsTimer, "a corpse", 0L) +
+                     ServerMessages.Get(Msg.ForensicsFailname), sink.Log.Single().Text);
+    }
+
     [Fact]
     public void AnimalLore_Free_PrintsMasterFreeLine()
     {

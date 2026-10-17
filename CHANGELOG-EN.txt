@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - A scripted skill is used without SKF_SELECTABLE; Remove Trap judges at START; Forensics on the world clock; trap drill
+------------------------------------------------------------------------
+FIX - A scripted skill is used from the skill list whether or not it has SKF_SELECTABLE,
+      which only tells the skill menu (Event_Skill_Use, CClientEvent.cpp:612-668); a pack
+      whose skill has no such flag could not use it at all ("You cannot use that skill
+      directly"). Only a disabled skill is refused before the triggers
+      (DEFMSG_SKILL_NOSKILL, Skill_CanUse); a skill with no button of its own reaches
+      @SkillSelect / @Select first, then is answered as Source-X answers it.
+FIX - Remove Trap's START runs when the skill starts (CCharSkill.cpp:2900-2914): nothing or
+      no trap is DEFMSG_REMOVETRAPS_WITEM (nothing at all said REACH), out of touch is
+      DEFMSG_REMOVETRAPS_REACH, the difficulty rand(95) is ACTDIFF. Touch is CanTouch, not
+      an invented 2-tile reach. A START that came back negative waits out the DELAY and
+      fails, setting the trap off when it is still there.
+FIX - Forensics: START on one's own corpse is difficulty 2 (CClientTarg.cpp:1210). A corpse's
+      death time is on the world clock, which a save keeps (SetTimeStampS); it was machine
+      uptime, so after a restart the age was wrong. A death under a second old is told
+      (it said nothing).
+ADD - Functional drill "trap" suite, on both packs: forensics on a corpse and on a thing,
+      remove trap on a thing, a trap disarmed at 100.0 and set off at 0.0, and a pack's
+      scripted remove trap opening its own puzzle.
+ADD - Tests: remove trap judged at START and bound to fail, forensics on one's own corpse
+      and a fresh death, a scripted skill with no SKF_SELECTABLE used, a passive skill
+      reaching @SkillSelect.
+
 [2026-10-17] - Herding as Source-X runs it; TARG stays the herded creature; herd drill
 ------------------------------------------------------------------------
 FIX - A herded animal walks to the spot (NPCACT_GOTO, Skill_Herding SUCCESS,

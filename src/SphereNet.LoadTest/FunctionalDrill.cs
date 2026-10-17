@@ -133,6 +133,8 @@ internal static class FunctionalDrill
                 await BardSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "herd")
                 await HerdSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "trap")
+                await TrapSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -4139,6 +4141,168 @@ internal static class FunctionalDrill
             }
         });
         herder.Disconnect();
+    }
+
+    /// <summary>Forensics on a corpse and on a thing; Remove Trap on a thing, on a trap
+    /// at 100.0 (disarmed, so a second try says it is no trap) and at 0.0 (set off).</summary>
+    private static async Task TrapSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        const int Forensics = 19, RemoveTrap = 48;
+        const ushort TrapId = 0x10F5;
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        string spot = OpenCountrySpot(root);
+        var bot = await LoginAsync(1201, port, ct);
+        uint corpse = 0, trap = 0, trap2 = 0;
+
+        string Said(long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        ushort IdOf(uint serial) { lock (bot.World.SyncRoot) return bot.World.KnownItems.GetValueOrDefault(serial)?.ItemId ?? 0; }
+
+        // Use the skill on the target and wait out its DELAY; returns what was said.
+        async Task<string> Use(int skill, uint target, int waitMs)
+        {
+            long asked = Environment.TickCount64;
+            await bot.Actions.UseSkill(skill, 3000, ct);
+            if (await bot.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+            {
+                // A pack may script the skill id as something else, with no cursor.
+                if (!engineWording) return $"(no cursor) {Said(asked)}";
+                throw new ScenarioFailed($"no cursor for skill {skill}; {Said(asked)}");
+            }
+            long since = Environment.TickCount64;
+            await bot.Actions.TargetObject(target, ct);
+            await Task.Delay(waitMs, ct);
+            return Said(since);
+        }
+
+        async Task<uint> AddOnGround(string defname, int dx, int dy, Func<BotKnownItem, bool> match)
+        {
+            HashSet<uint> before; lock (bot.World.SyncRoot) before = bot.World.KnownItems.Keys.ToHashSet();
+            await bot.Actions.Say($".add {defname}", ct);
+            if (await bot.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no target cursor for .add {defname}");
+            await bot.Actions.TargetLocation(bot.World.X + dx, bot.World.Y + dy, bot.World.Z, ct);
+            var found = await WaitAsync(() => { lock (bot.World.SyncRoot) return bot.World.KnownItems.Values.FirstOrDefault(i =>
+                !before.Contains(i.Serial) && i.ContainerSerial == 0 && match(i)); }, 4000, defname);
+            return found.Serial;
+        }
+
+        await RunScenario("trap", "setup: a corpse and two traps", outcomes, async () =>
+        {
+            await AsStaff(server, bot.AccountName, async () =>
+            {
+                await SayAsync(bot, $".go {spot}", ct);
+                await SayAsync(bot, ".forensics 1000", ct);
+                await SayAsync(bot, ".removetrap 1000", ct);
+                HashSet<uint> before; lock (bot.World.SyncRoot) before = bot.World.Mobiles.Keys.ToHashSet();
+                await bot.Actions.Say(".add c_rabbit", ct);
+                if (await bot.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_rabbit");
+                await bot.Actions.TargetLocation(bot.World.X + 1, bot.World.Y, bot.World.Z, ct);
+                var rabbit = await WaitAsync(() => { lock (bot.World.SyncRoot) return bot.World.Mobiles.Values.FirstOrDefault(m =>
+                    !before.Contains(m.Serial)); }, 4000, "the rabbit");
+                await bot.Actions.Say(".xkill", ct);
+                if (await bot.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor after .xkill");
+                await bot.Actions.TargetObject(rabbit.Serial, ct);
+                short rx = rabbit.X, ry = rabbit.Y;
+                var found = await WaitAsync(() => { lock (bot.World.SyncRoot) return bot.World.KnownItems.Values.FirstOrDefault(i =>
+                    i.ItemId == 0x2006 && i.ContainerSerial == 0 && Math.Abs(i.X - rx) <= 2 && Math.Abs(i.Y - ry) <= 2); }, 6000, "the corpse");
+                corpse = found.Serial;
+                trap = await AddOnGround("i_trap_fire_stone", 0, 1, i => i.ItemId == TrapId);
+                trap2 = await AddOnGround("i_trap_fire_stone", -1, 0, i => i.ItemId == TrapId);
+            });
+            return $"corpse 0x{corpse:X}, traps 0x{trap:X} 0x{trap2:X}";
+        });
+
+        await RunScenario("trap", "forensics tells how old the corpse is", outcomes, async () =>
+        {
+            string last = "";
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                last = await Use(Forensics, corpse, 2500);
+                if (!engineWording && last.Length > 0) return $"the pack answers: {last}";
+                if (last.Contains("seconds old")) return last;
+            }
+            throw new ScenarioFailed(last.Length == 0 ? "no answer" : last);
+        });
+
+        await RunScenario("trap", "forensics on a thing: a corpse is needed", outcomes, async () =>
+        {
+            string heard = await Use(Forensics, trap, 1500);
+            if (heard.Length == 0) throw new ScenarioFailed("nothing said");
+            if (engineWording && !heard.Contains("must be used on a corpse")) throw new ScenarioFailed(heard);
+            return heard;
+        });
+
+        await RunScenario("trap", "remove trap on a thing: no trap", outcomes, async () =>
+        {
+            // Judged at START, before the DELAY (7.0 at 0.0, 2.0 at 100.0).
+            string heard = await Use(RemoveTrap, corpse, 1500);
+            if (heard.Length == 0) throw new ScenarioFailed("nothing said");
+            if (engineWording && !heard.Contains("disable traps")) throw new ScenarioFailed(heard);
+            return heard;
+        });
+
+        await RunScenario("trap", "remove trap at 100.0 disarms it", outcomes, async () =>
+        {
+            short hits = bot.World.Hits;
+            string done = await Use(RemoveTrap, trap, 3500);
+            // A disarmed trap shows its animation too (SetTrapState(IT_TRAP_INACTIVE,
+            // ITEMID_NOTHING) takes m_AnimID, CItem.cpp:5473-5490); set off, it hurts.
+            if (bot.World.Hits < hits || done.Contains("fail", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed($"the trap went off: hits {hits} -> {bot.World.Hits}; {done}");
+            string again = await Use(RemoveTrap, trap, 1500);
+            if (!engineWording) return $"the pack answers: {done} / {again}";
+            if (!again.Contains("disable traps")) throw new ScenarioFailed($"not disarmed: {done} / {again}");
+            return $"disarmed; then: {again}";
+        });
+
+        await RunScenario("trap", "remove trap at 0.0 sets it off", outcomes, async () =>
+        {
+            await AsStaff(server, bot.AccountName, async () => await SayAsync(bot, ".removetrap 0", ct));
+            string last = "";
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                short hits = bot.World.Hits;
+                last = await Use(RemoveTrap, trap2, 8000);
+                if (bot.World.Hits < hits)
+                    return $"set off: graphic 0x{IdOf(trap2):X}, hits {hits} -> {bot.World.Hits}; {last}";
+                if (!engineWording && last.Length > 0) return $"the pack answers: {last}";
+            }
+            throw new ScenarioFailed($"never went off; {last}");
+        });
+
+        uint chest = 0;
+        if (!engineWording)
+            await RunScenario("trap", "the pack's remove trap opens its puzzle on a training chest", outcomes, async () =>
+            {
+                // A scripted skill with no SKF_SELECTABLE is still used (Event_Skill_Use).
+                await AsStaff(server, bot.AccountName, async () =>
+                {
+                    await SayAsync(bot, ".removetrap 1000", ct);
+                    chest = await AddOnGround("i_training_chest", 1, 1, _ => true);
+                });
+                long since = Environment.TickCount64;
+                string heard = await Use(RemoveTrap, chest, 2000);
+                if (bot.World.ActiveGump is not { } gump || bot.World.ActiveGumpReceivedMs < since)
+                    throw new ScenarioFailed($"no gump; {heard}");
+                return $"gump 0x{gump.GumpId:X}; {heard}";
+            });
+
+        await AsStaff(server, bot.AccountName, async () =>
+        {
+            foreach (uint item in new[] { trap, trap2, corpse, chest })
+            {
+                if (item == 0) continue;
+                await bot.Actions.Say(".remove", ct);
+                if (await bot.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                    await bot.Actions.TargetObject(item, ct);
+                await Task.Delay(300, ct);
+            }
+        });
+        bot.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

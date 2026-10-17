@@ -112,10 +112,40 @@ public class SkillAuditRegressionTests
         client.SetEngines(skillHandlers: new SkillHandlers(world), triggerDispatcher: dispatcher);
 
         client.HandleUseSkill((int)SkillType.Hiding);
-        client.HandleUseSkill((int)SkillType.Focus);
+        Assert.Equal(0, selected);   // Skill_CanUse refuses before @SkillSelect
 
-        Assert.Equal(0, selected);
+        // A passive skill still reaches @SkillSelect, then has no button
+        // (Event_Skill_Use default, CClientEvent.cpp:721).
+        client.HandleUseSkill((int)SkillType.Focus);
+        Assert.Equal(1, selected);
         Assert.False(ch.HasActiveSkillPending());
+    }
+
+    /// <summary>SKF_SELECTABLE only tells the skill menu; a scripted skill without it
+    /// is used like any other (Event_Skill_Use, CClientEvent.cpp:612-668).</summary>
+    [Fact]
+    public void ScriptedSkillWithoutSelectable_IsStillUsed()
+    {
+        LoadDefinitions("""
+            [SKILL 48]
+            FLAGS=skf_scripted
+            """);
+
+        var world = CreateWorld();
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var client = TestHarness.CreateClient(loggerFactory, world, new AccountManager(loggerFactory), 3102);
+        var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+        TestHarness.AttachCharacter(client, ch);
+        int selected = 0;
+        var dispatcher = new SphereNet.Game.Scripting.TriggerDispatcher();
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "SkillSelect", (_, _) => { selected++; return TriggerResult.True; });
+        client.SetEngines(skillHandlers: new SkillHandlers(world), triggerDispatcher: dispatcher);
+
+        client.HandleUseSkill((int)SkillType.RemoveTrap);
+
+        Assert.Equal(1, selected);
     }
 
     [Fact]
@@ -325,7 +355,7 @@ public class SkillAuditRegressionTests
         corpse.ItemType = ItemType.Corpse;
         corpse.Name = "a corpse";
         corpse.SetTag("KILLER_UID", killer.Uid.Value.ToString());
-        corpse.SetTag("DEATH_TIME", (Environment.TickCount64 - 5_000).ToString());
+        corpse.SetTag("DEATH_TIME", (world.GameClockMs - 5_000).ToString());
         world.PlaceItem(corpse, new Point3D(101, 100, 0, 0));
         var sink = new InfoSink(examiner);
         Character.OnSkillUseQuickDetailed =

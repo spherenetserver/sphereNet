@@ -98,9 +98,10 @@ public sealed class SkillHandlers
     {
         Serial killerUid = ResolveKillerUid(corpse);
         Character? killer = killerUid.IsValid ? _world.FindChar(killerUid) : null;
-        long secs = corpse.TryGetTag("DEATH_TIME", out string? ds) && ScriptNumber.TryParseLong(ds, out long dt)
-            ? Math.Max(0, (Environment.TickCount64 - dt) / 1000)
-            : 0;
+        // The death time is on the world clock, which a save keeps (GetTimeStampS).
+        long? secs = corpse.TryGetTag("DEATH_TIME", out string? ds) && ScriptNumber.TryParseLong(ds, out long dt)
+            ? Math.Max(0, (_world.GameClockMs - dt) / 1000)
+            : null;
         bool sleeping = corpse.TryGetTag("CORPSE_SLEEPING", out string? sv) && sv == "1";
         bool carved = corpse.TryGetTag("CORPSE_CARVED", out string? cv) && cv == "1";
         return InfoSkillEngine.Forensics(sink, corpse, killer, secs, sleeping, carved, level) >= 0;
@@ -176,19 +177,16 @@ public sealed class SkillHandlers
     }
 
     /// <summary>Skills that may be initiated by the client UseSkill command.
-    /// Passive combat/magic/regeneration skills are intentionally excluded.</summary>
+    /// Passive combat/magic/regeneration skills are excluded. A scripted skill always
+    /// can be (Event_Skill_Use, CClientEvent.cpp:655-668): SKF_SELECTABLE only tells the
+    /// skill menu, and nothing in the server asks it.</summary>
     public static bool IsClientUsable(SkillType skill)
     {
         if (!SkillEngine.IsValidBaseSkill(skill) || SkillEngine.HasFlag(skill, SkillFlag.Disabled))
             return false;
 
-        var def = DefinitionLoader.GetSkillDef((int)skill);
-        if (def != null)
-        {
-            var flags = (SkillFlag)def.Flags;
-            if ((flags & SkillFlag.Scripted) != 0)
-                return (flags & SkillFlag.Selectable) != 0;
-        }
+        if (SkillEngine.HasFlag(skill, SkillFlag.Scripted))
+            return true;
 
         if (IsInfoSkill(skill) || GetActiveSkillTarget(skill) != ActiveSkillTargetKind.Unsupported)
             return true;
@@ -290,7 +288,8 @@ public sealed class SkillHandlers
             case SkillType.Stealing:         return ActiveSkillEngine.Stealing(sink, target as Item);
             case SkillType.Snooping:         return ActiveSkillEngine.Snooping(sink, target as Item);
             case SkillType.Lockpicking:      return ActiveSkillEngine.Lockpicking(sink, target as Item);
-            case SkillType.RemoveTrap:       return ActiveSkillEngine.RemoveTrap(sink, target as Item);
+            case SkillType.RemoveTrap:
+                return ActiveSkillEngine.RemoveTrap(sink, target as Item, ch.TakeStartStageDifficulty());
             case SkillType.Poisoning:
                 // ACTPRV = the thing to poison, ACT = the poison (Skill_Poisoning,
                 // CCharSkill.cpp:2162-2163).

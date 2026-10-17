@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Script'li beceri SKF_SELECTABLE olmadan kullanilir; Remove Trap START'ta karar verir; Forensics dunya saatinde; trap tatbikati
+------------------------------------------------------------------------
+DUZELTME - Script'li bir beceri SKF_SELECTABLE olsun olmasin beceri listesinden kullanilir; bu
+       bayrak yalnizca beceri menusune bilgidir (Event_Skill_Use, CClientEvent.cpp:612-668).
+       Becerisinde bu bayrak olmayan bir paket onu hic kullanamiyordu ("You cannot use that
+       skill directly"). Tetiklerden once yalnizca devre disi beceri reddedilir
+       (DEFMSG_SKILL_NOSKILL, Skill_CanUse); kendi dugmesi olmayan beceri once
+       @SkillSelect / @Select'e ulasir, sonra Source-X'in cevabini alir.
+DUZELTME - Remove Trap'in START'i beceri basladiginda calisir (CCharSkill.cpp:2900-2914): hicbir
+       sey ya da tuzak olmayan DEFMSG_REMOVETRAPS_WITEM (hicbir sey REACH diyordu), dokunma
+       mesafesi disi DEFMSG_REMOVETRAPS_REACH, zorluk rand(95) ACTDIFF olur. Dokunma
+       CanTouch'tir, uydurma 2 karelik erisim degil. Negatif donen START DELAY'i bekleyip
+       basarisiz olur ve tuzak hala oradaysa onu tetikler.
+DUZELTME - Forensics: kisinin kendi cesedinde START zorlugu 2'dir (CClientTarg.cpp:1210).
+       Cesedin olum zamani save'in sakladigi dunya saatindedir (SetTimeStampS); makinenin
+       acik kalma suresiydi, yeniden baslatmadan sonra yas yanlisti. Bir saniyeden genc olum
+       de soylenir (hicbir sey demiyordu).
+EKLEME - Fonksiyonel tatbikat "trap" paketi, iki pakette: cesette ve esyada forensics, esyada
+       remove trap, 100.0'da etkisizlesen ve 0.0'da tetiklenen tuzak, paketin script'li
+       remove trap'inin kendi bulmacasini acmasi.
+EKLEME - Testler: START'ta karar veren ve basarisizliga mahkum remove trap, kendi cesedinde ve
+       taze olumde forensics, SKF_SELECTABLE'siz script'li becerinin kullanilmasi, pasif
+       becerinin @SkillSelect'e ulasmasi.
+
 [2026-10-17] - Herding Source-X'teki gibi; TARG guden yaratikta kalir; herd tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Gudulen hayvan noktaya yurur (NPCACT_GOTO, Skill_Herding SUCCESS,

@@ -3007,9 +3007,10 @@ public sealed class ClientWorldFeaturesHandler
         if (skillId < 0 || skillId >= SkillEngine.BaseSkillCount) return;
 
         var skill = (SkillType)skillId;
-        if (!SkillHandlers.IsClientUsable(skill))
+        // Skill_CanUse (CCharSkill.cpp:83-93): only a disabled skill is refused here.
+        if (SkillEngine.HasFlag(skill, SkillFlag.Disabled))
         {
-            SysMessage("You cannot use that skill directly.");
+            SysMessage(ServerMessages.Get(Msg.SkillNoskill));
             return;
         }
 
@@ -3104,6 +3105,14 @@ public sealed class ClientWorldFeaturesHandler
             new TriggerArgs { CharSrc = _character, N1 = skillId }) ?? TriggerResult.Default;
         if (selectResult == TriggerResult.True)
             return;
+
+        // A skill with no button of its own, after @SkillSelect / @Select had their say
+        // (Event_Skill_Use default, CClientEvent.cpp:721-723).
+        if (!SkillHandlers.IsClientUsable(skill))
+        {
+            SysMessage("There is no such skill. Please tell support you saw this message.");
+            return;
+        }
 
         // A fresh client action must not inherit object/point state from the
         // previous skill (notably Camping, Poisoning and bard multi-targets).

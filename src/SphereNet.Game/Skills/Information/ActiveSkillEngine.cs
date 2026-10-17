@@ -540,35 +540,46 @@ public static class ActiveSkillEngine
 
     // ----------------------------------------------------------- RemoveTrap
 
-    /// <summary>Source-X CChar::Skill_RemoveTrap. Targets trap item; success disarms.</summary>
-    public static bool RemoveTrap(IActiveSkillSink sink, Item? trap)
+    /// <summary>What every Skill_RemoveTrap stage asks first (CCharSkill.cpp:2900-2910):
+    /// an IT_TRAP (DEFMSG_REMOVETRAPS_WITEM, also for nothing at all) the remover can
+    /// touch (DEFMSG_REMOVETRAPS_REACH). One already sprung (IT_TRAP_ACTIVE) or
+    /// disarmed is not a target.</summary>
+    private static bool RemoveTrapTarget(IActiveSkillSink sink, Item? trap)
     {
-        var ch = sink.Self;
-        if (trap == null)
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.RemovetrapsReach));
-            return false;
-        }
-        // Only an armed, idle IT_TRAP can be worked on (CCharSkill.cpp:2902) - one
-        // already sprung (IT_TRAP_ACTIVE) or disarmed is not a target.
-        if (trap.ItemType != ItemType.Trap)
+        if (trap == null || trap.IsDeleted || trap.ItemType != ItemType.Trap)
         {
             sink.SysMessage(ServerMessages.Get(Msg.RemovetrapsWitem));
             return false;
         }
-        if (!CanReachItem(ch, trap, sink.World, SkillType.RemoveTrap, 2))
+        if (!Scripting.ScriptTouchAccess.CanTouch(sink.Self, trap))
         {
             sink.SysMessage(ServerMessages.Get(Msg.RemovetrapsReach));
             return false;
         }
+        return true;
+    }
 
-        // Source-X Skill_RemoveTrap: difficulty = rand(95) (CCharSkill.cpp:2913).
-        bool success = SkillEngine.UseQuick(ch, SkillType.RemoveTrap, sink.Random.Next(95));
+    /// <summary>Skill_RemoveTrap START (CCharSkill.cpp:2911-2914): the trap judged, and
+    /// a difficulty of rand(95). Run when the skill starts.</summary>
+    public static int RemoveTrapStart(IActiveSkillSink sink, Item? trap) =>
+        RemoveTrapTarget(sink, trap) ? RandVal(sink.Random, 95) : -3;
+
+    /// <summary>Source-X CChar::Skill_RemoveTrap (CCharSkill.cpp:2888-2926). START is
+    /// <see cref="RemoveTrapStart"/>; the trap is judged again after the DELAY. A START
+    /// that came back negative is bound to fail (Skill_Done, :3928) and its FAIL stage
+    /// runs. SUCCESS disarms the trap for five minutes, FAIL sets it off.</summary>
+    public static bool RemoveTrap(IActiveSkillSink sink, Item? trap, int? startDifficulty = null)
+    {
+        var ch = sink.Self;
+        if (!RemoveTrapTarget(sink, trap))
+            return false;
+        int diff = startDifficulty ?? RandVal(sink.Random, 95);
+        bool success = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.RemoveTrap, diff);
         if (success)
         {
             // Disabled, and it re-arms by itself five minutes later
             // (SetTrapState(IT_TRAP_INACTIVE, ITEMID_NOTHING, 5*60), :2921).
-            trap.SetTrapState(ItemType.TrapInactive, 0, 5 * 60);
+            trap!.SetTrapState(ItemType.TrapInactive, 0, 5 * 60);
         }
         else
         {
@@ -576,7 +587,7 @@ public static class ActiveSkillEngine
             // is Use_Trap - arm the graphic, damage from the trap's own field
             // (default 2) - taken through OnTakeDamage(HIT_BLUNT|GENERAL)
             // (CCharUse.cpp:1753-1759, CItem.cpp:5493-5508).
-            int trapDmg = trap.UseTrap();
+            int trapDmg = trap!.UseTrap();
             Combat.CombatEngine.ApplyScriptDamage(ch, trapDmg,
                 Combat.DamageType.HitBlunt | Combat.DamageType.General);
             if (ch.Hits <= 0 && !ch.IsDead)
@@ -1609,7 +1620,7 @@ public static class ActiveSkillEngine
     /// for enticement, the target for provocation), <paramref name="provoked"/> ACTPRV.
     /// The whole skill used to run after the DELAY, so the tune came seconds late and
     /// a missing instrument was only said at the end.</summary>
-    public static int BardStart(IActiveSkillSink sink, SkillType skill, ObjBase? act, Character? provoked,
+    public static int StartStage(IActiveSkillSink sink, SkillType skill, ObjBase? act, Character? provoked,
         Point3D? point = null) =>
         skill switch
         {
@@ -1618,14 +1629,16 @@ public static class ActiveSkillEngine
             SkillType.Peacemaking => PeacemakingStart(sink),
             SkillType.Enticement => EnticementStart(sink, act as Character),
             SkillType.Provocation => ProvocationStart(sink, provoked, act as Character),
+            SkillType.RemoveTrap => RemoveTrapStart(sink, act as Item),
             _ => 0,
         };
 
     /// <summary>The skills whose START stage runs at Skill_Start here: the bard skills,
-    /// which play the instrument, and herding, which judges the creature and the spot.</summary>
-    public static bool IsBardSkill(SkillType skill) =>
+    /// which play the instrument, herding, which judges the creature and the spot, and
+    /// remove trap, which judges the trap.</summary>
+    public static bool HasStartStage(SkillType skill) =>
         skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation
-            or SkillType.Herding;
+            or SkillType.Herding or SkillType.RemoveTrap;
 
     /// <summary>Skill_Musicianship START (CCharSkill.cpp:1786-1787): play ACT, the
     /// instrument double-clicked, or any carried, against rand(90).</summary>

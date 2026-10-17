@@ -150,7 +150,7 @@ public sealed class ClientSkillsHandler
             bool startRefused = skill == SkillType.Meditation && _character.Mana >= _character.MaxMana;
             if (startRefused)
                 SysMessage(ServerMessages.Get(Msg.MeditationPeace1));
-            if (BardStartBoundToFail(skill, null))
+            if (StartStageBoundToFail(skill, null))
                 startRefused = true;
 
             // m_Act_Effect before @SkillStart, LOCAL.Effect read back (:4456-4477, :4526).
@@ -536,7 +536,7 @@ public sealed class ClientSkillsHandler
             else
                 startRefused = true;
         }
-        if (BardStartBoundToFail(skill, target, point))
+        if (StartStageBoundToFail(skill, target, point))
             startRefused = true;
 
         bool gather = SkillEngine.HasFlag(skill, SkillFlag.Gather);
@@ -592,19 +592,19 @@ public sealed class ClientSkillsHandler
             actionEffect: _character.ActionEffect);
     }
 
-    /// <summary>A bard skill's START stage, run when the skill starts: the instrument
-    /// plays now and the answer is kept for the roll after the DELAY. True when it
+    /// <summary>A START stage run when the skill starts (a bard skill plays the instrument,
+    /// remove trap judges the trap); the answer is kept for the roll after the DELAY. True when it
     /// came back negative.</summary>
-    private bool BardStartBoundToFail(SkillType skill, Objects.ObjBase? target, Point3D? point = null)
+    private bool StartStageBoundToFail(SkillType skill, Objects.ObjBase? target, Point3D? point = null)
     {
         if (_character == null) return false;
         _character.StartStageRan = false;
-        if (!Skills.Information.ActiveSkillEngine.IsBardSkill(skill) || SkillEngine.HasFlag(skill, SkillFlag.Scripted))
+        if (!Skills.Information.ActiveSkillEngine.HasStartStage(skill) || SkillEngine.HasFlag(skill, SkillFlag.Scripted))
             return false;
         var provoked = skill == SkillType.Provocation && _character.ActPrv.IsValid ? _world.FindChar(_character.ActPrv) : null;
         // m_Act_Difficulty = Skill_Stage(SKTRIG_START) (CCharSkill.cpp:4447): ACTDIFF in
         // the start triggers.
-        _character.ActDiff = Skills.Information.ActiveSkillEngine.BardStart(
+        _character.ActDiff = Skills.Information.ActiveSkillEngine.StartStage(
             new GameClient.InfoSkillSink(_client, _character), skill, target, provoked, point);
         _character.StartStageRan = true;
         return _character.ActDiff < 0;
@@ -615,13 +615,13 @@ public sealed class ClientSkillsHandler
     private bool StartStillRefused(bool startRefused) =>
         _character is { StartStageRan: true } ch ? ch.ActDiff < 0 : startRefused;
 
-    /// <summary>With neither @SkillStart nor @Start in use, a bard skill whose START
+    /// <summary>With neither @SkillStart nor @Start in use, a skill whose START
     /// came back negative still waits out its DELAY and fails then (Skill_Done: "was
     /// bound to fail, but we had to wait for the timer anyhow", CCharSkill.cpp:3927);
     /// its FAIL stage runs - a provoked creature turns on the bard.</summary>
     private bool SkillWaitsOutARefusal(SkillType skill) =>
         _character is { StartStageRan: true, ActDiff: < 0 } &&
-        Skills.Information.ActiveSkillEngine.IsBardSkill(skill) &&
+        Skills.Information.ActiveSkillEngine.HasStartStage(skill) &&
         (_triggerDispatcher == null || !_triggerDispatcher.IsTriggerNameUsed("SkillStart") &&
             !_triggerDispatcher.IsTriggerNameUsed("Start"));
 

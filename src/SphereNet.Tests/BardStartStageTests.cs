@@ -107,7 +107,7 @@ public sealed class BardStartStageTests
         Character.OnSkillUseQuick = (_, _, _, _) => 1;
         try
         {
-            Assert.True(ActiveSkillEngine.BardStart(sink, SkillType.Musicianship, harp, null) >= 0);
+            Assert.True(ActiveSkillEngine.StartStage(sink, SkillType.Musicianship, harp, null) >= 0);
             Assert.Equal([(ushort)0x45], sink.Sounds);
         }
         finally { Character.OnSkillUseQuick = null; }
@@ -142,7 +142,7 @@ public sealed class BardStartStageTests
             Assert.True(ActiveSkillEngine.Enticement(sink, near));
             Assert.Equal(bard.Position, near.ActP);
             Assert.False(ActiveSkillEngine.Enticement(sink, far));
-            Assert.True(ActiveSkillEngine.BardStart(sink, SkillType.Enticement, far, null) < 0);
+            Assert.True(ActiveSkillEngine.StartStage(sink, SkillType.Enticement, far, null) < 0);
         }
         finally { Character.OnSkillUseQuick = null; }
     }

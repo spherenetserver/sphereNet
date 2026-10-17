@@ -347,10 +347,13 @@ public static class InfoSkillEngine
     // ------------------------------------------------------------ Forensics
 
     /// <summary>
-    /// Source-X <c>CClient::OnSkill_Forensics</c>. Parses corpse state (sleeping
-    /// ghost, carved, freshly-killed) and prints the matching carve/timer clause.
+    /// Source-X <c>CClient::OnSkill_Forensics</c> (CClientTarg.cpp:1191-1245). START:
+    /// difficulty 2 on one's own corpse (m_uidLink), else rand(60). Then the corpse
+    /// state (sleeping body, carved, a death time) and the matching carve/timer
+    /// clause; <paramref name="secondsSinceDeath"/> is null for a corpse with no death
+    /// time, and a death time of under a second is still told.
     /// </summary>
-    public static int Forensics(IInfoSkillSink sink, Item? corpse, Character? killer, long secondsSinceDeath,
+    public static int Forensics(IInfoSkillSink sink, Item? corpse, Character? killer, long? secondsSinceDeath,
         bool isCorpseSleeping, bool isCarved, int iSkillLevel, bool fTest = false)
     {
         if (corpse == null || corpse.ItemType != ItemType.Corpse)
@@ -365,7 +368,10 @@ public static class InfoSkillEngine
         }
 
         if (fTest)
-            return sink.Random.Next(60);
+            return corpse.TryGetTag("OWNER_UID", out string? owner) && ScriptNumber.TryParseUInt(owner, out uint ownerUid) &&
+                   ownerUid == sink.Self.Uid.Value
+                ? 2
+                : sink.Random.Next(60);
 
         string? killerName = killer?.Name;
 
@@ -384,16 +390,16 @@ public static class InfoSkillEngine
                 ? ServerMessages.GetFormatted(Msg.ForensicsCarve2, killerName)
                 : ServerMessages.Get(Msg.ForensicsFailname);
         }
-        else if (secondsSinceDeath > 0)
+        else if (secondsSinceDeath.HasValue)
         {
-            body = ServerMessages.GetFormatted(Msg.ForensicsTimer, corpse.Name, secondsSinceDeath);
+            body = ServerMessages.GetFormatted(Msg.ForensicsTimer, corpse.Name, secondsSinceDeath.Value);
             body += killerName != null
                 ? ServerMessages.GetFormatted(Msg.ForensicsName, killerName)
                 : ServerMessages.Get(Msg.ForensicsFailname);
         }
         else
         {
-            // Corpse is fresh but no killer captured -- nothing to say, mirror empty path upstream.
+            // No death time: nothing to say (an empty line upstream).
             return iSkillLevel;
         }
 

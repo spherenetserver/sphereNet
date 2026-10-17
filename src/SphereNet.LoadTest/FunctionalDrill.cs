@@ -145,6 +145,8 @@ internal static class FunctionalDrill
                 await TreasureSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "breath")
                 await BreathSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "guards")
+                await GuardsSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -4923,6 +4925,74 @@ internal static class FunctionalDrill
             }
         });
         hero.Disconnect();
+    }
+
+    /// <summary>The guards of a guarded town come for an evil creature (Noto_IsEvil):
+    /// a player's "guards" (CallGuards, CClientEvent.cpp:1888) brings one, who kills it.</summary>
+    private static async Task GuardsSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        var citizen = await LoginAsync(1261, port, ct);
+        uint orc = 0;
+        string town = "";
+
+        // A spot inside a guarded area (REGION_FLAG_GUARDED 0x4000), as the pack's own
+        // regions say: the drill's usual spot, else a few town squares.
+        async Task<string> FindGuardedSpot()
+        {
+            foreach (var at in new[] { OpenCountrySpot(root), "1475,1645,20", "1496,1628,10", "1434,1699,0", "2500,500,0" })
+            {
+                string flags = "";
+                await AsStaff(server, citizen.AccountName, async () =>
+                {
+                    await SayAsync(citizen, $".go {at}", ct);
+                    long t = Environment.TickCount64;
+                    await SayAsync(citizen, ".show region.flags", ct);
+                    flags = citizen.World.Journal.ToArray().Where(e => e.TimestampMs >= t && e.Text.Contains(" is '"))
+                        .Select(e => e.Text).LastOrDefault() ?? "";
+                });
+                int q = flags.LastIndexOf(" is '");
+                if (q >= 0 && long.TryParse(flags[(q + 5)..].TrimEnd('\''), out long f) && (f & 0x4000) != 0)
+                    return at;
+            }
+            throw new ScenarioFailed("no guarded town spot found");
+        }
+
+        await RunScenario("guards", "setup: an orc in town", outcomes, async () =>
+        {
+            town = await FindGuardedSpot();
+            await AsStaff(server, citizen.AccountName, async () =>
+            {
+                await SayAsync(citizen, $".go {town}", ct);
+                await SayAsync(citizen, ".str 1000", ct);
+                await SayAsync(citizen, ".hits 1000", ct);
+                HashSet<uint> before; lock (citizen.World.SyncRoot) before = citizen.World.Mobiles.Keys.ToHashSet();
+                await citizen.Actions.Say(".add c_orc", ct);
+                if (await citizen.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_orc");
+                await citizen.Actions.TargetLocation(citizen.World.X + 3, citizen.World.Y, citizen.World.Z, ct);
+                var found = await WaitAsync(() => { lock (citizen.World.SyncRoot) return citizen.World.Mobiles.Values.FirstOrDefault(m =>
+                    !before.Contains(m.Serial)); }, 4000, "the orc");
+                orc = found.Serial;
+            });
+            return $"orc 0x{orc:X} at the guarded spot {town}";
+        });
+
+        await RunScenario("guards", "calling the guards gets the orc killed", outcomes, async () =>
+        {
+            if (orc == 0) throw new ScenarioFailed("no orc");
+            long since = Environment.TickCount64;
+            bool OrcGone() { lock (citizen.World.SyncRoot) return !citizen.World.Mobiles.ContainsKey(orc); }
+            for (int i = 0; i < 6 && !OrcGone(); i++)
+            {
+                await citizen.Actions.Say("guards", ct);
+                for (int w = 0; w < 10 && !OrcGone(); w++) await Task.Delay(500, ct);
+            }
+            string heard = string.Join(" | ", citizen.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text).Distinct().Take(6));
+            if (!OrcGone()) throw new ScenarioFailed($"the orc is still there after 30 s; {heard}");
+            return $"orc gone after {(Environment.TickCount64 - since) / 1000.0:F1}s; {heard}";
+        });
+
+        citizen.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

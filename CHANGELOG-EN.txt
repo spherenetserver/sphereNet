@@ -4,6 +4,12 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Guards drill
+------------------------------------------------------------------------
+ADD - Functional drill "guards" suite, on both packs: in a guarded area (found by asking the pack's
+      own regions, REGION_FLAG_GUARDED) an orc is killed by the guard a player's "guards" brings
+      (CallGuards, CClientEvent.cpp:1888; NPC_LookAtCharGuard for an evil creature).
+
 [2026-10-17] - Dragon breath drill
 ------------------------------------------------------------------------
 ADD - Functional drill "breath" suite, on both packs: a dragon fighting a player out of town

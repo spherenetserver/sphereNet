@@ -4,6 +4,12 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Muhafiz tatbikati
+------------------------------------------------------------------------
+EKLEME - Fonksiyonel tatbikat "guards" paketi, iki pakette: korunan bir bolgede (paketin kendi bolgelerine
+       sorularak bulunur, REGION_FLAG_GUARDED) oyuncunun "guards" cagrisiyla gelen muhafiz orku oldurur
+       (CallGuards, CClientEvent.cpp:1888; kotu yaratik icin NPC_LookAtCharGuard).
+
 [2026-10-17] - Ejderha nefesi tatbikati
 ------------------------------------------------------------------------
 EKLEME - Fonksiyonel tatbikat "breath" paketi, iki pakette: sehir disinda bir oyuncuyla dovusen ejderha

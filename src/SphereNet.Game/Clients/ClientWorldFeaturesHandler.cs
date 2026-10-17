@@ -532,6 +532,25 @@ public sealed class ClientWorldFeaturesHandler
                 new PacketSound(craftSound, _character.X, _character.Y, _character.Z), 0);
     }
 
+    /// <summary>The sound a craft skill's own stage function makes at SUCCESS or FAIL, on
+    /// top of the strokes': Skill_Tailoring snips at SUCCESS (SOUND_SNIP,
+    /// CCharSkill.cpp:3116-3120), Skill_Carpentry plays 0x23D at every stage it is called
+    /// for (:3172-3173). SKF_NOSFX silences both.</summary>
+    private void PlayCraftStageSound(SkillType craftSkill, bool success)
+    {
+        if (_character == null || SkillEngine.HasFlag(craftSkill, SkillFlag.NoSfx))
+            return;
+        ushort sound = craftSkill switch
+        {
+            SkillType.Tailoring when success => 0x0248,
+            SkillType.Carpentry => 0x023D,
+            _ => 0,
+        };
+        if (sound != 0)
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                new PacketSound(sound, _character.X, _character.Y, _character.Z), 0);
+    }
+
     /// <summary>The stroke re-arm interval: Skill_GetTimeout, the DELAY curve at the
     /// crafter's base skill with a floor of ONE tenth (CCharSkill.cpp:659-671). The
     /// old floor of a full second read Skill_Stroke's "delay &lt; 10" clamp as tenths;
@@ -577,14 +596,13 @@ public sealed class ClientWorldFeaturesHandler
             {
                 FailCraftStage(recipe, craftSkill);
             }
-            else if (!DeliverCraftSuccess(recipe, craftSkill, craftAmount > 0 ? craftAmount : 1))
-            {
-                AbortCraftStage(craftSkill);
-            }
             else
             {
-                // Skill_Experience after the stage went through.
-                SkillEngine.GainExperience(_character, craftSkill, _character.ActDiff);
+                PlayCraftStageSound(craftSkill, success: true);
+                if (!DeliverCraftSuccess(recipe, craftSkill, craftAmount > 0 ? craftAmount : 1))
+                    AbortCraftStage(craftSkill);
+                else
+                    SkillEngine.GainExperience(_character, craftSkill, _character.ActDiff);   // Skill_Experience after the stage
             }
         }
         _character.ActDiff = 0;          // Skill_Cleanup
@@ -609,6 +627,7 @@ public sealed class ClientWorldFeaturesHandler
             return;
         // The FAIL stage says nothing of its own (Skill_MakeItem, CCharSkill.cpp:925-946):
         // the pack's @Fail tells the crafter.
+        PlayCraftStageSound(craftSkill, success: false);
         _craftingEngine.CraftFail(_character, recipe);
         SkillEngine.GainExperience(_character, craftSkill, _character.ActDiff);
     }

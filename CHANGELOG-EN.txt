@@ -4,6 +4,12 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Tailoring and Carpentry make their stage sounds
+------------------------------------------------------------------------
+FIX - Tailoring snips at SUCCESS (SOUND_SNIP, Skill_Tailoring, CCharSkill.cpp:3116-3120) and
+      Carpentry plays 0x23D at SUCCESS and at FAIL (Skill_Carpentry, :3172-3173), on top of the
+      strokes' sound, unless SKF_NOSFX; both were missing.
+
 [2026-10-17] - Crafting says what Source-X says: forge and fire source at the start, nothing of its own on a failure; Animal Lore START by body
 ------------------------------------------------------------------------
 FIX - Smithing with no forge in reach says DEFMSG_SMITHING_FORGE and cooking with no heat source

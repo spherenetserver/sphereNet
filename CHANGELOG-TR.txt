@@ -4,6 +4,12 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Tailoring ve Carpentry asama seslerini cikarir
+------------------------------------------------------------------------
+DUZELTME - Tailoring SUCCESS'te makas sesi cikarir (SOUND_SNIP, Skill_Tailoring, CCharSkill.cpp:3116-3120),
+       Carpentry SUCCESS'te ve FAIL'de 0x23D calar (Skill_Carpentry, :3172-3173), vurus sesinin
+       ustune, SKF_NOSFX yoksa; ikisi de eksikti.
+
 [2026-10-17] - Uretim Source-X'in soyledigini soyler: baslangicta ocak ve ates kaynagi, basarisizlikta kendinden bir sey yok; Animal Lore START'i govdeye gore
 ------------------------------------------------------------------------
 DUZELTME - Erisimde ocak yokken demircilik DEFMSG_SMITHING_FORGE, isi kaynagi yokken yemek DEFMSG_COOKING_FIRE_SOURCE

@@ -124,8 +124,7 @@ public sealed class ClientTargetingHandler
         if (md != null)
         {
             var cell = md.GetTerrainTile(pt.Map, pt.X, pt.Y);
-            sb.Append($"TERRAIN=0{cell.TileId:x}   TYPE=" +
-                      ObjBase.ClassifyTerrainType(md.GetLandTileData(cell.TileId)));
+            sb.Append($"TERRAIN=0{cell.TileId:x}   TYPE=" + ObjBase.TerrainTypeName(cell.TileId));
         }
         return sb.ToString();
     }

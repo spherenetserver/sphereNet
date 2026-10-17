@@ -2983,18 +2983,10 @@ public static partial class Program
         if (string.IsNullOrEmpty(trailing) || trailing.Equals("P", StringComparison.OrdinalIgnoreCase))
             return pt.ToString();
 
-        // REGION[.prop] — delegate to the existing HandleRegionGet path.
-        if (trailing.StartsWith("REGION", StringComparison.OrdinalIgnoreCase))
-        {
-            var region = _world.FindRegion(pt);
-            if (region == null) return "";
-            string regionRest = trailing.Length > 6 && trailing[6] == '.' ? trailing[7..] : "";
-            if (string.IsNullOrEmpty(regionRest)) return region.Name;
-            return region.TryGetProperty(regionRest, out string rv) ? rv : "0";
-        }
-
-        // ROOM[.prop] — same idea but no per-point room lookup engine yet.
-        return null;
+        // Every point key (CPointBase::r_WriteVal): REGION alone is 1/0 (PT_REGION,
+        // CPointBase.cpp:752-757) - it was the area's NAME, which a script's
+        // IF !(<SERV.MAP(...).REGION>) read as 0, so nearly every point was skipped.
+        return SphereNet.Game.Objects.ObjBase.TryGetPointKey(trailing, pt, out string pv) ? pv : null;
     }
 
     private static string? ResolveServMapSector(string rest)

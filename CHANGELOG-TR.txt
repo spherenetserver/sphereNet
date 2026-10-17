@@ -4,6 +4,33 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Nokta anahtarlari, P.TYPE, DISTANCE x,y, OP= yeniden yazimi, .x<fonksiyon> ve SHOW Source-X'teki gibi; treasure tatbikati
+------------------------------------------------------------------------
+DUZELTME - Bir noktanin tek basina REGION'i 1 ya da 0'dir (PT_REGION, CPointBase.cpp:752-757) ve
+       SERV.MAP(x,y,z,m) her nokta anahtarini cevaplar - X, Y, Z, M, TYPE, TERRAIN, ISNEARTYPE,
+       REGION.<anahtar>. REGION bolgenin adiydi; IF !(<SERV.MAP(...).REGION>) bunu 0 okuyordu, bu
+       yuzden script'li hazine haritasi cektigi neredeyse her noktayi atliyor ve nadiren yer
+       buluyordu.
+DUZELTME - P.TYPE, TERRAIN= araliklari kara karosunu kapsayan TYPEDEF'tir; paketin verdigi numara
+       icin paketin kendi adiyla (t_forest 500), hicbiri kapsamazsa t_normal
+       (CWorldMap::GetTerrainItemTypeDef). Karonun tiledata adindan tahmin ediliyordu ve pakete
+       ozgu numarali tip "t_500" okunuyordu. .INFO karo satiri ve toprak testi ayni tabloyu kullanir.
+DUZELTME - DISTANCE x,y[,z,m] o noktaya uzakliktir (OC_DISTANCE -> GetRegionPoint,
+       CObjBase.cpp:1270-1279); x'i uid olarak okunuyordu, "kazmak icin cok uzak" hic tetiklenmiyordu.
+DUZELTME - OP= atamalari CScript::ReadKeyParse gibi yeniden yazilir (CScript.cpp:744-768): arguman
+       parantezli tek terimdir, <EVAL (<anahtar> op (arg))>; X *= 2+3 artik X*(2+3) - X*2+3'tu - ve
+       .= tirnakli argumanin tirnaklarini atar (NAME .= " (Guardian)" tirnaklari tutuyordu).
+DUZELTME - Bir nesnede .x<verb>, verb'u nesnenin r_Verb'u gibi alir: verb tablosu, sonra yetkili SRC
+       olarak nesne uzerinde calisan script [FUNCTION], sonra ozellik. Fonksiyon adi hep basarisiz
+       oluyordu ("Could not apply").
+DUZELTME - SHOW <herhangi>, nesnedeki herhangi bir ozellik, fonksiyon ya da ifadenin degerini
+       "'ne' for 'ad' is 'deger'" diye soyler (CScriptObj.cpp:1469-1478); yalnizca EVENTS cevaplaniyordu.
+EKLEME - Fonksiyonel tatbikat "treasure" paketi (Scripts-X t_map_treasure): harita kendi yerini secer,
+       o alani gosterecek sekilde cozulur, uzakta kazmayi reddeder ve yerinde kazilinca 25 vuruste
+       bekcileriyle kilitli sandik cikarir.
+EKLEME - Testler: terrain tip adlari, noktaya DISTANCE, noktanin REGION'i, OP= yeniden yazimi,
+       .x<fonksiyon>, SHOW.
+
 [2026-10-17] - Uretilen esyanin @Create'inde SRC ureticidir; menu uretimi @SkillSelect calistirmaz; bos haritanin kullanimi yok; carto tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Uretilen esyanin @Create'i ureticisi SRC olarak calisir (CreateTemplate(id, nullptr,

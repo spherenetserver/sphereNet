@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Point keys, P.TYPE, DISTANCE x,y, OP= rewrites, .x<function> and SHOW as Source-X has them; treasure drill
+------------------------------------------------------------------------
+FIX - A point's REGION alone is 1 or 0 (PT_REGION, CPointBase.cpp:752-757), and
+      SERV.MAP(x,y,z,m) answers every point key - X, Y, Z, M, TYPE, TERRAIN, ISNEARTYPE,
+      REGION.<key>. REGION was the area's name, which IF !(<SERV.MAP(...).REGION>) read as
+      0, so a scripted treasure map skipped nearly every spot it rolled and seldom found one.
+FIX - P.TYPE is the TYPEDEF whose TERRAIN= ranges take in the land tile, by the pack's own
+      name for a number it gave (t_forest 500), t_normal when none claims it
+      (CWorldMap::GetTerrainItemTypeDef). It was guessed from the tile's tiledata name, and a
+      pack-numbered type read "t_500". The .INFO tile line and the dirt test use the same table.
+FIX - DISTANCE x,y[,z,m] is the distance to that point (OC_DISTANCE -> GetRegionPoint,
+      CObjBase.cpp:1270-1279); its x was read as a uid, so "too far to dig" never fired.
+FIX - OP= assignments are rewritten as CScript::ReadKeyParse does (CScript.cpp:744-768): the
+      argument is one bracketed operand, <EVAL (<key> op (arg))>, so X *= 2+3 is X*(2+3) - it
+      was X*2+3 - and .= drops a quoted argument's quotes (NAME .= " (Guardian)" kept them).
+FIX - .x<verb> on an object takes the verb as the object's r_Verb does: the verb table, then a
+      script [FUNCTION] run on it with the staff member as SRC, then a property. A function
+      name always failed ("Could not apply").
+FIX - SHOW <anything> says the value of any property, function or expression on the object,
+      as "'what' for 'name' is 'value'" (CScriptObj.cpp:1469-1478); only EVENTS was answered.
+ADD - Functional drill "treasure" suite (Scripts-X t_map_treasure): the map picks its own spot,
+      decodes into that area, refuses digging far away, and dug up at the spot raises a locked
+      chest with its guardians over 25 strokes.
+ADD - Tests: terrain type names, DISTANCE to a point, a point's REGION, the OP= rewrites,
+      .x<function>, SHOW.
+
 [2026-10-17] - A crafted item's @Create has its maker as SRC; menu crafts skip @SkillSelect; a blank map has no use; carto drill
 ------------------------------------------------------------------------
 FIX - A crafted item's @Create runs with its maker as SRC (CreateTemplate(id, nullptr, this),

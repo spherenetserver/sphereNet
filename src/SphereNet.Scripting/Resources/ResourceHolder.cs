@@ -887,6 +887,35 @@ public sealed class ResourceHolder
 
     public ResourceLink? GetResource(ResourceId rid) => _resources.Get(rid);
 
+    private Dictionary<int, string>? _typeDefNames;
+    private int _typeDefNamesBuiltAt = -1;
+
+    /// <summary>ResourceGetName(RES_TYPEDEF, index): the name a pack gave an item type
+    /// number - a [TYPEDEFS] line or a [TYPEDEF name] section (t_forest 500). Null when
+    /// the pack names none.</summary>
+    public string? FindTypeDefName(int index)
+    {
+        lock (_defNames)
+        {
+            if (_typeDefNames == null || _typeDefNamesBuiltAt != _defNames.Count)
+            {
+                var names = new Dictionary<int, string>();
+                foreach (var (name, rid) in _defNames)
+                {
+                    if (rid.Type != ResType.TypeDef) continue;
+                    // Keep the t_ spelling when a number has more than one name.
+                    if (!names.TryGetValue(rid.Index, out var have) ||
+                        !have.StartsWith("t_", StringComparison.OrdinalIgnoreCase) &&
+                        name.StartsWith("t_", StringComparison.OrdinalIgnoreCase))
+                        names[rid.Index] = name;
+                }
+                _typeDefNames = names;
+                _typeDefNamesBuiltAt = _defNames.Count;
+            }
+            return _typeDefNames.TryGetValue(index, out var found) ? found : null;
+        }
+    }
+
     public ResourceLink? GetResource(ResType type, int index) =>
         _resources.Get(new ResourceId(type, index));
 

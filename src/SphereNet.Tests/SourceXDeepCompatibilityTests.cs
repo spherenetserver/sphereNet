@@ -11,8 +11,8 @@ namespace SphereNet.Tests;
 public sealed class SourceXDeepCompatibilityTests
 {
     [Theory]
-    [InlineData("TAG.COUNT*=2", "TAG.COUNT", "<EVAL <TAG.COUNT>*2>")]
-    [InlineData("TAG.COUNT /= 4", "TAG.COUNT", "<EVAL <TAG.COUNT>/4>")]
+    [InlineData("TAG.COUNT*=2", "TAG.COUNT", "<EVAL (<TAG.COUNT> * (2))>")]
+    [InlineData("TAG.COUNT /= 4", "TAG.COUNT", "<EVAL (<TAG.COUNT> / (4))>")]
     public void ScriptKey_ParsesSourceXCompoundAssignments(string line, string expectedKey, string expectedArg)
     {
         var key = new ScriptKey();

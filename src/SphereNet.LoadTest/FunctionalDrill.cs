@@ -141,6 +141,8 @@ internal static class FunctionalDrill
                 await InscribeSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "carto")
                 await CartoSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "treasure")
+                await TreasureSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -4645,6 +4647,136 @@ internal static class FunctionalDrill
 
         carto.ServerPacketObserver = null;
         carto.Disconnect();
+    }
+
+    /// <summary>A scripted treasure map (Scripts-X t_map_treasure): it picks its spot by
+    /// itself (TIMERF, SERV.MAP().REGION, the terrain type, ISNEARTYPE), decodes into a
+    /// map with that area, refuses digging far away, and dug up at the spot raises a
+    /// locked treasure chest over 25 strokes.</summary>
+    private static async Task TreasureSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        const ushort Pickaxe = 0x0E86, TreasureChests = 0x0E40;
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        string spot = OpenCountrySpot(root);
+        var hunter = await LoginAsync(1241, port, ct);
+        uint map = 0;
+        int tx = 0, ty = 0;
+        var shown = new System.Collections.Concurrent.ConcurrentDictionary<uint, (int L, int T, int R, int B)>();
+        hunter.ServerPacketObserver = p =>
+        {
+            if ((p[0] == 0x90 || p[0] == 0xF5) && p.Length >= 15)
+            {
+                int W(int at) => p[at] << 8 | p[at + 1];
+                shown[(uint)(p[1] << 24 | p[2] << 16 | p[3] << 8 | p[4])] = (W(7), W(9), W(11), W(13));
+            }
+        };
+        string Said(long since) =>
+            string.Join(" | ", hunter.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+
+        await RunScenario("treasure", "setup: a treasure map that finds its own spot, a pickaxe in hand", outcomes, async () =>
+        {
+            await AsStaff(server, hunter.AccountName, async () =>
+            {
+                await SayAsync(hunter, $".go {spot}", ct);
+                await SayAsync(hunter, ".cartography 1000", ct);
+                await SayAsync(hunter, ".mining 1000", ct);
+                await AddIntoPackAsync(hunter, "i_pickaxe", ct);
+                HashSet<uint> before = (await PackContentsAsync(hunter, ct)).Select(i => i.Serial).ToHashSet();
+                await AddIntoPackAsync(hunter, engineWording ? "i_ttm_l1" : "i_map_blank", ct);
+                map = (await PackContentsAsync(hunter, ct)).FirstOrDefault(i => !before.Contains(i.Serial))?.Serial ?? 0;
+            });
+            if (map == 0) throw new ScenarioFailed("no treasure map in the pack");
+            // Using a pickaxe puts it in hand; its cursor is answered with the pickaxe itself.
+            uint pick = (await PackContentsAsync(hunter, ct)).FirstOrDefault(i => i.ItemId is Pickaxe or 0x0E85)?.Serial
+                ?? throw new ScenarioFailed("no pickaxe");
+            await hunter.Actions.DoubleClick(pick, 1000, ct);
+            if (await hunter.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                await hunter.Actions.TargetObject(pick, ct);
+            await Task.Delay(2000, ct);   // TIMERF 1,TreasureMap_SetRandomLocation
+            bool inHand; lock (hunter.World.SyncRoot) inHand = hunter.World.Equipment.Values.Any(i => i.Serial == pick);
+            string where = "";
+            if (engineWording)
+            {
+                // The spot it chose (SHOW, CScriptObj.cpp:1469): MOREP stays 0 when none fit.
+                for (int tries = 0; tries < 10; tries++)
+                {
+                    long t = Environment.TickCount64;
+                    await AsStaff(server, hunter.AccountName, async () =>
+                    {
+                        await hunter.Actions.Say(".xshow morep", ct);
+                        if (await hunter.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                            await hunter.Actions.TargetObject(map, ct);
+                        await Task.Delay(700, ct);
+                    });
+                    where = Said(t);
+                    if (!where.Contains("is '0,0,0,0'") && where.Contains("is '")) { where = $"spot found on roll {tries + 1}: {where}"; break; }
+                    // No spot in its 1000 tries: roll again (.x<function>, CObjBase r_Verb).
+                    await AsStaff(server, hunter.AccountName, async () =>
+                    {
+                        await hunter.Actions.Say(".xTreasureMap_SetRandomLocation", ct);
+                        if (await hunter.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                            await hunter.Actions.TargetObject(map, ct);
+                        await Task.Delay(1500, ct);
+                    });
+                }
+                if (where.Contains("is '0,0,0,0'") || !where.Contains("is '"))
+                    throw new ScenarioFailed($"the map found no spot: {where}");
+            }
+            return $"map 0x{map:X}, pickaxe {(inHand ? "in hand" : "not in hand")}; {where}";
+        });
+
+        await RunScenario("treasure", "decoding shows the area of the treasure", outcomes, async () =>
+        {
+            if (!engineWording) return "the pack has no Scripts-X treasure maps";
+            long t0 = Environment.TickCount64;
+            await hunter.Actions.DoubleClick(map, 1000, ct);
+            await Task.Delay(1500, ct);
+            string decoded = Said(t0);
+            if (!decoded.Contains("successfully decode", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed(decoded.Length == 0 ? "nothing said" : decoded);
+            long t1 = Environment.TickCount64;
+            await hunter.Actions.DoubleClick(map, 1000, ct);
+            var rect = ((int L, int T, int R, int B))await WaitAsync(() => shown.TryGetValue(map, out var r) ? (object)r : null, 4000,
+                $"the decoded map (0x90 / 0xF5); {Said(t1)}");
+            // TreasureMap_Decode: MOREX/MOREY +- 300 (Felucca), the low side clamped at 0.
+            (tx, ty) = (rect.R - 300, rect.B - 300);
+            if (rect.R - rect.L > 600 || rect.B - rect.T > 600 || tx <= 0 || ty <= 0)
+                throw new ScenarioFailed($"rect {rect.L},{rect.T}-{rect.R},{rect.B}");
+            return $"{decoded}; treasure near {tx},{ty} (rect {rect.L},{rect.T}-{rect.R},{rect.B})";
+        });
+
+        await RunScenario("treasure", "digging far from the spot finds nothing", outcomes, async () =>
+        {
+            if (tx == 0) return "no decoded map";
+            long t0 = Environment.TickCount64;
+            await hunter.Actions.DoubleClick(map, 1000, ct);
+            await Task.Delay(1500, ct);
+            string heard = Said(t0);
+            if (!heard.Contains("no treasure seems to be here", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed(heard.Length == 0 ? "nothing said" : heard);
+            return heard;
+        });
+
+        await RunScenario("treasure", "digging at the spot raises a locked chest", outcomes, async () =>
+        {
+            if (tx == 0) return "no decoded map";
+            await AsStaff(server, hunter.AccountName, async () => await SayAsync(hunter, $".go {tx + 1},{ty}", ct));
+            await Task.Delay(1500, ct);
+            long t0 = Environment.TickCount64;
+            await hunter.Actions.DoubleClick(map, 1000, ct);
+            // 25 strokes, one a second (TIMERF 1,TreasureMap_Dig); the chest appears at the 20th.
+            var chest = await WaitAsync(() => { lock (hunter.World.SyncRoot) return hunter.World.KnownItems.Values.FirstOrDefault(i =>
+                i.ContainerSerial == 0 && (i.ItemId & 0xFFF0) == TreasureChests && Math.Abs(i.X - tx) <= 1 && Math.Abs(i.Y - ty) <= 1); },
+                40_000, $"a treasure chest at {tx},{ty}; {Said(t0)}");
+            await Task.Delay(8000, ct);   // the last strokes raise it, fill it and call its guardians
+            int guardians; lock (hunter.World.SyncRoot) guardians = hunter.World.Mobiles.Values.Count(m =>
+                Math.Abs(m.X - tx) <= 6 && Math.Abs(m.Y - ty) <= 6 && m.Serial != hunter.World.CharUid);
+            return $"chest 0x{chest.ItemId:X4} at {chest.X},{chest.Y},{chest.Z}; {guardians} creature(s) near; {Said(t0)}";
+        });
+
+        hunter.ServerPacketObserver = null;
+        hunter.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

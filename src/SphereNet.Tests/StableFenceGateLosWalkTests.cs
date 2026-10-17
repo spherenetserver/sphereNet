@@ -174,7 +174,9 @@ public sealed class StableFenceGateLosWalkTests
         string staticLine = ClientTargetingHandler.FormatStaticInfo(world, pt, FenceTile);
         Assert.StartsWith("[Static z=0, 0837=", staticLine);
         Assert.Contains("TERRAIN=03", staticLine);
-        Assert.Contains("TYPE=t_grass", staticLine);
+        // The land's type is the pack's TERRAIN= typedef; none is loaded here
+        // (CClientTarg.cpp:162, GetTerrainItemTypeDef -> t_normal).
+        Assert.Contains("TYPE=t_normal", staticLine);
 
         string ground = ClientTargetingHandler.FormatStaticInfo(world, pt, 0);
         Assert.StartsWith("[No static tile], TERRAIN=03", ground);

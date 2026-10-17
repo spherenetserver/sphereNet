@@ -755,6 +755,12 @@ public sealed class CommandHandler
             return false;
 
         var actor = gm as ITextConsole ?? NullConsole.Instance;
+        // A world object takes the verb as its r_Verb does (CClient.cpp:921 ->
+        // CObjBase::r_Verb): the verb table, then a script [FUNCTION] run on it with
+        // the staff member as SRC, then a property assignment. A function name was
+        // never tried here, so .x<function> on an object always failed.
+        if (target is Objects.ObjBase obj)
+            return obj.ExecuteVerbLine(verb, args, new ShowConsole(gm));
         if (target.TrySetProperty(verb, args))
             return true;
         if (target.TryExecuteCommand(verb, args, actor))
@@ -2064,6 +2070,46 @@ public sealed class CommandHandler
         });
     }
 
+    /// <summary>SHOW &lt;anything&gt; (CScriptObj SSV_SHOW, CScriptObj.cpp:1469-1478): the
+    /// value of any property, function or expression on the object (the GM, or the one
+    /// picked for XSHOW), said as "'what' for 'name' is 'value'". Only EVENTS was
+    /// answered; anything else was a usage line.</summary>
+    private bool ShowValue(Character gm, string what, uint? targetSerial)
+    {
+        IScriptObj target = gm;
+        if (targetSerial.HasValue)
+        {
+            if (_registeredWorld?.FindObject(new Serial(targetSerial.Value)) is not { } picked)
+            {
+                OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_object_not_found", $"{targetSerial.Value:X8}"));
+                return false;
+            }
+            target = picked;
+        }
+        string value;
+        var interpreter = TriggerDispatcher?.Runner?.Interpreter;
+        if (interpreter != null)
+        {
+            value = interpreter.ExpandText($"<{what}>", target, new ShowConsole(gm),
+                new SphereNet.Scripting.Execution.TriggerArgs(gm, 0, 0, ""),
+                new SphereNet.Scripting.Execution.ScriptScope { TriggerName = "SHOW" });
+        }
+        else if (!target.TryGetProperty(what, out value))
+        {
+            value = "";
+        }
+        OnSysMessage?.Invoke(gm, $"'{what}' for '{target.GetName()}' is '{value}'");
+        return true;
+    }
+
+    private sealed class ShowConsole(Character gm) : ITextConsole
+    {
+        public PrivLevel GetPrivLevel() => gm.PrivLevel;
+        public string GetName() => gm.Name;
+        public IScriptObj? GetSourceChar() => gm;
+        public void SysMessage(string text) { }
+    }
+
     private bool ExecuteShowCommand(Character gm, string args, uint? forcedTargetSerial)
     {
         string text = args.Trim();
@@ -2075,10 +2121,7 @@ public sealed class CommandHandler
 
         var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (!parts[0].Equals("EVENTS", StringComparison.OrdinalIgnoreCase))
-        {
-            OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_show_events_usage"));
-            return false;
-        }
+            return ShowValue(gm, text, forcedTargetSerial);
 
         IScriptObj target = gm;
         uint targetUid = gm.Uid.Value;

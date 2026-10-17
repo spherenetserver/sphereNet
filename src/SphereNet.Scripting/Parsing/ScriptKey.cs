@@ -253,10 +253,23 @@ public sealed class ScriptKey
     private static string RewriteCompoundAssignment(string realKey, string op, string rest)
     {
         if (op == ".")
-            return $"<{realKey}>{rest}"; // .= is string concatenation
+        {
+            // .= concatenates; a quoted argument loses its quotes, the text after the
+            // closing one dropped (CScript.cpp:744-753). NAME .= " (Guardian)" kept
+            // both quotes in the name.
+            if (rest.StartsWith('"'))
+            {
+                int close = rest.IndexOf('"', 1);
+                if (close > 0)
+                    rest = rest[1..close];
+            }
+            return $"<{realKey}>{rest}";
+        }
+        // The argument is one operand: <EVAL (<key> op (arg))> (CScript.cpp:768), so
+        // X *= 2+3 is X*(2+3). Without the brackets it was X*2+3.
         if (realKey.StartsWith("FLOAT.", StringComparison.OrdinalIgnoreCase))
-            return $"<FLOATVAL <{realKey}>{op}({rest})>";
-        return $"<EVAL <{realKey}>{op}{rest}>";
+            return $"<FLOATVAL (<{realKey}> {op} ({rest}))>";
+        return $"<EVAL (<{realKey}> {op} ({rest}))>";
     }
 
     /// <summary>

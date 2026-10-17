@@ -2234,11 +2234,9 @@ public sealed class ClientItemUseHandler
                 return true;
         }
 
-        // The reference reads the terrain's own type from the pack's tile-type table;
-        // SphereNet classifies the land tile by its tiledata instead (the same source
-        // its P.TYPE property uses).
-        return SphereNet.Game.Objects.ObjBase.ClassifyTerrainType(
-            md.GetLandTileData(md.GetTerrainTile(map, x, y).TileId)) == "t_dirt";
+        // The terrain's own type from the pack's tile-type table (TERRAIN= ranges).
+        return SphereNet.Game.World.NaturalResourceTiles.TerrainItemType(
+            md.GetTerrainTile(map, x, y).TileId) == ItemType.Dirt;
     }
 
     /// <summary>Take honey - or a sting - from a hive.

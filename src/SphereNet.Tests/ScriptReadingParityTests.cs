@@ -431,11 +431,11 @@ public class ScriptReadingParityTests
         var key = new SphereNet.Scripting.Parsing.ScriptKey();
         key.Parse("FLOAT.SPEED += 1.5");
         Assert.Equal("FLOAT.SPEED", key.Key);
-        Assert.StartsWith("<FLOATVAL <FLOAT.SPEED>+", key.Arg);
+        Assert.Equal("<FLOATVAL (<FLOAT.SPEED> + (1.5))>", key.Arg);
 
         key = new SphereNet.Scripting.Parsing.ScriptKey();
         key.Parse("COUNT += 2");
-        Assert.Equal("<EVAL <COUNT>+2>", key.Arg);
+        Assert.Equal("<EVAL (<COUNT> + (2))>", key.Arg);
     }
 
     [Fact]

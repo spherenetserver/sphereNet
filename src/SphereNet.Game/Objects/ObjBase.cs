@@ -1402,6 +1402,16 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             return true;
         }
 
+        // A point "x,y[,z[,m]]" first (g_Cfg.GetRegionPoint, CObjBase.cpp:1272-1279): the
+        // distance from this object's top point. It was read as a uid - its x - so a
+        // treasure map's "too far to dig" test never fired.
+        if (rest.Contains(',') && TryParseDistancePoint(rest, out var point))
+        {
+            var top = GetTopLevelObj().Position;
+            value = (top.Map == point.Map ? top.GetDistanceTo(point) : short.MaxValue).ToString();
+            return true;
+        }
+
         var world = ResolveWorld?.Invoke();
         // The uid is a Sphere number (Exp_GetVal): hex with a leading zero, decimal
         // otherwise - every argument used to be read as hex.
@@ -1418,6 +1428,22 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
 
         value = GetTopLevelObj().Position.GetDistanceTo(other.GetTopLevelObj().Position)
             .ToString();
+        return true;
+    }
+
+    /// <summary>CPointMap::Read: x,y[,z[,m]], each a Sphere number; a missing z or map
+    /// is 0.</summary>
+    private static bool TryParseDistancePoint(string text, out Core.Types.Point3D point)
+    {
+        point = default;
+        var parts = text.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length is < 2 or > 4)
+            return false;
+        var v = new long[4];
+        for (int i = 0; i < parts.Length; i++)
+            if (!ScriptNumber.TryParseToken(parts[i], out v[i]))
+                return false;
+        point = new Core.Types.Point3D((short)v[0], (short)v[1], (sbyte)v[2], (byte)v[3]);
         return true;
     }
 
@@ -2534,27 +2560,42 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     /// Resolve map point properties: TERRAIN, STATICS, REGION, ROOM, SECTOR, ISNEARTYPE.
     /// Provides read-only access to terrain/static tile data at this object's position.
     /// </summary>
-    /// <summary>Classify a land tile into a t_* terrain type name (Source-X
-    /// terrain item-type). Water/rock come from the tile flags; the natural
-    /// ground kind is read from the tiledata name, defaulting to t_grass for
-    /// plain walkable land.</summary>
-    internal static string ClassifyTerrainType(MapData.Tiles.LandTileData ld)
+    /// <summary>The TYPEDEF name of a land tile (CWorldMap::GetTerrainItemTypeDef,
+    /// CWorldMap.cpp:181-201): the type whose TERRAIN= ranges take in the tile id,
+    /// t_normal when none does.</summary>
+    internal static string TerrainTypeName(ushort landTileId)
     {
-        if (ld.IsWet) return "t_water";
-        string n = (ld.Name ?? "").ToLowerInvariant();
-        if (n.Contains("dirt") || n.Contains("mud") || n.Contains("earth")) return "t_dirt";
-        if (n.Contains("sand") || n.Contains("desert") || n.Contains("beach")) return "t_sand";
-        if (n.Contains("snow") || n.Contains("ice")) return "t_snow";
-        if (n.Contains("jungle")) return "t_jungle";
-        if (n.Contains("forest") || n.Contains("tree") || n.Contains("wood")) return "t_forest";
-        if (n.Contains("grass")) return "t_grass";
-        if (n.Contains("rock") || n.Contains("mountain") || n.Contains("cave")) return "t_rock";
-        // Impassable non-named land reads as rock; plain walkable land as grass.
-        return ld.IsImpassable ? "t_rock" : "t_grass";
+        var type = World.NaturalResourceTiles.TerrainItemType(landTileId);
+        // A type numbered by the pack (t_forest 500) goes by the pack's name.
+        return DefinitionLoader.StaticResources?.FindTypeDefName((int)type)?.ToLowerInvariant()
+            ?? Items.Item.FormatItemTypeName(type);
     }
 
     private bool TryGetMapPointProperty(string upper, out string value) =>
         TryGetMapPointProperty(upper, Position, GetTopLevelPosition(), out value);
+
+    /// <summary>A key of a bare point (CPointBase::r_WriteVal, CPointBase.cpp:700-840),
+    /// as SERV.MAP(x,y,z,m).&lt;key&gt; asks it: X, Y, Z, M, TYPE, TERRAIN, ISNEARTYPE,
+    /// SECTOR, ROOM, REGION.&lt;key&gt; - and REGION alone is 1 when the point lies in an
+    /// area, 0 when not (PT_REGION, :752-757).</summary>
+    public static bool TryGetPointKey(string key, Point3D pt, out string value)
+    {
+        string upper = key.Trim().ToUpperInvariant();
+        switch (upper)
+        {
+            case "X": value = pt.X.ToString(); return true;
+            case "Y": value = pt.Y.ToString(); return true;
+            case "Z": value = pt.Z.ToString(); return true;
+            case "M" or "MAP": value = pt.Map.ToString(); return true;
+            case "REGION":
+                value = ResolveWorld?.Invoke()?.FindRegion(pt) != null ? "1" : "0";
+                return true;
+            case "TYPE":
+                upper = "P.TYPE";
+                break;
+        }
+        return TryGetMapPointProperty(upper, pt, pt, out value);
+    }
 
     /// <summary>The map-point keys asked of an arbitrary point: <paramref name="pos"/>
     /// is the point itself, <paramref name="areaPos"/> the one its area is looked
@@ -2723,18 +2764,14 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         var mapData = world.MapData;
         if (mapData == null) return false;
 
-        // P.TYPE — the t_* terrain type at this point (Source-X CPointBase
-        // PT_TYPE via GetTerrainItemTypeDef). Source-X reads a TileTypes
-        // table (script [TERRAIN] defs), which neither this pack nor the
-        // engine ships, so the type is derived from the land tiledata:
-        // water/rock from flags, else the natural-ground kind from the name
-        // (falling back to t_grass for plain walkable land). Enough for the
-        // treasure-map placement whitelist that depends on it.
+        // P.TYPE - the TYPEDEF whose TERRAIN= ranges claim the land tile here
+        // (PT_TYPE, CPointBase.cpp:803-810; a pack ships them, Scripts-X in
+        // types/types_terrain.scp), t_normal when none does. It was guessed from the
+        // tile's name, so a treasure map's spot test (t_grass / t_dirt / t_forest...)
+        // disagreed with the pack.
         if (upper == "P.TYPE")
         {
-            var cell = mapData.GetTerrainTile(pos.Map, pos.X, pos.Y);
-            var ld = mapData.GetLandTileData(cell.TileId);
-            value = ClassifyTerrainType(ld);
+            value = TerrainTypeName(mapData.GetTerrainTile(pos.Map, pos.X, pos.Y).TileId);
             return true;
         }
 

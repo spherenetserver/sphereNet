@@ -143,6 +143,8 @@ internal static class FunctionalDrill
                 await CartoSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "treasure")
                 await TreasureSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "breath")
+                await BreathSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -4827,6 +4829,100 @@ internal static class FunctionalDrill
 
         hunter.ServerPacketObserver = null;
         hunter.Disconnect();
+    }
+
+    /// <summary>A dragon breathes fire at the player it fights (NPCACT_BREATH,
+    /// Skill_Act_Breath): sound 0x227 after a three second wind-up, and the player is
+    /// hurt.</summary>
+    private static async Task BreathSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        // Out of town: guards would kill the dragon in a guarded area.
+        const string spot = "1135,1640,0";
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        var hero = await LoginAsync(1251, port, ct);
+        uint dragon = 0;
+        var sounds = new System.Collections.Concurrent.ConcurrentQueue<(long Ms, ushort Id)>();
+        hero.ServerPacketObserver = p =>
+        {
+            if (p[0] == 0x54 && p.Length >= 12)
+                sounds.Enqueue((Environment.TickCount64, (ushort)(p[2] << 8 | p[3])));
+        };
+
+        await RunScenario("breath", "setup: a sturdy hero and a dragon", outcomes, async () =>
+        {
+            await AsStaff(server, hero.AccountName, async () =>
+            {
+                await SayAsync(hero, $".go {spot}", ct);
+                await SayAsync(hero, ".str 1000", ct);
+                await SayAsync(hero, ".hits 1000", ct);
+                HashSet<uint> before; lock (hero.World.SyncRoot) before = hero.World.Mobiles.Keys.ToHashSet();
+                await hero.Actions.Say(".add c_dragon", ct);
+                if (await hero.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_dragon");
+                await hero.Actions.TargetLocation(hero.World.X + 4, hero.World.Y, hero.World.Z, ct);
+                var found = await WaitAsync(() => { lock (hero.World.SyncRoot) return hero.World.Mobiles.Values.FirstOrDefault(m =>
+                    !before.Contains(m.Serial)); }, 4000, "the dragon");
+                dragon = found.Serial;
+            });
+            return $"dragon 0x{dragon:X}, hero hits {hero.World.Hits}";
+        });
+
+        await RunScenario("breath", "the dragon breathes fire at the hero", outcomes, async () =>
+        {
+            if (dragon == 0) throw new ScenarioFailed("no dragon");
+            long since = Environment.TickCount64;
+            short hits = hero.World.Hits;
+            // A monster attacks on its own; the hero strikes first to be sure.
+            await hero.Actions.SetWarMode(true, ct);
+            await hero.Actions.Attack(dragon, ct);
+            object? breath = null;
+            try
+            {
+                breath = await WaitAsync(() => sounds.FirstOrDefault(x => x.Ms >= since && x.Id == 0x227) is { Id: 0x227 } b ? (object)b : null,
+                    45_000, "the breath sound 0x227");
+            }
+            catch (TimeoutException)
+            {
+                // What the area and the dragon say for themselves (SHOW).
+                long t = Environment.TickCount64;
+                await AsStaff(server, hero.AccountName, async () =>
+                {
+                    await SayAsync(hero, ".show region.name", ct);
+                    await SayAsync(hero, ".show region.flags", ct);
+                    foreach (var w in new[] { "npc", "action", "fight", "hits", "p" })
+                    {
+                        await hero.Actions.Say($".xshow {w}", ct);
+                        if (await hero.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                            await hero.Actions.TargetObject(dragon, ct);
+                        await Task.Delay(500, ct);
+                    }
+                });
+                string said = string.Join(" | ", hero.World.Journal.ToArray().Where(e => e.TimestampMs >= t && e.Text.Contains(" is '")).Select(e => e.Text));
+                // A pack that makes its dragons brain_monster (NPC=brain_monster in @Create)
+                // gets no breath: only NPCBRAIN_DRAGON breathes (CCharNPCAct_Fight.cpp:286).
+                if (!engineWording && hero.World.Hits < hits)
+                    return $"the pack's dragon fights without breath (hits {hits} -> {hero.World.Hits}); {said}";
+                throw new ScenarioFailed($"no breath in 45 s (hits {hits} -> {hero.World.Hits}); {said}");
+            }
+            await Task.Delay(1000, ct);
+            if (hero.World.Hits >= hits) throw new ScenarioFailed($"breath heard but hits {hits} -> {hero.World.Hits}");
+            return $"breath after {(((ValueTuple<long, ushort>)breath).Item1 - since) / 1000.0:F1}s; hits {hits} -> {hero.World.Hits}";
+        });
+
+        hero.ServerPacketObserver = null;
+        await AsStaff(server, hero.AccountName, async () =>
+        {
+            await hero.Actions.SetWarMode(false, ct);
+            if (dragon != 0)
+            {
+                await hero.Actions.Say(".remove", ct);
+                if (await hero.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                    await hero.Actions.TargetObject(dragon, ct);
+                await Task.Delay(300, ct);
+            }
+        });
+        hero.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

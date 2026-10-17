@@ -4,6 +4,13 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Ejderha nefesi tatbikati
+------------------------------------------------------------------------
+EKLEME - Fonksiyonel tatbikat "breath" paketi, iki pakette: sehir disinda bir oyuncuyla dovusen ejderha
+       uc saniyelik hazirliktan sonra (ses 0x227) canin %5'i kadar ates puskurtur; ejderhalari
+       brain_monster olan paket nefessiz dovusur, cunku yalnizca NPCBRAIN_DRAGON nefes verir
+       (CCharNPCAct_Fight.cpp:286).
+
 [2026-10-17] - Tailoring ve Carpentry asama seslerini cikarir
 ------------------------------------------------------------------------
 DUZELTME - Tailoring SUCCESS'te makas sesi cikarir (SOUND_SNIP, Skill_Tailoring, CCharSkill.cpp:3116-3120),

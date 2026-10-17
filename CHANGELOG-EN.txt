@@ -4,6 +4,13 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Dragon breath drill
+------------------------------------------------------------------------
+ADD - Functional drill "breath" suite, on both packs: a dragon fighting a player out of town
+      breathes fire after its three second wind-up (sound 0x227) for 5% of its hit points; a pack
+      whose dragons are brain_monster fights without breath, as only NPCBRAIN_DRAGON breathes
+      (CCharNPCAct_Fight.cpp:286).
+
 [2026-10-17] - Tailoring and Carpentry make their stage sounds
 ------------------------------------------------------------------------
 FIX - Tailoring snips at SUCCESS (SOUND_SNIP, Skill_Tailoring, CCharSkill.cpp:3116-3120) and

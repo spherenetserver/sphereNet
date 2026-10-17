@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Arms Lore tamir satiri Armor_IsRepairable'a gore; Anatomy ve Evaluating Intelligence duzeltilmis statlari okur
+------------------------------------------------------------------------
+DUZELTME - Arms Lore "tamir edilemez"i Armor_IsRepairable'in karariyla soyler (CItem.cpp:4846-4894):
+       ATTR_CANNOTREPAIR ile asla, CAN_I_REPAIR ile her zaman (tanim REPAIR / CAN, ornek CANMASK),
+       yoksa tipe gore - plaka, zincir ve halka zirh, kalkan, topuz, kilic, eskrim silahi, balta,
+       firlatma silahi, kirbac ve arbalet tamir edilir; giysi, kemik ve deri zirh ve tahta yay edilmez.
+       REPAIR=1 olmayan her esyaya tamir edilemez deniyordu.
+DUZELTME - Anatomy ve Evaluating Intelligence Stat_GetAdjusted'i degerlendirir - giyilen ve buyuyle gelen
+       dahil (CClientTarg.cpp:1170-1182, 812); ham statlari okuyorlardi.
+EKLEME - Testler: tipe gore tamir edilebilirlik.
+
 [2026-10-17] - Taste ID ve Item ID OnSkill_*'in yazdigi gibi; bilgi becerileri CanTouch gibi dokunur
 ------------------------------------------------------------------------
 DUZELTME - Karakter uzerinde Taste ID, START'ta da DEFMSG_TASTEID_SELF / CHAR der (CClientTarg.cpp:

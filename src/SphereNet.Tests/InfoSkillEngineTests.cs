@@ -197,6 +197,21 @@ public class InfoSkillEngineTests
         Assert.Equal(ServerMessages.Get(Msg.ForensicsCorpse), sink.Log[0].Text);
     }
 
+    /// <summary>Armor_IsRepairable (CItem.cpp:4846-4894): a sword is repairable by its
+    /// type, a bow and clothing are not, CANNOTREPAIR never is - every item without
+    /// REPAIR=1 used to be called unrepairable.</summary>
+    [Fact]
+    public void ArmsLore_RepairableByType()
+    {
+        Assert.True(InfoSkillEngine.ArmorIsRepairable(new Item { ItemType = ItemType.WeaponSword }));
+        Assert.True(InfoSkillEngine.ArmorIsRepairable(new Item { ItemType = ItemType.ArmorChain }));
+        Assert.False(InfoSkillEngine.ArmorIsRepairable(new Item { ItemType = ItemType.WeaponBow }));
+        Assert.False(InfoSkillEngine.ArmorIsRepairable(new Item { ItemType = ItemType.Clothing }));
+        var broken = new Item { ItemType = ItemType.WeaponSword };
+        broken.SetAttr(ObjAttributes.CannotRepair);
+        Assert.False(InfoSkillEngine.ArmorIsRepairable(broken));
+    }
+
     /// <summary>Taste ID on a character says so at START too (OnSkill_TasteID has no fTest
     /// guard there, CClientTarg.cpp:1258-1270); it was silent.</summary>
     [Fact]

@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Arms Lore's repair line by Armor_IsRepairable; Anatomy and Evaluating Intelligence read adjusted stats
+------------------------------------------------------------------------
+FIX - Arms Lore says "cannot be repaired" as Armor_IsRepairable decides (CItem.cpp:4846-4894): never
+      with ATTR_CANNOTREPAIR, always with CAN_I_REPAIR (definition REPAIR / CAN, instance CANMASK),
+      otherwise by type - plate, chain and ring armor, shields, maces, swords, fencing weapons, axes,
+      throwing weapons, whips and crossbows are repairable, clothing, bone and leather armor and
+      wooden bows are not. Every item without REPAIR=1 was called unrepairable.
+FIX - Anatomy and Evaluating Intelligence judge Stat_GetAdjusted - what is worn and cast counted
+      (CClientTarg.cpp:1170-1182, 812); they read the bare stats.
+ADD - Tests: repairable by type.
+
 [2026-10-17] - Taste ID and Item ID as their OnSkill_* write them; information skills touch as CanTouch does
 ------------------------------------------------------------------------
 FIX - Taste ID on a character says DEFMSG_TASTEID_SELF / CHAR at START as well (CClientTarg.cpp:

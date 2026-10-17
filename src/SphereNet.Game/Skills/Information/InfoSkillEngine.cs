@@ -47,8 +47,9 @@ public static class InfoSkillEngine
             return sink.Random.Next(60);
         }
 
-        string strDesc = StatBandDesc(target.Str, s_anatomyStr);
-        string dexDesc = StatBandDesc(target.Dex, s_anatomyDex);
+        // Stat_GetAdjusted - with what is worn and cast on them (CClientTarg.cpp:1170-1182).
+        string strDesc = StatBandDesc(Combat.CombatEngine.EffectiveStr(target), s_anatomyStr);
+        string dexDesc = StatBandDesc(Combat.CombatEngine.EffectiveDex(target), s_anatomyDex);
 
         string result = ServerMessages.GetFormatted(
             Msg.AnatomyResult, target.Name, strDesc, dexDesc);
@@ -244,7 +245,7 @@ public static class InfoSkillEngine
             return sink.Random.Next(60);
         }
 
-        int iIntVal = target.Int;
+        int iIntVal = Combat.CombatEngine.EffectiveInt(target);   // Stat_GetAdjusted
         int iIntEntry = Math.Clamp((iIntVal - 1) / 10, 0, s_evalIntInt.Length - 1);
 
         sink.SysMessage(ServerMessages.GetFormatted(
@@ -320,10 +321,8 @@ public static class InfoSkillEngine
         else if (target.IsAttr(ObjAttributes.Newbie) || target.IsAttr(ObjAttributes.Move_Never))
             body += ServerMessages.Get(Msg.ItemNewbie);
 
-        // Repairable flag -- Source-X toggles based on ITEMDEF REPAIR.
-        var def = Definitions.DefinitionLoader.GetItemDef(target.BaseId);
-        if (target.IsAttr(ObjAttributes.CannotRepair) || (def != null && !def.Repair))
-            body += ServerMessages.Get(Msg.ItemRepair); // ATTR_CANNOTREPAIR: CItem.cpp:4851
+        if (!ArmorIsRepairable(target))
+            body += ServerMessages.Get(Msg.ItemRepair);
 
         // Weapon poison level.
         if (fWeapon)
@@ -339,6 +338,33 @@ public static class InfoSkillEngine
 
         sink.SysMessage(body);
         return iSkillLevel;
+    }
+
+    /// <summary>CItem::Armor_IsRepairable (CItem.cpp:4846-4894): never with
+    /// ATTR_CANNOTREPAIR; always with CAN_I_REPAIR (the definition's REPAIR / CAN, the
+    /// instance's CANMASK); otherwise plate, chain and ring armor, shields, the maces,
+    /// swords, fencing weapons, axes, throwing weapons, whips and crossbows are, and
+    /// clothing, bone and leather armor and wooden bows are not. Every item without
+    /// REPAIR=1 was called unrepairable.</summary>
+    internal static bool ArmorIsRepairable(Item item)
+    {
+        if (item.IsAttr(ObjAttributes.CannotRepair))
+            return false;
+        var def = Definitions.DefinitionLoader.GetItemDef(Definitions.ItemDefHelper.ResolveInstanceDefIndex(item));
+        ulong can = (ulong)(def?.Can ?? CanFlags.None);
+        if (def?.Repair == true)
+            can |= (ulong)CanFlags.I_Repair;
+        if (((can ^ item.CanMask) & (ulong)CanFlags.I_Repair) != 0)
+            return true;
+        return item.ItemType switch
+        {
+            ItemType.Shield or ItemType.Armor or ItemType.ArmorChain or ItemType.ArmorRing => true,
+            ItemType.WeaponMaceCrook or ItemType.WeaponMacePick or ItemType.WeaponMaceSmith or
+                ItemType.WeaponMaceStaff or ItemType.WeaponMaceSharp or ItemType.WeaponSword or
+                ItemType.WeaponFence or ItemType.WeaponAxe or ItemType.WeaponThrowing or
+                ItemType.WeaponWhip or ItemType.WeaponXBow => true,
+            _ => false,
+        };
     }
 
     private static readonly string[] s_armsLorePoison =
@@ -543,7 +569,7 @@ public static class InfoSkillEngine
         return (0, 0, 0, byte.MaxValue);
     }
 
-    private static string StatBandDesc(short stat, string[] bandKeys)
+    private static string StatBandDesc(int stat, string[] bandKeys)
     {
         int idx = Math.Clamp((stat - 1) / 10, 0, bandKeys.Length - 1);
         return ServerMessages.Get(bandKeys[idx]);

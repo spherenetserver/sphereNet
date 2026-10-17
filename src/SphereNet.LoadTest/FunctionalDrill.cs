@@ -135,6 +135,8 @@ internal static class FunctionalDrill
                 await HerdSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "trap")
                 await TrapSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "vet")
+                await VetSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -4303,6 +4305,126 @@ internal static class FunctionalDrill
             }
         });
         bot.Disconnect();
+    }
+
+    /// <summary>Veterinary: a bandage on a tameable animal is treated with Veterinary
+    /// (the healer has no Healing at all), on a thing with nothing.</summary>
+    private static async Task VetSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        string spot = OpenCountrySpot(root);
+        var vet = await LoginAsync(1211, port, ct);
+        uint horse = 0;
+        // The health the vet is sent (0xA1 bars, 0x11 status), as a percentage.
+        var health = new System.Collections.Concurrent.ConcurrentDictionary<uint, int>();
+        vet.ServerPacketObserver = p =>
+        {
+            if (p[0] == 0xA1 && p.Length >= 9)
+            {
+                int max = p[5] << 8 | p[6], cur = p[7] << 8 | p[8];
+                health[(uint)(p[1] << 24 | p[2] << 16 | p[3] << 8 | p[4])] = cur * 100 / Math.Max(1, max);
+            }
+            else if (p[0] == 0x11 && p.Length >= 41)
+            {
+                int cur = p[37] << 8 | p[38], max = p[39] << 8 | p[40];
+                health[(uint)(p[3] << 24 | p[4] << 16 | p[5] << 8 | p[6])] = cur * 100 / Math.Max(1, max);
+            }
+        };
+        // Open the horse's status (0x34 type 4): its health comes back.
+        async Task<int> HorseHealth()
+        {
+            health.TryRemove(horse, out _);
+            var q = new byte[10];
+            q[0] = 0x34; q[1] = 0xED; q[2] = 0xED; q[3] = 0xED; q[4] = 0xED; q[5] = 0x04;
+            q[6] = (byte)(horse >> 24); q[7] = (byte)(horse >> 16); q[8] = (byte)(horse >> 8); q[9] = (byte)horse;
+            vet.SendRaw(q);
+            return (int)await WaitAsync(() => health.TryGetValue(horse, out int h) ? (object)h : null, 4000, "the horse's status");
+        }
+
+        string Said(long since) =>
+            string.Join(" | ", vet.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        async Task<uint> PackBandage() =>
+            (await PackContentsAsync(vet, ct)).FirstOrDefault(i => i.ItemId is 0x0E21 or 0x0EE9)?.Serial
+                ?? throw new ScenarioFailed("no bandage left");
+        async Task BandageOn(uint target, long since)
+        {
+            await vet.Actions.DoubleClick(await PackBandage(), 1000, ct);
+            if (await vet.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no bandage cursor; {Said(since)}");
+            await vet.Actions.TargetObject(target, ct);
+        }
+
+        await RunScenario("vet", "setup: a veterinarian without healing and a wounded horse", outcomes, async () =>
+        {
+            await AsStaff(server, vet.AccountName, async () =>
+            {
+                await SayAsync(vet, $".go {spot}", ct);
+                await SayAsync(vet, ".healing 0", ct);
+                await SayAsync(vet, ".veterinary 1000", ct);
+                for (int i = 0; i < 4; i++)
+                    await AddIntoPackAsync(vet, "i_bandage", ct);
+                HashSet<uint> before; lock (vet.World.SyncRoot) before = vet.World.Mobiles.Keys.ToHashSet();
+                await vet.Actions.Say(".add c_horse_tan", ct);
+                if (await vet.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .add c_horse_tan");
+                await vet.Actions.TargetLocation(vet.World.X + 1, vet.World.Y, vet.World.Z, ct);
+                var found = await WaitAsync(() => { lock (vet.World.SyncRoot) return vet.World.Mobiles.Values.FirstOrDefault(m =>
+                    !before.Contains(m.Serial)); }, 4000, "the horse");
+                horse = found.Serial;
+                await vet.Actions.Say(".xhits 5", ct);
+                if (await vet.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed("no target cursor for .xhits");
+                await vet.Actions.TargetObject(horse, ct);
+                await Task.Delay(500, ct);
+            });
+            int h = await HorseHealth();
+            if (h >= 50) throw new ScenarioFailed($"the horse is at {h}%");
+            return $"horse 0x{horse:X} at {h}%";
+        });
+
+        await RunScenario("vet", "a bandage on the horse is veterinary", outcomes, async () =>
+        {
+            string last = "";
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                int was = await HorseHealth();
+                long since = Environment.TickCount64;
+                await BandageOn(horse, since);
+                int now = was;
+                for (int i = 0; i < 12 && now <= was; i++) { await Task.Delay(1000, ct); now = await HorseHealth(); }
+                last = Said(since);
+                if (now > was) return $"health {was}% -> {now}% with 0.0 healing; {last}";
+                if (!engineWording && last.Length > 0) return $"the pack answers: {last}";
+            }
+            throw new ScenarioFailed($"the horse stayed at {await HorseHealth()}%; {last}");
+        });
+
+        await RunScenario("vet", "a bandage on a thing does nothing", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            uint other = await PackBandage();
+            await BandageOn(other, since);
+            await Task.Delay(2500, ct);
+            string heard = Said(since);
+            if (engineWording && heard.Contains("bandage", StringComparison.OrdinalIgnoreCase) &&
+                !heard.Contains("Where would you like", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed(heard);
+            return heard.Length == 0 ? "nothing" : heard;
+        });
+
+        vet.ServerPacketObserver = null;
+        await AsStaff(server, vet.AccountName, async () =>
+        {
+            if (horse != 0)
+            {
+                await vet.Actions.Say(".remove", ct);
+                if (await vet.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                    await vet.Actions.TargetObject(horse, ct);
+                await Task.Delay(300, ct);
+            }
+        });
+        vet.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

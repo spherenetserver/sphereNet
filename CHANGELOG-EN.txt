@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Bandages pick Healing or Veterinary by the patient; Skill_Healing START at Skill_Start; vet drill
+------------------------------------------------------------------------
+FIX - A bandage picks its skill by the patient (OnTarg_Use_Item, CClientTarg.cpp:2006-2043):
+      a tameable NPC (TAMING above 0) of no playable body with an animal, dragon or monster
+      brain is treated with Veterinary, anyone else with Healing. Every bandage used
+      Healing, so Veterinary was never used and never rose from a bandage.
+FIX - A bandage on a thing does nothing; it treated the healer. On a corpse it stands for
+      the owner, a player's only.
+FIX - Skill_Healing's START runs when the skill starts (CCharSkill.cpp:2823-2841): the patient
+      judged and the "applies a bandage" emote at once, the difficulty kept as ACTDIFF; the
+      patient is judged again after the DELAY. The bandage is ACTPRV, the one used
+      (DEFMSG_HEALING_WITEM for one that is no bandage), not any bandage in the pack.
+FIX - A failed bandage tells the patient (DEFMSG_HEALING_ATTEMPTF); one out of reach tells the
+      patient too (DEFMSG_HEALING_ATTEMPT). A creature that cannot be selected is
+      DEFMSG_HEALING_NONCHAR.
+FIX - A raised ghost is raised as Spell_Resurrection does it (:2855): a reach and sight test
+      on the corpse after the roll, and a "You resurrect" line, were not upstream's.
+FIX - The bandage macro (0xBF 0x2C) is the bandage used: its @DClick with ARGN1 = 1, then the
+      same pick as a double-click (PacketBandageMacro, receive.cpp:3201-3270); it always
+      started Healing and ignored the bandage it named.
+ADD - Functional drill "vet" suite, on both packs: a veterinarian with 0.0 Healing heals a
+      wounded horse with a bandage; a bandage on a thing does nothing.
+ADD - Tests: START emote and difficulty, a failed bandage telling the patient, ACTPRV as the
+      bandage, the patient picking Veterinary or Healing.
+
 [2026-10-17] - A scripted skill is used without SKF_SELECTABLE; Remove Trap judges at START; Forensics on the world clock; trap drill
 ------------------------------------------------------------------------
 FIX - A scripted skill is used from the skill list whether or not it has SKF_SELECTABLE,

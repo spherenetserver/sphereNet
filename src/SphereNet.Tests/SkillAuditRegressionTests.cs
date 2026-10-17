@@ -399,7 +399,9 @@ public class SkillAuditRegressionTests
         animal.MaxHits = 100;
         animal.Hits = 20;
         world.PlaceCharacter(animal, new Point3D(101, 100, 0, 0));
-        var sink = new ActiveSink(healer, world) { Bandage = world.CreateItem() };
+        var bandage = world.CreateItem();
+        bandage.ItemType = ItemType.Bandage;
+        var sink = new ActiveSink(healer, world) { Bandage = bandage };
         int rolledSkill = -1;
         Character.OnSkillUseQuickDetailed =
             (Character _, int skill, ref int _, int _) => { rolledSkill = skill; return 1; };

@@ -110,7 +110,7 @@ public sealed class ClientItemUseHandler
     /// targeted use here.</summary>
     internal Action<uint, short, short, sbyte, ushort>? NativeTargetUse(Item item) => item.ItemType switch
     {
-        ItemType.Bandage => (serial, _, _, _, _) => RouteSkillTarget(SkillType.Healing, new Serial(serial), tool: item),
+        ItemType.Bandage => (serial, _, _, _, _) => BandageTarget(item, new Serial(serial)),
         ItemType.Lockpick => (serial, _, _, _, _) => RouteSkillTarget(SkillType.Lockpicking, new Serial(serial), tool: item),
         ItemType.Scissors => (serial, _, _, _, _) => HandleScissorsTarget(item, new Serial(serial)),
         ItemType.BandageBlood => (serial, x, y, _, _) => UseBloodyBandage(item, serial, x, y),
@@ -2581,7 +2581,7 @@ public sealed class ClientItemUseHandler
         // here in one call finished a mining swing the instant the rock was picked,
         // with nothing animated.
         if (tool != null && skill is SkillType.Mining or SkillType.Fishing or SkillType.Lumberjacking
-                or SkillType.Healing or SkillType.Lockpicking or SkillType.Herding)
+                or SkillType.Healing or SkillType.Veterinary or SkillType.Lockpicking or SkillType.Herding)
         {
             _client.StartSkillFromTool(skill, target, obj, point, tool);
             return;
@@ -2589,6 +2589,46 @@ public sealed class ClientItemUseHandler
 
         var sink = new GameClient.InfoSkillSink(_client, _character);
         _skillHandlers?.UseActiveSkill(sink, skill, obj, point);
+    }
+
+    /// <summary>OnTarg_Use_Item for a bandage (CClientTarg.cpp:2006-2043): a creature, or
+    /// a corpse standing for its owner - a player's only; anything else is nothing. A
+    /// tameable NPC (TAMING above 0) of no playable body with an animal, dragon or
+    /// monster brain is treated with Veterinary, anyone else with Healing. ACT is what
+    /// was picked, ACTPRV the bandage. A bandage on a thing used to treat the healer,
+    /// and every patient was treated with Healing.</summary>
+    private void BandageTarget(Item bandage, Serial target)
+    {
+        if (_character == null) return;
+        var obj = target.IsValid ? _world.FindObject(target) : null;
+        var patient = obj as Character;
+        if (obj is Item picked)
+        {
+            if (picked.ItemType != ItemType.Corpse)
+                return;
+            patient = picked.TryGetTag("OWNER_UID", out string? o) && ScriptNumber.TryParseUInt(o, out uint uid)
+                ? _world.FindChar(new Serial(uid))
+                : null;
+            if (patient == null || !patient.IsPlayer)
+                return;
+        }
+        if (patient == null)
+            return;
+        bool vet = !patient.IsPlayer && patient.GetSkill(SkillType.Taming) > 0 &&
+                   !AI.NpcAI.IsPlayableBody(patient.BodyId) &&
+                   patient.NpcBrain is NpcBrainType.Animal or NpcBrainType.Dragon or NpcBrainType.Monster;
+        RouteSkillTarget(vet ? SkillType.Veterinary : SkillType.Healing, target, tool: bandage);
+    }
+
+    /// <summary>PacketBandageMacro (receive.cpp:3201-3270): the bandage's @DClick with
+    /// ARGN1 = 1 (RETURN 1 refuses), then the bandage used on the target as if picked.</summary>
+    internal void BandageMacro(Item bandage, Serial target)
+    {
+        if (_character == null) return;
+        if (_triggerDispatcher?.FireItemTrigger(bandage, ItemTrigger.DClick,
+                new TriggerArgs { CharSrc = _character, ItemSrc = bandage, N1 = 1 }) == TriggerResult.True)
+            return;
+        BandageTarget(bandage, target);
     }
 
     /// <summary>CChar::Skill_Wait(SKILL_MUSICIANSHIP) (CCharSkill.cpp:3977-4050): true

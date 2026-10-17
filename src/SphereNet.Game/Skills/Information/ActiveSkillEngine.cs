@@ -601,100 +601,142 @@ public static class ActiveSkillEngine
 
     // -------------------------------------------------------------- Healing
 
-    /// <summary>
-    /// Source-X CChar::Skill_Healing. Requires bandage; checks reach; healthy/dead/poisoned
-    /// branches emit specific DEFMSG_HEALING_* messages and consume the bandage on fail
-    /// or success (per upstream).
-    /// </summary>
-    public static bool Healing(IActiveSkillSink sink, Character? target,
-        SkillType healingSkill = SkillType.Healing, Item? selectedCorpse = null)
+    /// <summary>What every Skill_Healing stage asks first (CCharSkill.cpp:2743-2814):
+    /// the bandage, ACTPRV (DEFMSG_HEALING_NOAIDS, DEFMSG_HEALING_WITEM), the patient
+    /// (DEFMSG_HEALING_BEYOND for a corpse whose owner is gone, DEFMSG_HEALING_NONCHAR for
+    /// one that cannot be selected), within two tiles (DEFMSG_HEALING_TOOFAR, and the
+    /// patient hears DEFMSG_HEALING_ATTEMPT), a corpse that can be raised over, and
+    /// someone who needs it (DEFMSG_HEALING_HEALTHY / NONEED). With no bandage in ACTPRV
+    /// one is taken from the pack. Null when the stage stops.</summary>
+    private static Character? HealingPatient(IActiveSkillSink sink, Character? target,
+        SkillType healingSkill, Item? selectedCorpse, out Item? bandage)
     {
         var ch = sink.Self;
+        bandage = ch.ActPrv.IsValid ? sink.World.FindItem(ch.ActPrv) : sink.FindBackpackItem(ItemType.Bandage);
+        if (bandage == null || bandage.IsDeleted)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.HealingNoaids));
+            return null;
+        }
+        if (bandage.ItemType != ItemType.Bandage)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.HealingWitem));
+            return null;
+        }
 
         // "No target given, treat me" and "the target I picked is gone" are different
-        // answers. A corpse whose owner cannot be resolved - already resurrected, or
-        // deleted with its NPC - used to fall through to the self-heal default, so
-        // aiming a bandage at a stale corpse quietly bandaged the healer and spent the
-        // bandage doing it. Source-X stops with HEALING_BEYOND instead
-        // (CCharSkill.cpp:2769), and IsCorpseResurrectable refuses an owner that is no
-        // longer dead (CItemCorpse.cpp:37).
+        // answers: a corpse whose owner cannot be resolved stops with HEALING_BEYOND
+        // (CCharSkill.cpp:2769).
         if (target == null && selectedCorpse?.ItemType == ItemType.Corpse)
         {
             sink.SysMessage(ServerMessages.Get(Msg.HealingBeyond));
-            return false;
+            return null;
         }
-
         target ??= ch;
+        if ((CharDefHelper.GetCanFlags(target) & CanFlags.C_NonSelectable) != 0)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.HealingNonchar));
+            return null;
+        }
 
         // Healing and Veterinary share Skill_Healing with no species gate between
-        // them (CCharSkill.cpp:3718-3720); the "animals only" refusal was invented.
-
-        var bandage = sink.FindBackpackItem(ItemType.Bandage);
-        if (bandage == null)
+        // them (CCharSkill.cpp:3718-3720).
+        var corpse = selectedCorpse?.ItemType == ItemType.Corpse ? selectedCorpse : null;
+        Point3D healAnchor = corpse?.Position ?? target.Position;
+        if (!CanReachPoint(ch, healAnchor, sink.World, SkillEngine.GetUseRange(healingSkill, 2)))
         {
-            sink.SysMessage(ServerMessages.Get(Msg.HealingNoaids));
-            return false;
+            sink.SysMessage(ServerMessages.GetFormatted(Msg.HealingToofar, corpse?.Name ?? target.Name));
+            if (target != ch)
+                Character.SendOwnerMessage?.Invoke(target, ServerMessages.GetFormatted(Msg.HealingAttempt,
+                    ch.Name, corpse?.Name ?? ServerMessages.Get(Msg.HealingWho)));
+            return null;
         }
 
-        // Source-X gathers every corpse-side condition into IsCorpseResurrectable and
-        // runs it BEFORE the bandage is spent or the skill rolled (Skill_Healing,
-        // CCharSkill.cpp:2796). SphereNet had only the container half of it.
-        if (selectedCorpse?.ItemType == ItemType.Corpse &&
-            !IsCorpseResurrectable(sink, ch, target, selectedCorpse))
-            return false;
-
-        Point3D healAnchor = selectedCorpse?.ItemType == ItemType.Corpse
-            ? selectedCorpse.Position
-            : target.Position;
-        if (!CanReachPoint(ch, healAnchor, sink.World,
-                SkillEngine.GetUseRange(healingSkill, 2)))
-        {
-            sink.SysMessage(ServerMessages.GetFormatted(Msg.HealingToofar, target.Name));
-            return false;
-        }
+        // Every corpse-side condition, before anything is spent (CCharSkill.cpp:2796).
+        if (corpse != null && !IsCorpseResurrectable(sink, ch, target, corpse))
+            return null;
 
         if (!target.IsStatFlag(StatFlag.Poisoned | StatFlag.Dead) && target.Hits >= target.MaxHits)
         {
             sink.SysMessage(target == ch
                 ? ServerMessages.Get(Msg.HealingHealthy)
                 : ServerMessages.GetFormatted(Msg.HealingNoneed, target.Name));
-            return false;
+            return null;
         }
 
-        // A ghost that has not manifested cannot be raised. Upstream refuses it among
-        // the preconditions, before the bandage is spent or the skill rolled
-        // (IsCorpseResurrectable, CItemCorpse.cpp:42, run from Skill_Healing :2796).
-        // Checked after the roll, a failed roll answered "they barely help" instead
-        // and the bandage was lost to a ghost that could never have been raised.
-        // Source-X asks for STATF_INSUBSTANTIAL, which death sets only on a PLAYER who
-        // was not already in war mode (CCharAct.cpp:4468) and never on an NPC;
-        // SphereNet uses war mode as the manifest signal for players, so a bonded pet
-        // that died out of combat can still be revived by Veterinary.
+        // A ghost that has not manifested cannot be raised (IsCorpseResurrectable,
+        // CItemCorpse.cpp:42). Source-X asks for STATF_INSUBSTANTIAL, which death sets
+        // only on a PLAYER who was not already in war mode (CCharAct.cpp:4468) and never
+        // on an NPC; SphereNet uses war mode as the manifest signal for players, so a
+        // bonded pet that died out of combat can still be revived by Veterinary.
         if (target.IsStatFlag(StatFlag.Dead) && target.IsPlayer && !target.IsInWarMode)
         {
             sink.SysMessage(ServerMessages.Get(Msg.HealingResManifest));
-            return false;
+            return null;
         }
+        return target;
+    }
 
-        // START emote.
-        sink.Emote(target == ch
+    /// <summary>Skill_Healing START (CCharSkill.cpp:2823-2841): the patient judged, the
+    /// emote ("applies a bandage"), and the difficulty: rand(25)+85 to raise the dead,
+    /// rand(50)+50 to cure poison, rand(80) to heal. Run when the skill starts.</summary>
+    public static int HealingStart(IActiveSkillSink sink, Character? target,
+        SkillType healingSkill = SkillType.Healing, Item? selectedCorpse = null)
+    {
+        var ch = sink.Self;
+        var patient = HealingPatient(sink, target, healingSkill, selectedCorpse, out _);
+        if (patient == null)
+            return -3;
+        sink.Emote(patient == ch
             ? ServerMessages.Get(Msg.HealingSelf)
-            : ServerMessages.GetFormatted(Msg.HealingTo, target.Name));
+            : ServerMessages.GetFormatted(Msg.HealingTo, patient.Name));
+        bool raise = selectedCorpse?.ItemType == ItemType.Corpse || patient.IsStatFlag(StatFlag.Dead);
+        return raise ? 85 + RandVal(sink.Random, 25)
+             : patient.IsStatFlag(StatFlag.Poisoned) ? 50 + RandVal(sink.Random, 50)
+             : RandVal(sink.Random, 80);
+    }
 
-        // Difficulty: dead = 85+25, poisoned = 50+50, normal = 0..80 —
-        // verbatim Source-X Skill_Healing (CCharSkill.cpp:2836-2840).
-        int diff = target.IsStatFlag(StatFlag.Dead) ? 85 + sink.Random.Next(25)
-                 : target.IsStatFlag(StatFlag.Poisoned) ? 50 + sink.Random.Next(50)
-                 : sink.Random.Next(80);
-        bool success = SkillEngine.UseQuick(ch, healingSkill, diff);
+    /// <summary>
+    /// Source-X CChar::Skill_Healing (CCharSkill.cpp:2724-2886), for Healing and
+    /// Veterinary. START is <see cref="HealingStart"/>; the patient is judged again
+    /// after the DELAY. A START that came back negative is bound to fail (Skill_Done,
+    /// :3928). FAIL spends the bandage and the patient hears DEFMSG_HEALING_ATTEMPTF;
+    /// SUCCESS spends it, leaves a bloody one, and raises, cures or heals.
+    /// </summary>
+    public static bool Healing(IActiveSkillSink sink, Character? target,
+        SkillType healingSkill = SkillType.Healing, Item? selectedCorpse = null, int? startDifficulty = null)
+    {
+        var ch = sink.Self;
+        int diff;
+        if (startDifficulty.HasValue)
+        {
+            diff = startDifficulty.Value;
+        }
+        else
+        {
+            diff = HealingStart(sink, target, healingSkill, selectedCorpse);
+            if (diff < 0)
+                return false;
+        }
+        var patient = HealingPatient(sink, target, healingSkill, selectedCorpse, out var bandage);
+        if (patient == null)
+            return false;
+        var corpse = selectedCorpse?.ItemType == ItemType.Corpse ? selectedCorpse : null;
 
         // No animation and no sound: Skill_Healing plays neither at any stage, and
         // healing is neither a crafting nor a gathering skill, so Skill_Start and
-        // Skill_Stroke play none for it either (CCharSkill.cpp:2724-2886/4543). The
-        // bow and cloth rustle this used to send on every bandage were invented.
-        sink.ConsumeAmount(bandage); // Source-X consumes on fail too.
-        if (!success)
+        // Skill_Stroke play none for it either (CCharSkill.cpp:2724-2886/4543).
+        if (diff < 0 || !SkillEngine.UseQuick(ch, healingSkill, diff))
+        {
+            // FAIL (:2814-2821): the bandage is spent, and the patient told.
+            sink.ConsumeAmount(bandage!);
+            if (patient != ch)
+                Character.SendOwnerMessage?.Invoke(patient, ServerMessages.GetFormatted(Msg.HealingAttemptf,
+                    ch.Name, corpse?.Name ?? ServerMessages.Get(Msg.HealingWho)));
             return false;
+        }
+        sink.ConsumeAmount(bandage!);
+        target = patient;
 
         // Only a SUCCESSFUL bandage leaves a bloody one, made from its item
         // definition - ITEMID_BANDAGES_BLOODY1 or 2 at random (CCharSkill.cpp:2846-2847).
@@ -706,6 +748,13 @@ public static class ActiveSkillEngine
         sink.DeliverItem(bloody);
 
         ch.FlagForHelpingCriminalIfNeeded(target);
+
+        // Spell_Resurrection(pCorpse, this) (:2855): no further reach or sight test.
+        if (corpse != null || target.IsStatFlag(StatFlag.Dead))
+        {
+            sink.ResurrectTarget(target);
+            return true;
+        }
 
         if (target.IsStatFlag(StatFlag.Poisoned))
         {
@@ -733,35 +782,9 @@ public static class ActiveSkillEngine
             return true;
         }
 
-        if (target.IsStatFlag(StatFlag.Dead))
-        {
-            var corpse = selectedCorpse?.ItemType == ItemType.Corpse
-                ? selectedCorpse
-                : FindCorpseFor(sink.World, target);
-            if (corpse != null)
-            {
-                var corpsePos = new Point3D(corpse.X, corpse.Y, corpse.Z, corpse.MapIndex);
-                if (!CanReachPoint(ch, corpsePos, sink.World, 3, requireLos: false))
-                {
-                    sink.SysMessage(ServerMessages.Get(Msg.HealingResToofar));
-                    return false;
-                }
-                if (!sink.World.CanSeeLOSFor(ch, ch.Position, corpsePos))
-                {
-                    sink.SysMessage(ServerMessages.Get(Msg.HealingResLos));
-                    return false;
-                }
-            }
-
-            sink.ResurrectTarget(target);
-            sink.SysMessage(ServerMessages.GetFormatted(Msg.HealingRes, target.Name));
-            return true;
-        }
-
         // The amount healed is the skill's EFFECT curve at the adjusted skill
         // (m_Act_Effect, set at Skill_Start, CCharSkill.cpp:4466-4471), 1 when the
-        // skill names no EFFECT (:2881-2884). Anatomy and Animal Lore play no part;
-        // the skill/40 + lore/80 + 3 formula was invented.
+        // skill names no EFFECT (:2881-2884).
         int heal = ch.ActionEffect >= 0
             ? ch.ActionEffect
             : SkillEngine.GetEffect(healingSkill, SkillEngine.GetAdjustedSkill(ch, healingSkill), 1);
@@ -1248,21 +1271,6 @@ public static class ActiveSkillEngine
         return CanReachPoint(ch, top, world, SkillEngine.GetUseRange(skill, fallbackRange));
     }
 
-    private static Item? FindCorpseFor(GameWorld world, Character ghost)
-    {
-        foreach (var item in world.GetItemsInRange(ghost.Position, 20))
-        {
-            if (item.ItemType != Core.Enums.ItemType.Corpse) continue;
-            if (item.TryGetTag("OWNER_UUID", out string? uuidStr) &&
-                Guid.TryParse(uuidStr, out Guid uuid) && uuid == ghost.Uuid)
-                return item;
-            if (item.TryGetTag("OWNER_UID", out string? uidStr) &&
-                ScriptNumber.TryParseUInt(uidStr, out uint ownerUid) && ownerUid == ghost.Uid.Value)
-                return item;
-        }
-        return null;
-    }
-
     private static int GetDistance(Point3D a, Point3D b)
     {
         return Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
@@ -1630,15 +1638,33 @@ public static class ActiveSkillEngine
             SkillType.Enticement => EnticementStart(sink, act as Character),
             SkillType.Provocation => ProvocationStart(sink, provoked, act as Character),
             SkillType.RemoveTrap => RemoveTrapStart(sink, act as Item),
+            SkillType.Healing or SkillType.Veterinary =>
+                HealingStart(sink, HealPatientOf(sink.World, act), skill, act as Item),
             _ => 0,
         };
 
+    /// <summary>The patient of a bandage: a character itself, or the owner of a corpse
+    /// (m_uidLink) while still dead.</summary>
+    public static Character? HealPatientOf(GameWorld world, ObjBase? act)
+    {
+        if (act is Character c) return c;
+        if (act is Item corpse && corpse.ItemType == ItemType.Corpse &&
+            corpse.TryGetTag("OWNER_UID", out string? o) && ScriptNumber.TryParseUInt(o, out uint uid))
+        {
+            var owner = world.FindChar(new Serial(uid));
+            if (owner != null && owner.IsDead && !owner.IsDeleted)
+                return owner;
+        }
+        return null;
+    }
+
     /// <summary>The skills whose START stage runs at Skill_Start here: the bard skills,
-    /// which play the instrument, herding, which judges the creature and the spot, and
-    /// remove trap, which judges the trap.</summary>
+    /// which play the instrument, herding, which judges the creature and the spot,
+    /// remove trap, which judges the trap, and healing and veterinary, which judge the
+    /// patient and apply the bandage.</summary>
     public static bool HasStartStage(SkillType skill) =>
         skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation
-            or SkillType.Herding or SkillType.RemoveTrap;
+            or SkillType.Herding or SkillType.RemoveTrap or SkillType.Healing or SkillType.Veterinary;
 
     /// <summary>Skill_Musicianship START (CCharSkill.cpp:1786-1787): play ACT, the
     /// instrument double-clicked, or any carried, against rand(90).</summary>

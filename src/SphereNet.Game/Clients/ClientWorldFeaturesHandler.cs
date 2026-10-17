@@ -3531,14 +3531,16 @@ public sealed class ClientWorldFeaturesHandler
         uint targetUid = (uint)((data[4] << 24) | (data[5] << 16) | (data[6] << 8) | data[7]);
 
         var bandage = _world.FindItem(new Serial(bandageUid));
-        if (bandage == null || bandage.ItemType != ItemType.Bandage)
+        // A bandage the player carries and can see (receive.cpp:3215-3245).
+        if (bandage == null || bandage.ItemType != ItemType.Bandage ||
+            bandage.GetTopLevelObj() != _character || _world.FindObject(new Serial(targetUid)) == null)
             return;
         if (_character.IsStatFlag(StatFlag.Sleeping | StatFlag.Freeze | StatFlag.Stone) || _character.IsCasting)
             return;
-        if (!SkillHandlers.CanUse(_character, SkillType.Healing))
-            return;
 
-        BeginTargetedSkill(SkillType.Healing, (int)SkillType.Healing, new Serial(targetUid));
+        // The same use as a bandage double-clicked and aimed: Healing or Veterinary by
+        // the patient, the bandage as ACTPRV (Event_Target CLIMODE_TARG_USE_ITEM).
+        _client.ItemUse.BandageMacro(bandage, new Serial(targetUid));
     }
 
     /// <summary>

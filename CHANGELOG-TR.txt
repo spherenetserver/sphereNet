@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Bandaj hastaya gore Healing ya da Veterinary secer; Skill_Healing START'i Skill_Start'ta; vet tatbikati
+------------------------------------------------------------------------
+DUZELTME - Bandaj becerisini hastaya gore secer (OnTarg_Use_Item, CClientTarg.cpp:2006-2043):
+       evcillestirilebilir (TAMING 0'dan buyuk), oynanabilir govdesi olmayan, animal, dragon
+       ya da monster beyinli NPC Veterinary ile, digerleri Healing ile tedavi edilir. Her
+       bandaj Healing kullaniyordu; Veterinary bandajla hic kullanilmiyor ve artmiyordu.
+DUZELTME - Esyaya bandaj hicbir sey yapmaz; tedaviciyi tedavi ediyordu. Cesette sahibini temsil
+       eder, yalnizca oyuncununkinde.
+DUZELTME - Skill_Healing'in START'i beceri basladiginda calisir (CCharSkill.cpp:2823-2841): hasta
+       hemen degerlendirilir ve "bandaj sarar" emote'u hemen cikar, zorluk ACTDIFF olarak
+       saklanir; hasta DELAY'den sonra yeniden degerlendirilir. Bandaj ACTPRV'dir, kullanilan
+       bandaj (bandaj olmayan icin DEFMSG_HEALING_WITEM); cantadaki herhangi bir bandaj degil.
+DUZELTME - Basarisiz bandaj hastaya soylenir (DEFMSG_HEALING_ATTEMPTF); erisim disi bandaj da
+       hastaya soylenir (DEFMSG_HEALING_ATTEMPT). Secilemeyen yaratik DEFMSG_HEALING_NONCHAR.
+DUZELTME - Hayalet Spell_Resurrection'in yaptigi gibi diriltilir (:2855): zardan sonraki ceset
+       erisim/gorus testi ve "You resurrect" satiri upstream'de yoktu.
+DUZELTME - Bandaj makrosu (0xBF 0x2C) bandajin kullanilmasidir: ARGN1 = 1 ile @DClick'i, sonra
+       cift tiklamayla ayni secim (PacketBandageMacro, receive.cpp:3201-3270); her zaman
+       Healing basliyor ve belirttigi bandaji yok sayiyordu.
+EKLEME - Fonksiyonel tatbikat "vet" paketi, iki pakette: 0.0 Healing'li veteriner yarali ati
+       bandajla iyilestirir; esyaya bandaj hicbir sey yapmaz.
+EKLEME - Testler: START emote'u ve zorlugu, hastaya soylenen basarisiz bandaj, bandaj olarak
+       ACTPRV, hastanin Veterinary ya da Healing secmesi.
+
 [2026-10-17] - Script'li beceri SKF_SELECTABLE olmadan kullanilir; Remove Trap START'ta karar verir; Forensics dunya saatinde; trap tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Script'li bir beceri SKF_SELECTABLE olsun olmasin beceri listesinden kullanilir; bu

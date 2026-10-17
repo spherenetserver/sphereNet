@@ -1094,84 +1094,125 @@ public static class ActiveSkillEngine
 
     // --------------------------------------------------------------- Taming
 
-    /// <summary>Source-X CChar::Skill_Taming (CCharSkill.cpp:2270-2350).
-    ///
-    /// Whether a creature can be tamed is data: its own TAMING skill. One with none,
-    /// one that knows Animal Lore, or one wearing a playable body is refused - a GM
-    /// excepted. The difficulty is TAMING/10, plus 50 when the creature remembers the
-    /// tamer as a foe. A brain list and a hit-point fallback stood in for that, so
-    /// every monster the pack never made tameable could be taken as a pet.</summary>
-    public static bool Taming(IActiveSkillSink sink, Character? target)
+    /// <summary>What every Skill_Taming stage asks first (CCharSkill.cpp:2276-2335): a
+    /// creature (none: nothing said), not oneself (DEFMSG_TAMING_YMASTER), not a player
+    /// (DEFMSG_TAMING_CANT), within the skill's RANGE in 3D, 10 when it names none
+    /// (DEFMSG_TAMING_REACH), in sight (DEFMSG_TAMING_LOS); the tamer turns to it. Out
+    /// of GM mode a pet is DEFMSG_TAMING_TAME, and one with no TAMING, one that knows
+    /// Animal Lore or one of a playable body DEFMSG_TAMING_TAMED.</summary>
+    private static bool TamingTarget(IActiveSkillSink sink, Character? target)
     {
         var ch = sink.Self;
-        if (target == null)
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.TamingReach));
+        if (target == null || target.IsDeleted)
             return false;
-        }
         if (target == ch)
         {
             sink.SysMessage(ServerMessages.Get(Msg.TamingYmaster));
             return false;
         }
-        if (target.IsPlayer || target.IsDead)
+        if (target.IsPlayer)
         {
             sink.SysMessage(ServerMessages.Get(Msg.TamingCant));
             return false;
         }
-        if (!CanReachPoint(ch, target.Position, sink.World,
-                SkillEngine.GetUseRange(SkillType.Taming, 10)))
+        int range = SkillEngine.GetUseRange(SkillType.Taming, 10);
+        var me = ch.Position;
+        var it = target.Position;
+        int dist = me.Map != it.Map ? int.MaxValue
+            : Math.Max(Math.Max(Math.Abs(me.X - it.X), Math.Abs(me.Y - it.Y)), Math.Abs(me.Z - it.Z) / 8);
+        if (dist > range)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.TamingReach));
+            return false;
+        }
+        if (!sink.World.CanSeeLOSFor(ch, target))
         {
             sink.SysMessage(ServerMessages.Get(Msg.TamingLos));
             return false;
         }
-
-        // Upstream turns the tamer toward the animal before the attempt
-        // (CChar::Skill_Taming, CCharSkill.cpp:2307) - the same UpdateDir the forge,
-        // the campfire and the gathering stroke get.
-        FaceSkillTarget(ch, target.Position);
-
-        int tameBase = target.GetSkill(SkillType.Taming);
-        if (ch.PrivLevel < PrivLevel.GM)
+        FaceSkillTarget(ch, target.Position);   // UpdateDir (:2307)
+        if (!ch.IsGmMode)
         {
             if (target.IsStatFlag(StatFlag.Pet))
             {
                 sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingTame, target.Name));
                 return false;
             }
-            if (tameBase == 0 || target.GetSkill(SkillType.AnimalLore) > 0 ||
+            if (target.GetSkill(SkillType.Taming) == 0 || target.GetSkill(SkillType.AnimalLore) > 0 ||
                 Combat.BodyAnimTranslator.IsPlayableBody(target.BodyId))
             {
                 sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingTamed, target.Name));
                 return false;
             }
         }
+        return true;
+    }
 
-        // Source-X cycles through TAMING_1..4 emotes during the stage loop.
-        string[] tries = { Msg.Taming1, Msg.Taming2, Msg.Taming3, Msg.Taming4 };
-        sink.Emote(ServerMessages.GetFormatted(tries[sink.Random.Next(tries.Length)], target.Name));
-
-        int diff = tameBase / 10;
+    /// <summary>Skill_Taming START (CCharSkill.cpp:2337-2345): TAMING/10, plus 50 when the
+    /// creature remembers the tamer as a foe; 2 to 5 strokes to come. Run when the skill
+    /// starts.</summary>
+    public static int TamingStart(IActiveSkillSink sink, Character? target)
+    {
+        var ch = sink.Self;
+        if (!TamingTarget(sink, target))
+            return -3;
+        int diff = target!.GetSkill(SkillType.Taming) / 10;
         if (target.Memory_FindObjTypes(ch.Uid, MemoryType.Fight | MemoryType.HarmedBy |
                 MemoryType.IrritatedBy | MemoryType.Aggreived) != null)
-            diff += 50; // "I've attacked it before?" (CCharSkill.cpp:2346)
-        // A creature this tamer tamed before remembers it (MEMORY_SPEAK with
-        // NPC_MEM_ACT_TAMED, CCharSkill.cpp:2384): it takes the tamer back with
-        // TAMING_REMEMBER and no skill credit; a first taming says TAMING_SUCCESS and
-        // leaves that memory, against macroing a tame/release loop. TAMING_YMASTER
-        // ("You are your own master") is the self-target refusal only.
-        var tamedMemory = target.Memory_FindObjTypes(ch.Uid, MemoryType.Speak);
-        bool tamedBefore = tamedMemory != null && (tamedMemory.More1 & 0xFFFF) == Character.NpcMemActTamed;
-        bool success = SkillEngine.UseQuick(ch, SkillType.Taming, diff, allowGain: !tamedBefore);
-        if (success)
+            diff += 50;   // "I've attacked it before?"
+        ch.SkillStrokesLeft = RandVal(sink.Random, 4) + 2;
+        return diff;
+    }
+
+    /// <summary>Skill_Taming STROKE (CCharSkill.cpp:2350-2371), on each timeout: the
+    /// creature judged again, then, while strokes are left and out of GM mode, the
+    /// tamer says one of DEFMSG_TAMING_1..4 aloud and waits another DELAY. 1 = keep
+    /// going, 0 = the strokes are done, below 0 = it stops there.</summary>
+    public static int TamingStroke(IActiveSkillSink sink, Character? target)
+    {
+        var ch = sink.Self;
+        if (!TamingTarget(sink, target))
+            return -1;
+        if (ch.SkillStrokesLeft <= 0 || ch.IsGmMode)
+            return 0;
+        string[] tries = { Msg.Taming1, Msg.Taming2, Msg.Taming3, Msg.Taming4 };
+        ch.SayAloud(ServerMessages.GetFormatted(tries[sink.Random.Next(tries.Length)], target!.Name));
+        ch.SkillStrokesLeft--;
+        return 1;
+    }
+
+    /// <summary>Source-X CChar::Skill_Taming (CCharSkill.cpp:2270-2401). START is
+    /// <see cref="TamingStart"/> and the strokes <see cref="TamingStroke"/>; whether a
+    /// creature can be tamed is data, its own TAMING skill. SUCCESS: a creature this tamer
+    /// tamed before takes them back with DEFMSG_TAMING_REMEMBER over it and no skill
+    /// credit; a first taming says DEFMSG_TAMING_SUCCESS and leaves the memory
+    /// (MEMORY_SPEAK, NPC_MEM_ACT_TAMED) against a tame/release loop.</summary>
+    public static bool Taming(IActiveSkillSink sink, Character? target, int? startDifficulty = null)
+    {
+        var ch = sink.Self;
+        int diff;
+        if (startDifficulty.HasValue)
+            diff = startDifficulty.Value;
+        else
         {
-            success = target.TryAssignOwnership(ch, ch, summoned: false, enforceFollowerCap: true);
+            diff = TamingStart(sink, target);
+            if (diff < -1)
+                return false;
         }
+        if (!TamingTarget(sink, target))
+            return false;
+
+        var tamedMemory = target!.Memory_FindObjTypes(ch.Uid, MemoryType.Speak);
+        bool tamedBefore = tamedMemory != null && (tamedMemory.More1 & 0xFFFF) == Character.NpcMemActTamed;
+        bool success = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.Taming, diff, allowGain: !tamedBefore);
+        if (success)
+            success = target.TryAssignOwnership(ch, ch, summoned: false, enforceFollowerCap: true);
         if (success)
         {
+            target.Food = 50;   // Stat_SetVal(STAT_FOOD, 50)
             if (tamedBefore)
             {
-                sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingRemember, target.Name));
+                sink.ObjectMessage(target, ServerMessages.GetFormatted(Msg.TamingRemember, target.Name));
             }
             else
             {
@@ -1889,6 +1930,7 @@ public static class ActiveSkillEngine
             SkillType.Lockpicking => LockpickingStart(sink, act as Item),
             SkillType.Snooping => SnoopingStart(sink, act as Item),
             SkillType.Stealing => StealingStart(sink, act),
+            SkillType.Taming => TamingStart(sink, act as Character),
             SkillType.Healing or SkillType.Veterinary =>
                 HealingStart(sink, HealPatientOf(sink.World, act), skill, act as Item),
             _ => 0,
@@ -1916,7 +1958,7 @@ public static class ActiveSkillEngine
     public static bool HasStartStage(SkillType skill) =>
         skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation
             or SkillType.Herding or SkillType.RemoveTrap or SkillType.Healing or SkillType.Veterinary
-            or SkillType.Lockpicking or SkillType.Snooping or SkillType.Stealing;
+            or SkillType.Lockpicking or SkillType.Snooping or SkillType.Stealing or SkillType.Taming;
 
     /// <summary>Skill_Musicianship START (CCharSkill.cpp:1786-1787): play ACT, the
     /// instrument double-clicked, or any carried, against rand(90).</summary>

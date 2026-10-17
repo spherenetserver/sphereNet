@@ -10693,6 +10693,10 @@ public partial class Character : ObjBase
             sink($"{k}={v}");
     }
 
+    /// <summary>CChar::Speak at TALKMODE_SAY: a line spoken aloud, heard by everyone
+    /// near.</summary>
+    public void SayAloud(string text) => BroadcastSpeech(0, unicode: false, text);
+
     private void BroadcastSpeech(byte msgType, bool unicode, string rawArgs)
     {
         // The `@hue,font,unicode ` prefix, parsed the way upstream parses it for every

@@ -276,7 +276,7 @@ public sealed class SkillHandlers
             case SkillType.Healing:
                 return ActiveSkillEngine.Healing(sink, ResolveHealTarget(target), SkillType.Healing,
                     target as Item, ch.TakeStartStageDifficulty());
-            case SkillType.Taming:           return ActiveSkillEngine.Taming(sink, target as Character);
+            case SkillType.Taming:           return ActiveSkillEngine.Taming(sink, target as Character, ch.TakeStartStageDifficulty());
             case SkillType.Stealing:         return ActiveSkillEngine.Stealing(sink, target, ch.TakeStartStageDifficulty());
             case SkillType.Snooping:         return ActiveSkillEngine.Snooping(sink, target as Item, ch.TakeStartStageDifficulty());
             case SkillType.Lockpicking:      return ActiveSkillEngine.Lockpicking(sink, target as Item, ch.TakeStartStageDifficulty());

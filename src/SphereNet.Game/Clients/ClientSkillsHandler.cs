@@ -929,6 +929,29 @@ public sealed class ClientSkillsHandler
             return;
         }
 
+        // Skill_Taming's STROKE runs on each timeout (Skill_Done -> Skill_Stage(STROKE),
+        // CCharSkill.cpp:3920): another line aloud and another DELAY while strokes are
+        // left; a creature gone out of reach ends it there (Skill_Cleanup).
+        if (skill == SkillType.Taming && !SkillEngine.HasFlag(skill, SkillFlag.Scripted))
+        {
+            var tameTarget = _character.SkillPendingTarget.IsValid
+                ? _world.FindChar(_character.SkillPendingTarget) : null;
+            int stroke = Skills.Information.ActiveSkillEngine.TamingStroke(
+                new GameClient.InfoSkillSink(_client, _character), tameTarget);
+            if (stroke < 0)
+            {
+                _character.ClearActiveSkillPending();
+                _character.ActionEffect = -1;
+                return;
+            }
+            if (stroke > 0)
+            {
+                _character.ContinueSkillPending(Environment.TickCount64 +
+                    Math.Max(100, SkillEngine.GetSkillDelayMs(skill, _character.GetSkill(skill))));
+                return;
+            }
+        }
+
         Serial targetUid = _character.SkillPendingTarget;
         bool isInfo = _character.SkillPendingIsInfo;
         Point3D? point = null;

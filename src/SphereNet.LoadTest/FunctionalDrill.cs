@@ -968,7 +968,8 @@ internal static class FunctionalDrill
                 await a.Actions.UseSkill(35, 3000, ct); // Animal Taming
                 if (await a.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
                     await a.Actions.TargetObject(horse.Serial, ct);
-                for (int i = 0; i < 24 && !tamed; i++)
+                // Taming takes 2-5 strokes, a DELAY each, before the roll (Skill_Taming).
+                for (int i = 0; i < 80 && !tamed; i++)
                 {
                     await Task.Delay(500, ct);
                     tamed = a.World.Journal.ToArray().Any(e => e.TimestampMs >= since &&

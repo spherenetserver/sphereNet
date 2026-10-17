@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Animal Taming, Skill_Taming'in calistirdigi gibi: START Skill_Start'ta, 2-5 vurus sesli
+------------------------------------------------------------------------
+DUZELTME - Taming'in START'i beceri basladiginda calisir (CCharSkill.cpp:2337-2345): yaratik
+       degerlendirilir, zorluk ACTDIFF olarak TAMING/10 (hatirlanan dusmana +50) ve gelecek 2-5
+       vurus. Her zaman asimi bir STROKE'tur (:2350-2371): yaratik yeniden degerlendirilir ve vurus
+       kaldikca, GM modu disinda, evcillestirici DEFMSG_TAMING_1..4'ten birini sesli soyler ve bir
+       DELAY daha bekler; zar sonuncudan sonra atilir. Tek emote ve tek DELAY'di.
+DUZELTME - Becerinin RANGE'i disi (3B, varsayilan 10) DEFMSG_TAMING_REACH; gorus disi
+       DEFMSG_TAMING_LOS - ikisi icin de gorus hatti satiri soyleniyordu, hicbir sey secilmeyince
+       "reach" deniyordu. GM istisnasi GM modudur (IsPriv(PRIV_GM)), yalnizca rutbe degil.
+DUZELTME - Bu evcillestiricinin daha once evcillestirdigi yaratik DEFMSG_TAMING_REMEMBER'i kosede degil
+       kendi ustunde soyler (ObjMessage); evcillesen yaratigin yiyecegi 50 olur (Stat_SetVal(STAT_FOOD)).
+EKLEME - Fonksiyonel tatbikat: pet paketi siradaki evcillestirme denemesinden once vuruslari bekler.
+EKLEME - Testler: START zorlugu ve vuruslar, reach satiri, sesli vurus, yaratigin ustunde hatirlanan
+       evcillestirme.
+
 [2026-10-17] - Snooping ve Stealing Source-X'in asamalariyla; IsTakeCrime; esyayla baslayan beceriler icin Skill_Wait
 ------------------------------------------------------------------------
 DUZELTME - Baskasinin konteynerini acmak Snooping becerisini baslatir (Skill_Snoop_Check,

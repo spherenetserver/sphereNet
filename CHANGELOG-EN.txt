@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Animal Taming as Skill_Taming runs it: START at Skill_Start, 2-5 strokes said aloud
+------------------------------------------------------------------------
+FIX - Taming's START runs when the skill starts (CCharSkill.cpp:2337-2345): the creature judged,
+      the difficulty TAMING/10 (+50 against a remembered foe) as ACTDIFF, and 2 to 5 strokes to
+      come. Each timeout is a STROKE (:2350-2371): the creature judged again and, while strokes
+      are left and out of GM mode, the tamer says one of DEFMSG_TAMING_1..4 aloud and waits
+      another DELAY; the roll comes after the last. It was one emote and one DELAY.
+FIX - Beyond the skill's RANGE (3D, 10 by default) is DEFMSG_TAMING_REACH; out of sight is
+      DEFMSG_TAMING_LOS - the line-of-sight line was said for both, and nothing picked said
+      "reach". The GM exception is GM mode (IsPriv(PRIV_GM)), not the rank alone.
+FIX - A creature this tamer tamed before says DEFMSG_TAMING_REMEMBER over itself (ObjMessage)
+      rather than in the corner; a tamed creature's food is set to 50 (Stat_SetVal(STAT_FOOD)).
+ADD - Functional drill: the pet suite waits out the strokes before its next taming attempt.
+ADD - Tests: START's difficulty and strokes, the reach line, a stroke said aloud, the
+      remembered taming over the creature.
+
 [2026-10-17] - Snooping and Stealing as Source-X stages them; IsTakeCrime; Skill_Wait for item-started skills
 ------------------------------------------------------------------------
 FIX - Opening someone's container starts the Snooping skill (Skill_Snoop_Check,

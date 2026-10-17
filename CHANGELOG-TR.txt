@@ -9,6 +9,9 @@
 EKLEME - Fonksiyonel tatbikat "guards" paketi, iki pakette: korunan bir bolgede (paketin kendi bolgelerine
        sorularak bulunur, REGION_FLAG_GUARDED) oyuncunun "guards" cagrisiyla gelen muhafiz orku oldurur
        (CallGuards, CClientEvent.cpp:1888; kotu yaratik icin NPC_LookAtCharGuard).
+EKLEME - Muhafiz tatbikati: baska bir korunan sehirde orku goren kasabali (c_actor) kendiliginden muhafiz
+       cagirir ve ork olur (NPC_LookAtCharHuman, CCharNPCAct.cpp:809-841). Eklenen NPC'ler isinlanma
+       sonrasi gorunume yeni giren herhangi biri degil, konduklari yerden taninir.
 
 [2026-10-17] - Ejderha nefesi tatbikati
 ------------------------------------------------------------------------

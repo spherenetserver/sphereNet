@@ -9,6 +9,9 @@
 ADD - Functional drill "guards" suite, on both packs: in a guarded area (found by asking the pack's
       own regions, REGION_FLAG_GUARDED) an orc is killed by the guard a player's "guards" brings
       (CallGuards, CClientEvent.cpp:1888; NPC_LookAtCharGuard for an evil creature).
+ADD - Guards drill: a townsman (c_actor) that sees an orc in another guarded town yells for the guards
+      itself and the orc is killed (NPC_LookAtCharHuman, CCharNPCAct.cpp:809-841). Spawned NPCs are
+      matched by where they were placed, not by being new in view after a teleport.
 
 [2026-10-17] - Dragon breath drill
 ------------------------------------------------------------------------

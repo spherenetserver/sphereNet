@@ -4937,10 +4937,11 @@ internal static class FunctionalDrill
 
         // A spot inside a guarded area (REGION_FLAG_GUARDED 0x4000), as the pack's own
         // regions say: the drill's usual spot, else a few town squares.
-        async Task<string> FindGuardedSpot()
+        async Task<string> FindGuardedSpot(string? skip = null)
         {
             foreach (var at in new[] { OpenCountrySpot(root), "1475,1645,20", "1496,1628,10", "1434,1699,0", "2500,500,0" })
             {
+                if (at == skip) continue;
                 string flags = "";
                 await AsStaff(server, citizen.AccountName, async () =>
                 {
@@ -4990,6 +4991,45 @@ internal static class FunctionalDrill
             string heard = string.Join(" | ", citizen.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text).Distinct().Take(6));
             if (!OrcGone()) throw new ScenarioFailed($"the orc is still there after 30 s; {heard}");
             return $"orc gone after {(Environment.TickCount64 - since) / 1000.0:F1}s; {heard}";
+        });
+
+        // NPC_LookAtCharHuman (CCharNPCAct.cpp:809-841): a townsman that sees something
+        // evil on guarded ground calls the guards itself, one look in three, and runs.
+        await RunScenario("guards", "a townsman calls the guards on an orc", outcomes, async () =>
+        {
+            uint actor = 0, orc2 = 0;
+            string there = "";
+            async Task<uint> AddAt(string defname, int dx)
+            {
+                HashSet<uint> before; lock (citizen.World.SyncRoot) before = citizen.World.Mobiles.Keys.ToHashSet();
+                await citizen.Actions.Say($".add {defname}", ct);
+                if (await citizen.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no target cursor for .add {defname}");
+                int tx = citizen.World.X + dx, ty = citizen.World.Y;
+                await citizen.Actions.TargetLocation(tx, ty, citizen.World.Z, ct);
+                // Placed where targeted: anything else new is the town coming into view.
+                var m = await WaitAsync(() => { lock (citizen.World.SyncRoot) return citizen.World.Mobiles.Values.FirstOrDefault(x =>
+                    !before.Contains(x.Serial) && Math.Abs(x.X - tx) <= 1 && Math.Abs(x.Y - ty) <= 1); }, 4000, defname);
+                return m.Serial;
+            }
+            // Another town: the guard called on the first orc still stands at the first.
+            there = await FindGuardedSpot(town);
+            await AsStaff(server, citizen.AccountName, async () =>
+            {
+                await SayAsync(citizen, $".go {there}", ct);
+                actor = await AddAt("c_actor", -2);
+                orc2 = await AddAt("c_orc", 4);
+            });
+            long since = Environment.TickCount64;
+            bool OrcGone() { lock (citizen.World.SyncRoot) return !citizen.World.Mobiles.ContainsKey(orc2); }
+            for (int w = 0; w < 80 && !OrcGone(); w++) await Task.Delay(500, ct);
+            var said = citizen.World.Journal.ToArray().Where(e => e.TimestampMs >= since && e.SpeakerSerial == actor)
+                .Select(e => e.Text).Distinct().ToArray();
+            string heard = string.Join(" | ", said.Take(4));
+            if (!OrcGone()) throw new ScenarioFailed($"the orc is still there after 40 s; the townsman said: {heard}");
+            if (said.Length == 0) throw new ScenarioFailed($"the orc is gone after {(Environment.TickCount64 - since) / 1000.0:F1}s at {there} but the townsman said nothing; heard: " +
+                string.Join(" | ", citizen.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => $"{e.Speaker}: {e.Text}").Distinct().Take(6)));
+            return $"orc gone after {(Environment.TickCount64 - since) / 1000.0:F1}s; the townsman: {heard}";
         });
 
         citizen.Disconnect();

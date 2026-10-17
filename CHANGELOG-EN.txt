@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Bard skills play at START; instrument double-click starts Musicianship; provoked fights remembered; bard drill
+------------------------------------------------------------------------
+FIX - Musicianship, Peacemaking, Enticement and Provocation play their instrument at START,
+      when the skill is used (CCharSkill.cpp:1787, 1830, 1956, 2071), and what START
+      answers is ACTDIFF (m_Act_Difficulty) for the roll after the DELAY; @SkillStart /
+      @Start may read or rewrite it (ACTDIFF 0 keeps a refused start going). The whole
+      skill used to run after the DELAY: the tune came seconds late and a missing
+      instrument was only said at the end. A negative START ends the skill quietly when
+      @SkillStart or @Start is in use; otherwise it waits out the DELAY and fails, and a
+      provoked creature then turns on the bard (Skill_Done, :3927).
+FIX - Double-clicking an instrument starts Musicianship on it (Use_Item IT_MUSICAL,
+      CCharUse.cpp:1739-1745): Skill_Wait first, then the skill's triggers, its DELAY,
+      and that instrument is the one played. It resolved on the spot, with no trigger,
+      and played whichever instrument came first in the pack.
+FIX - Enticement, Peacemaking and Provocation ask only that the bard can see the creature
+      (CChar::CanSee: sight range, no line of sight). Enticement had an invented 8-tile
+      reach with an English line of its own.
+FIX - A creature a bard turns on another records the fight in memory (Attacker_Add's
+      Memory_Fight_Start, CCharAttacker.cpp:58) and its target remembers being irritated
+      (Fight_Attack, CCharFight.cpp:1472). With MONSTERFIGHT off a provoked monster
+      weighed only the -50 monster-to-monster hostility and ran from its target.
+ADD - Functional drill "bard" suite, on both packs: a double-clicked lute, a missing
+      instrument, peacemaking's tune at once, enticement luring a rabbit, provocation
+      setting an ettin on an orc, peacemaking calming the fight. The Sphere 56T
+      custom-version pack scripts its own peacemaking and skill 15 and switches off
+      provocation; those answers are accepted there.
+ADD - Tests: the tune at START and the roll after the DELAY, no instrument said at once
+      (with and without a start trigger), ACTDIFF rewritten in @Start, the instrument
+      clicked is the one played, enticement by sight, a provocation bound to fail, the
+      provoked monster's fight memory.
+
 [2026-10-17] - Tracking as Source-X runs it; Begging's start line and reach; tracker drill
 ------------------------------------------------------------------------
 FIX - Tracking opens Source-X's old-style item menus (0x7C, Cmd_Skill_Tracking,

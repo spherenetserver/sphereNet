@@ -4,6 +4,37 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Bard becerileri START'ta calar; enstrumana cift tik Musicianship baslatir; kiskirtilan kavga hatirlanir; bard tatbikati
+------------------------------------------------------------------------
+DUZELTME - Musicianship, Peacemaking, Enticement ve Provocation enstrumanini START'ta, beceri
+       kullanildiginda calar (CCharSkill.cpp:1787, 1830, 1956, 2071); START'in cevabi
+       DELAY sonrasindaki zar icin ACTDIFF'tir (m_Act_Difficulty) ve @SkillStart / @Start
+       onu okuyabilir ya da degistirebilir (ACTDIFF 0 reddedilen baslangici surdurur).
+       Butun beceri DELAY'den sonra calisiyordu: ezgi saniyeler sonra geliyor, enstruman
+       yoklugu en sonda soyleniyordu. Negatif START, @SkillStart ya da @Start kullaniliyorsa
+       beceriyi sessizce bitirir; yoksa DELAY'i bekleyip basarisiz olur ve kiskirtilan
+       yaratik bard'a doner (Skill_Done, :3927).
+DUZELTME - Bir enstrumana cift tiklamak onunla Musicianship baslatir (Use_Item IT_MUSICAL,
+       CCharUse.cpp:1739-1745): once Skill_Wait, sonra becerinin trigger'lari ve DELAY'i,
+       ve calinan o enstrumandir. Trigger'siz aninda sonuclaniyor, cantadaki ilk
+       enstrumani caliyordu.
+DUZELTME - Enticement, Peacemaking ve Provocation yalnizca bard'in yaratigi gorebilmesini ister
+       (CChar::CanSee: gorus mesafesi, gorus hatti yok). Enticement'ta uydurma 8 karelik
+       erisim ve kendine ait Ingilizce bir satir vardi.
+DUZELTME - Bard'in baska birine yonelttigi yaratik kavgayi hafizasina kaydeder (Attacker_Add'in
+       Memory_Fight_Start'i, CCharAttacker.cpp:58) ve hedefi rahatsiz edildigini hatirlar
+       (Fight_Attack, CCharFight.cpp:1472). MONSTERFIGHT kapaliyken kiskirtilan canavar
+       yalnizca -50'lik canavar-canavar dusmanligini tartiyor ve hedefinden kaciyordu.
+EKLEME - Fonksiyonel tatbikat "bard" paketi, iki pakette: cift tiklanan lute, eksik enstruman,
+       peacemaking'in aninda ezgisi, enticement ile tavsanin cekilmesi, provocation ile
+       ettin'in orc'a saldirtilmasi, peacemaking ile kavganin yatistirilmasi. Sphere 56T
+       ozel surum paketi peacemaking'i ve 15. beceriyi kendi script'iyle yapar, provocation'i
+       kapatir; bu cevaplar orada kabul edilir.
+EKLEME - Testler: ezgi START'ta ve zar DELAY'den sonra, enstruman yoklugunun aninda soylenmesi
+       (baslangic trigger'i olan ve olmayan), @Start'ta degistirilen ACTDIFF, tiklanan
+       enstrumanin calinmasi, gorusle enticement, basarisizliga mahkum provocation,
+       kiskirtilan canavarin kavga hafizasi.
+
 [2026-10-17] - Tracking Source-X'teki gibi; Begging'in baslangic satiri ve erisimi; tracker tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Tracking Source-X'in eski tip esya menulerini acar (0x7C, Cmd_Skill_Tracking,

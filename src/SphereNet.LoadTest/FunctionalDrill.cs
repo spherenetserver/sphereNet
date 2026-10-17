@@ -129,6 +129,8 @@ internal static class FunctionalDrill
                 await LoreSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "tracker")
                 await TrackerSuite(root, server, port, outcomes, cts.Token);
+            if (o.Suite is "all" or "bard")
+                await BardSuite(root, server, port, outcomes, cts.Token);
         }
         catch (Exception ex)
         {
@@ -3761,6 +3763,253 @@ internal static class FunctionalDrill
 
         tracker.Disconnect();
         quarry.Disconnect();
+    }
+
+    /// <summary>The bard skills: each plays its instrument at START, when it is used,
+    /// and resolves after the DELAY - musicianship on a double-clicked lute, a missing
+    /// instrument, enticement luring a creature, provocation setting one monster on
+    /// another, peacemaking calming them.</summary>
+    private static async Task BardSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    {
+        const int PeacemakingSkill = 9, EnticementSkill = 15, ProvocationSkill = 22;
+        bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+            .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+        string spot = OpenCountrySpot(root);
+        var at = spot.Split(',');
+        int sx = int.Parse(at[0]), sy = int.Parse(at[1]);
+        var bard = await LoginAsync(1181, port, ct);
+        var empty = await LoginAsync(1182, port, ct);
+        uint lute = 0, rabbit = 0, orc = 0, ettin = 0;
+
+        // Sounds (0x54) and war flags (0x77 / 0x78) the bard is sent, with when.
+        var sounds = new System.Collections.Concurrent.ConcurrentQueue<(long Ms, ushort Id)>();
+        var war = new System.Collections.Concurrent.ConcurrentDictionary<uint, bool>();
+        var peaceSeen = new System.Collections.Concurrent.ConcurrentQueue<uint>();
+        var hurt = new System.Collections.Concurrent.ConcurrentDictionary<uint, int>();
+        bard.ServerPacketObserver = p =>
+        {
+            if (p[0] == 0xA1 && p.Length >= 9)
+            {
+                int max = p[5] << 8 | p[6], cur = p[7] << 8 | p[8];
+                if (cur < max) hurt[(uint)(p[1] << 24 | p[2] << 16 | p[3] << 8 | p[4])] = cur * 100 / Math.Max(1, max);
+            }
+            else if (p[0] == 0x54 && p.Length >= 12)
+                sounds.Enqueue((Environment.TickCount64, (ushort)(p[2] << 8 | p[3])));
+            else if (p[0] == 0x77 && p.Length >= 17)
+                NoteWar((uint)(p[1] << 24 | p[2] << 16 | p[3] << 8 | p[4]), p[15]);
+            else if (p[0] == 0x78 && p.Length >= 19)
+                NoteWar((uint)(p[3] << 24 | p[4] << 16 | p[5] << 8 | p[6]), p[17]);
+        };
+        void NoteWar(uint serial, byte flags)
+        {
+            bool fighting = (flags & 0x40) != 0;
+            if (war.TryGetValue(serial, out bool was) && was && !fighting)
+                peaceSeen.Enqueue(serial);
+            war[serial] = fighting;
+        }
+        string Said(BotClient bot, long since) =>
+            string.Join(" | ", bot.World.Journal.ToArray().Where(e => e.TimestampMs >= since).Select(e => e.Text));
+        KnownMobile? Mob(uint serial) { lock (bard.World.SyncRoot) return bard.World.Mobiles.GetValueOrDefault(serial); }
+        async Task<uint> Spawn(string def, int x, int y)
+        {
+            HashSet<uint> before; lock (bard.World.SyncRoot) before = bard.World.Mobiles.Keys.ToHashSet();
+            await bard.Actions.Say($".add {def}", ct);
+            if (await bard.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                throw new ScenarioFailed($"no target cursor for .add {def}");
+            await bard.Actions.TargetLocation(x, y, bard.World.Z, ct);
+            var found = await WaitAsync(() => { lock (bard.World.SyncRoot) return bard.World.Mobiles.Values.FirstOrDefault(m =>
+                !before.Contains(m.Serial) && m.Serial != empty.World.CharUid); }, 4000, def);
+            return found.Serial;
+        }
+        // The first sound after `since`, if any came within the window.
+        async Task<(long Ms, ushort Id)?> SoundAfter(long since, int windowMs)
+        {
+            for (int i = 0; i < windowMs / 50; i++)
+            {
+                var s = sounds.ToArray().FirstOrDefault(e => e.Ms >= since);
+                if (s.Ms != 0) return s;
+                await Task.Delay(50, ct);
+            }
+            return null;
+        }
+        async Task<bool> Pick(BotClient bot, int skill, uint target, long since)
+        {
+            await bot.Actions.UseSkill(skill, 3000, ct);
+            if (await bot.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                return false;
+            await bot.Actions.TargetObject(target, ct);
+            return true;
+        }
+
+        await RunScenario("bard", "setup: a bard with a lute, a bard without one", outcomes, async () =>
+        {
+            await AsStaff(server, empty.AccountName, async () =>
+            {
+                await SayAsync(empty, $".go {sx - 30},{sy},{at[2]}", ct);
+                await SayAsync(empty, ".peacemaking 1000", ct);
+                await SayAsync(empty, ".musicianship 1000", ct);
+            });
+            await AsStaff(server, bard.AccountName, async () =>
+            {
+                await SayAsync(bard, $".go {spot}", ct);
+                foreach (string line in new[] { ".musicianship 1000", ".peacemaking 1000", ".enticement 1000",
+                                                ".provocation 1000", ".invul 1" })
+                    await SayAsync(bard, line, ct);
+                await AddIntoPackAsync(bard, "i_lute", ct);
+            });
+            var pack = await PackContentsAsync(bard, ct);
+            lute = pack.FirstOrDefault(i => i.ItemId is 0x0EB3 or 0x0EB4)?.Serial ?? 0;
+            if (lute == 0) throw new ScenarioFailed($"no lute; pack: {string.Join(",", pack.Select(i => $"0x{i.ItemId:X}"))}");
+            return $"lute 0x{lute:X}";
+        });
+
+        await RunScenario("bard", "a double-clicked lute plays at once", outcomes, async () =>
+        {
+            string last = "";
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                long since = Environment.TickCount64;
+                await bard.Actions.DoubleClick(lute, 1000, ct);
+                var tune = await SoundAfter(since, 1500);
+                await Task.Delay(2500, ct); // the DELAY, and whatever the pack says after it
+                last = Said(bard, since);
+                if (tune is { } t)
+                    return $"tune 0x{t.Id:X} after {t.Ms - since} ms; {last}";
+            }
+            throw new ScenarioFailed($"no tune; {last}");
+        });
+
+        await RunScenario("bard", "no instrument is said when the skill is used", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            await empty.Actions.UseSkill(PeacemakingSkill, 3000, ct);
+            await WaitAsync(() => Said(empty, since).Length > 0 ? (object)true : null, 1500,
+                "an answer within the DELAY");
+            string heard = Said(empty, since);
+            if (engineWording && !heard.Contains("instrument", StringComparison.OrdinalIgnoreCase))
+                throw new ScenarioFailed(heard);
+            return heard;
+        });
+
+        await RunScenario("bard", "peacemaking plays when it is used, not after its delay", outcomes, async () =>
+        {
+            long since = Environment.TickCount64;
+            await bard.Actions.UseSkill(PeacemakingSkill, 3000, ct);
+            if (await bard.Actions.WaitForTarget(600, ct) == BotActionResult.Success)
+            {
+                // The pack picks the creature first; a thing is refused.
+                await bard.Actions.TargetObject(lute, ct);
+                await Task.Delay(800, ct);
+                if (engineWording) throw new ScenarioFailed("a target cursor for peacemaking");
+                return $"the pack asks for a creature: {Said(bard, since)}";
+            }
+            var tune = await SoundAfter(since, 1500) ?? throw new ScenarioFailed($"no tune within 1.5 s; {Said(bard, since)}");
+            await Task.Delay(2500, ct);
+            return $"tune after {tune.Ms - since} ms; {Said(bard, since)}";
+        });
+
+        await RunScenario("bard", "enticement lures a creature to the bard", outcomes, async () =>
+        {
+            await AsStaff(server, bard.AccountName, async () => { rabbit = await Spawn("c_rabbit", sx + 10, sy); });
+            await Task.Delay(800, ct);
+            string last = "";
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                int before = Mob(rabbit) is { } r ? bard.World.DistanceTo(r.X, r.Y) : 99;
+                long since = Environment.TickCount64;
+                if (!await Pick(bard, EnticementSkill, rabbit, since))
+                {
+                    last = $"no cursor; {Said(bard, since)}";
+                    if (!engineWording) return $"the pack's skill 15: {Said(bard, since)}";
+                    continue;
+                }
+                await Task.Delay(6000, ct);
+                last = Said(bard, since);
+                int after = Mob(rabbit) is { } r2 ? bard.World.DistanceTo(r2.X, r2.Y) : 99;
+                if (after < before - 2)
+                    return $"rabbit {before} -> {after} tiles; {last}";
+                if (!engineWording && last.Length > 0)
+                    return $"the pack's skill 15: {last}";
+            }
+            throw new ScenarioFailed($"the rabbit did not come; {last}");
+        });
+
+        await RunScenario("bard", "provocation sets one monster on another", outcomes, async () =>
+        {
+            await AsStaff(server, bard.AccountName, async () =>
+            {
+                await SayAsync(bard, $".go {sx},{sy - 20},{at[2]}", ct);
+                await Task.Delay(800, ct);
+                // Side by side, on ground the bard has just walked: a spawn spot
+                // further out can be walled in by the terrain.
+                ettin = await Spawn("c_ettin", bard.World.X + 2, bard.World.Y);
+                orc = await Spawn("c_orc", bard.World.X + 3, bard.World.Y);
+            });
+            await Task.Delay(800, ct);
+            string last = "";
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                long since = Environment.TickCount64;
+                await bard.Actions.UseSkill(ProvocationSkill, 3000, ct);
+                if (await bard.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                {
+                    last = Said(bard, since);
+                    if (!engineWording && last.Length > 0) return $"the pack refuses: {last}";
+                    throw new ScenarioFailed($"no first cursor; {last}");
+                }
+                // The ettin fights bare-handed; an orc may carry a bow and only hold
+                // its distance.
+                await bard.Actions.TargetObject(ettin, ct);
+                if (await bard.Actions.WaitForTarget(4000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no second cursor; {Said(bard, since)}");
+                await bard.Actions.TargetObject(orc, ct);
+                var tune = await SoundAfter(since, 1500);
+                await Task.Delay(4500, ct);
+                last = Said(bard, since);
+                // The ettin goes for the orc: it is at war and the orc takes its blows.
+                if (war.GetValueOrDefault(ettin) && hurt.ContainsKey(orc))
+                    return $"tune {(tune is { } t ? $"after {t.Ms - since} ms" : "none")}; orc at {hurt[orc]}%, " +
+                        $"orc war {war.GetValueOrDefault(orc)}; {last}";
+            }
+            throw new ScenarioFailed($"orc hurt {hurt.ContainsKey(orc)}, orc war {war.GetValueOrDefault(orc)} at {Mob(orc)?.X},{Mob(orc)?.Y}, ettin war {war.GetValueOrDefault(ettin)} at {Mob(ettin)?.X},{Mob(ettin)?.Y}, bard {bard.World.X},{bard.World.Y}; sounds {string.Join(",", sounds.Select(e => $"0x{e.Id:X}"))}; {last}");
+        });
+
+        await RunScenario("bard", "peacemaking calms a fighting monster", outcomes, async () =>
+        {
+            if (!war.GetValueOrDefault(ettin))
+            {
+                if (!engineWording) return "nothing fighting to calm (the pack has no provocation)";
+                throw new ScenarioFailed("nothing fighting to calm");
+            }
+            string last = "";
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                peaceSeen.Clear();
+                long since = Environment.TickCount64;
+                await bard.Actions.UseSkill(PeacemakingSkill, 3000, ct);
+                await Task.Delay(3500, ct);
+                last = Said(bard, since);
+                if (peaceSeen.Any(s => s == orc || s == ettin))
+                    return $"calmed 0x{peaceSeen.First(s => s == orc || s == ettin):X}; {last}";
+            }
+            throw new ScenarioFailed($"nobody stopped fighting; {last}");
+        });
+
+        await AsStaff(server, bard.AccountName, async () =>
+        {
+            foreach (uint m in new[] { orc, ettin, rabbit })
+                if (m != 0)
+                {
+                    await bard.Actions.Say(".remove", ct);
+                    if (await bard.Actions.WaitForTarget(3000, ct) == BotActionResult.Success)
+                        await bard.Actions.TargetObject(m, ct);
+                    await Task.Delay(300, ct);
+                }
+            await SayAsync(bard, ".invul 0", ct);
+        });
+        bard.ServerPacketObserver = null;
+        bard.Disconnect();
+        empty.Disconnect();
     }
 
     // ---- scenario helpers --------------------------------------------------------

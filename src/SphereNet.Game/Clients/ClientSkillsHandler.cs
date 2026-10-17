@@ -150,6 +150,8 @@ public sealed class ClientSkillsHandler
             bool startRefused = skill == SkillType.Meditation && _character.Mana >= _character.MaxMana;
             if (startRefused)
                 SysMessage(ServerMessages.Get(Msg.MeditationPeace1));
+            if (BardStartBoundToFail(skill, null))
+                startRefused = true;
 
             // m_Act_Effect before @SkillStart, LOCAL.Effect read back (:4456-4477, :4526).
             _character.ActionEffect = SkillEngine.GetStartActionEffect(_character, skill);
@@ -166,7 +168,8 @@ public sealed class ClientSkillsHandler
                 }
                 _character.ActionEffect = (int)Math.Clamp(startLocals.GetInt("Effect", -1), int.MinValue, int.MaxValue);
             }
-            if (startRefused)
+            startRefused = StartStillRefused(startRefused);
+            if (startRefused && !SkillWaitsOutARefusal(skill))
             {
                 EndRefusedStart(skillId);
                 return;
@@ -530,6 +533,8 @@ public sealed class ClientSkillsHandler
             else
                 startRefused = true;
         }
+        if (BardStartBoundToFail(skill, target))
+            startRefused = true;
 
         bool gather = SkillEngine.HasFlag(skill, SkillFlag.Gather);
         bool craft = SkillEngine.HasFlag(skill, SkillFlag.Craft);
@@ -558,7 +563,8 @@ public sealed class ClientSkillsHandler
             return;
         }
 
-        if (startRefused)
+        startRefused = StartStillRefused(startRefused);
+        if (startRefused && !SkillWaitsOutARefusal(skill))
         {
             EndRefusedStart(skillId);
             return;
@@ -582,6 +588,39 @@ public sealed class ClientSkillsHandler
         RunActiveSkill(skill, skillId, targetUid, target, point, startWaitMs, gather ? strokes : null, isInfo,
             actionEffect: _character.ActionEffect);
     }
+
+    /// <summary>A bard skill's START stage, run when the skill starts: the instrument
+    /// plays now and the answer is kept for the roll after the DELAY. True when it
+    /// came back negative.</summary>
+    private bool BardStartBoundToFail(SkillType skill, Objects.ObjBase? target)
+    {
+        if (_character == null) return false;
+        _character.StartStageRan = false;
+        if (!Skills.Information.ActiveSkillEngine.IsBardSkill(skill) || SkillEngine.HasFlag(skill, SkillFlag.Scripted))
+            return false;
+        var provoked = skill == SkillType.Provocation && _character.ActPrv.IsValid ? _world.FindChar(_character.ActPrv) : null;
+        // m_Act_Difficulty = Skill_Stage(SKTRIG_START) (CCharSkill.cpp:4447): ACTDIFF in
+        // the start triggers.
+        _character.ActDiff = Skills.Information.ActiveSkillEngine.BardStart(
+            new GameClient.InfoSkillSink(_client, _character), skill, target, provoked);
+        _character.StartStageRan = true;
+        return _character.ActDiff < 0;
+    }
+
+    /// <summary>After @SkillStart / @Start: a START stage's answer is ACTDIFF as the
+    /// triggers left it, and a negative one refuses (CCharSkill.cpp:4505/4515).</summary>
+    private bool StartStillRefused(bool startRefused) =>
+        _character is { StartStageRan: true } ch ? ch.ActDiff < 0 : startRefused;
+
+    /// <summary>With neither @SkillStart nor @Start in use, a bard skill whose START
+    /// came back negative still waits out its DELAY and fails then (Skill_Done: "was
+    /// bound to fail, but we had to wait for the timer anyhow", CCharSkill.cpp:3927);
+    /// its FAIL stage runs - a provoked creature turns on the bard.</summary>
+    private bool SkillWaitsOutARefusal(SkillType skill) =>
+        _character is { StartStageRan: true, ActDiff: < 0 } &&
+        Skills.Information.ActiveSkillEngine.IsBardSkill(skill) &&
+        (_triggerDispatcher == null || !_triggerDispatcher.IsTriggerNameUsed("SkillStart") &&
+            !_triggerDispatcher.IsTriggerNameUsed("Start"));
 
     /// <summary>A START stage that answered a negative difficulty. With @SkillStart or
     /// @Start in use the skill ends there, quietly (Skill_Cleanup, CCharSkill.cpp

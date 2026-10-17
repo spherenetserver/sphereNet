@@ -39,6 +39,21 @@ public partial class Character
         set => _actionEffect = value < 0 ? -1 : value;
     }
 
+    /// <summary>True when a skill's own START stage ran at Skill_Start (the bard skills
+    /// play their instrument there) and left its answer in ACTDIFF (m_Act_Difficulty),
+    /// where @SkillStart / @Start may read or rewrite it before the roll after the
+    /// DELAY.</summary>
+    public bool StartStageRan { get; set; }
+
+    /// <summary>ACTDIFF as the START stage and the start triggers left it, once; null
+    /// when no START stage ran.</summary>
+    public int? TakeStartStageDifficulty()
+    {
+        if (!StartStageRan) return null;
+        StartStageRan = false;
+        return ActDiff;
+    }
+
     private long _skillDelayEnd;
     private long _skillStrokeNext;
     private int _skillStrokeCount;

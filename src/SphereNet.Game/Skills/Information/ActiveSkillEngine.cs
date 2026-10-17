@@ -1558,12 +1558,42 @@ public static class ActiveSkillEngine
 
     // ---------------------------------------------------------- Musicianship
 
+    /// <summary>The START stage of a bard skill - Skill_Musicianship, Skill_Peacemaking,
+    /// Skill_Enticement and Skill_Provocation each play the instrument at START
+    /// (CCharSkill.cpp:1787, 1830, 1956, 2071), when the skill begins, and what it
+    /// answers is m_Act_Difficulty for the roll after the DELAY. Negative is a refusal
+    /// (no instrument, a poor tune, a creature out of sight or not to be provoked).
+    /// <paramref name="act"/> is ACT (the instrument for musicianship, the creature
+    /// for enticement, the target for provocation), <paramref name="provoked"/> ACTPRV.
+    /// The whole skill used to run after the DELAY, so the tune came seconds late and
+    /// a missing instrument was only said at the end.</summary>
+    public static int BardStart(IActiveSkillSink sink, SkillType skill, ObjBase? act, Character? provoked) =>
+        skill switch
+        {
+            SkillType.Musicianship => MusicianshipStart(sink, act as Item),
+            SkillType.Peacemaking => PeacemakingStart(sink),
+            SkillType.Enticement => EnticementStart(sink, act as Character),
+            SkillType.Provocation => ProvocationStart(sink, provoked, act as Character),
+            _ => 0,
+        };
+
+    /// <summary>The bard skills, whose START plays the instrument.</summary>
+    public static bool IsBardSkill(SkillType skill) =>
+        skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation;
+
+    /// <summary>Skill_Musicianship START (CCharSkill.cpp:1786-1787): play ACT, the
+    /// instrument double-clicked, or any carried, against rand(90).</summary>
+    private static int MusicianshipStart(IActiveSkillSink sink, Item? instrument) =>
+        UsePlayMusic(sink, RandVal(sink.Random, 90), musicianshipActive: true,
+            instrument?.ItemType == ItemType.Musical ? instrument : null);
+
     /// <summary>Source-X CChar::Skill_Musicianship (CCharSkill.cpp:1772-1790): START
     /// plays the instrument against rand(90) through Use_PlayMusic, and what that
-    /// returns is the skill's difficulty. The fixed 40 was invented.</summary>
-    public static bool Musicianship(IActiveSkillSink sink)
+    /// returns is the skill's difficulty. The fixed 40 was invented.
+    /// <paramref name="startDifficulty"/> is what START answered when it already ran.</summary>
+    public static bool Musicianship(IActiveSkillSink sink, int? startDifficulty = null)
     {
-        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, 90), musicianshipActive: true);
+        int difficulty = startDifficulty ?? MusicianshipStart(sink, null);
         if (difficulty < 0)
             return false;
         return SkillEngine.UseQuick(sink.Self, SkillType.Musicianship, difficulty);
@@ -1575,9 +1605,10 @@ public static class ActiveSkillEngine
     /// itself the skill being used, which instead takes the failure's experience
     /// by hand - and play the instrument's good or poor tune. Returns the difficulty
     /// on success, -1 (DEFMSG_MUSICANSHIP_POOR) on failure.</summary>
-    private static int UsePlayMusic(IActiveSkillSink sink, int difficulty, bool musicianshipActive)
+    private static int UsePlayMusic(IActiveSkillSink sink, int difficulty, bool musicianshipActive,
+        Item? instrument = null)
     {
-        var instrument = FindMusicalInstrument(sink);
+        instrument ??= FindMusicalInstrument(sink);
         if (instrument == null)
         {
             sink.SysMessage(ServerMessages.Get(Msg.MusicanshipNotool));
@@ -1613,6 +1644,16 @@ public static class ActiveSkillEngine
 
     // ----------------------------------------------------------- Peacemaking
 
+    /// <summary>Skill_Peacemaking START (CCharSkill.cpp:1828-1838): play against
+    /// rand(40); a zero difficulty is re-rolled as rand(40).</summary>
+    private static int PeacemakingStart(IActiveSkillSink sink)
+    {
+        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, 40), musicianshipActive: false);
+        if (difficulty < 0)
+            return difficulty;
+        return difficulty == 0 ? RandVal(sink.Random, 40) : difficulty;
+    }
+
     /// <summary>Source-X CChar::Skill_Peacemaking (CCharSkill.cpp:1792-1899).
     ///
     /// START plays against rand(40) (no instrument aborts, a poor tune fails) and a
@@ -1622,14 +1663,12 @@ public static class ActiveSkillEngine
     /// the bard's ignores the song, one whose Provocation does disobeys it (and an
     /// evil one turns on the bard), and anything else stops fighting. Nobody in
     /// earshot is a failure. Calming every NPC in eight tiles was invented.</summary>
-    public static bool Peacemaking(IActiveSkillSink sink, Character? target = null)
+    public static bool Peacemaking(IActiveSkillSink sink, Character? target = null, int? startDifficulty = null)
     {
         var ch = sink.Self;
-        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, 40), musicianshipActive: false);
+        int difficulty = startDifficulty ?? PeacemakingStart(sink);
         if (difficulty < 0)
             return false;
-        if (difficulty == 0)
-            difficulty = RandVal(sink.Random, 40);
         if (!SkillEngine.UseQuick(ch, SkillType.Peacemaking, difficulty))
             return false;
 
@@ -1647,7 +1686,7 @@ public static class ActiveSkillEngine
 
             if (peaceDiff > peace)
             {
-                sink.SysMessage($"{creature.Name} {ServerMessages.Get(Msg.PeacemakingIgnore)}.");
+                sink.SysMessage($"{creature.GetName()} {ServerMessages.Get(Msg.PeacemakingIgnore)}.");
             }
             else
             {
@@ -1656,7 +1695,7 @@ public static class ActiveSkillEngine
                     provoDiff = (provoDiff + barding) / 2;
                 if (provoDiff > peace)
                 {
-                    sink.SysMessage($"{creature.Name} {ServerMessages.Get(Msg.PeacemakingDisobey)}.");
+                    sink.SysMessage($"{creature.GetName()} {ServerMessages.Get(Msg.PeacemakingDisobey)}.");
                     if (AI.NpcAI.NotoIsEvil(creature, sink.World))
                         FightAttack(creature, ch);
                 }
@@ -1672,42 +1711,51 @@ public static class ActiveSkillEngine
 
     // ----------------------------------------------------------- Enticement
 
+    /// <summary>Every Skill_Enticement stage first asks for ACT and that the bard can
+    /// see it (CCharSkill.cpp:1914-1916); there is no reach beyond sight.</summary>
+    private static bool EnticementSees(IActiveSkillSink sink, Character? target) =>
+        target != null && !target.IsDead && !target.IsDeleted && CanSeeChar(sink.World, sink.Self, target);
+
+    /// <summary>Skill_Enticement START (CCharSkill.cpp:1920-1965): play against
+    /// TAG.BARDING.DIFF / 18 (default 40); a zero difficulty is re-rolled as rand(40).</summary>
+    private static int EnticementStart(IActiveSkillSink sink, Character? target)
+    {
+        if (!EnticementSees(sink, target))
+            return -1;
+        int baseDiff = BardingDiff(target!) is var tagDiff && tagDiff != 0 ? tagDiff / 18 : 40;
+        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, baseDiff), musicianshipActive: false);
+        if (difficulty < 0)
+            return difficulty;
+        return difficulty == 0 ? RandVal(sink.Random, 40) : difficulty;
+    }
+
     /// <summary>Source-X CChar::Skill_Enticement (CCharSkill.cpp:1901): lure a
     /// creature to the bard. The tune is played against TAG.BARDING.DIFF (divided by
     /// 18, default 40) and needs an instrument; on success a player cannot be lured
     /// and neither can a creature at war, and anything else walks to where the bard
     /// stands - running when it is further than the skill's RANGE (default 3).
-    /// This used to be an invented defence debuff (DISCORD_PCT), which the
-    /// reference does not have; the lure did not exist.</summary>
-    public static bool Enticement(IActiveSkillSink sink, Character? target)
+    /// The creature need only be in sight: an invented 8-tile reach refused it with
+    /// an English line of its own.</summary>
+    public static bool Enticement(IActiveSkillSink sink, Character? target, int? startDifficulty = null)
     {
         var ch = sink.Self;
-        if (target == null || target.IsDead || target.IsDeleted)
+        if (!EnticementSees(sink, target))
             return false;
-        if (!CanReachPoint(ch, target.Position, sink.World,
-                SkillEngine.GetUseRange(SkillType.Enticement, 8)))
-        {
-            sink.SysMessage("That creature is too far away.");
-            return false;
-        }
 
-        int baseDiff = BardingDiff(target) is var tagDiff && tagDiff != 0 ? tagDiff / 18 : 40;
-        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, baseDiff), musicianshipActive: false);
+        int difficulty = startDifficulty ?? EnticementStart(sink, target);
         if (difficulty < 0)
             return false;
-        if (difficulty == 0)
-            difficulty = RandVal(sink.Random, 40);
         if (!SkillEngine.UseQuick(ch, SkillType.Enticement, difficulty))
             return false;
 
-        if (target.IsPlayer)
+        if (target!.IsPlayer)
         {
             sink.SysMessage(ServerMessages.Get(Msg.EnticementPlayer));
             return false;
         }
         if (target.IsStatFlag(StatFlag.War))
         {
-            sink.SysMessage($"{target.Name} {ServerMessages.Get(Msg.EnticementBattle)}.");
+            sink.SysMessage($"{target.GetName()} {ServerMessages.Get(Msg.EnticementBattle)}.");
             return false;
         }
 
@@ -1721,6 +1769,56 @@ public static class ActiveSkillEngine
     }
 
     // ----------------------------------------------------------- Provocation
+
+    /// <summary>What every Skill_Provocation stage asks first (CCharSkill.cpp:2014-2032):
+    /// neither creature may be the bard, the other, a pet, conjured, stone, dead or
+    /// invulnerable (DEFMSG_PROVOCATION_UPSET), nor a player (DEFMSG_PROVOCATION_PLAYER),
+    /// and the bard must see both.</summary>
+    private static bool ProvocationAllowed(IActiveSkillSink sink, Character? prov, Character? targ)
+    {
+        var ch = sink.Self;
+        const StatFlag untouchable = StatFlag.Pet | StatFlag.Conjured | StatFlag.Stone |
+            StatFlag.Dead | StatFlag.Invul;
+        if (prov == null || targ == null || prov == ch || targ == ch || prov == targ ||
+            prov.IsDeleted || targ.IsDeleted || prov.IsDead || targ.IsDead ||
+            prov.IsStatFlag(untouchable) || targ.IsStatFlag(untouchable))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.ProvocationUpset));
+            return false;
+        }
+        if (prov.IsPlayer || targ.IsPlayer)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.ProvocationPlayer));
+            return false;
+        }
+        return CanSeeChar(sink.World, ch, prov) && CanSeeChar(sink.World, ch, targ);
+    }
+
+    /// <summary>Skill_Provocation START (:2045-2090): play against the TARGET's
+    /// TAG.BARDING.DIFF / 18 (default 40); no instrument refuses, a zero difficulty
+    /// becomes the provoked creature's INT, and one at least as good a provoker as
+    /// the bard makes it 0. A poor tune stays -1, bound to fail.</summary>
+    private static int ProvocationStart(IActiveSkillSink sink, Character? prov, Character? targ)
+    {
+        if (!ProvocationAllowed(sink, prov, targ))
+            return -3;
+        return ProvocationStartStage(sink, prov!, targ!);
+    }
+
+    private static int ProvocationStartStage(IActiveSkillSink sink, Character prov, Character targ)
+    {
+        var ch = sink.Self;
+        int baseDiff = BardingDiff(targ) is var tagDiff && tagDiff != 0 ? tagDiff / 18 : 40;
+        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, baseDiff), musicianshipActive: false);
+        if (difficulty < -1)
+            return difficulty;
+        if (difficulty == 0)
+            difficulty = Combat.CombatEngine.EffectiveInt(prov);
+        if (SkillEngine.GetAdjustedSkill(prov, SkillType.Provocation) >=
+            SkillEngine.GetAdjustedSkill(ch, SkillType.Provocation))
+            difficulty = 0; // "cannot provoke more experienced provoker" (:2082)
+        return difficulty;
+    }
 
     /// <summary>Source-X CChar::Skill_Provocation (CCharSkill.cpp:1999-2157).
     /// <paramref name="target"/> is the creature being provoked (m_Act_Prv_UID) and
@@ -1738,41 +1836,26 @@ public static class ActiveSkillEngine
     /// good provoked creature is a crime and refuses; a good target is a crime but
     /// the fight goes ahead.</summary>
     public static bool Provocation(IActiveSkillSink sink, Character? target,
-        Character? provokeAgainst = null)
+        Character? provokeAgainst = null, int? startDifficulty = null)
     {
         var ch = sink.Self;
         var prov = target;
         var targ = provokeAgainst;
-        const StatFlag untouchable = StatFlag.Pet | StatFlag.Conjured | StatFlag.Stone |
-            StatFlag.Dead | StatFlag.Invul;
-        if (prov == null || targ == null || prov == ch || targ == ch || prov == targ ||
-            prov.IsDeleted || targ.IsDeleted || prov.IsDead || targ.IsDead ||
-            prov.IsStatFlag(untouchable) || targ.IsStatFlag(untouchable))
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.ProvocationUpset));
-            return false;
-        }
-        if (prov.IsPlayer || targ.IsPlayer)
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.ProvocationPlayer));
-            return false;
-        }
-        if (!CanSeeChar(sink.World, ch, prov) || !CanSeeChar(sink.World, ch, targ))
+        if (!ProvocationAllowed(sink, prov, targ))
             return false;
 
-        // START (:2045-2090).
-        int baseDiff = BardingDiff(targ) is var tagDiff && tagDiff != 0 ? tagDiff / 18 : 40;
-        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, baseDiff), musicianshipActive: false);
-        if (difficulty < -1)
-            return false;
-        if (difficulty == 0)
-            difficulty = Combat.CombatEngine.EffectiveInt(prov);
-        if (SkillEngine.GetAdjustedSkill(prov, SkillType.Provocation) >=
-            SkillEngine.GetAdjustedSkill(ch, SkillType.Provocation))
-            difficulty = 0; // "cannot provoke more experienced provoker" (:2082)
-        bool isAlly = AI.NpcAI.GetAllyGroup(prov.BodyId) == AI.NpcAI.GetAllyGroup(targ.BodyId);
+        int difficulty;
+        if (startDifficulty.HasValue)
+            difficulty = startDifficulty.Value;
+        else
+        {
+            difficulty = ProvocationStartStage(sink, prov!, targ!);
+            if (difficulty < -1)
+                return false;
+        }
+        bool isAlly = AI.NpcAI.GetAllyGroup(prov!.BodyId) == AI.NpcAI.GetAllyGroup(targ!.BodyId);
 
-        // A START that came back negative is bound to fail (Skill_Stroke :3928).
+        // A START that came back negative is bound to fail (Skill_Done :3928).
         if (difficulty < 0 || !SkillEngine.UseQuick(ch, SkillType.Provocation, difficulty))
         {
             FightAttack(prov, ch); // FAIL (:2092-2096)
@@ -1842,13 +1925,14 @@ public static class ActiveSkillEngine
         return random.Next(min, max + 1);
     }
 
-    /// <summary>The bard seeing a creature: not hidden from them (a GM sees all)
-    /// and in line of sight.</summary>
+    /// <summary>The bard seeing a creature (CChar::CanSee, CCharStatus.cpp:1074-1120): not
+    /// hidden from them (a GM sees all) and within their sight range. CanSee asks no
+    /// line of sight; a wall between them refused enticement and provocation.</summary>
     private static bool CanSeeChar(GameWorld world, Character viewer, Character other)
     {
         if (other.IsStatFlag(StatFlag.Hidden | StatFlag.Invisible) && viewer.PrivLevel < PrivLevel.GM)
             return false;
-        return other.MapIndex == viewer.MapIndex && world.CanSeeLOSFor(viewer, other);
+        return other.MapIndex == viewer.MapIndex && viewer.Position.GetDistSight(other.Position) <= viewer.VisualRange;
     }
 
     /// <summary>pSubject->Noto_GetFlag(pViewer) == NOTO_GOOD (CCharSkill.cpp:2135/2142),
@@ -1857,13 +1941,21 @@ public static class ActiveSkillEngine
         Clients.GameClient.ComputeNotoriety(world, viewer, subject) == 1;
 
     /// <summary>Source-X CChar::Fight_Attack for a creature a bard turned: it goes on
-    /// the attacker list through @Attack and takes the target.</summary>
+    /// the attacker list through @Attack - Attacker_Add records the fight in memory
+    /// (Memory_Fight_Start, CCharAttacker.cpp:58) - the target remembers being
+    /// irritated by it (CCharFight.cpp:1472), and it takes the target. Without the
+    /// fight memory, a monster set on another monster weighed only MONSTERFIGHT's
+    /// -50 hostility and fled from it instead of fighting.</summary>
     private static void FightAttack(Character attacker, Character victim)
     {
         if (attacker == victim || attacker.IsDead || victim.IsDead)
             return;
+        bool newAttacker = attacker.CombatState.IndexOfAttacker(victim.Uid) < 0;
         if (!attacker.CombatState.BeginFightWith(victim, toldByMaster: false))
             return;
+        if (newAttacker)
+            attacker.Memory_Fight_Start(victim);
+        victim.Memory_AddObjTypes(attacker.Uid, MemoryType.IrritatedBy);
         attacker.FightTarget = victim.Uid;
         attacker.SetStatFlag(StatFlag.War);
         attacker.NextNpcActionTime = 0;

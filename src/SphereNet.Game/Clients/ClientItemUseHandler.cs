@@ -1787,7 +1787,12 @@ public sealed class ClientItemUseHandler
 
             // ---- musical instruments ----
             case ItemType.Musical:
-                RouteSkillTarget(SkillType.Musicianship, item.Uid);
+                // Use_Item IT_MUSICAL (CCharUse.cpp:1739-1745): unless Skill_Wait
+                // refuses, ACT is the instrument and Musicianship starts - its
+                // triggers, its START (the tune) and its DELAY. It used to resolve on
+                // the spot with no trigger and no wait.
+                if (!InstrumentSkillWait())
+                    _client.StartSkillFromTool(SkillType.Musicianship, item.Uid, item, null, null);
                 break;
 
             // ---- figurine (pet shrink/unshrink) ----
@@ -2572,6 +2577,59 @@ public sealed class ClientItemUseHandler
 
         var sink = new GameClient.InfoSkillSink(_client, _character);
         _skillHandlers?.UseActiveSkill(sink, skill, obj, point);
+    }
+
+    /// <summary>CChar::Skill_Wait(SKILL_MUSICIANSHIP) (CCharSkill.cpp:3977-4050): true
+    /// refuses the instrument. @SkillWait / @Wait may refuse (RETURN 1) or cancel what
+    /// is running (RETURN 0); a dead, frozen or stone player cannot; idle, the player
+    /// is revealed and plays; in war mode, or busy with anything but meditation,
+    /// hiding or stealth, they must wait.</summary>
+    private bool InstrumentSkillWait()
+    {
+        if (_character == null) return true;
+        const int skillTry = (int)SkillType.Musicianship;
+        int current = _character.HasActiveSkillPending() ? _character.SkillPendingId : -1;
+        if (_triggerDispatcher != null)
+        {
+            var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillWait,
+                new TriggerArgs { CharSrc = _character, N1 = skillTry, N2 = current });
+            if (result == TriggerResult.True)
+                return true;
+            if (result == TriggerResult.False)
+            {
+                AbortActiveSkill();
+                return false;
+            }
+        }
+        if (_character.IsDead || _character.IsStatFlag(StatFlag.Freeze | StatFlag.Stone))
+        {
+            SysMessage(ServerMessages.Get(Msg.Skillwait1));
+            return true;
+        }
+        if (current < 0)
+        {
+            _character.ClearHiddenState();
+            return false;
+        }
+        if (_character.IsStatFlag(StatFlag.War))
+        {
+            SysMessage(ServerMessages.Get(Msg.Skillwait2));
+            return true;
+        }
+        if (current != skillTry && (SkillType)current is SkillType.Meditation or SkillType.Hiding or SkillType.Stealth)
+        {
+            AbortActiveSkill();
+            return false;
+        }
+        SysMessage(ServerMessages.Get(Msg.Skillwait3));
+        return true;
+
+        void AbortActiveSkill()
+        {
+            int aborted = _character.ClearActiveSkillPending();
+            if (aborted >= 0)
+                Character.ActiveSkillAborted?.Invoke(_character, aborted);
+        }
     }
 
     /// <summary>CItem::Armor_IsRepairable (CItem.cpp:4842-4891): CAN_I_REPAIR, else

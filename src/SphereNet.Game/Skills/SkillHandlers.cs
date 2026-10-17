@@ -307,13 +307,15 @@ public sealed class SkillHandlers
             case SkillType.Mining:           return ActiveSkillEngine.Mining(sink, point ?? ch.Position, _gatheringEngine, _world);
             case SkillType.Fishing:          return ActiveSkillEngine.Fishing(sink, point ?? ch.Position, _gatheringEngine, _world);
             case SkillType.Lumberjacking:    return ActiveSkillEngine.Lumberjacking(sink, point ?? ch.Position, _gatheringEngine, _world);
-            case SkillType.Musicianship:     return ActiveSkillEngine.Musicianship(sink);
-            case SkillType.Peacemaking:      return ActiveSkillEngine.Peacemaking(sink, target as Character);
+            case SkillType.Musicianship:     return ActiveSkillEngine.Musicianship(sink, ch.TakeStartStageDifficulty());
+            case SkillType.Peacemaking:
+                return ActiveSkillEngine.Peacemaking(sink, target as Character, ch.TakeStartStageDifficulty());
             case SkillType.Provocation:
                 return ActiveSkillEngine.Provocation(sink,
                     ch.ActPrv.IsValid ? _world.FindChar(ch.ActPrv) : null,
-                    target as Character);
-            case SkillType.Enticement:       return ActiveSkillEngine.Enticement(sink, target as Character);
+                    target as Character, ch.TakeStartStageDifficulty());
+            case SkillType.Enticement:
+                return ActiveSkillEngine.Enticement(sink, target as Character, ch.TakeStartStageDifficulty());
             default:
                 ch.Act = target?.Uid ?? Serial.Invalid;
                 if (point.HasValue) ch.ActP = point.Value;

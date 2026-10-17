@@ -4660,7 +4660,7 @@ internal static class FunctionalDrill
             .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
         string spot = OpenCountrySpot(root);
         var hunter = await LoginAsync(1241, port, ct);
-        uint map = 0;
+        uint map = 0, chestUid = 0;
         int tx = 0, ty = 0;
         var shown = new System.Collections.Concurrent.ConcurrentDictionary<uint, (int L, int T, int R, int B)>();
         hunter.ServerPacketObserver = p =>
@@ -4769,10 +4769,36 @@ internal static class FunctionalDrill
             var chest = await WaitAsync(() => { lock (hunter.World.SyncRoot) return hunter.World.KnownItems.Values.FirstOrDefault(i =>
                 i.ContainerSerial == 0 && (i.ItemId & 0xFFF0) == TreasureChests && Math.Abs(i.X - tx) <= 1 && Math.Abs(i.Y - ty) <= 1); },
                 40_000, $"a treasure chest at {tx},{ty}; {Said(t0)}");
+            chestUid = chest.Serial;
             await Task.Delay(8000, ct);   // the last strokes raise it, fill it and call its guardians
             int guardians; lock (hunter.World.SyncRoot) guardians = hunter.World.Mobiles.Values.Count(m =>
                 Math.Abs(m.X - tx) <= 6 && Math.Abs(m.Y - ty) <= 6 && m.Serial != hunter.World.CharUid);
             return $"chest 0x{chest.ItemId:X4} at {chest.X},{chest.Y},{chest.Z}; {guardians} creature(s) near; {Said(t0)}";
+        });
+
+        await RunScenario("treasure", "the locked chest is picked open", outcomes, async () =>
+        {
+            if (chestUid == 0) return "no chest";
+            await AsStaff(server, hunter.AccountName, async () =>
+            {
+                await SayAsync(hunter, ".lockpicking 1000", ct);
+                await SayAsync(hunter, ".invul 1", ct);   // its guardians are at work
+                await AddIntoPackAsync(hunter, "i_lockpick", ct);
+            });
+            var pick = (await PackContentsAsync(hunter, ct)).FirstOrDefault(i => i.ItemId is >= 0x14FB and <= 0x14FE)
+                ?? throw new ScenarioFailed("no lockpick");
+            long t0 = Environment.TickCount64;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                await hunter.Actions.DoubleClick(pick.Serial, 1000, ct);
+                if (await hunter.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no lockpick cursor; {Said(t0)}");
+                await hunter.Actions.TargetObject(chestUid, ct);
+                await Task.Delay(5000, ct);
+                string heard = Said(t0);
+                if (heard.Contains("unlock", StringComparison.OrdinalIgnoreCase)) return heard;
+            }
+            throw new ScenarioFailed($"still locked; {Said(t0)}");
         });
 
         hunter.ServerPacketObserver = null;

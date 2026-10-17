@@ -93,6 +93,89 @@ public sealed class SkillInventedValueParityTests : IDisposable
         return pack;
     }
 
+    // ------------------------------------------------- Lockpicking stages
+
+    private static (GameWorld World, Character Picker, Item Chest, Item Pick, Sink Sink) LockSetup()
+    {
+        var world = TestHarness.CreateWorld();
+        var picker = Place(world);
+        var chest = world.CreateItem();
+        chest.ItemType = ItemType.ContainerLocked;
+        chest.More1 = 0x1234;
+        chest.More2 = 300;
+        world.PlaceItem(chest, new Point3D(101, 100, 0, 0));
+        var pick = world.CreateItem();
+        pick.ItemType = ItemType.Lockpick;
+        Pack(world, picker).AddItem(pick);
+        picker.ActPrv = pick.Uid;
+        return (world, picker, chest, pick, new Sink(picker, world));
+    }
+
+    /// <summary>START is Use_LockPick testing the lock (CCharSkill.cpp:2456): its
+    /// complexity / 10; SUCCESS unlocks it and says so (Use_KeyChange).</summary>
+    [Fact]
+    public void LockpickingStartsWithTheLocksComplexityAndUnlocksSaying()
+    {
+        var (_, _, chest, _, sink) = LockSetup();
+        Assert.True(ActiveSkillEngine.HasStartStage(SkillType.Lockpicking));
+        Assert.Equal(30, ActiveSkillEngine.StartStage(sink, SkillType.Lockpicking, chest, null));
+
+        var rolls = Rolls(_ => 1);
+        Assert.True(ActiveSkillEngine.Lockpicking(sink, chest, 30));
+        Assert.Equal([(SkillType.Lockpicking, 30)], rolls);
+        Assert.Equal(ItemType.Container, chest.ItemType);
+        Assert.Equal(ServerMessages.Get(Msg.MsgKeyTargContUlock), sink.Messages.Last());
+    }
+
+    /// <summary>A lock someone else carries is not possible (DEFMSG_UNLOCK_CANT_THERE),
+    /// and nothing locked is DEFMSG_UNLOCK_CANT_GENERAL (Use_LockPick :5392-5403).</summary>
+    [Fact]
+    public void LockpickingRefusesWhatIsNotLockedOrIsCarried()
+    {
+        var (world, _, chest, _, sink) = LockSetup();
+        var other = Place(world, 102, 100);
+        Pack(world, other).AddItem(chest);
+        Assert.True(ActiveSkillEngine.LockpickingStart(sink, chest) < 0);
+
+        var open = world.CreateItem();
+        open.ItemType = ItemType.Container;
+        world.PlaceItem(open, new Point3D(101, 100, 0, 0));
+        Assert.True(ActiveSkillEngine.LockpickingStart(sink, open) < 0);
+        Assert.Equal(ServerMessages.Get(Msg.UnlockCantGeneral), sink.Messages.Last());
+    }
+
+    /// <summary>With the key carried the lock is trivial, and a success only says the
+    /// key would do - it does not unlock (Use_LockPick :5409-5415).</summary>
+    [Fact]
+    public void WithTheKeyAPickSaysSoAndLeavesItLocked()
+    {
+        var (world, picker, chest, _, sink) = LockSetup();
+        var key = world.CreateItem();
+        key.ItemType = ItemType.Key;
+        key.More1 = chest.More1;
+        picker.Backpack!.AddItem(key);
+        Rolls(_ => 1);
+
+        Assert.Equal(0, ActiveSkillEngine.LockpickingStart(sink, chest));
+        Assert.True(ActiveSkillEngine.Lockpicking(sink, chest, 0));
+        Assert.Equal(ItemType.ContainerLocked, chest.ItemType);
+        Assert.Equal(ServerMessages.Get(Msg.LockHasKey), sink.Messages.Last());
+    }
+
+    /// <summary>ACTPRV is the pick: one that is no lockpick is
+    /// DEFMSG_LOCKPICKING_NOPICK.</summary>
+    [Fact]
+    public void ThePickIsActPrv()
+    {
+        var (world, picker, chest, _, sink) = LockSetup();
+        var cloth = world.CreateItem();
+        cloth.ItemType = ItemType.Cloth;
+        picker.ActPrv = cloth.Uid;
+
+        Assert.True(ActiveSkillEngine.LockpickingStart(sink, chest) < 0);
+        Assert.Equal(ServerMessages.Get(Msg.LockpickingNopick), sink.Messages.Single());
+    }
+
     // ------------------------------------------------------------- Begging
 
     [Fact]
@@ -316,6 +399,7 @@ public sealed class SkillInventedValueParityTests : IDisposable
         world.PlaceItem(chest, new Point3D(101, 100, 0, 0));
         var pick = world.CreateItem();
         pick.ItemType = ItemType.Lockpick;
+        Pack(world, picker).AddItem(pick);   // the pick must be carried (LOCKPICKING_PREACH)
         var damaged = new List<(Item Item, int Dmg, Character? Src, SphereNet.Game.Combat.DamageType Type)>();
         SphereNet.Game.Combat.CombatEngine.OnItemDamaged = (item, dmg, src, type) =>
         {

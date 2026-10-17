@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Lockpicking as Skill_Lockpicking and Use_LockPick run it; treasure chest picked in the drill
+------------------------------------------------------------------------
+FIX - Lockpicking's START runs when the skill starts and is Use_LockPick testing the lock
+      (CCharSkill.cpp:2450-2457, CItem.cpp:5378-5450): not locked is
+      DEFMSG_UNLOCK_CANT_GENERAL, carried by someone else DEFMSG_UNLOCK_CANT_THERE, the
+      difficulty the lock's complexity / 10 as ACTDIFF. The pick is ACTPRV, the one used
+      (DEFMSG_LOCKPICKING_NOPICK), and must still be carried (DEFMSG_LOCKPICKING_PREACH); the
+      lock must be within touch (DEFMSG_LOCKPICKING_REACH) - it was an English line of
+      SphereNet's own and any pick in the pack.
+FIX - SUCCESS unlocks through Use_KeyChange and says which (container, door, ship hold, ship
+      side - the hold and side could not be picked at all). With the key carried the lock is
+      trivial and a success only says DEFMSG_LOCK_HAS_KEY, leaving it locked.
+FIX - A door under MAGICUNLOCKDOOR is impossible (10000) unless its one-in-N roll lets it be
+      tried, at START and again at SUCCESS, where trying it is a crime the onlookers may see
+      (DEFMSG_LOCK_PICK_CRIME); it was a refusal with a message before the skill was asked.
+ADD - Functional drill: the treasure suite picks open the locked chest it dug up.
+ADD - Tests: START's difficulty and the unlock message, a lock carried by someone else or not
+      locked, the key carried, ACTPRV as the pick.
+
 [2026-10-17] - Point keys, P.TYPE, DISTANCE x,y, OP= rewrites, .x<function> and SHOW as Source-X has them; treasure drill
 ------------------------------------------------------------------------
 FIX - A point's REGION alone is 1 or 0 (PT_REGION, CPointBase.cpp:752-757), and

@@ -456,86 +456,161 @@ public static class ActiveSkillEngine
 
     // ---------------------------------------------------------- Lockpicking
 
-    /// <summary>Source-X CChar::Skill_Lockpicking. Requires lockpick in pack; success unlocks container/door.</summary>
-    public static bool Lockpicking(IActiveSkillSink sink, Item? lockedTarget)
+    /// <summary>CItem::IsTypeLocked (CItem.cpp:4054-4066).</summary>
+    private static bool IsTypeLocked(Item item) =>
+        item.ItemType is ItemType.ContainerLocked or ItemType.DoorLocked or ItemType.ShipHoldLock
+            or ItemType.ShipSideLocked;
+
+    /// <summary>CItem::Use_LockPick (CItem.cpp:5378-5450): how hard this lock is to pick,
+    /// 0 trivial, below 0 not possible. Only a locked thing (DEFMSG_UNLOCK_CANT_GENERAL)
+    /// that nobody else carries (DEFMSG_UNLOCK_CANT_THERE). The key makes it trivial
+    /// (and, not testing, says so - DEFMSG_LOCK_HAS_KEY - without unlocking). A door
+    /// under MAGICUNLOCKDOOR needs its key at 0 and is otherwise impossible (10000)
+    /// unless a one-in-N roll lets it be tried, a crime the onlookers may see. Not
+    /// testing, it unlocks (Use_KeyChange); the difficulty is the lock's complexity
+    /// (MORE2) / 10.</summary>
+    public static int UseLockPick(IActiveSkillSink sink, Item lockItem, bool test, bool fail)
     {
         var ch = sink.Self;
-        if (lockedTarget == null)
+        if (!IsTypeLocked(lockItem))
         {
-            sink.SysMessage(ServerMessages.Get(Msg.LockpickingReach));
-            return false;
+            sink.SysMessage(ServerMessages.Get(Msg.UnlockCantGeneral));
+            return -1;
         }
-        if (lockedTarget.ItemType is not (ItemType.ContainerLocked or ItemType.DoorLocked))
+        if (lockItem.GetTopLevelObj() is Character carrier && carrier != ch)
         {
-            sink.SysMessage(ServerMessages.Get(Msg.LockpickingWitem));
-            return false;
+            sink.SysMessage(ServerMessages.Get(Msg.UnlockCantThere));
+            return -1;
         }
-        if (!CanReachItem(ch, lockedTarget, sink.World, SkillType.Lockpicking, 2))
+        if (ch.FindKeyFor(lockItem) != null)
         {
-            sink.SysMessage("That is too far away.");
-            return false;
+            if (!test)
+                sink.SysMessage(ServerMessages.Get(Msg.LockHasKey));
+            return 0;
         }
-
-        var pick = sink.FindBackpackItem(ItemType.Lockpick);
-        if (pick == null)
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.LockpickingNopick));
-            return false;
-        }
-
-        // Source-X asks the LOCK how hard it is (Use_LockPick, CItem.cpp:5378) instead
-        // of inventing a number, and the answer has three parts.
-
-        // 1. The key makes it trivial. Upstream returns 0 - "trivial" - rather than
-        //    refusing, so a player carrying the key picks the lock every time.
-        bool haveKey = ch.FindKeyFor(lockedTarget) != null;
-
-        // 2. A MAGICALLY locked door is gated before the skill is consulted at all.
-        //    MAGICUNLOCKDOOR is documented as a skill requirement and used as a
-        //    one-in-N chance (CItem.cpp:5428); 0 means the door needs its key.
-        if (!haveKey && lockedTarget.ItemType == ItemType.DoorLocked && Item.MagicUnlockDoor != -1)
+        if (lockItem.ItemType == ItemType.DoorLocked && Item.MagicUnlockDoor != -1)
         {
             if (Item.MagicUnlockDoor == 0)
             {
                 sink.SysMessage(ServerMessages.Get(Msg.UnlockDoorNeedsKey));
-                return false;
+                return -1;
             }
+            if (!test)
+                CrimeWitnessService.CheckCrimeSeen(sink.World, ch, null, SkillType.Snooping, sink.Random,
+                    item: lockItem, action: ServerMessages.Get(Msg.LockPickCrime));
             if (sink.Random.Next(Item.MagicUnlockDoor) != 0)
-            {
-                sink.SysMessage(ServerMessages.Get(Msg.UnlockFailDoor));
-                return false;
-            }
+                return 10000;   // plain impossible
         }
-
-        // 3. Otherwise the lock's own complexity is the difficulty, on the 0-100 scale
-        //    the skill check wants (m_dwLockComplexity / 10, CItem.cpp:5449). The
-        //    complexity is MORE2 - MORE1 is the lock code (CItem.h:181-182). A lock
-        //    that names no complexity is trivial.
-        int difficulty = haveKey
-            ? 0
-            : (int)Math.Clamp(lockedTarget.More2 / 10u, 0u, 100u);
-
-        bool success = SkillEngine.UseQuick(ch, SkillType.Lockpicking, difficulty);
-        if (success)
+        if (!test)
         {
-            // Convert locked variant -> open variant.
-            lockedTarget.ItemType = lockedTarget.ItemType == ItemType.ContainerLocked
-                ? ItemType.Container
-                : ItemType.Door;
-            // Silently: neither Skill_Lockpicking nor CItem::Use_LockPick makes a
-            // sound (CCharSkill.cpp:2413-2466, CItem.cpp:5378); the click this played
-            // was not upstream's.
+            if (fail)
+            {
+                sink.SysMessage(ServerMessages.Get(lockItem.ItemType == ItemType.DoorLocked
+                    ? Msg.UnlockFailDoor : Msg.UnlockFailCont));
+                return -1;
+            }
+            UnlockWithMessage(sink, lockItem);
         }
+        return (int)Math.Min(lockItem.More2 / 10u, (uint)int.MaxValue);
+    }
+
+    /// <summary>The unlocking half of CChar::Use_KeyChange (CCharUse.cpp): the locked
+    /// type turns into its open one, and the picker is told which.</summary>
+    private static void UnlockWithMessage(IActiveSkillSink sink, Item lockItem)
+    {
+        (ItemType open, string msg) = lockItem.ItemType switch
+        {
+            ItemType.ContainerLocked => (ItemType.Container, Msg.MsgKeyTargContUlock),
+            ItemType.ShipHoldLock => (ItemType.ShipHold, Msg.MsgKeyTargHoldUlock),
+            ItemType.ShipSideLocked => (ItemType.ShipSide, Msg.MsgKeyTargShipUlock),
+            _ => (ItemType.Door, Msg.MsgKeyTargDoorUlock),
+        };
+        lockItem.ItemType = open;
+        sink.SysMessage(ServerMessages.Get(msg));
+    }
+
+    /// <summary>What every Skill_Lockpicking stage asks (CCharSkill.cpp:2425-2441): the
+    /// pick, ACTPRV (DEFMSG_LOCKPICKING_NOPICK), the lock (DEFMSG_LOCKPICKING_WITEM),
+    /// the pick still carried (DEFMSG_LOCKPICKING_PREACH). With no pick in ACTPRV one
+    /// is taken from the pack.</summary>
+    private static Item? LockpickingPick(IActiveSkillSink sink, Item? lockItem)
+    {
+        var ch = sink.Self;
+        var pick = ch.ActPrv.IsValid ? sink.World.FindItem(ch.ActPrv) : sink.FindBackpackItem(ItemType.Lockpick);
+        if (pick == null || pick.IsDeleted || pick.ItemType != ItemType.Lockpick)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.LockpickingNopick));
+            return null;
+        }
+        if (lockItem == null || lockItem.IsDeleted)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.LockpickingWitem));
+            return null;
+        }
+        if (pick.GetTopLevelObj() != ch)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.LockpickingPreach));
+            return null;
+        }
+        return pick;
+    }
+
+    /// <summary>Skill_Lockpicking START (CCharSkill.cpp:2450-2457): the lock within
+    /// touch (DEFMSG_LOCKPICKING_REACH), then Use_LockPick testing it. Run when the
+    /// skill starts.</summary>
+    public static int LockpickingStart(IActiveSkillSink sink, Item? lockItem)
+    {
+        if (LockpickingPick(sink, lockItem) == null)
+            return -3;
+        if (!Scripting.ScriptTouchAccess.CanTouch(sink.Self, lockItem!))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.LockpickingReach));
+            return -3;
+        }
+        return UseLockPick(sink, lockItem!, test: true, fail: false);
+    }
+
+    /// <summary>Source-X CChar::Skill_Lockpicking (CCharSkill.cpp:2413-2466). START is
+    /// <see cref="LockpickingStart"/>. FAIL damages the pick (OnTakeDamage(1,
+    /// HIT_BLUNT), which for a lockpick only fires its @Damage) and says nothing of
+    /// its own; a START that came back negative is bound to fail (Skill_Done :3928).
+    /// SUCCESS is Use_LockPick for real: it unlocks, saying which, or, with the key in
+    /// the pack, only says the key would do. The pick used to be any one in the pack,
+    /// the reach an English line of SphereNet's own, and the door gate a refusal before
+    /// the roll.</summary>
+    public static bool Lockpicking(IActiveSkillSink sink, Item? lockedTarget, int? startDifficulty = null)
+    {
+        var ch = sink.Self;
+        int diff;
+        if (startDifficulty.HasValue)
+            diff = startDifficulty.Value;
         else
         {
-            // A failed pick is not consumed: upstream's FAIL only calls
-            // pPick->OnTakeDamage(1, this, DAMAGE_HIT_BLUNT) (CCharSkill.cpp:2444-2448),
-            // which for an IT_LOCKPICK - no armor/weapon hit points - does nothing
-            // beyond firing its @Damage (CItem.cpp:5826-5832). The 1-in-3 break was
-            // invented.
-            Combat.CombatEngine.OnItemDamaged?.Invoke(pick, 1, ch, Combat.DamageType.HitBlunt);
+            diff = LockpickingStart(sink, lockedTarget);
+            if (diff < -1)
+                return false;
         }
-        return success;
+        var pick = LockpickingPick(sink, lockedTarget);
+        if (pick == null)
+            return false;
+
+        if (diff < 0 || !SkillEngine.UseQuick(ch, SkillType.Lockpicking, diff))
+        {
+            Combat.CombatEngine.OnItemDamaged?.Invoke(pick, 1, ch, Combat.DamageType.HitBlunt);
+            return false;
+        }
+        if (!Scripting.ScriptTouchAccess.CanTouch(ch, lockedTarget!))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.LockpickingReach));
+            return false;
+        }
+        if (UseLockPick(sink, lockedTarget!, test: false, fail: false) < 0)
+        {
+            // -SKTRIG_FAIL: Skill_Fail runs the FAIL stage (CCharSkill.cpp:2463).
+            Combat.CombatEngine.OnItemDamaged?.Invoke(pick, 1, ch, Combat.DamageType.HitBlunt);
+            return false;
+        }
+        return true;
     }
 
     // ----------------------------------------------------------- RemoveTrap
@@ -1638,6 +1713,7 @@ public static class ActiveSkillEngine
             SkillType.Enticement => EnticementStart(sink, act as Character),
             SkillType.Provocation => ProvocationStart(sink, provoked, act as Character),
             SkillType.RemoveTrap => RemoveTrapStart(sink, act as Item),
+            SkillType.Lockpicking => LockpickingStart(sink, act as Item),
             SkillType.Healing or SkillType.Veterinary =>
                 HealingStart(sink, HealPatientOf(sink.World, act), skill, act as Item),
             _ => 0,
@@ -1664,7 +1740,8 @@ public static class ActiveSkillEngine
     /// patient and apply the bandage.</summary>
     public static bool HasStartStage(SkillType skill) =>
         skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation
-            or SkillType.Herding or SkillType.RemoveTrap or SkillType.Healing or SkillType.Veterinary;
+            or SkillType.Herding or SkillType.RemoveTrap or SkillType.Healing or SkillType.Veterinary
+            or SkillType.Lockpicking;
 
     /// <summary>Skill_Musicianship START (CCharSkill.cpp:1786-1787): play ACT, the
     /// instrument double-clicked, or any carried, against rand(90).</summary>

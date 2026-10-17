@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Lockpicking, Skill_Lockpicking ve Use_LockPick'in calistirdigi gibi; tatbikatta hazine sandigi acilir
+------------------------------------------------------------------------
+DUZELTME - Lockpicking'in START'i beceri basladiginda calisir ve kilidi test eden Use_LockPick'tir
+       (CCharSkill.cpp:2450-2457, CItem.cpp:5378-5450): kilitli degilse DEFMSG_UNLOCK_CANT_GENERAL,
+       baskasi tasiyorsa DEFMSG_UNLOCK_CANT_THERE, zorluk ACTDIFF olarak kilit karmasikligi / 10.
+       Maymuncuk ACTPRV'dir, kullanilan (DEFMSG_LOCKPICKING_NOPICK), ve hala tasinmalidir
+       (DEFMSG_LOCKPICKING_PREACH); kilit dokunma mesafesinde olmalidir (DEFMSG_LOCKPICKING_REACH) -
+       SphereNet'in kendi Ingilizce satiriydi ve cantadaki herhangi bir maymuncuktu.
+DUZELTME - SUCCESS, Use_KeyChange ile acar ve neyi actigini soyler (sandik, kapi, gemi ambari, gemi
+       kenari - ambar ve kenar hic acilamiyordu). Anahtar tasiniyorsa kilit kolaydir ve basari yalnizca
+       DEFMSG_LOCK_HAS_KEY der, kilidi birakir.
+DUZELTME - MAGICUNLOCKDOOR altindaki kapi, N'de bir zari denemeye izin vermedikce imkansizdir (10000);
+       START'ta ve SUCCESS'te tekrar, ki orada denemek seyircilerin gorebilecegi bir suctur
+       (DEFMSG_LOCK_PICK_CRIME); beceriye sorulmadan mesajla reddediliyordu.
+EKLEME - Fonksiyonel tatbikat: treasure paketi kazdigi kilitli sandigi maymuncukla acar.
+EKLEME - Testler: START zorlugu ve acma mesaji, baskasinin tasidigi ya da kilitli olmayan kilit,
+       tasinan anahtar, maymuncuk olarak ACTPRV.
+
 [2026-10-17] - Nokta anahtarlari, P.TYPE, DISTANCE x,y, OP= yeniden yazimi, .x<fonksiyon> ve SHOW Source-X'teki gibi; treasure tatbikati
 ------------------------------------------------------------------------
 DUZELTME - Bir noktanin tek basina REGION'i 1 ya da 0'dir (PT_REGION, CPointBase.cpp:752-757) ve

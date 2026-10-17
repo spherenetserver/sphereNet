@@ -173,17 +173,21 @@ public sealed class MagicInterruptConfigTests
         ch.PrivLevel = PrivLevel.GM;      // would otherwise succeed at every skill roll
 
         // A grandmaster GM still loses to the one-in-900 gate, because the gate is not a
-        // skill check - it runs first and refuses outright (CItem.cpp:5428).
+        // skill check: Use_LockPick answers 10000 (plain impossible) unless the roll lets
+        // it through, at START and again at SUCCESS, where it unlocks only past the gate
+        // (CItem.cpp:5420-5446).
         var sink = WithPick(world, ch);
-        int refusals = 0;
+        int stayedLocked = 0;
         for (int seed = 0; seed < 20; seed++)
         {
             sink.Random = new Random(seed);
-            if (!ActiveSkillEngine.Lockpicking(sink, door)) refusals++;
+            door.ItemType = ItemType.DoorLocked;
+            ActiveSkillEngine.Lockpicking(sink, door);
+            if (door.ItemType == ItemType.DoorLocked) stayedLocked++;
         }
-        _out.WriteLine($"{refusals} of 20 attempts refused before the skill was asked");
+        _out.WriteLine($"{stayedLocked} of 20 attempts left the door locked");
 
-        Assert.True(refusals >= 18, $"the gate let {20 - refusals} of 20 through");
+        Assert.True(stayedLocked >= 18, $"the gate let {20 - stayedLocked} of 20 through");
     }
 
     [Fact]

@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Taste ID ve Item ID OnSkill_*'in yazdigi gibi; bilgi becerileri CanTouch gibi dokunur
+------------------------------------------------------------------------
+DUZELTME - Karakter uzerinde Taste ID, START'ta da DEFMSG_TASTEID_SELF / CHAR der (CClientTarg.cpp:
+       1258-1270); sessizdi. Kilic, eskrim silahi ya da balta da zehir tasir (:1292-1298), yalnizca
+       keskin topuz degil; zehir iksiri MORE1'i Poison buyusu olandir, gucu MORE2; esya dokunulabilir
+       ve tasinabilir olmalidir (CanUse(item, true)).
+DUZELTME - Item ID fiyati GetVendorPrice(-15, 0)'dir (:1146): OVERRIDE.VALUE, yoksa esyanin fiyati, yoksa
+       kalitesindeki degeri - %15 eksik. Deger araliginin ortasini tam fiyatla gosteriyordu.
+DUZELTME - Forensics ve Taste ID dunyadaki nesneye CChar::CanTouch gibi erisir (2 kare, gorus hattinda,
+       aranamayan konteyner icinde degil); kendi 3 karelik erisimiydi.
+EKLEME - Testler: karakter uzerinde START'ta Taste ID, kilicin zehri; %15 eksik Item ID fiyati.
+
 [2026-10-17] - Meditation ve Spirit Speak START'i Skill_Start'ta; meditasyon asamalari Skill_Meditation'in sirasiyla
 ------------------------------------------------------------------------
 DUZELTME - Meditation'in START'i beceri basladiginda DEFMSG_MEDITATION_TRY der ve ACTDIFF olarak rand(100)

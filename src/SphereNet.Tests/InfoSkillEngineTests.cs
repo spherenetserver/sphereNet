@@ -157,14 +157,15 @@ public class InfoSkillEngineTests
     public void ItemID_Item_StampsIdentifiedAndReportsPrice()
     {
         var self = MakeChar();
-        var it = new Item { Name = "sword", Amount = 1, Price = 12 };
+        var it = new Item { Name = "sword", Amount = 1, Price = 100 };
         var sink = new RecordingSink(self);
 
         InfoSkillEngine.ItemID(sink, it, 500);
 
+        // GetVendorPrice(-15, 0): the price less 15% (CClientTarg.cpp:1146).
         Assert.True(it.IsAttr(ObjAttributes.Identified));
         Assert.Single(sink.Log);
-        Assert.Contains("12", sink.Log[0].Text);
+        Assert.Contains("85", sink.Log[0].Text);
     }
 
     [Fact]
@@ -194,6 +195,34 @@ public class InfoSkillEngineTests
         Assert.Equal(-1, rc);
         Assert.Single(sink.Log);
         Assert.Equal(ServerMessages.Get(Msg.ForensicsCorpse), sink.Log[0].Text);
+    }
+
+    /// <summary>Taste ID on a character says so at START too (OnSkill_TasteID has no fTest
+    /// guard there, CClientTarg.cpp:1258-1270); it was silent.</summary>
+    [Fact]
+    public void TasteId_OnACharacter_SaysSoAtStart()
+    {
+        var self = MakeChar();
+        var other = MakeChar("Other");
+        var sink = new RecordingSink(self);
+
+        Assert.True(InfoSkillEngine.TasteID(sink, other, 500, true) < 0);
+        Assert.Equal(ServerMessages.Get(Msg.TasteidChar), sink.Log.Single().Text);
+    }
+
+    /// <summary>Every bladed weapon carries a poison for Taste ID (:1292-1298), a sword
+    /// too; only the sharp mace was asked.</summary>
+    [Fact]
+    public void TasteId_ReadsASwordsPoison()
+    {
+        var self = MakeChar();
+        var sword = new Item { ItemType = ItemType.WeaponSword };
+        sword.MoreP = new Point3D(0, 0, 50, 0);   // poison skill 50 (m_poison_skill)
+        var sink = new RecordingSink(self);
+
+        InfoSkillEngine.TasteID(sink, sword, 500);
+
+        Assert.Contains(sink.Log, l => l.Text != ServerMessages.GetFormatted(Msg.TasteidResult, sword.GetNameFull(false)));
     }
 
     /// <summary>START on one's own corpse (m_uidLink) is difficulty 2

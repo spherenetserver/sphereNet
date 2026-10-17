@@ -185,7 +185,10 @@ public static class InfoSkillEngine
 
         item.SetAttr(ObjAttributes.Identified);
 
-        int price = item.Price > 0 ? item.Price : EstimateVendorPrice(item);
+        // GetVendorPrice(-15, 0) (CClientTarg.cpp:1146): OVERRIDE.VALUE, else the item's
+        // price, else its value at its quality - less 15%. The average of the value range
+        // was shown, at full price.
+        long price = Trade.VendorEngine.GetVendorPrice(item, -15, forSelling: false);
         if (price <= 0)
         {
             sink.SysMessage(ServerMessages.Get(Msg.ItemidNoval));
@@ -418,8 +421,7 @@ public static class InfoSkillEngine
     {
         if (target is not Item item)
         {
-            if (fTest) return -SKTRIG_QTY;
-            // Null/Character target -> self vs. someone else branch.
+            // Said at START too (OnSkill_TasteID has no fTest guard here, :1258-1270).
             if (target is Character ch && ch == sink.Self)
                 sink.SysMessage(ServerMessages.Get(Msg.TasteidSelf));
             else
@@ -427,7 +429,10 @@ public static class InfoSkillEngine
             return -SKTRIG_QTY;
         }
 
-        if (!sink.Self.CanTouch(item))
+        // CanUse(pItem, true): within touch, and movable (:1273).
+        if (!sink.Self.CanTouch(item) ||
+            Objects.ObjBase.ResolveWorld?.Invoke()?.FindObject(item.Uid) == item &&
+            !ItemMoveRules.CanMove(sink.Self, item, out _))
         {
             sink.SysMessage(ServerMessages.Get(Msg.TasteidUnable));
             return -SKTRIG_QTY;
@@ -437,11 +442,13 @@ public static class InfoSkillEngine
         switch (item.ItemType)
         {
             case ItemType.Potion:
-                // Source-X: only SPELL_Poison potions expose m_dwSkillQuality.
-                if (item.TryGetTag("POTION_SPELL", out string? spell) &&
+                // A poison potion: m_itPotion.m_Type (MORE1) is SPELL_Poison and its
+                // strength m_dwSkillQuality (MORE2) (:1281-1285).
+                if (item.More1 == (uint)SpellType.Poison ||
+                    item.TryGetTag("POTION_SPELL", out string? spell) &&
                     string.Equals(spell, "Poison", StringComparison.OrdinalIgnoreCase))
                 {
-                    poisonLevel = item.More2 > 0 ? (int)Math.Min(item.More2, 1000) : item.Quality;
+                    poisonLevel = (int)Math.Min(item.More2, (uint)int.MaxValue);
                 }
                 break;
             case ItemType.Food:
@@ -451,6 +458,11 @@ public static class InfoSkillEngine
                 poisonLevel = item.GetPoisonSkill() * 10;
                 break;
             case ItemType.WeaponMaceSharp:
+            case ItemType.WeaponSword:
+            case ItemType.WeaponFence:
+            case ItemType.WeaponAxe:
+                // Every bladed weapon carries a poison (:1292-1298); only the sharp mace
+                // was asked.
                 poisonLevel = item.GetPoisonSkill() * 10;
                 break;
             default:
@@ -477,14 +489,15 @@ public static class InfoSkillEngine
 
     // ----------------------------------------------------------- primitives
 
-    /// <summary>
-    /// Source-X CObjBase::CanTouch stub -- range + visibility. SphereNet's
-    /// Character today exposes range via <c>Position.GetDistSight</c>; we
-    /// recreate the upstream "LOS + within 3 tiles" rule here.
-    /// </summary>
+    /// <summary>CChar::CanTouch (CCharStatus.cpp:1290-1420) for an object in the world:
+    /// within 2 tiles, in sight, and not inside a container that cannot be searched -
+    /// it was a 3-tile reach of SphereNet's own. An object outside any world (an
+    /// engine-only check) keeps the plain reach-and-sight rule.</summary>
     private static bool CanTouch(this Character self, Objects.ObjBase target)
     {
         if (self == target) return true;
+        if (Objects.ObjBase.ResolveWorld?.Invoke() is { } live && live.FindObject(target.Uid) == target)
+            return Scripting.ScriptTouchAccess.CanTouch(self, target);
         var (tx, ty, tz, map) = ResolvePosition(target);
         if (map != self.MapIndex) return false;
         int dx = Math.Abs(self.Position.X - tx);

@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Taste ID and Item ID as their OnSkill_* write them; information skills touch as CanTouch does
+------------------------------------------------------------------------
+FIX - Taste ID on a character says DEFMSG_TASTEID_SELF / CHAR at START as well (CClientTarg.cpp:
+      1258-1270); it was silent. A sword, a fencing weapon or an axe carries a poison too
+      (:1292-1298), not only a sharp mace; a poison potion is one whose MORE1 is the Poison spell,
+      its strength MORE2; the item must be touchable and movable (CanUse(item, true)).
+FIX - Item ID's price is GetVendorPrice(-15, 0) (:1146): OVERRIDE.VALUE, else the item's price,
+      else its value at its quality - less 15%. It showed the middle of the value range at full
+      price.
+FIX - Forensics and Taste ID reach an object in the world as CChar::CanTouch does (2 tiles, in
+      sight, not inside a container that cannot be searched); it was a 3-tile reach of its own.
+ADD - Tests: Taste ID on a character at START, a sword's poison; Item ID's price less 15%.
+
 [2026-10-17] - Meditation and Spirit Speak START at Skill_Start; meditation stages as Skill_Meditation orders them
 ------------------------------------------------------------------------
 FIX - Meditation's START says DEFMSG_MEDITATION_TRY when the skill starts and answers rand(100)

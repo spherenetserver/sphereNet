@@ -218,43 +218,154 @@ public static class ActiveSkillEngine
 
     // ------------------------------------------------------------- Stealing
 
-    /// <summary>Source-X CChar::Skill_Stealing. Pick item from container, MakeCriminal on noticed fail.</summary>
-    public static bool Stealing(IActiveSkillSink sink, Item? target)
+    /// <summary>What every Skill_Stealing stage asks (CCharSkill.cpp:4190-4320): the
+    /// item - a character picked means a random thing from their pack
+    /// (DEFMSG_STEALING_NOTHING / EMPTY), which becomes ACT; not from or of a corpse
+    /// (CORPSE), a game board (GAMEBOARD) or a trade window (TRADE); not a pickpocket
+    /// dip (PICKPOCKET) or a game piece; within touch (REACH); one that can be moved and
+    /// carried (HEAVY - a newbie, blessed or cursed thing on someone else among them);
+    /// a crime at all (NONEED) and not in a safe area (STOP). From a mark: within the
+    /// skill's RANGE, 2 when it names none, in 3D (MARK); no player in a no-PvP area
+    /// (SAFE); never a higher rank (bound to fail). Answers below 0 to stop, else 0,
+    /// with the item, its mark (null off the ground) and whether it is bound to fail.</summary>
+    private static int StealingTarget(IActiveSkillSink sink, ObjBase? act, out Item? item,
+        out Character? mark, out bool boundToFail)
     {
         var ch = sink.Self;
-        if (target == null)
+        item = act as Item;
+        mark = null;
+        boundToFail = false;
+        if (item == null)
         {
-            sink.SysMessage(ServerMessages.Get(Msg.StealingNothing));
-            return false;
+            if (act is not Character picked)
+            {
+                sink.SysMessage(ServerMessages.Get(Msg.StealingNothing));
+                return -3;
+            }
+            // The item a START already chose stays the one (m_Act_UID = pItem).
+            if (ch.Act.IsValid && sink.World.FindItem(ch.Act) is { } chosen &&
+                chosen.GetTopLevelObj() == picked && chosen.ContainedIn == picked.Backpack?.Uid)
+                item = chosen;
+            else
+            {
+                var contents = picked.Backpack?.Contents.Where(i => !i.IsDeleted).ToList();
+                if (contents == null || contents.Count == 0)
+                {
+                    sink.SysMessage(ServerMessages.Get(Msg.StealingEmpty));
+                    return -3;
+                }
+                item = contents[sink.Random.Next(contents.Count)];
+                ch.Act = item.Uid;
+            }
         }
-        Character? owner = ResolveItemOwner(target, sink.World);
-        if (!CanReachItem(ch, target, sink.World, SkillType.Stealing, 2))
+        var holder = item.ContainedIn.IsValid ? sink.World.FindItem(item.ContainedIn) : null;
+        if (holder?.ItemType == ItemType.Corpse || item.ItemType == ItemType.Corpse)
         {
-            sink.SysMessage("That is too far away.");
-            return false;
+            sink.SysMessage(ServerMessages.Get(Msg.StealingCorpse));
+            return -3;
         }
-        // Source-X gates on CanMoveItem and CanCarry only (CCharSkill.cpp:4264) - the
-        // item's weight is part of the difficulty, not a skill/10 stone cap.
-        if (!ItemMoveRules.CanMove(ch, target, out _) || !ch.CanCarry(target))
+        if (holder?.ItemType == ItemType.GameBoard)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.StealingGameboard));
+            return -3;
+        }
+        if (holder?.ItemType == ItemType.EqTradeWindow)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.StealingTrade));
+            return -3;
+        }
+        if (item.ItemType == ItemType.TrainPickpocket)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.StealingPickpocket));
+            return -3;
+        }
+        if (item.ItemType == ItemType.GamePiece)
+            return -3;
+        if (!Scripting.ScriptTouchAccess.CanTouch(ch, item))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.StealingReach));
+            return -3;
+        }
+        // CanMoveItem refuses a newbie, blessed or cursed thing on another character
+        // (CCharStatus.cpp, "Can't steal/move newbie items on another cchar").
+        bool guarded = (item.IsAttr(ObjAttributes.Newbie) || item.IsAttr(ObjAttributes.Blessed2) ||
+                        item.IsAttr(ObjAttributes.Cursed) || item.IsAttr(ObjAttributes.Cursed2)) &&
+                       item.GetTopLevelObj() is Character other && other != ch;
+        if (guarded || !ItemMoveRules.CanMove(ch, item, out _) || !ch.CanCarry(item))
         {
             sink.SysMessage(ServerMessages.Get(Msg.StealingHeavy));
-            return false;
+            return -3;
         }
-
-        if (target.IsAttr(ObjAttributes.Blessed) || target.IsAttr(ObjAttributes.Blessed2) ||
-            target.IsAttr(ObjAttributes.Newbie) || target.IsAttr(ObjAttributes.Nodropt))
+        if (!IsTakeCrime(ch, item, out mark))
         {
-            sink.SysMessage(ServerMessages.Get(Msg.StealingNothing));
-            return false;
+            sink.SysMessage(ServerMessages.Get(Msg.StealingNoneed));
+            return -3;
         }
+        if (sink.World.FindRegion(ch.Position)?.IsFlag(RegionFlag.Safe) == true)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.StealingStop));
+            return -3;
+        }
+        if (mark != null)
+        {
+            int range = SkillEngine.GetUseRange(SkillType.Stealing, 2);
+            var me = ch.GetTopLevelObj().Position;
+            var him = mark.GetTopLevelObj().Position;
+            int dist = me.Map != him.Map ? int.MaxValue
+                : Math.Max(Math.Max(Math.Abs(me.X - him.X), Math.Abs(me.Y - him.Y)), Math.Abs(me.Z - him.Z) / 8);
+            if (dist > range)
+            {
+                sink.SysMessage(ServerMessages.Get(Msg.StealingMark));
+                return -3;
+            }
+            if (sink.World.FindRegion(ch.Position)?.IsFlag(RegionFlag.NoPvP) == true && mark.IsPlayer &&
+                !ch.IsGmMode)
+            {
+                sink.SysMessage(ServerMessages.Get(Msg.StealingSafe));
+                return -1;
+            }
+            if (ch.PrivLevel < mark.PrivLevel)
+                boundToFail = true;
+        }
+        return 0;
+    }
 
-        if (owner == ch)
+    /// <summary>Skill_Stealing START (CCharSkill.cpp:4307/4314): from a mark,
+    /// Calc_StealingItem; off the ground 1, "town stuff on the ground is too easy".
+    /// Run when the skill starts.</summary>
+    public static int StealingStart(IActiveSkillSink sink, ObjBase? act)
+    {
+        int code = StealingTarget(sink, act, out var item, out var mark, out bool boundToFail);
+        if (code < 0)
+            return code;
+        if (boundToFail)
+            return -1;
+        return mark != null ? CalcStealingItem(sink.Self, item!, mark, sink.Random) : 1;
+    }
+
+    /// <summary>Source-X CChar::Skill_Stealing (CCharSkill.cpp:4180-4345). START is
+    /// <see cref="StealingStart"/>; after the DELAY the target is judged again. The
+    /// goods are delivered on SUCCESS, and always off the ground; REVEALFLAGS decides
+    /// whether the thief is revealed; a theft of no difficulty is no crime, otherwise
+    /// the onlookers may notice it (DEFMSG_STEALING_YOUR / SOMEONE), which costs 100
+    /// karma down to -1000.</summary>
+    public static bool Stealing(IActiveSkillSink sink, ObjBase? act, int? startDifficulty = null)
+    {
+        var ch = sink.Self;
+        int stealDiff;
+        if (startDifficulty.HasValue)
+            stealDiff = startDifficulty.Value;
+        else
+        {
+            stealDiff = StealingStart(sink, act);
+            if (stealDiff < -1)
+                return false;
+        }
+        if (StealingTarget(sink, act, out var target, out var owner, out bool boundToFail) < -1)
             return false;
-
-        // From a mark: Calc_StealingItem. Off the ground: 1 - "town stuff on the
-        // ground is too easy" (CCharSkill.cpp:4307/4314).
-        int stealDiff = owner != null ? CalcStealingItem(ch, target, owner, sink.Random) : 1;
-        bool success = SkillEngine.UseQuick(ch, SkillType.Stealing, stealDiff);
+        if (boundToFail)
+            stealDiff = -1;
+        bool success = stealDiff >= 0 && SkillEngine.UseQuick(ch, SkillType.Stealing, stealDiff);
 
         // Deliver the goods (CCharSkill.cpp:4321-4331): on SUCCESS, and ALWAYS for an
         // item taken off the ground - "stealing off the ground should always
@@ -264,7 +375,7 @@ public static class ActiveSkillEngine
         if ((success || fromGround) && ch.Backpack != null)
         {
             Item? sourceContainer = null;
-            if (target.ContainedIn.IsValid)
+            if (target!.ContainedIn.IsValid)
             {
                 // The insert into the thief's pack takes the item off every screen
                 // first (CItemContainer::OnInsert -> RemoveFromView, CItemContainer.cpp:727)
@@ -297,8 +408,7 @@ public static class ActiveSkillEngine
 
         // A theft gives the thief away, and which outcome does it is the shard's
         // choice: REVEALF_STEALING_SUCCESS and REVEALF_STEALING_FAIL are separate
-        // flags (CCharSkill.cpp:4333), and the reference ini sets only the failure one
-        // - getting away with it keeps you hidden.
+        // flags (CCharSkill.cpp:4333).
         ch.ClearHiddenState(success ? RevealFlags.StealingSuccess : RevealFlags.StealingFail);
 
         // "Too easy to be bad" (CCharSkill.cpp:4338): a zero-difficulty theft is
@@ -306,14 +416,9 @@ public static class ActiveSkillEngine
         if (stealDiff == 0)
             return success;
 
-        // Source-X CChar::Skill_Stealing: every nearby witness who wins the
-        // perception contest notices the theft - whether or not it succeeded -
-        // and remembers it (personal grey via MEMORY_SAWCRIME); a guarded-area
-        // guard flags the thief globally. A theft someone saw costs Noto_Karma(-100)
-        // down to -1000 with the karma-change message (:4342-4343); one no one sees
-        // has no consequence.
         // Witnesses are told "stealing" for a theft that worked, "attempting to steal"
-        // for one that did not (CCharSkill.cpp:4342).
+        // for one that did not; a theft someone saw costs Noto_Karma(-100) down to
+        // -1000 (CCharSkill.cpp:4342-4343).
         if (CrimeWitnessService.CheckCrimeSeen(sink.World, ch, owner, SkillType.Stealing, sink.Random,
                 item: target, action: ServerMessages.Get(success ? Msg.StealingSomeone : Msg.StealingYour)))
             ApplySkillKarma(ch, -100, -1000, sink.SysMessage);
@@ -402,56 +507,124 @@ public static class ActiveSkillEngine
 
     // -------------------------------------------------------------- Snooping
 
-    /// <summary>Source-X CChar::Skill_Snooping. Always-on container; fail emits SNOOPING_FAILED + optional crim.</summary>
-    public static bool Snooping(IActiveSkillSink sink, Item? container)
+    /// <summary>CChar::IsTakeCrime (CCharAct.cpp): whether laying hands on this item
+    /// wrongs someone, and who - the character it is on, else null. Staff in GM or
+    /// ALLMOVE mode commit none; one's own things, a pet's or a friend's (MEMORY_FRIEND)
+    /// and an unowned pack animal's are no crime; a loose item is one when it is OWNED
+    /// by someone else or lies in an OWNED container.</summary>
+    public static bool IsTakeCrime(Character ch, Item item, out Character? mark)
+    {
+        var top = item.GetTopLevelObj();
+        mark = top as Character;
+        if (ch.IsGmMode || ch.AllMove)
+            return false;
+        if (top == ch)
+            return false;
+        if (mark == null)
+        {
+            if (item.IsAttr(ObjAttributes.Owned) && item.Link != ch.Uid)
+                return true;
+            return top is Item container && container != item && container.IsAttr(ObjAttributes.Owned);
+        }
+        if (mark.HasOwner(ch.Uid) || mark.Memory_FindObjTypes(ch.Uid, MemoryType.Friend) != null)
+            return false;
+        if (!mark.IsPlayer && mark.NpcBrain == NpcBrainType.Animal && !mark.IsStatFlag(StatFlag.Pet))
+            return false;
+        return true;
+    }
+
+    /// <summary>What every Skill_Snooping stage asks (CCharSkill.cpp:4119-4148): a
+    /// container; whose (no crime, no mark - nothing more to it); the mark within the
+    /// skill's RANGE, 1 when it names none, in 3D (DEFMSG_SNOOPING_REACH); the container
+    /// within touch (DEFMSG_SNOOPING_CANT). Null mark with true = not a crime.</summary>
+    private static bool SnoopingTarget(IActiveSkillSink sink, Item? container, out Character? mark)
     {
         var ch = sink.Self;
-        if (container == null || container.ItemType is not (ItemType.Container or ItemType.ContainerLocked))
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.SnoopingCant));
+        mark = null;
+        if (container == null || container.IsDeleted ||
+            container.ItemType is not (ItemType.Container or ItemType.ContainerLocked or ItemType.Corpse
+                or ItemType.EqVendorBox or ItemType.EqBankBox or ItemType.ShipHold or ItemType.ShipHoldLock))
             return false;
+        if (!IsTakeCrime(ch, container, out mark) || mark == null)
+        {
+            mark = null;
+            return true;
         }
-
-        var ownerChar = ResolveItemOwner(container, sink.World);
-        // RANGE, or 1 when the skill names none (CCharSkill.cpp:4127-4139).
-        if (!CanReachItem(ch, container, sink.World, SkillType.Snooping, 1))
+        int range = SkillEngine.GetUseRange(SkillType.Snooping, 1);
+        var me = ch.GetTopLevelObj().Position;
+        var him = mark.GetTopLevelObj().Position;
+        int dist = me.Map != him.Map ? int.MaxValue
+            : Math.Max(Math.Max(Math.Abs(me.X - him.X), Math.Abs(me.Y - him.Y)), Math.Abs(me.Z - him.Z) / 8);
+        if (dist > range)
         {
             sink.SysMessage(ServerMessages.Get(Msg.SnoopingReach));
             return false;
         }
+        if (!Scripting.ScriptTouchAccess.CanTouch(ch, container))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.SnoopingCant));
+            return false;
+        }
+        return true;
+    }
 
-        // All or nothing: 100 when the adjusted skill loses to rand(1000), else 0
-        // (CCharSkill.cpp:4157).
-        int snoopDiff = SkillEngine.GetAdjustedSkill(ch, SkillType.Snooping) < sink.Random.Next(1000)
-            ? 100 : 0;
-        bool success = SkillEngine.UseQuick(ch, SkillType.Snooping, snoopDiff);
+    /// <summary>Skill_Snooping START (CCharSkill.cpp:4150-4158): nobody snoops a higher
+    /// rank (DEFMSG_SNOOPING_CANT); the difficulty is all or nothing - 100 when the
+    /// adjusted skill loses to rand(1000), else 0. Run when the skill starts.</summary>
+    public static int SnoopingStart(IActiveSkillSink sink, Item? container)
+    {
+        var ch = sink.Self;
+        if (!SnoopingTarget(sink, container, out var mark))
+            return -3;
+        if (mark == null)
+            return 0;
+        if (ch.PrivLevel < mark.PrivLevel)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.SnoopingCant));
+            return -3;
+        }
+        return SkillEngine.GetAdjustedSkill(ch, SkillType.Snooping) < sink.Random.Next(1000) ? 100 : 0;
+    }
 
-        // Snooping into someone's pack costs karma win or lose, with the karma-change
-        // message: Noto_Karma(-4, INT32_MIN, true) (CCharSkill.cpp:4162).
-        if (ownerChar != null && ownerChar != ch)
-            ApplySkillKarma(ch, -4, message: sink.SysMessage);
+    /// <summary>Source-X CChar::Skill_Snooping (CCharSkill.cpp:4108-4177), started by
+    /// opening someone's container (Skill_Snoop_Check). START is
+    /// <see cref="SnoopingStart"/>; after the DELAY the target is judged again, the
+    /// onlookers may notice (CheckCrimeSeen, DEFMSG_SNOOPING_ATTEMPTING) and the snooper
+    /// loses 4 karma, success or not; FAIL says DEFMSG_SNOOPING_FAILED and gives the
+    /// snooper away unless half their Hiding beats rand(1000); SUCCESS opens the
+    /// container. It used to be decided at the double-click, with no DELAY.</summary>
+    public static bool Snooping(IActiveSkillSink sink, Item? container, int? startDifficulty = null)
+    {
+        var ch = sink.Self;
+        int diff;
+        if (startDifficulty.HasValue)
+            diff = startDifficulty.Value;
+        else
+        {
+            diff = SnoopingStart(sink, container);
+            if (diff < -1)
+                return false;
+        }
+        if (!SnoopingTarget(sink, container, out var mark))
+            return false;
+        if (mark == null)
+            return true;   // not a crime really (:4123-4124)
+
+        bool success = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.Snooping, diff);
+
+        CrimeWitnessService.CheckCrimeSeen(sink.World, ch, mark, SkillType.Snooping,
+            sink.Random, isSnoop: true, item: container, action: ServerMessages.Get(Msg.SnoopingAttempting));
+        ApplySkillKarma(ch, -4, message: sink.SysMessage);
 
         if (!success)
         {
             sink.SysMessage(ServerMessages.Get(Msg.SnoopingFailed));
-            // A failed snoop gives the snooper away unless half the Hiding skill
-            // wins against rand(1000) (:4166-4168).
             if (SkillEngine.GetAdjustedSkill(ch, SkillType.Hiding) / 2 < sink.Random.Next(1000))
                 ch.ClearHiddenState();
+            return false;
         }
-        else
-            sink.OpenContainer(container);
-
-        // Source-X CChar::Skill_Snooping: nearby witnesses may notice the snoop
-        // (perception contest). @SeeSnoop fires; SNOOPCRIMINAL is only the percent
-        // chance a noticed snoop counts as a crime (CCharFight.cpp:156) - the witness
-        // check itself always runs.
-        // SNOOPING_ATTEMPTING is the witnesses' line ("You notice X attempting to peek
-        // into Y's backpack", CCharSkill.cpp:4161), never the snooper's own message.
-        CrimeWitnessService.CheckCrimeSeen(sink.World, ch, ownerChar, SkillType.Snooping,
-            sink.Random, isSnoop: true, item: container, action: ServerMessages.Get(Msg.SnoopingAttempting));
-
-        return success;
+        sink.OpenContainer(container!);
+        return true;
     }
 
     // ---------------------------------------------------------- Lockpicking
@@ -1714,6 +1887,8 @@ public static class ActiveSkillEngine
             SkillType.Provocation => ProvocationStart(sink, provoked, act as Character),
             SkillType.RemoveTrap => RemoveTrapStart(sink, act as Item),
             SkillType.Lockpicking => LockpickingStart(sink, act as Item),
+            SkillType.Snooping => SnoopingStart(sink, act as Item),
+            SkillType.Stealing => StealingStart(sink, act),
             SkillType.Healing or SkillType.Veterinary =>
                 HealingStart(sink, HealPatientOf(sink.World, act), skill, act as Item),
             _ => 0,
@@ -1741,7 +1916,7 @@ public static class ActiveSkillEngine
     public static bool HasStartStage(SkillType skill) =>
         skill is SkillType.Musicianship or SkillType.Peacemaking or SkillType.Enticement or SkillType.Provocation
             or SkillType.Herding or SkillType.RemoveTrap or SkillType.Healing or SkillType.Veterinary
-            or SkillType.Lockpicking;
+            or SkillType.Lockpicking or SkillType.Snooping or SkillType.Stealing;
 
     /// <summary>Skill_Musicianship START (CCharSkill.cpp:1786-1787): play ACT, the
     /// instrument double-clicked, or any carried, against rand(90).</summary>

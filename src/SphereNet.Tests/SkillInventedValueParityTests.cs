@@ -233,7 +233,7 @@ public sealed class SkillInventedValueParityTests : IDisposable
         var world = TestHarness.CreateWorld();
         var thief = Place(world);
         Pack(world, thief);
-        var mark = Place(world, 101, 100);
+        var mark = Place(world, 101, 100, player: false);   // an offline player is out of touch
         var markPack = Pack(world, mark);
         var loot = world.CreateItem();
         loot.TrySetProperty("BASEWEIGHT", "200");
@@ -259,7 +259,7 @@ public sealed class SkillInventedValueParityTests : IDisposable
         var snoop = Place(world);
         snoop.SetSkill(SkillType.Snooping, 1000);        // never below rand(1000)
         snoop.Karma = 100;
-        var mark = Place(world, 101, 100);
+        var mark = Place(world, 101, 100, player: false);   // an offline player is out of touch
         var markPack = Pack(world, mark);
         var rolls = Rolls(_ => 1);
 
@@ -304,7 +304,7 @@ public sealed class SkillInventedValueParityTests : IDisposable
         var world = TestHarness.CreateWorld();
         var snoop = Place(world);
         snoop.Karma = 100;
-        var mark = Place(world, 101, 100);
+        var mark = Place(world, 101, 100, player: false);   // an offline player is out of touch
         var markPack = Pack(world, mark);
         Rolls(_ => 1);
         var sink = new Sink(snoop, world);

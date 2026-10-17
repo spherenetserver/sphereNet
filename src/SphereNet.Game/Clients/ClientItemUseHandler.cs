@@ -927,17 +927,18 @@ public sealed class ClientItemUseHandler
                 // Snoop gate: opening another player's sub-container requires Snooping skill
                 // TRADEWINDOWSNOOPING 0: a container sitting in a trade window opens
                 // directly (Skill_Snoop_Check, CCharSkill.cpp:4062-4065).
-                if (_character.PrivLevel < PrivLevel.GM && item.ItemType == ItemType.Container &&
-                    (GameClient.TradeWindowSnooping || !IsItemInTrade(item)))
+                // Someone else's container is snooped (Skill_Snoop_Check, CCharSkill.cpp:
+                // 4090-4098): Skill_Wait, then the Snooping skill starts - its DELAY, its
+                // triggers, and the container opens at its SUCCESS. Whose it is follows
+                // IsTakeCrime: an NPC's pack too, not a pet's or a friend's.
+                if (item.ItemType == ItemType.Container &&
+                    (GameClient.TradeWindowSnooping || !IsItemInTrade(item)) &&
+                    Skills.Information.ActiveSkillEngine.IsTakeCrime(_character, item, out var snoopMark) &&
+                    snoopMark != null)
                 {
-                    var containerOwner = ResolveContainerOwner(item);
-                    if (containerOwner != null && containerOwner != _character && containerOwner.IsPlayer)
-                    {
-                        bool snoopOk = Skills.Information.ActiveSkillEngine.Snooping(
-                            new GameClient.InfoSkillSink(_client, _character), item);
-                        if (!snoopOk)
-                            break;
-                    }
+                    if (!SkillWait(SkillType.Snooping))
+                        _client.StartSkillFromTool(SkillType.Snooping, item.Uid, item, null, null);
+                    break;
                 }
                 // No hard-coded container trap goes off here: upstream opens a
                 // container without looking for one (Cmd_Use_Item IT_CONTAINER, CClientUse.cpp:213),
@@ -1804,7 +1805,7 @@ public sealed class ClientItemUseHandler
                 // refuses, ACT is the instrument and Musicianship starts - its
                 // triggers, its START (the tune) and its DELAY. It used to resolve on
                 // the spot with no trigger and no wait.
-                if (!InstrumentSkillWait())
+                if (!SkillWait(SkillType.Musicianship))
                     _client.StartSkillFromTool(SkillType.Musicianship, item.Uid, item, null, null);
                 break;
 
@@ -2630,15 +2631,16 @@ public sealed class ClientItemUseHandler
         BandageTarget(bandage, target);
     }
 
-    /// <summary>CChar::Skill_Wait(SKILL_MUSICIANSHIP) (CCharSkill.cpp:3977-4050): true
-    /// refuses the instrument. @SkillWait / @Wait may refuse (RETURN 1) or cancel what
-    /// is running (RETURN 0); a dead, frozen or stone player cannot; idle, the player
-    /// is revealed and plays; in war mode, or busy with anything but meditation,
-    /// hiding or stealth, they must wait.</summary>
-    private bool InstrumentSkillWait()
+    /// <summary>CChar::Skill_Wait (CCharSkill.cpp:3977-4050), for a skill an item use
+    /// starts (an instrument, someone's container): true refuses. @SkillWait / @Wait
+    /// may refuse (RETURN 1) or cancel what is running (RETURN 0); a dead, frozen or
+    /// stone player cannot; idle, the player is revealed - not for Stealth, nor for
+    /// Snooping / Stealing when REVEALFLAGS spares them - and goes on; in war mode, or
+    /// busy with anything but meditation, hiding or stealth, they must wait.</summary>
+    private bool SkillWait(SkillType skill)
     {
         if (_character == null) return true;
-        const int skillTry = (int)SkillType.Musicianship;
+        int skillTry = (int)skill;
         int current = _character.HasActiveSkillPending() ? _character.SkillPendingId : -1;
         if (_triggerDispatcher != null)
         {
@@ -2659,7 +2661,11 @@ public sealed class ClientItemUseHandler
         }
         if (current < 0)
         {
-            _character.ClearHiddenState();
+            var flags = Character.ActiveRevealFlags;
+            if (!(skill == SkillType.Stealth ||
+                  skill == SkillType.Snooping && (flags & RevealFlags.Snooping) != 0 ||
+                  skill == SkillType.Stealing && (flags & RevealFlags.Stealing) != 0))
+                _character.ClearHiddenState();
             return false;
         }
         if (_character.IsStatFlag(StatFlag.War))

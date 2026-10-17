@@ -96,7 +96,7 @@ internal static class FunctionalDrill
             if (o.Suite is "all" or "healing")
                 await HealingSuite(server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "thief")
-                await ThiefSuite(server, port, outcomes, cts.Token);
+                await ThiefSuite(root, server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "party")
                 await PartySuite(server, port, outcomes, cts.Token);
             if (o.Suite is "all" or "ship")
@@ -1519,7 +1519,7 @@ internal static class FunctionalDrill
 
     private const int HidingSkill = 21, StealingSkill = 33;
 
-    private static async Task ThiefSuite(ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
+    private static async Task ThiefSuite(string root, ServerHost server, int port, List<Outcome> outcomes, CancellationToken ct)
     {
         var thief = await LoginAsync(1001, port, ct);
         var mark = await LoginAsync(1002, port, ct);
@@ -1609,6 +1609,29 @@ internal static class FunctionalDrill
                 }
             }
             throw new ScenarioFailed($"not stolen in 5 tries; thief: {JournalSince(thief, since)}; mark: {JournalSince(mark, since)}");
+        });
+
+        await RunScenario("thief", "stealing from the mark takes something from their pack", outcomes, async () =>
+        {
+            // A character picked means a random thing from their pack (CCharSkill.cpp:4194-4212).
+            long since = Environment.TickCount64;
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                int before = (await PackContentsAsync(thief, ct)).Count;
+                await thief.Actions.UseSkill(StealingSkill, 3000, ct);
+                if (await thief.Actions.WaitForTarget(3000, ct) != BotActionResult.Success)
+                    throw new ScenarioFailed($"no target cursor from Stealing; thief: {JournalSince(thief, since)}");
+                await thief.Actions.TargetObject(mark.World.CharUid, ct);
+                await Task.Delay(2500, ct);
+                int after = (await PackContentsAsync(thief, ct)).Count;
+                if (after > before)
+                    return $"took something on attempt {attempt + 1}; thief: {JournalSince(thief, since)}";
+            }
+            string said = JournalSince(thief, since);
+            bool engineWording = (ReadIniValue(Path.Combine(root, "sphere.ini"), "SCPFILES") ?? "")
+                .Contains("Scripts-X", StringComparison.OrdinalIgnoreCase);
+            if (!engineWording && said.Length > 0) return $"the pack answers: {said}";
+            throw new ScenarioFailed($"nothing taken in 5 tries; thief: {said}");
         });
 
         thief.Disconnect();

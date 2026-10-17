@@ -4,6 +4,31 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Snooping ve Stealing Source-X'in asamalariyla; IsTakeCrime; esyayla baslayan beceriler icin Skill_Wait
+------------------------------------------------------------------------
+DUZELTME - Baskasinin konteynerini acmak Snooping becerisini baslatir (Skill_Snoop_Check,
+       CCharSkill.cpp:4090-4098): Skill_Wait, sonra DELAY ve tetikler, konteyner SUCCESS'te acilir.
+       Cift tiklamada DELAY ve tetik olmadan karar veriliyordu ve yalnizca oyuncu cantalari
+       icindi; bir seyin kime ait oldugu artik IsTakeCrime'a gore - NPC cantasi da, evcil hayvan,
+       arkadas ya da sahipsiz yuk hayvani degil, GM ya da ALLMOVE modundaki yetkili icin hicbiri.
+DUZELTME - Snooping'in START'i Skill_Start'ta calisir (CCharSkill.cpp:4150-4158): kimse daha yuksek
+       rutbeyi gozetleyemez (DEFMSG_SNOOPING_CANT), erisim HEDEFIN 3B uzakligi ve becerinin
+       RANGE'idir (DEFMSG_SNOOPING_REACH) ve konteyner dokunma mesafesinde olmalidir; seyirci kontrolu
+       ve karma bedeli DELAY'den sonra, basarisizlik satirindan once gelir.
+DUZELTME - Stealing'in START'i kendi tum kontrolleriyle Skill_Start'ta calisir (CCharSkill.cpp:
+       4180-4320): secilen karakter cantasindan rastgele bir sey demektir ("nothing" diyordu);
+       ceset icerigi, oyun tahtasi, takas penceresi, yankesicilik mankeni ve oyun tasi kendi
+       satirlariyla reddedilir; erisim CanTouch'tir (DEFMSG_STEALING_REACH, SphereNet'in kendi
+       Ingilizce satiri degil); suc olmayan DEFMSG_STEALING_NONEED, guvenli bolge
+       DEFMSG_STEALING_STOP, cok uzak hedef DEFMSG_STEALING_MARK, PvP'siz bolgede oyuncu
+       DEFMSG_STEALING_SAFE, daha yuksek rutbe basarisizliga mahkum; baskasinin uzerindeki newbie,
+       blessed ya da cursed esya DEFMSG_STEALING_HEAVY ("nothing" idi ve duz blessed da
+       reddediliyordu).
+DUZELTME - Esya kullanimiyla baslayan beceri icin Skill_Wait bos duran karakteri gorunur yapar; Stealth
+       haric, REVEALFLAGS izin veriyorsa Snooping / Stealing haric (CCharSkill.cpp:4020-4027).
+EKLEME - Fonksiyonel tatbikat: thief paketi hedefin kendisinden calar.
+EKLEME - Testler: Snooping START'i, hedefe erisim, IsTakeCrime, karakterden Stealing ve retleri.
+
 [2026-10-17] - Lockpicking, Skill_Lockpicking ve Use_LockPick'in calistirdigi gibi; tatbikatta hazine sandigi acilir
 ------------------------------------------------------------------------
 DUZELTME - Lockpicking'in START'i beceri basladiginda calisir ve kilidi test eden Use_LockPick'tir

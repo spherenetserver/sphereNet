@@ -123,6 +123,7 @@ public sealed class ThiefNoticeTests
         var world = CreateWorld();
         var thief = Player(world, "Thief", 100);
         var mark = Player(world, "Mark", 101);
+        mark.IsPlayer = false;   // an offline player is out of touch (CanTouch)
         thief.SetSkill(SkillType.Stealing, 1000);
         var gears = world.CreateItem();
         gears.BaseId = 0x1053;

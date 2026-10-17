@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Snooping and Stealing as Source-X stages them; IsTakeCrime; Skill_Wait for item-started skills
+------------------------------------------------------------------------
+FIX - Opening someone's container starts the Snooping skill (Skill_Snoop_Check,
+      CCharSkill.cpp:4090-4098): Skill_Wait, then its DELAY and triggers, and the container
+      opens at its SUCCESS. It was decided at the double-click with no DELAY and no
+      triggers, and only for players' packs; whose a thing is now follows IsTakeCrime - an
+      NPC's pack too, not a pet's, a friend's or an unowned pack animal's, nothing for staff
+      in GM or ALLMOVE mode.
+FIX - Snooping's START runs at Skill_Start (CCharSkill.cpp:4150-4158): nobody snoops a higher
+      rank (DEFMSG_SNOOPING_CANT), the reach is the MARK's distance in 3D by the skill's RANGE
+      (DEFMSG_SNOOPING_REACH) and the container must be within touch; the onlookers' check
+      and the karma cost come after the DELAY, before the fail line.
+FIX - Stealing's START runs at Skill_Start (CCharSkill.cpp:4180-4320) with every check of its
+      own: a character picked means a random thing from their pack (it said "nothing");
+      a corpse's contents, a game board, a trade window, a pickpocket dip and a game piece are
+      refused with their own lines; the reach is CanTouch (DEFMSG_STEALING_REACH, not an
+      English line of SphereNet's own); what is no crime is DEFMSG_STEALING_NONEED, a safe
+      area DEFMSG_STEALING_STOP, a mark too far DEFMSG_STEALING_MARK, a player in a no-PvP
+      area DEFMSG_STEALING_SAFE, a higher rank bound to fail; a newbie, blessed or cursed thing
+      on someone else is DEFMSG_STEALING_HEAVY (it was "nothing", and a plain blessed one was
+      refused too).
+FIX - Skill_Wait for a skill an item use starts reveals an idle character except for Stealth,
+      and for Snooping / Stealing when REVEALFLAGS spares them (CCharSkill.cpp:4020-4027).
+ADD - Functional drill: the thief suite steals from the mark himself.
+ADD - Tests: Snooping's START, its reach to the mark, IsTakeCrime, Stealing from a character
+      and its refusals.
+
 [2026-10-17] - Lockpicking as Skill_Lockpicking and Use_LockPick run it; treasure chest picked in the drill
 ------------------------------------------------------------------------
 FIX - Lockpicking's START runs when the skill starts and is Use_LockPick testing the lock

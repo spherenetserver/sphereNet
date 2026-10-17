@@ -266,8 +266,9 @@ public class ActiveSkillEngineTests
 
         bool ok = ActiveSkillEngine.Snooping(sink, sword);
 
+        // No container: -SKTRIG_QTY with nothing said (CCharSkill.cpp:4119-4121).
         Assert.False(ok);
-        Assert.Equal(ServerMessages.Get(Msg.SnoopingCant), sink.Log[0].Text);
+        Assert.Empty(sink.Log);
     }
 
     [Fact]

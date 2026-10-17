@@ -197,6 +197,20 @@ public class InfoSkillEngineTests
         Assert.Equal(ServerMessages.Get(Msg.ForensicsCorpse), sink.Log[0].Text);
     }
 
+    /// <summary>Animal Lore's START: a playable body is rand(10), whatever drives it - an
+    /// NPC in human shape too; a creature rand(60) (CClientTarg.cpp:779-789).</summary>
+    [Fact]
+    public void AnimalLore_StartGoesByTheBody()
+    {
+        var self = MakeChar();
+        var human = MakeChar("Guard");
+        human.IsPlayer = false;
+        human.BodyId = 0x0190;
+        var sink = new RecordingSink(self);
+        for (int i = 0; i < 20; i++)
+            Assert.InRange(InfoSkillEngine.AnimalLore(sink, human, null!, 500, true), 0, 9);
+    }
+
     /// <summary>Armor_IsRepairable (CItem.cpp:4846-4894): a sword is repairable by its
     /// type, a bow and clothing are not, CANNOTREPAIR never is - every item without
     /// REPAIR=1 used to be called unrepairable.</summary>

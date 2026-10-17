@@ -314,19 +314,24 @@ public sealed class ClientWorldFeaturesHandler
             SysMessage(ServerMessages.Get("craft_busy"));
             return false;
         }
-        if (!_craftingEngine.CanCraft(_character, recipe))
+        // No forge for smithing (DEFMSG_SMITHING_FORGE, Skill_Blacksmith START,
+        // CCharSkill.cpp:3150) or no heat source for cooking (DEFMSG_COOKING_FIRE_SOURCE,
+        // Skill_Cooking START, :2240-2249) is said; what the stock or the skills do not
+        // cover ends the start quietly (Skill_MakeItem returns false, :911-922). It said
+        // "You fail to create the item. Some materials are lost." - nothing was lost.
+        if (!_craftingEngine.HasRequiredWorkSite(_character, craftSkill))
         {
-            SysMessage(ServerMessages.Get("craft_fail"));
+            SysMessage(ServerMessages.Get(craftSkill == SkillType.Blacksmithing
+                ? Msg.SmithingForge : Msg.CookingFireSource));
             return false;
         }
+        if (!_craftingEngine.CanCraft(_character, recipe))
+            return false;
         // ResourceConsume in test mode: the replications the stock really covers.
         int craftAmount = _craftingEngine.TestReplication(_character, recipe,
             Math.Clamp(replicationQty, 1, ushort.MaxValue));
         if (craftAmount <= 0)
-        {
-            SysMessage(ServerMessages.Get("craft_fail"));
             return false;
-        }
 
         // No @SkillMakeItem here: it belongs to the finished item, and fires from
         // CompleteCraft once that item exists. Nor @SkillSelect / @Select: they belong
@@ -602,8 +607,9 @@ public sealed class ClientWorldFeaturesHandler
             new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True;
         if (cancelled)
             return;
+        // The FAIL stage says nothing of its own (Skill_MakeItem, CCharSkill.cpp:925-946):
+        // the pack's @Fail tells the crafter.
         _craftingEngine.CraftFail(_character, recipe);
-        SysMessage(ServerMessages.Get("craft_fail"));
         SkillEngine.GainExperience(_character, craftSkill, _character.ActDiff);
     }
 

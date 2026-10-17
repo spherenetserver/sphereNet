@@ -550,7 +550,7 @@ public sealed class CraftingEngine
     /// <summary>Work-site proximity (reference Skill_Blacksmith /
     /// Skill_Cooking): smithing needs a forge within 2 tiles, cooking a
     /// heat source within 3. Other craft skills have no site requirement.</summary>
-    private bool HasRequiredWorkSite(Character crafter, SkillType skill)
+    internal bool HasRequiredWorkSite(Character crafter, SkillType skill)
     {
         switch (skill)
         {

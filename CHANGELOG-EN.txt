@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-17] - Crafting says what Source-X says: forge and fire source at the start, nothing of its own on a failure; Animal Lore START by body
+------------------------------------------------------------------------
+FIX - Smithing with no forge in reach says DEFMSG_SMITHING_FORGE and cooking with no heat source
+      DEFMSG_COOKING_FIRE_SOURCE when the craft starts (Skill_Blacksmith / Skill_Cooking START,
+      CCharSkill.cpp:3150, 2240-2249); a start the stock or the skills do not cover ends quietly
+      (Skill_MakeItem returns false, :911-922). Both said "You fail to create the item. Some
+      materials are lost." - with nothing lost.
+FIX - A failed craft says nothing of its own (the FAIL stage, :925-946): the pack's @Fail tells the
+      crafter. SphereNet's "materials are lost" line came on top of it.
+FIX - Animal Lore's START goes by the body: a playable one (human, elf, gargoyle) is rand(10), the
+      creature one rides 1, others rand(60) (CClientTarg.cpp:779-789); it asked the player flag.
+ADD - Tests: smithing with no forge; Animal Lore's START by body.
+
 [2026-10-17] - Arms Lore's repair line by Armor_IsRepairable; Anatomy and Evaluating Intelligence read adjusted stats
 ------------------------------------------------------------------------
 FIX - Arms Lore says "cannot be repaired" as Armor_IsRepairable decides (CItem.cpp:4846-4894): never

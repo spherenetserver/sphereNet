@@ -66,6 +66,12 @@ public sealed class CraftPipelineStageParityTests : IDisposable
         COLOR=0481
         MORE1=7
 
+        [ITEMDEF i_audit_mace]
+        ID=0f5c
+        NAME=audit mace
+        SKILLMAKE=Blacksmithing 0.0
+        RESOURCES=1 i_audit_ingot
+
         [ITEMDEF i_audit_pile]
         ID=0f52
         NAME=audit pile
@@ -277,6 +283,24 @@ public sealed class CraftPipelineStageParityTests : IDisposable
             sb.Append(System.Text.Encoding.BigEndianUnicode.GetString(bytes));
         }
         return sb.ToString();
+    }
+
+    /// <summary>No forge in reach is DEFMSG_SMITHING_FORGE at the start (Skill_Blacksmith
+    /// START, CCharSkill.cpp:3150), not the "materials are lost" line; nothing is spent.</summary>
+    [Fact]
+    public void SmithingWithNoForgeSaysSo()
+    {
+        var b = Build();
+        GiveStock(b, "i_audit_ingot", 5);
+        TestHarness.ClearQueuedPackets(b.State);
+
+        Assert.False(b.Client.BeginPendingCraft(Recipe(b, "i_audit_mace"), SkillType.Blacksmithing, reopenGump: false));
+
+        string sent = string.Concat(TestHarness.GetQueuedPackets(b.State).Select(p =>
+            System.Text.Encoding.BigEndianUnicode.GetString(p.Span.ToArray()) +
+            System.Text.Encoding.ASCII.GetString(p.Span.ToArray())));
+        Assert.Contains(SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.SmithingForge), sent);
+        Assert.DoesNotContain("materials are lost", sent);
     }
 
     // --- E01: @SkillMakeItem ---------------------------------------------------

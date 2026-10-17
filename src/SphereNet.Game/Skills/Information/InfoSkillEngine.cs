@@ -89,7 +89,12 @@ public static class InfoSkillEngine
         if (fTest)
         {
             if (target == sink.Self) return 2;
-            if (target.IsPlayer) return sink.Random.Next(10);
+            // The creature one rides (the mount item's m_itFigurine.m_UID, MORE2) is 1;
+            // a playable body - human, elf, gargoyle - rand(10) (CClientTarg.cpp:779-789).
+            if (sink.Self.IsStatFlag(StatFlag.OnHorse) &&
+                sink.Self.GetEquippedItem(Layer.Horse) is { } mount && mount.More2 == target.Uid.Value)
+                return 1;
+            if (AI.NpcAI.IsPlayableBody(target.BodyId)) return sink.Random.Next(10);
             return sink.Random.Next(60);
         }
 

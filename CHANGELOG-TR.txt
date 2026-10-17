@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-17] - Uretim Source-X'in soyledigini soyler: baslangicta ocak ve ates kaynagi, basarisizlikta kendinden bir sey yok; Animal Lore START'i govdeye gore
+------------------------------------------------------------------------
+DUZELTME - Erisimde ocak yokken demircilik DEFMSG_SMITHING_FORGE, isi kaynagi yokken yemek DEFMSG_COOKING_FIRE_SOURCE
+       der, uretim basladiginda (Skill_Blacksmith / Skill_Cooking START, CCharSkill.cpp:3150, 2240-2249);
+       stokun ya da becerilerin karsilamadigi baslangic sessizce biter (Skill_MakeItem false doner,
+       :911-922). Ikisi de "You fail to create the item. Some materials are lost." diyordu - hicbir sey
+       kaybolmadan.
+DUZELTME - Basarisiz uretim kendinden bir sey demez (FAIL asamasi, :925-946): uretene paketin @Fail'i
+       soyler. SphereNet'in "malzemeler kayboldu" satiri bunun ustune geliyordu.
+DUZELTME - Animal Lore'un START'i govdeye gore: oynanabilir govde (insan, elf, gargoyle) rand(10), binilen
+       yaratik 1, digerleri rand(60) (CClientTarg.cpp:779-789); oyuncu bayragina bakiyordu.
+EKLEME - Testler: ocaksiz demircilik; govdeye gore Animal Lore START'i.
+
 [2026-10-17] - Arms Lore tamir satiri Armor_IsRepairable'a gore; Anatomy ve Evaluating Intelligence duzeltilmis statlari okur
 ------------------------------------------------------------------------
 DUZELTME - Arms Lore "tamir edilemez"i Armor_IsRepairable'in karariyla soyler (CItem.cpp:4846-4894):

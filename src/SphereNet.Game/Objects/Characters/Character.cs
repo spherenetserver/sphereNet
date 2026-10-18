@@ -208,6 +208,10 @@ public partial class Character : ObjBase
     /// </summary>
     public static Action<Character>? OnOwnViewRefreshNeeded;
 
+    /// <summary>CClient::addReSync for this character's own client: everything in
+    /// view and the character itself are sent again. Wired in Program.</summary>
+    public static Action<Character>? OnOwnClientResync;
+
     /// <summary>Broadcast a health-bar colour update (Source-X PacketHealthBarUpdate,
     /// 0x17) to observers when the character's poisoned/frozen state changes — the
     /// green/yellow health-bar tint on SA+/KR clients.</summary>
@@ -8033,6 +8037,14 @@ public partial class Character : ObjBase
         return false;
     }
 
+    /// <summary>CChar::Update (CCharAct.cpp:2580): every other client in range redraws
+    /// the character (addChar); its own client gets a full resync (addReSync).</summary>
+    public void Update()
+    {
+        MarkDirty((DirtyFlag)0xFFFFFFFF);
+        OnOwnClientResync?.Invoke(this);
+    }
+
     public override bool TryExecuteCommand(string key, string args, ITextConsole source, out bool nameOwned)
     {
         // Assumed owned until the shared fall-through at the bottom of
@@ -9262,6 +9274,8 @@ public partial class Character : ObjBase
             }
             case "UPDATE":
             case "UPDATEX":
+                Update();
+                return true;
             case "REMOVEFROMVIEW":
             {
                 MarkDirty((DirtyFlag)0xFFFFFFFF);

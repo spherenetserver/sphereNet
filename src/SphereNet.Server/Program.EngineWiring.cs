@@ -2972,6 +2972,12 @@ public static partial class Program
                     c.ViewNeedsRefresh = true;
             };
 
+            SphereNet.Game.Objects.Characters.Character.OnOwnClientResync = target =>
+            {
+                if (TryGetClientFor(target, out var c))
+                    c.ResyncPending = true;
+            };
+
             // CChar::UpdateMode(true): every client, its own included, redraws or
             // removes the character; each applies its own range and CanSee.
             SphereNet.Game.Objects.Characters.Character.OnUpdateMode = target =>

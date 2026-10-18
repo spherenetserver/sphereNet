@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-18] - UPDATE / FIX verbs
+------------------------------------------------------------------------
+FIX - The UPDATE / UPDATEX and FIX verbs on a character end in CChar::Update (CCharAct.cpp:2580):
+      other clients in range redraw the character and its own client gets a full resync
+      (addReSync). They used to only mark the character dirty.
+FIX - The .UPDATE and .FIX speech commands run those verbs on the speaker instead of reloading
+      the scripts (RESYNC); .FIX re-seats the character on its standing surface first.
+
 [2026-10-17] - Begging START stage
 ------------------------------------------------------------------------
 FIX - Begging runs through the shared START stage (Skill_Begging, CCharSkill.cpp:2934-2946): the

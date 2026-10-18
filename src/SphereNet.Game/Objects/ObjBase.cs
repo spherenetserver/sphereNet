@@ -1880,6 +1880,11 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
                         Position = new Point3D(p.X, p.Y, fixZ, p.Map);
                     }
                 }
+                // OV_FIX ends in Update() (CObjBase.cpp:3065).
+                if (this is Characters.Character updCh)
+                    updCh.Update();
+                else
+                    MarkDirty((DirtyFlag)0xFFFFFFFF);
                 return true;
             }
             case "SOUND":

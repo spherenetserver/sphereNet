@@ -4,6 +4,14 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-18] - UPDATE / FIX verb'leri
+------------------------------------------------------------------------
+DUZELTME - Karakter uzerindeki UPDATE / UPDATEX ve FIX verb'leri CChar::Update (CCharAct.cpp:2580)
+       ile biter: menzildeki diger istemciler karakteri yeniden cizer, karakterin kendi istemcisine
+       tam yeniden esitleme (addReSync) gider. Onceden yalnizca karakter kirli isaretleniyordu.
+DUZELTME - .UPDATE ve .FIX konusma komutlari script'leri yeniden yuklemek (RESYNC) yerine bu
+       verb'leri konusan karakter uzerinde calistirir; .FIX once karakteri durdugu zemine oturtur.
+
 [2026-10-17] - Dilencilik START asamasi
 ------------------------------------------------------------------------
 DUZELTME - Dilencilik ortak START asamasindan gecer (Skill_Begging, CCharSkill.cpp:2934-2946): zorluk

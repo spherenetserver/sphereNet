@@ -1718,18 +1718,16 @@ public sealed class CommandHandler
             OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_inspect_select"));
         });
 
+        // OV_UPDATE / OV_FIX on the speaker (CObjBase.cpp:2972, :3043): a redraw of
+        // the character and a resync of its own client - not the script RESYNC.
         Register("UPDATE", PrivLevel.Counsel, (gm, _) =>
         {
-            OnResyncCommand?.Invoke();
-            OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_resync"));
+            gm.TryExecuteCommand("UPDATE", "", NullConsole.Instance);
         });
 
         Register("FIX", PrivLevel.Counsel, (gm, _) =>
         {
-            // Re-seat to current tile and force visual refresh on client side.
-            world.MoveCharacter(gm, gm.Position);
-            OnResyncCommand?.Invoke();
-            OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_pos_fixed"));
+            gm.TryExecuteCommand("FIX", "", NullConsole.Instance);
         });
 
         Register("GM", PrivLevel.Counsel, (gm, args) =>

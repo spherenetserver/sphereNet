@@ -1,0 +1,26 @@
+# traveling.txt — botların gezerken/yolculukta dediği satırlar.
+# Wander davranışı kullanır. "bi yere gidiyo" hissi vermeli.
+
+britain'e gitmem lazım
+bank'a uğramam lazım
+en yakın moongate nerde?
+vesper ne kadar uzak?
+yolda pk var mı?
+bu yol karanlıkta tehlikeli
+umarım atım yerinde durur
+acele etmeliyim
+karanlık basmadan dönmem lazım
+yürümekten nefret ediyorum
+bacaklarım ağrıdı
+keşke daha çok reg olsa
+bandage almam lazım
+recall mı atsam yürüsem mi?
+bu yolda hırsız var diye duydum
+gözünüzü açık tutun
+trinsic burdan çok uzak
+yew hemen ileride
+az kaldı
+atla daha hızlı olurdu
+fazla recall scroll olan var mı
+geç kaldım
+uzun yol. magery için para biriktirmeliydim

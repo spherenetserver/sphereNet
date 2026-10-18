@@ -1,0 +1,10 @@
+# trade_accept.txt — alıcı kabul eder.
+
+alırım
+tamam
+satıldı, ver
+ok peki
+makul
+oldu
+anlaştık
+tamam tamam

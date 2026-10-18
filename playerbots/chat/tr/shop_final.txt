@@ -1,0 +1,7 @@
+# shop_final.txt — satıcının oyuncuya son sözü. {price}.
+
+{price}. son
+{price} o kadar
+son teklif {price}
+{price} yoksa pazarlık bitti
+bitti. {price}

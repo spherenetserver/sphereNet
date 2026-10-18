@@ -31,7 +31,11 @@ public class Room : IScriptObj
 
     public string Name { get => _name; set => _name = value; }
     public ResourceId ResourceId { get => _resourceId; set => _resourceId = value; }
-    public byte MapIndex { get => _mapIndex; set => _mapIndex = value; }
+    public byte MapIndex
+    {
+        get => _mapIndex;
+        set { if (_mapIndex != value) { _mapIndex = value; Interlocked.Increment(ref LayoutVersion); } }
+    }
     public IReadOnlyList<RegionRect> Rects => _rects;
     public IReadOnlyList<ResourceId> Events => _events;
     public uint Uid => _uid;
@@ -48,9 +52,14 @@ public class Room : IScriptObj
 
     public bool IsFlag(Core.Enums.RegionFlag flag) => (Flags & flag) != 0;
 
+    /// <summary>Bumped whenever any room's rects or map change, so the world's room
+    /// index knows to rebuild.</summary>
+    internal static int LayoutVersion;
+
     public void AddRect(short x1, short y1, short x2, short y2)
     {
         _rects.Add(new RegionRect(x1, y1, x2, y2));
+        Interlocked.Increment(ref LayoutVersion);
     }
 
     public bool Contains(Point3D pt)

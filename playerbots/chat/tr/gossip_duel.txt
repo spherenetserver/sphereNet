@@ -1,0 +1,4 @@
+{actor}, {place} tarafında düelloda {other} kişisini yendi
+{place} tarafındaki düelloyu gördün mü? {actor} kazandı
+{actor} ile {other} {place} tarafında düello yaptı. {actor} aldı
+{other}, {place} dışında {actor} karşısında kaybetti. rövanş istiyo

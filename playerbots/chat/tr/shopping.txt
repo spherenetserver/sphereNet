@@ -1,0 +1,15 @@
+# shopping.txt — vendor dükkanına bakan bot. T2A dönemi.
+# Malları inceleyen müşteri, bankada trade spamlayan değil.
+
+vendor buy
+vendor sell
+ucuz reg satan bilen var mı
+bandaja 8gp mi?? soygun bu
+fiyatlar yine artmış
+provisioner nerde
+bu vendorda bu sefer mal var
+meteliksizim
+stok yenilemem lazım
+vendor fiyatları kazık, oyunculardan alın
+hmm
+stok yok. tabi ya

@@ -1,0 +1,12 @@
+# trade_ask.txt — alışverişe başlayan müşteri.
+
+katana kaç para
+plate gloves var mı?
+yeni silah lazım, ne iyi
+tamir kaç para
+500'e ne alırım
+magic bişey var mı?
+en iyisini göster
+ok lazım, bi sürü
+kalkan yapıyon mu?
+hepsine ne kadar

@@ -1,0 +1,8 @@
+# shop_price.txt — oyuncu fiyat soruyor. {price}.
+
+{price}
+{price} gp
+{price} istiyorum
+buna {price}
+{price}, temiz mal
+{price}. iyi fiyat valla

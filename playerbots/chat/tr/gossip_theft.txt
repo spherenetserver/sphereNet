@@ -1,0 +1,11 @@
+# başkasının soyulması. {actor} = kurban, {other} = hırsız ya da kimse görmediyse
+# "somebody". {place} ve {when} her zamanki gibi.
+
+{place} tarafında {other} {actor} adlı kişinin cebini yürütmüş
+{actor} {when} {place} tarafında soyuldu
+{place} tarafında çantanıza dikkat. {other} {actor} adlı kişinin reglerini çaldı
+{other} {place} tarafında iş yapıyo. {when} {actor} adlı kişiyi soydu
+{place} tarafında hırsız var. {actor} {when} gold kaybetti
+{actor} {place} tarafında çantasını kaptırdı. {other}
+{place} tarafında afk kalmayın. {actor} adlı kişiye sorun
+{other} {place} tarafında {actor} adlı kişinin çantasına girdi

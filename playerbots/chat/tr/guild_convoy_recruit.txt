@@ -1,0 +1,13 @@
+# guild_convoy_recruit.txt — guild'li bot, guild üyelerini birlikte yolculuğa çağırıyor.
+# {dest} = hedef adı (küçük harf).
+
+guild yolculuğu: {dest}, kim benle yürüyo?
+{dest} yolundayım, guild'den gelen buyursun
+guild'den {dest} tarafına gelen var mı?
+{dest} için guild turu, toplanın
+{dest} kim gelir? sadece guild
+hedef {dest}, guild arkadaşlar benle
+guild'den {dest} yönüne giden var mı?
+{dest} tarafına yürüyorum, arkama geçin
+guild {dest} gidiyo, başka kim
+{dest} turu, guildler gelsin

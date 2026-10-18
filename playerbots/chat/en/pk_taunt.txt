@@ -1,0 +1,17 @@
+# pk_taunt.txt — lines for PK bots. T2A era. Fired when a PK engages or
+# is hunting. Menacing, period-accurate player-killer trash-talk.
+
+your gold or your life
+gold or die
+drop your loot and run
+give me the gold and u can go
+dont run, it makes it worse
+ez
+sit
+hand it over
+shouldnta come alone
+no guards out here m8
+welcome to felucca
+nothing personal, i need regs
+run and die tired
+ill be taking that

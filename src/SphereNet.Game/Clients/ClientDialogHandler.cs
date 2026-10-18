@@ -305,7 +305,7 @@ public sealed class ClientDialogHandler
             {
                 var stats = _world.GetStats();
                 gump.AddHtmlGump(175, 90, 280, 160,
-                    $"Online Oyuncu: {_world.GetAllObjects().OfType<Character>().Count(c => c.IsPlayer && c.IsOnline)}<br>" +
+                    $"Online Oyuncu: {_world.GetAllObjects().OfType<Character>().Count(c => c.IsPlayer && c.HasClient)}<br>" +
                     $"Yaratik Sayisi: {stats.Chars}<br>" +
                     $"Esya Sayisi: {stats.Items}<br>" +
                     $"Sektor Sayisi: {stats.Sectors}",

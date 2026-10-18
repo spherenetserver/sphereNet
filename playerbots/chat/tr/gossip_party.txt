@@ -1,0 +1,7 @@
+{actor} {when} {other} için grup götürdü
+{actor} grupla {other} kasıyo
+{actor} partisi {other} tarafına gidiyodu gördüm
+{actor} {other} için grup topladı
+{other} tarafında av var. lider {actor}
+{actor} ile {other} turunu kaçırdım. {when} çıktılar
+{actor} ve arkadaşları {other} tarafına gitti. cesurlar

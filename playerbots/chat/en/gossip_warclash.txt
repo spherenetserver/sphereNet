@@ -1,0 +1,5 @@
+war bands clashed at {place} {when}
+order and chaos went at it at {place}
+proper shield battle at {place}. bodies everywhere
+the war came to {place} {when}
+{actor} was in that shield fight at {place}

@@ -1,0 +1,16 @@
+# craft_talk.txt — genel crafter satırları (ortak havuz). Mesleğe özel
+# laflar smith_talk / tailor_talk / carpenter_talk içinde; bu dosya genel
+# kalsın ki hiçbir tezgahta yanlış durmasın.
+
+dürüst iş, dürüst fiyat
+kalite zaman ister
+yıllardır bu işi yapıyorum
+bu güzel çıktı
+işe dönelim
+siparişler birikti
+tezgahta uzun gün
+ellerim koptu
+sabahtan beri müşteri, mola yok
+bu işi az kaldı kapcam
+bugün boş. alan var mı
+gm iş ucuz olmaz

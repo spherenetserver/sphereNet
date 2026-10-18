@@ -1,0 +1,11 @@
+# craft_need.txt — malzemesi bitmiş crafter etrafa soruyor. {mat} mesleğin
+# malzemesiyle dolar ("iron ingots", "cloth", "boards").
+
+wtb {mat}, iyi para veririm
+{mat} satan var mı
+{mat} bitti, çalışamıyorum
+acil {mat} lazım, iyi fiyat
+wtb {mat}, dükkanda buluşalım
+{mat} sıfır elimde
+{mat}. biri. lütfen
+{mat} olmadan dükkan dönmüyor

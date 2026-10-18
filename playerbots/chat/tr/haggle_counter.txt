@@ -1,0 +1,9 @@
+# haggle_counter.txt — satıcı iniyor ama sonuna kadar değil. {price}.
+
+en fazla {price} inerim
+olmaz. {price}
+{price} olsun ortası
+{price} ve bitti
+{price}, hadi ama
+{price} yap
+yok. {price}

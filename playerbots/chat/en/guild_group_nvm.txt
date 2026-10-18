@@ -1,0 +1,8 @@
+# guild_group_nvm.txt — a bot that asked for a group and nobody came.
+# Lines starting with # are comments. Blank lines ignored.
+
+nvm
+guess not
+next time
+ok going solo
+fine ill go alone

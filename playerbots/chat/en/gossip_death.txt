@@ -1,0 +1,11 @@
+# someone died to a monster. {other} = what killed them, may be empty
+{actor} died at {place} {when}
+{actor} got killed by {other} at {place}
+{other} got {actor} down in {place}
+dont go {place} alone. {actor} just died there
+{actor} needs a res. {place}
+{actor} died in {place} again
+heard {actor} went down at {place}. {other}
+{place} is bad right now. {actor} didnt come back
+{actor} lost their kit in {place}
+anyone got a res? {actor} is a ghost at {place}

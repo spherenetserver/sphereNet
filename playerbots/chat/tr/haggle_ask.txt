@@ -1,0 +1,10 @@
+# haggle_ask.txt — alıcı bot duyduğu malla açılış yapar. {item}.
+
+{item} kaç para
+{item} ne kadar
+{item} için hm
+{item} kaçtan gidiyo
+{item} hala sende mi?
+{item} fiyatı?
+{item} hala satıyon mu
+{item} için ne istiyon

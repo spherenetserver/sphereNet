@@ -211,6 +211,12 @@ if ($Configuration -eq "Release") {
         if (Test-Path "$root\config\$ini") { Copy-Item "$root\config\$ini" $defaultsDir -Force }
     }
 
+    # Player bot data (road network, chat, archetype CHARDEFs) ships next to the binaries.
+    if (Test-Path "$root\playerbots") {
+        if (Test-Path "$outDir\playerbots") { Remove-Item "$outDir\playerbots" -Recurse -Force -Confirm:$false }
+        Copy-Item "$root\playerbots" "$outDir\playerbots" -Recurse -Force
+    }
+
     # Ara build ciktilari temizle — single-file EXE icinde gomulu, ayrica gerekmez.
     # Self-contained modda native kutuphaneler de bundle'a gomulur; framework-dependent
     # modda bazi runtimeconfig/deps/native dosyalari kalabilir.

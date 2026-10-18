@@ -1,0 +1,15 @@
+# shopping.txt — lines for a bot browsing a vendor's shop. T2A era.
+# A shopper looking over the wares, not a bank trade-spammer.
+
+vendor buy
+vendor sell
+anyone know who sells regs cheap
+8gp for a bandage?? robbery
+prices went up again
+wheres the provisioner
+this vendor is actually stocked for once
+im broke
+need to restock
+vendor prices are a scam, buy from players
+hmm
+out of stock. of course

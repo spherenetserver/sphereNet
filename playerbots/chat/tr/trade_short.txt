@@ -1,0 +1,19 @@
+# trade_short.txt — masadaki para fiyatı karşılamıyor.
+#
+# Alıcı BİR ŞEY koydu ama yetmedi, bot kutusu işaretsiz bekliyor.
+# Bu olmasa sessizce reddeder ve bozuk bot gibi görünür.
+#
+# {short} = ne kadar eksik. {price} = anlaşılan rakam.
+# # ile başlayan satırlar yorumdur. Boş satırlar yok sayılır.
+
+bu yetmez
+{short} daha lazım
+anlaşma {price} idi
+hala {short} eksik
+eksik bu
+{price} dedim
+{short} daha koy senin
+kalanı da koy
+yetmiyor kanka
+{price}. {short} eksik
+hadi ama, {short} daha

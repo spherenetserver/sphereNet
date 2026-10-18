@@ -1,0 +1,10 @@
+# guild_group_cant.txt — gelmek isteyip recall atamayan guild arkadaşı
+# (magery yok, scroll yok, reg yok). Guild chat'te söylenir.
+# # ile başlayan satırlar yorumdur. Boş satırlar atlanır.
+
+reg yok
+recall atamıyorum, yürüyorum
+scroll yok
+yürüyerek gelirim, nerdesiniz
+reg bitti sry
+biraz bekleyin uzaktayım

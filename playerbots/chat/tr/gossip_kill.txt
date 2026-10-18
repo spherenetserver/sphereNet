@@ -1,0 +1,8 @@
+# {actor} canavarı öldürdü: {other}
+{actor}, {place} tarafında {when} şunu kesti: {other}
+{actor}, {place} tarafında {other} solo kesti
+{actor} {place} tarafında {other} indirdi
+{place} tarafında {other} mı? {actor} halletti
+{actor} {when} {other} kesti. dropu da iyiymiş dediler
+{actor} {place} tarafında farm yapıyo. {other} kesti
+{actor} {place} tarafında {other} yere serdi gördüm

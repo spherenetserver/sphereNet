@@ -1,0 +1,10 @@
+# warband_recruit.txt — faction savaşçısı devriye ekibi topluyor.
+# {dest} = devriye hedefi adı (küçük harf).
+
+{dest} devriyesi — kalkanlar benimle
+{dest} için ekip, sıraya girin
+toplanın, {dest} devriyesine gidiyoruz
+{dest} tarafına gidiyorum, gelen var mı
+{dest} devriyesi, kalkanını getir
+{dest} için faction taraması, adam lazım
+yanımda toplanın, {dest} devriyesi

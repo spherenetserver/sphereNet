@@ -1,0 +1,13 @@
+# guild_join.txt — oyuncunun guild'ine yeni alınan bot.
+# Yanındakilere sesli söyler. 1999 tarzı.
+# # ile başlayanlar yorum. Boş satırlar yok sayılır.
+
+inv için tşk
+girdim
+süper
+güzel tag
+tşk
+nihayet bi guild
+ok içerdeyim
+cool tşk
+tag ne demek

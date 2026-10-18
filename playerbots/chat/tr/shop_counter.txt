@@ -1,0 +1,9 @@
+# shop_counter.txt — oyuncunun teklifine karşı teklif. {price}.
+
+en düşük {price}
+olmaz. {price}
+{price} olsun ortası
+{price} ver senin olsun
+{price} yap
+yok. {price}
+{price}, hadi ama değer

@@ -1,0 +1,15 @@
+# someone else's murder. {actor} = victim, {other} = killer
+{other} got {actor} at {place} {when}
+{actor} got pk'd at {place}. dry looted
+{other} is working {place}. got {actor} {when}
+dont go {place} alone. {other} got {actor} there
+heard {actor} went down to {other} out at {place}
+{other} again. {actor} this time. {place}
+{actor} lost a full kit to {other} at {place}
+{other} was at {place} {when}. {actor} didnt make it back
+anyone seen {actor}? {other} got em at {place}
+{other} pk'd {actor} near {place}. same crew as before i bet
+{actor} got jumped at {place}
+someone said {other} killed {actor} at {place}. wouldnt surprise me
+id stay off the road by {place} for a bit
+{actor} went to {place} {when} and only {other} came back

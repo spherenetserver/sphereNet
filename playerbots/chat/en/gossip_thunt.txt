@@ -1,0 +1,5 @@
+{actor} dug up a real chest {when}
+heard {actor} found buried gold. guardians and all
+{actor} came back from a dig with a full pack {when}
+they say {actor}s map was real
+{actor} fought off a pack of undead over a chest

@@ -1,0 +1,11 @@
+# guild_group_arrive.txt — the guildmate has recalled in next to the asker.
+# Lines starting with # are comments. Blank lines ignored.
+
+here
+im here
+sup
+ok where we going
+ready
+lets go
+what are we hunting
+im with you

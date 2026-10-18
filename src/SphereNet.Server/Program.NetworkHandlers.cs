@@ -380,115 +380,124 @@ public static partial class Program
     {
         if (!_clients.TryGetValue(state.Id, out var client))
         {
-            client = new GameClient(state, _world, _accounts,
-                _loggerFactory.CreateLogger<GameClient>());
-            client.SetEngines(_movement, _speech, _commands, _spellEngine, _deathEngine, _partyManager, _tradeManager,
-                _skillHandlers, _craftingEngine, _housingEngine, _triggerDispatcher, _guildManager, _mountEngine,
-                _customHousing, _chatEngine);
-            client.SetScriptServices(_systemHooks, _scriptDb, ResolveDefMessage, _scriptFile, _scriptLdb,
-                _scriptDirs.Count > 0 ? _scriptDirs[0] : Path.GetDirectoryName(_config.ScpFilesDir),
-                _scriptMdb);
-            client.BroadcastNearby = BroadcastNearby;
-            client.BroadcastMoveNearby = BroadcastMoveNearby;
-            client.ForEachClientInRange = ForEachClientInRange;
-            client.ForEachPlayingClient = ForEachPlayingClient;
-            client.SendToChar = SendPacketToChar;
-            client.BroadcastCharacterAppear = BroadcastCharacterAppear;
-            client.OnCharacterDeathOfOther = victim =>
-            {
-                // Resolve the victim's own client and run its death sequence
-                // (ghost transition, 0x77 broadcast, 0x20/0x2C self packets).
-                if (_clientsByCharUid.TryGetValue(victim.Uid, out var victimClient))
-                    victimClient.OnCharacterDeath();
-            };
-            client.OnResurrectOther = victim =>
-            {
-                if (_clientsByCharUid.TryGetValue(victim.Uid, out var victimClient))
-                    victimClient.OnResurrect();
-                else if (victim.IsDead)
-                    victim.Resurrect(); // offline / NPC fallback
-            };
-            client.OnKillTarget = (killer, victim) =>
-            {
-                if (victim.IsDead || victim.IsDeleted)
-                {
-                    client.SysMessage($"'{victim.Name}' is already dead.");
-                    return;
-                }
-                BroadcastLightningStrike(victim);
-                // CHV_KILL is OnTakeDamage(10000, pSrc, DAMAGE_GOD) (CChar.cpp:4691):
-                // the blow lands on the attacker list, where kill credit is read.
-                victim.RecordAttack(killer.Uid, 10000);
-                ProcessDeathWithEffects(victim, killer);
-                client.SysMessage($"Killed '{victim.Name}'.");
-            };
-
-            client.SendTradeToPartner = (partner, initiator, cont1, cont2) =>
-            {
-                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
-                {
-                    pc.NetState.Send(new PacketWorldItem(cont1.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
-                    pc.NetState.Send(new PacketWorldItem(cont2.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
-                    pc.NetState.Send(new PacketSecureTradeOpen(
-                        initiator.Uid.Value, cont2.Uid.Value, cont1.Uid.Value, initiator.GetName()));
-                    if (SphereNet.Game.Trade.VirtualGold.Enabled && pc.NetState.SupportsNewSecureTrading)
-                    {
-                        var (lg, lp) = SphereNet.Game.Trade.VirtualGold.Split(
-                            SphereNet.Game.Trade.VirtualGold.Get(partner));
-                        pc.NetState.Send(new PacketSecureTradeGold(
-                            PacketSecureTradeGold.LedgerType, cont2.Uid.Value, lg, lp));
-                    }
-                }
-            };
-            client.SendTradeItemToPartner = (partner, item, container) =>
-            {
-                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
-                    pc.NetState.Send(new PacketContainerItem(
-                        item.Uid.Value, item.DispIdFull, 0,
-                        item.Amount, 30, 30,
-                        container.Uid.Value, item.Hue, pc.NetState.IsClientPost6017));
-            };
-            client.SendTradeCloseToPartner = (partner, containerSerial) =>
-            {
-                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
-                    pc.NetState.Send(new PacketSecureTradeClose(containerSerial));
-            };
-            client.SendTradeUpdateToPartner = (partner, trade) =>
-            {
-                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
-                {
-                    var theirCont = trade.GetOwnContainer(partner);
-                    bool theirAcc = partner == trade.Initiator ? trade.InitiatorAccepted : trade.PartnerAccepted;
-                    bool myAcc = partner == trade.Initiator ? trade.PartnerAccepted : trade.InitiatorAccepted;
-                    pc.NetState.Send(new PacketSecureTradeUpdate(theirCont.Uid.Value, theirAcc, myAcc));
-                }
-            };
-            client.SendTradeMessageToPartner = (partner, msg) =>
-            {
-                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
-                    pc.SysMessage(msg);
-            };
-            client.RefreshBackpackForPartner = partner =>
-            {
-                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
-                {
-                    var pack = partner.Backpack;
-                    if (pack != null)
-                    {
-                        foreach (var child in _world.GetContainerContents(pack.Uid))
-                        {
-                            pc.NetState.Send(new PacketContainerItem(
-                                child.Uid.Value, child.DispIdFull, 0,
-                                child.Amount, child.X, child.Y,
-                                pack.Uid.Value, child.Hue,
-                                pc.NetState.IsClientPost6017));
-                        }
-                    }
-                }
-            };
-
+            client = CreateWiredClient(state);
             _clients[state.Id] = client;
         }
+        return client;
+    }
+
+    /// <summary>A GameClient with every engine and callback wired, not registered as
+    /// a connection. Network clients register it in _clients; a server-driven player
+    /// keeps its own (its NetState has no socket, so whatever it is sent is dropped).</summary>
+    internal static GameClient CreateWiredClient(NetState state)
+    {
+        var client = new GameClient(state, _world, _accounts,
+            _loggerFactory.CreateLogger<GameClient>());
+        client.SetEngines(_movement, _speech, _commands, _spellEngine, _deathEngine, _partyManager, _tradeManager,
+            _skillHandlers, _craftingEngine, _housingEngine, _triggerDispatcher, _guildManager, _mountEngine,
+            _customHousing, _chatEngine);
+        client.SetScriptServices(_systemHooks, _scriptDb, ResolveDefMessage, _scriptFile, _scriptLdb,
+            _scriptDirs.Count > 0 ? _scriptDirs[0] : Path.GetDirectoryName(_config.ScpFilesDir),
+            _scriptMdb);
+        client.BroadcastNearby = BroadcastNearby;
+        client.BroadcastMoveNearby = BroadcastMoveNearby;
+        client.ForEachClientInRange = ForEachClientInRange;
+        client.ForEachPlayingClient = ForEachPlayingClient;
+        client.SendToChar = SendPacketToChar;
+        client.BroadcastCharacterAppear = BroadcastCharacterAppear;
+        client.OnCharacterDeathOfOther = victim =>
+        {
+            // Resolve the victim's own client and run its death sequence
+            // (ghost transition, 0x77 broadcast, 0x20/0x2C self packets).
+            if (_clientsByCharUid.TryGetValue(victim.Uid, out var victimClient))
+                victimClient.OnCharacterDeath();
+        };
+        client.OnResurrectOther = victim =>
+        {
+            if (_clientsByCharUid.TryGetValue(victim.Uid, out var victimClient))
+                victimClient.OnResurrect();
+            else if (victim.IsDead)
+                victim.Resurrect(); // offline / NPC fallback
+        };
+        client.OnKillTarget = (killer, victim) =>
+        {
+            if (victim.IsDead || victim.IsDeleted)
+            {
+                client.SysMessage($"'{victim.Name}' is already dead.");
+                return;
+            }
+            BroadcastLightningStrike(victim);
+            // CHV_KILL is OnTakeDamage(10000, pSrc, DAMAGE_GOD) (CChar.cpp:4691):
+            // the blow lands on the attacker list, where kill credit is read.
+            victim.RecordAttack(killer.Uid, 10000);
+            ProcessDeathWithEffects(victim, killer);
+            client.SysMessage($"Killed '{victim.Name}'.");
+        };
+
+        client.SendTradeToPartner = (partner, initiator, cont1, cont2) =>
+        {
+            if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+            {
+                pc.NetState.Send(new PacketWorldItem(cont1.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
+                pc.NetState.Send(new PacketWorldItem(cont2.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
+                pc.NetState.Send(new PacketSecureTradeOpen(
+                    initiator.Uid.Value, cont2.Uid.Value, cont1.Uid.Value, initiator.GetName()));
+                if (SphereNet.Game.Trade.VirtualGold.Enabled && pc.NetState.SupportsNewSecureTrading)
+                {
+                    var (lg, lp) = SphereNet.Game.Trade.VirtualGold.Split(
+                        SphereNet.Game.Trade.VirtualGold.Get(partner));
+                    pc.NetState.Send(new PacketSecureTradeGold(
+                        PacketSecureTradeGold.LedgerType, cont2.Uid.Value, lg, lp));
+                }
+            }
+        };
+        client.SendTradeItemToPartner = (partner, item, container) =>
+        {
+            if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+                pc.NetState.Send(new PacketContainerItem(
+                    item.Uid.Value, item.DispIdFull, 0,
+                    item.Amount, 30, 30,
+                    container.Uid.Value, item.Hue, pc.NetState.IsClientPost6017));
+        };
+        client.SendTradeCloseToPartner = (partner, containerSerial) =>
+        {
+            if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+                pc.NetState.Send(new PacketSecureTradeClose(containerSerial));
+        };
+        client.SendTradeUpdateToPartner = (partner, trade) =>
+        {
+            if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+            {
+                var theirCont = trade.GetOwnContainer(partner);
+                bool theirAcc = partner == trade.Initiator ? trade.InitiatorAccepted : trade.PartnerAccepted;
+                bool myAcc = partner == trade.Initiator ? trade.PartnerAccepted : trade.InitiatorAccepted;
+                pc.NetState.Send(new PacketSecureTradeUpdate(theirCont.Uid.Value, theirAcc, myAcc));
+            }
+        };
+        client.SendTradeMessageToPartner = (partner, msg) =>
+        {
+            if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+                pc.SysMessage(msg);
+        };
+        client.RefreshBackpackForPartner = partner =>
+        {
+            if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+            {
+                var pack = partner.Backpack;
+                if (pack != null)
+                {
+                    foreach (var child in _world.GetContainerContents(pack.Uid))
+                    {
+                        pc.NetState.Send(new PacketContainerItem(
+                            child.Uid.Value, child.DispIdFull, 0,
+                            child.Amount, child.X, child.Y,
+                            pack.Uid.Value, child.Hue,
+                            pc.NetState.IsClientPost6017));
+                    }
+                }
+            }
+        };
+
         return client;
     }
 
@@ -545,6 +554,8 @@ public static partial class Program
             if (sector == null) continue;
             foreach (var ch in sector.OnlinePlayers)
             {
+                // A server-driven player is sent nothing: it reads no packets.
+                if (ch.IsPlayerBot) continue;
                 if (ch.Uid.Value == excludeUid) continue;
                 if (center.GetDistSight(ch.Position) > range) continue;
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
@@ -655,6 +666,8 @@ public static partial class Program
             if (sector == null) continue;
             foreach (var ch in sector.OnlinePlayers)
             {
+                // A server-driven player is sent nothing: it reads no packets.
+                if (ch.IsPlayerBot) continue;
                 if (ch.Uid.Value == excludeUid) continue;
                 if (center.GetDistSight(ch.Position) > range) continue;
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
@@ -704,6 +717,8 @@ public static partial class Program
             if (sector == null) continue;
             foreach (var ch in sector.OnlinePlayers)
             {
+                // A server-driven player is sent nothing: it reads no packets.
+                if (ch.IsPlayerBot) continue;
                 if (ch.Uid.Value == excludeUid) continue;
                 if (!_clientsByCharUid.TryGetValue(ch.Uid, out var c) || !c.IsPlaying) continue;
                 if (!InViewOf(c, ch, center)) continue;
@@ -761,6 +776,8 @@ public static partial class Program
             if (sector == null || sector.OnlinePlayers.Count == 0) continue;
             foreach (var other in sector.OnlinePlayers)
             {
+                // A server-driven player is sent nothing: it reads no packets.
+                if (other.IsPlayerBot) continue;
                 if (other == ch) continue;
                 if (_clientsByCharUid.TryGetValue(other.Uid, out var c) && c.IsPlaying &&
                     InViewOf(c, other, ch.Position))
@@ -836,7 +853,8 @@ public static partial class Program
             if (sector == null || sector.OnlinePlayers.Count == 0) continue;
             foreach (var other in sector.OnlinePlayers)
             {
-                if (other == ch) continue;
+                // A server-driven player keeps no view of the world to update.
+                if (other == ch || other.IsPlayerBot) continue;
                 if (!_clientsByCharUid.TryGetValue(other.Uid, out var c) || !c.IsPlaying) continue;
                 if (isPlayer)
                     c.NotifyCharEnterLeave(ch, oldPos);
@@ -860,6 +878,8 @@ public static partial class Program
             if (sector == null || sector.OnlinePlayers.Count == 0) continue;
             foreach (var ch in sector.OnlinePlayers)
             {
+                // A server-driven player is sent nothing: it reads no packets.
+                if (ch.IsPlayerBot) continue;
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying &&
                     InViewOf(c, ch, pos))
                     c.ViewNeedsRefresh = true;
@@ -938,7 +958,7 @@ public static partial class Program
         // a piece of armour or a weight change left the open window on the old numbers
         // until the player closed and reopened it.
         if ((obj.LastConsumedDirtyFlags & DirtyFlag.Stats) != DirtyFlag.None &&
-            obj is Character statChar &&
+            obj is Character { IsPlayerBot: false } statChar &&
             _clientsByCharUid.TryGetValue(statChar.Uid, out var owner) && owner.IsPlaying)
         {
             owner.RefreshStatusIfChanged();
@@ -952,6 +972,8 @@ public static partial class Program
             if (sector == null) continue;
             foreach (var ch in sector.OnlinePlayers)
             {
+                // A server-driven player is sent nothing: it reads no packets.
+                if (ch.IsPlayerBot) continue;
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying &&
                     InViewOf(c, ch, pos))
                 {

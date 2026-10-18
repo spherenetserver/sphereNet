@@ -305,6 +305,12 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
     public bool IsPlaying => _character != null && !_character.IsDeleted;
     public bool HasPendingTarget => Targets.CursorActive;
 
+    /// <summary>Let the server play <paramref name="ch"/> through this client: the
+    /// same attack, cast, speech and target handlers a connected player goes
+    /// through, with no login sequence. The client's NetState has no socket, so what
+    /// it would be sent is dropped.</summary>
+    public void AttachServerDriven(Character ch) => _character = ch;
+
     /// <summary>A disconnect changes the party like any other departure, so the people
     /// still connected are told: Source-X takes the same RemoveMember path when a
     /// character disconnects (SetDisconnected, CChar.cpp:528 -> CParty.cpp:296), which

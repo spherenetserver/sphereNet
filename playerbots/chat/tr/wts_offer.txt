@@ -1,0 +1,15 @@
+# wts_offer.txt — seyyarın satış lafı, çantasındaki gerçek itemdan.
+# {item} = gerçek mal, {price} = gerçek istenen fiyat.
+
+WTS {item} {price}
+WTS {item} {price} pm atın
+WTS {item}, {price}
+WTS {item} - {price}
+satılık {item} {price}
+{item} satılık, {price}
+WTS {item} {price} pazarlık olur
+elimde {item} var, {price}
+WTS {item}. {price} inmez
+{item} lazım olan? {price}
+WTS {item} {price} teklif pm
+{item} satıyorum, {price}, dip fiyat yok

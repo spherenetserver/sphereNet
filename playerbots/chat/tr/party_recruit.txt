@@ -1,0 +1,15 @@
+# party_recruit.txt — av partisi için adam toplayan lider.
+# {dungeon} = hedef dungeon adı (küçük harf).
+
+LFG {dungeon} var mı?
+lfg {dungeon}
+{dungeon} avına gelen?
+{dungeon} için grup kuruyorum, kim var
+{dungeon} için 2-3 kişi lazım
+{dungeon} turu, gelen var mı?
+{dungeon} gidiyorum, lf arkadaş
+{dungeon} isteyen? loot iyi
+lf group {dungeon}, birazdan çıkıyoruz
+{dungeon} gelen? tank benden
+{dungeon} grubu burda toplanıyor
+{dungeon} için ne1?

@@ -1,0 +1,11 @@
+# buy_answered.txt — WTB diye bağırdığın şey bende var diyene cevap. {item}.
+
+evet alıyorum, 1 sn
+hala istiyorum, bekle
+oh süper, geliyorum
+evet istiyorum
+alırım, bi sn ver
+hala arıyorum evet
+süper, bekle
+tamam göster bi
+alıyorum, geliyorum

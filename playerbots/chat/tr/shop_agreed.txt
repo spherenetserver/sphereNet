@@ -1,0 +1,6 @@
+# shop_agreed.txt — anlaştıktan sonra oyuncu tekrar soruyor. {price}.
+
+dediğim gibi {price}
+hala {price}
+{price}. konuştuk ya
+{price} kanka

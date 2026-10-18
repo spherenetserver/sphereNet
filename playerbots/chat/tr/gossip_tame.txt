@@ -1,0 +1,4 @@
+{actor} {when} vahşi doğada {other} tame etti
+{actor} {other} ile ana caddeden geçti gördüm
+{actor} {other} ikna edip peşine taktı. birkaç deneme sürdü
+duydum {other} yola gelmeden {actor} iki kere ısırık yemiş

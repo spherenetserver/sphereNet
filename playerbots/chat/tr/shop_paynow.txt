@@ -1,0 +1,8 @@
+# shop_paynow.txt — parayı nereye koyacağın. {price} {item}.
+
+gold'u üstüme bırak
+{price}, üstüme bırak
+{price} üstüme at
+gold üstüme, mal senin
+parayı üstüme bırak kanka
+{price} üstüme, veriyorum hemen

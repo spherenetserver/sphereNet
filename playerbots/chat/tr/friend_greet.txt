@@ -1,0 +1,18 @@
+# friend_greet.txt — arkadaşı ya da guild arkadaşını görünce ADIYLA selamlama.
+# {name} = diğer botun ilk adı.
+
+yo {name}
+slm {name}
+{name}!
+selam {name}
+nbr {name}
+{name} naber
+{name} nerdesin ya, uzun zaman oldu
+{name} kankam
+hey {name}
+hoş buldum {name}
+{name}! nasıl gidiyo
+bak kim gelmiş, {name}
+aa {name} bu
+{name} hala yaşıyon mu?
+{name}! av nasıl

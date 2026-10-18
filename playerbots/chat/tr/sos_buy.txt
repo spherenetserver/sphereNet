@@ -1,0 +1,7 @@
+# sos_buy.txt — iskeledeki maceracı haritayı alır.
+
+ver bakim, paraya ihtiyacım var
+aldım. bugün şanslı günüm
+tamam. sahteyse geri gelirim
+ver hadi, küreğim var
+o haritayı alırım

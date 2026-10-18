@@ -1,0 +1,5 @@
+{actor} {when} {other} tarafına bi savaş ekibi çıkardı
+{other} tarafına yürüyen kalkanlar gördüm. uzak durun
+{when} {other} tarafına bi savaş ekibi gitti
+{actor} ekibi {other} civarında düşman avına çıktı
+{other} tarafında devriyeler var. kafanızı eğik tutun

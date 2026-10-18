@@ -1,0 +1,8 @@
+# warband_depart.txt — savaş ekibi devriyeye çıkıyor.
+# {dest} = devriye hedefi adı (küçük harf).
+
+hareket — {dest}, gözler açık
+devriye başladı, önce {dest}
+{dest} tarafına gidiyoruz, yanlış kalkanlı ne varsa kesin
+{dest} taraması, sıkı durun
+{dest} yolundayız

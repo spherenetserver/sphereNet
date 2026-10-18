@@ -1,0 +1,13 @@
+# bank_actions.txt — botların bankayı "kullanırken" söyledikleri.
+# Bunlar gerçek UO komutları. 'bank' banka kutusunu açar; 'withdraw N'
+# bankadan altın çeker. Gerçek oyuncu da bunları yüksek sesle söyler,
+# bu yüzden banka kalabalığında botların söylemesi tam yerinde.
+
+bank
+bank
+bank
+withdraw 100
+withdraw 500
+withdraw 1000
+withdraw 5000
+balance

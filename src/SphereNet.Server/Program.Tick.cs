@@ -767,6 +767,7 @@ public static partial class Program
         // bulk-woken by WakeNewlyActiveSectorNpcs when a player enters.
         RunDueNpcs(_npcTimerWheel, Environment.TickCount64, _npcAI.OnTickAction, ShouldStayScheduled);
         _npcAI.PurgeStalePaths();
+        TickPlayerBots();
 
         _telemetrySnapshotUs = ToMicroseconds(Stopwatch.GetTimestamp() - p0);
         _telemetryWorldTickUs = 0;
@@ -1172,6 +1173,7 @@ public static partial class Program
         _telemetryNpcApplyDecisionCount = decisionList.Count;
 
         _npcAI.PurgeStalePaths();
+        TickPlayerBots();
         long p1cPurge = Stopwatch.GetTimestamp();
         _telemetryNpcApplyPurgeUs = ToMicroseconds(p1cPurge - p1cApply);
 

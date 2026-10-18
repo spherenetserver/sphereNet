@@ -1904,7 +1904,7 @@ public static partial class Program
 
         void Add(Character? ch, GameClient? client)
         {
-            if (ch == null || ch.IsDeleted || !ch.IsPlayer || !ch.IsOnline)
+            if (ch == null || ch.IsDeleted || !ch.IsPlayer || !ch.HasClient)
                 return;
             if (!seen.Add(ch.Uid))
                 return;

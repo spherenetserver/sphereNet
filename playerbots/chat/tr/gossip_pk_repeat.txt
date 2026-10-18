@@ -1,0 +1,8 @@
+# zaten {count} kez adı geçen bi katil. {other} = katil
+yine {other}. {count} oldu
+{other} bildiğim {count} kişiyi kesti. biri bişey yapsın
+kim besliyo şu {other} denen adamı. {count} kill
+{other} {place} tarafında birini daha kesti. bu hafta rahat {count}
+{other} şimdiye kadar {count} kişi kesti. bu sefer {place} tarafında
+{other} görürseniz direk recall atın. değmez
+{other}. {place}. yine. ben oraya çıkmıyorum

@@ -1,0 +1,16 @@
+# craft_talk.txt — any-trade crafter lines (shared pool). The per-trade
+# patter lives in smith_talk / tailor_talk / carpenter_talk; keep this
+# file generic so nothing here reads wrong at any station.
+
+honest work, honest prices
+quality takes time
+been at this craft for years
+this one came out nicely
+back to work
+orders piling up
+long day at the bench
+hands are killing me
+customers all morning, no break
+almost got the knack of this
+slow day. anyone buying
+gm work doesnt come cheap

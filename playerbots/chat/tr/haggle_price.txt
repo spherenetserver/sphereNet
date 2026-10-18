@@ -1,0 +1,8 @@
+# haggle_price.txt — satıcı rakamını söyler. {price}.
+
+{price}
+{price} gp
+ona {price}
+{price} istiyorum
+{price}, aslında daha fazla eder
+{price} ve senin

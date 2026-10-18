@@ -1,0 +1,24 @@
+# guild_chatter.txt — random guild chat from bots in a player's guild.
+# Said in guild chat when a real guildmate is online. 1999 style.
+# Lines starting with # are comments. Blank lines ignored.
+
+lag
+anyone got spare regs
+brb
+lol
+whos on
+gm eval finally
+just died at deceit lol
+anyone selling a gm hally
+bank is packed tonight
+i hate ettins
+who took the last of the bandages
+afk 5
+back
+this weather sucks
+i need a res
+made 2k today
+anyone seen a red near yew
+what time is it for you guys
+im so broke
+my hally is almost gm

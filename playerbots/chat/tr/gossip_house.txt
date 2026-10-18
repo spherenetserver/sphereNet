@@ -1,0 +1,7 @@
+# biri ev kurdu. {actor} = sahibi. {place} ve {when} her zamanki gibi.
+
+{actor} {place} tarafına ev kurmuş
+{actor} nihayet ev sahibi oldu, {when}
+{place} yakınında yeni bi ev dikildi gördüm
+{actor} artık ev sahibi. zengin olmalı
+{place} yanında yeni bi ev var

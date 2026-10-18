@@ -1,0 +1,6 @@
+# tame_buy.txt — bir izleyici pet'i satın alıyor. {pet} = yaratık adı.
+tamam. gel bakalım
+2k?? peki. PEKİ. al goldumu
+hep bundan istemiştim
+satıldı! adını fluffy koyucam
+kendi {pet} hayvanım. ne gün ama

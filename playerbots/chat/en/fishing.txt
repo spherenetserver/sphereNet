@@ -1,0 +1,18 @@
+# fishing.txt — lines for fisherman bots working the docks. T2A era.
+# Period-feeling: quiet dockside mutter, the catch, selling fish, sea tales.
+# Lines starting with # are comments. Blank lines ignored.
+
+not a nibble all morning
+WTS fresh fish, cheap
+caught a big one yesterday, this long
+hooked an old boot last cast, ha
+got a message in a bottle once, true story
+fish are biting today
+selling todays catch
+need a new pole
+sea serpents east of here, careful
+heard u can fish up treasure maps
+afk fishing
+fishing is so boring lol
+slow day
+0 fish in an hour

@@ -1,0 +1,4 @@
+{actor} guild ekibini {other} tarafına götürdü, {when}
+{actor} ve guildi {other} yoluna beraber yürüyordu
+bütün guild {other} yolunda
+{actor} ve guild arkadaşları {other} tarafına gitti

@@ -1613,7 +1613,14 @@ public sealed class GameWorld
 
     // --- Rooms ---
 
-    public void AddRoom(Room room) => _rooms.Add(room);
+    public void AddRoom(Room room)
+    {
+        _rooms.Add(room);
+        Interlocked.Increment(ref Room.LayoutVersion);
+    }
+
+    private RoomIndex? _roomIndex;
+    private readonly object _roomIndexBuildLock = new();
 
     /// <summary>sphere.ini AREAFLAGS (Source-X _uiAreaFlags, default
     /// AREAF_RoomInheritsFlags): what every ROOMDEF takes from the areas around its
@@ -1650,6 +1657,25 @@ public sealed class GameWorld
     }
 
     public Room? FindRoom(Point3D pt)
+    {
+        // The first room in the list that contains the point, found through the
+        // index of the rooms touching the point's 64-tile cell.
+        var index = _roomIndex;
+        int version = Volatile.Read(ref Room.LayoutVersion);
+        if (index == null || index.Version != version)
+        {
+            lock (_roomIndexBuildLock)
+            {
+                index = _roomIndex;
+                if (index == null || index.Version != version)
+                    _roomIndex = index = RoomIndex.Build(_rooms, version);
+            }
+        }
+        return index.Find(pt);
+    }
+
+    /// <summary>Full scan of the room list - the reference the index must agree with.</summary>
+    internal Room? FindRoomUncached(Point3D pt)
     {
         foreach (var room in _rooms)
         {

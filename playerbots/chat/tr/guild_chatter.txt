@@ -1,0 +1,24 @@
+# guild_chatter.txt — oyuncunun guildindeki botlardan rastgele guild chat.
+# Gerçek bir guildmate online iken guild chatte söylenir. 1999 tarzı.
+# # ile başlayan satırlar yorumdur. Boş satırlar yok sayılır.
+
+lag
+fazla regi olan var mı
+brb
+lol
+kim on
+nihayet gm eval
+deceitte öldüm lol
+gm hally satan var mı
+bu gece bank tıklım tıklım
+ettinlerden nefret ediyorum
+son bandajları kim aldı
+afk 5
+geldim
+bu hava berbat
+res lazım
+bugün 2k yaptım
+yew civarında red gören oldu mu
+sizde saat kaç
+çok fakirim ya
+hallym gm olmak üzere

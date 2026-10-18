@@ -1,0 +1,10 @@
+# buy_counter.txt — bot oyuncunun fiyatına karşı teklif verir. {price} {item}.
+
+{price}?
+{price} verebilirim
+elimde {price} var
+{price} derim
+{price} olsun mu
+{price}, gayet makul
+{price} rakamında buluşalım
+{price} ve anlaştık

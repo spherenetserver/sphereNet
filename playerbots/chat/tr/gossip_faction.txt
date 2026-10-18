@@ -1,0 +1,7 @@
+{place} tarafında shield war'da {other} {actor} adlı kişiyi öldürdü
+{place} tarafında order chaos kapışması. {actor} düştü
+{place} tarafında {other} {actor} adlı kişiyi kesti, gördüm. yine shield war
+{actor} {when} {place} tarafındaki faction savaşında öldü
+{when} {place} tarafında büyük kavga. {other} {actor} adlı kişiyi indirdi
+savaş {actor} adlı kişiyi {place} tarafında götürdü
+{place} tarafında {other} {actor} adlı kişiyi öldürürken guardlar sadece izledi

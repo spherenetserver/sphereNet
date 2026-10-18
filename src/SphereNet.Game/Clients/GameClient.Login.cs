@@ -1097,7 +1097,7 @@ public sealed partial class GameClient
         // arrival sees how many fellow players are already in the shard.
         int otherPlayers = 0;
         foreach (var c in _world.OnlinePlayers)
-            if (c != _character && c.IsPlayer && c.IsOnline) otherPlayers++;
+            if (c != _character && c.IsPlayer && c.HasClient) otherPlayers++;
         if (quietLogin) { }
         else if (otherPlayers == 1)
             SysMessage(ServerMessages.Get(Msg.LoginPlayer));

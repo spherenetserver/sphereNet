@@ -1,0 +1,7 @@
+{actor} took a group to {other} {when}
+{actor} is running {other} with a group
+saw {actor}'s party heading for {other}
+{actor} got a group together for {other}
+theres a hunt on at {other}. {actor} is leading
+missed {actor}'s {other} run. left {when}
+{actor} and friends went to {other}. brave

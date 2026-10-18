@@ -56,7 +56,7 @@ public static class ScriptObjectQueries
             {
                 if (query is "FORCHARS" or "FOROBJS" ||
                     query == "FORPLAYERS" && ch.IsPlayer ||
-                    query == "FORCLIENTS" && ch.IsPlayer && ch.IsOnline)
+                    query == "FORCLIENTS" && ch.IsPlayer && ch.HasClient)
                     result.Add(ch);
             }
         return result;

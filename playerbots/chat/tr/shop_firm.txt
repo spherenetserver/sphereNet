@@ -1,0 +1,7 @@
+# shop_firm.txt — inatçı satıcı oyuncuya karşılık veriyor. {price}.
+
+lowball yok. {price}
+{price}. al ya da bırak
+acelem yok. {price}
+lol. {price}
+{price} ya da hiç kanka

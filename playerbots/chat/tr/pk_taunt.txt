@@ -1,0 +1,17 @@
+# pk_taunt.txt — PK bot satırları. T2A dönemi. PK saldırınca ya da
+# av ararken söylenir. Tehditkar, dönemine uygun pk laf sokması.
+
+ya gold ya can
+gold ver ya da öl
+lootu bırak kaç
+goldu ver gidebilirsin
+kaçma, daha kötü olur
+ez
+otur
+ver bakim
+tek gelmeyecektin
+burda guards yok kanka
+felucca'ya hoşgeldin
+kişisel değil, reg lazım bana
+kaç da yorgun öl
+onu ben alıyorum

@@ -1,0 +1,8 @@
+# haggle_take.txt — alıcı kabul ediyor. {price}.
+
+alıyorum
+tamam anlaştık
+k tamam
+satıldı, ver
+ok
+{price} alıyorum

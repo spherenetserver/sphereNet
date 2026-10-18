@@ -1,0 +1,8 @@
+# trade_open.txt — satıcı malı masaya koyar. {item} {price}.
+
+{item} için {price}
+al {item}. {price}
+{price}
+goldu koy
+{price} ve senin
+hadi, {price}

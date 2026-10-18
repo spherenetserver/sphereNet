@@ -1,0 +1,276 @@
+//****************************************************************************
+// Player bot archetypes
+//
+// Server-driven player characters are created from these CHARDEFs (see
+// archetypes.txt for which ones and how often). ON=@Create dresses and skills
+// the character exactly like a pack NPC; afterwards the engine turns it into a
+// player character. Item defnames are the pack's own - edit freely, an item the
+// running pack does not define is simply skipped.
+//
+// T2A-era kit only: plain cloth, leather/chain/plate, classic weapons.
+//****************************************************************************
+
+//----------------------------------------------------------------------------
+// Warrior
+//----------------------------------------------------------------------------
+[CHARDEF c_playerbot_warrior_m]
+ID=c_man
+NAME=#NAMES_HUMANMALE
+CAN=MT_EQUIP|MT_USEHANDS|MT_WALK|MT_RUN|MT_MALE
+CATEGORY=Player Bots
+DESCRIPTION=Warrior (male)
+ON=@Create
+   COLOR=colors_skin
+   STR={80 100}
+   DEX={70 90}
+   INT={25 40}
+   SWORDSMANSHIP={70.0 100.0}
+   MACEFIGHTING={40.0 80.0}
+   TACTICS={70.0 100.0}
+   PARRYING={50.0 90.0}
+   ANATOMY={60.0 100.0}
+   HEALING={60.0 100.0}
+   MAGICRESISTANCE={40.0 80.0}
+   ITEMNEWBIE={ i_hair_short 3 i_hair_long 2 i_hair_ponytail 2 i_hair_receding 1 i_hair_pageboy 1 }
+   COLOR=colors_hair
+   ITEMNEWBIE={ i_beard_short 2 i_goatee 2 i_mustache 2 i_beard_long 1 }
+   COLOR=match_hair
+   ITEM={ i_chainmail_tunic 2 i_ringmail_tunic 2 i_platemail_chest 1 }
+   ITEM=i_leather_leggings
+   ITEM=i_leather_gloves
+   ITEM={ i_shoes_plain 3 i_boots_thigh 2 i_sandals 2 }
+   ITEM={ i_halberd 3 i_katana 3 i_mace 2 i_staff_quarter 1 }
+   ITEM=i_bandage,{20 60}
+   ITEM=i_potion_heal,{1 4}
+   ITEM=i_potion_cure,{1 3}
+   ITEM=i_gold,{80 600}
+
+[CHARDEF c_playerbot_warrior_f]
+ID=c_woman
+NAME=#NAMES_HUMANFEMALE
+CAN=MT_EQUIP|MT_USEHANDS|MT_WALK|MT_RUN|MT_FEMALE
+CATEGORY=Player Bots
+DESCRIPTION=Warrior (female)
+ON=@Create
+   COLOR=colors_skin
+   STR={75 95}
+   DEX={75 95}
+   INT={25 40}
+   SWORDSMANSHIP={70.0 100.0}
+   FENCING={40.0 80.0}
+   TACTICS={70.0 100.0}
+   PARRYING={50.0 90.0}
+   ANATOMY={60.0 100.0}
+   HEALING={60.0 100.0}
+   MAGICRESISTANCE={40.0 80.0}
+   ITEMNEWBIE={ i_hair_long 3 i_hair_ponytail 3 i_hair_pageboy 2 i_hair_short 1 }
+   COLOR=colors_hair
+   ITEM={ i_chainmail_tunic 2 i_ringmail_tunic 2 i_leather_tunic 1 }
+   ITEM=i_leather_leggings
+   ITEM=i_leather_gloves
+   ITEM={ i_shoes_plain 3 i_boots_thigh 2 i_sandals 2 }
+   ITEM={ i_halberd 3 i_katana 3 i_mace 2 i_staff_quarter 1 }
+   ITEM=i_bandage,{20 60}
+   ITEM=i_potion_heal,{1 4}
+   ITEM=i_potion_cure,{1 3}
+   ITEM=i_gold,{80 600}
+
+//----------------------------------------------------------------------------
+// Mage
+//----------------------------------------------------------------------------
+[CHARDEF c_playerbot_mage_m]
+ID=c_man
+NAME=#NAMES_HUMANMALE
+CAN=MT_EQUIP|MT_USEHANDS|MT_WALK|MT_RUN|MT_MALE
+CATEGORY=Player Bots
+DESCRIPTION=Mage (male)
+ON=@Create
+   COLOR=colors_skin
+   STR={40 60}
+   DEX={30 50}
+   INT={80 100}
+   MAGERY={70.0 100.0}
+   EVALUATINGINTEL={60.0 100.0}
+   MEDITATION={50.0 100.0}
+   MAGICRESISTANCE={50.0 100.0}
+   WRESTLING={40.0 80.0}
+   ITEMNEWBIE={ i_hair_short 3 i_hair_long 2 i_hair_ponytail 2 i_hair_receding 1 i_hair_pageboy 1 }
+   COLOR=colors_hair
+   ITEMNEWBIE={ i_beard_short 2 i_goatee 2 i_mustache 2 i_beard_long 1 }
+   COLOR=match_hair
+   ITEM=i_robe
+   COLOR=colors_all
+   ITEM={ i_hat_wizards 2 i_hat_floppy 1 }
+   COLOR=colors_all
+   ITEM={ i_shoes_plain 3 i_boots_thigh 2 i_sandals 2 }
+   ITEM=i_spellbook
+   ADDCIRCLE=1
+   ADDCIRCLE=2
+   ADDCIRCLE=3
+   ADDCIRCLE=4
+   ADDCIRCLE=5
+   ADDCIRCLE=6
+   ADDCIRCLE=7
+   ADDCIRCLE=8
+   ITEM=i_reag_black_pearl,{20 60}
+   ITEM=i_reag_blood_moss,{20 60}
+   ITEM=i_reag_garlic,{20 60}
+   ITEM=i_reag_ginseng,{20 60}
+   ITEM=i_reag_mandrake_root,{20 60}
+   ITEM=i_reag_nightshade,{20 60}
+   ITEM=i_reag_sulfur_ash,{20 60}
+   ITEM=i_reag_spider_silk,{20 60}
+   ITEM=i_scroll_recall,{1 5}
+   ITEM=i_staff_quarter
+   ITEM=i_gold,{80 600}
+
+[CHARDEF c_playerbot_mage_f]
+ID=c_woman
+NAME=#NAMES_HUMANFEMALE
+CAN=MT_EQUIP|MT_USEHANDS|MT_WALK|MT_RUN|MT_FEMALE
+CATEGORY=Player Bots
+DESCRIPTION=Mage (female)
+ON=@Create
+   COLOR=colors_skin
+   STR={40 60}
+   DEX={30 50}
+   INT={80 100}
+   MAGERY={70.0 100.0}
+   EVALUATINGINTEL={60.0 100.0}
+   MEDITATION={50.0 100.0}
+   MAGICRESISTANCE={50.0 100.0}
+   WRESTLING={40.0 80.0}
+   ITEMNEWBIE={ i_hair_long 3 i_hair_ponytail 3 i_hair_pageboy 2 i_hair_short 1 }
+   COLOR=colors_hair
+   ITEM=i_robe
+   COLOR=colors_all
+   ITEM={ i_shoes_plain 3 i_boots_thigh 2 i_sandals 2 }
+   ITEM=i_spellbook
+   ADDCIRCLE=1
+   ADDCIRCLE=2
+   ADDCIRCLE=3
+   ADDCIRCLE=4
+   ADDCIRCLE=5
+   ADDCIRCLE=6
+   ADDCIRCLE=7
+   ADDCIRCLE=8
+   ITEM=i_reag_black_pearl,{20 60}
+   ITEM=i_reag_blood_moss,{20 60}
+   ITEM=i_reag_garlic,{20 60}
+   ITEM=i_reag_ginseng,{20 60}
+   ITEM=i_reag_mandrake_root,{20 60}
+   ITEM=i_reag_nightshade,{20 60}
+   ITEM=i_reag_sulfur_ash,{20 60}
+   ITEM=i_reag_spider_silk,{20 60}
+   ITEM=i_scroll_recall,{1 5}
+   ITEM=i_gold,{80 600}
+
+//----------------------------------------------------------------------------
+// Archer
+//----------------------------------------------------------------------------
+[CHARDEF c_playerbot_archer_m]
+ID=c_man
+NAME=#NAMES_HUMANMALE
+CAN=MT_EQUIP|MT_USEHANDS|MT_WALK|MT_RUN|MT_MALE
+CATEGORY=Player Bots
+DESCRIPTION=Archer (male)
+ON=@Create
+   COLOR=colors_skin
+   STR={60 80}
+   DEX={80 100}
+   INT={30 45}
+   ARCHERY={70.0 100.0}
+   TACTICS={60.0 100.0}
+   ANATOMY={50.0 90.0}
+   HEALING={50.0 90.0}
+   HIDING={30.0 70.0}
+   ITEMNEWBIE={ i_hair_short 3 i_hair_long 2 i_hair_ponytail 2 i_hair_receding 1 i_hair_pageboy 1 }
+   COLOR=colors_hair
+   ITEM=i_leather_tunic
+   ITEM=i_leather_leggings
+   ITEM={ i_hat_floppy 2 i_hat_wide_brim 2 i_bandana 2 i_skull_cap 2 }
+   ITEM={ i_shoes_plain 3 i_boots_thigh 2 i_sandals 2 }
+   ITEM={ i_bow 2 i_crossbow 1 }
+   ITEM=i_arrow,{40 150}
+   ITEM=i_bandage,{10 40}
+   ITEM=i_gold,{80 600}
+
+[CHARDEF c_playerbot_archer_f]
+ID=c_woman
+NAME=#NAMES_HUMANFEMALE
+CAN=MT_EQUIP|MT_USEHANDS|MT_WALK|MT_RUN|MT_FEMALE
+CATEGORY=Player Bots
+DESCRIPTION=Archer (female)
+ON=@Create
+   COLOR=colors_skin
+   STR={55 75}
+   DEX={85 100}
+   INT={30 45}
+   ARCHERY={70.0 100.0}
+   TACTICS={60.0 100.0}
+   ANATOMY={50.0 90.0}
+   HEALING={50.0 90.0}
+   HIDING={30.0 70.0}
+   ITEMNEWBIE={ i_hair_long 3 i_hair_ponytail 3 i_hair_pageboy 2 i_hair_short 1 }
+   COLOR=colors_hair
+   ITEM=i_leather_tunic
+   ITEM={ i_skirt_long 2 i_skirt_short 2 i_kilt 1 }
+   ITEM={ i_shoes_plain 3 i_boots_thigh 2 i_sandals 2 }
+   ITEM=i_bow
+   ITEM=i_arrow,{40 150}
+   ITEM=i_bandage,{10 40}
+   ITEM=i_gold,{80 600}
+
+//----------------------------------------------------------------------------
+// Townsfolk: crafters, merchants, newcomers in plain cloth
+//----------------------------------------------------------------------------
+[CHARDEF c_playerbot_townsfolk_m]
+ID=c_man
+NAME=#NAMES_HUMANMALE
+CAN=MT_EQUIP|MT_USEHANDS|MT_WALK|MT_RUN|MT_MALE
+CATEGORY=Player Bots
+DESCRIPTION=Townsfolk (male)
+ON=@Create
+   COLOR=colors_skin
+   STR={40 80}
+   DEX={30 60}
+   INT={30 60}
+   BLACKSMITHING={30.0 100.0}
+   TAILORING={20.0 80.0}
+   MINING={30.0 100.0}
+   ITEMNEWBIE={ i_hair_short 3 i_hair_long 2 i_hair_ponytail 2 i_hair_receding 1 i_hair_pageboy 1 }
+   COLOR=colors_hair
+   ITEMNEWBIE={ i_beard_short 2 i_goatee 2 i_mustache 2 i_beard_long 1 }
+   COLOR=match_hair
+   ITEM={ i_shirt_plain 4 i_shirt_fancy 2 i_doublet 2 i_tunic 2 }
+   COLOR=colors_all
+   ITEM={ i_pants_long 4 i_pants_short 2 i_kilt 1 }
+   COLOR=colors_all
+   ITEM={ i_shoes_plain 3 i_boots_thigh 2 i_sandals 2 }
+   ITEM={ i_apron_half 1 i_apron_full 1 }
+   ITEM=i_dagger
+   ITEM=i_gold,{20 300}
+
+[CHARDEF c_playerbot_townsfolk_f]
+ID=c_woman
+NAME=#NAMES_HUMANFEMALE
+CAN=MT_EQUIP|MT_USEHANDS|MT_WALK|MT_RUN|MT_FEMALE
+CATEGORY=Player Bots
+DESCRIPTION=Townsfolk (female)
+ON=@Create
+   COLOR=colors_skin
+   STR={35 70}
+   DEX={30 60}
+   INT={30 70}
+   TAILORING={30.0 100.0}
+   COOKING={20.0 80.0}
+   ITEMNEWBIE={ i_hair_long 3 i_hair_ponytail 3 i_hair_pageboy 2 i_hair_short 1 }
+   COLOR=colors_hair
+   ITEM={ i_dress_plain 2 i_dress_full 1 i_shirt_fancy 1 }
+   COLOR=colors_all
+   ITEM={ i_skirt_long 2 i_skirt_short 2 i_kilt 1 }
+   COLOR=colors_all
+   ITEM={ i_shoes_plain 3 i_boots_thigh 2 i_sandals 2 }
+   ITEM=i_gold,{20 300}
+
+[EOF]

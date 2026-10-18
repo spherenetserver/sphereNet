@@ -1,0 +1,10 @@
+# guild_group_cant.txt — a guildmate that wants to come but cannot recall
+# (no magery, no scroll, no regs). Said in guild chat.
+# Lines starting with # are comments. Blank lines ignored.
+
+no regs
+cant recall, walking
+no scroll
+ill walk, where are you
+out of regs sorry
+gimme a bit im far

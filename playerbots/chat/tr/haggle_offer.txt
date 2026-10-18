@@ -1,0 +1,9 @@
+# haggle_offer.txt — alıcı daha düşük söyler. {price}.
+
+{price}?
+{price} veririm
+elimde topu topu {price} var
+{price} nasıl
+{price}
+{price} olur bende
+{price} yapar mısın

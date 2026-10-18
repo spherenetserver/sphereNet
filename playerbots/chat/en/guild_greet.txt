@@ -1,0 +1,10 @@
+# guild_greet.txt — answering a hello in guild chat. {name} = who said hi.
+# Lines starting with # are comments. Blank lines ignored.
+
+hey
+sup
+yo {name}
+hey {name}
+hi
+whats up {name}
+o hey

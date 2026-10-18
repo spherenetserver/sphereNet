@@ -1,0 +1,21 @@
+# combat_engage.txt — Bot bir canavarla yeni kavgaya girerken savaş naraları.
+# Girişme anında söylenir, kavga ortasında değil (o combat_actions).
+# Kısa, sert, 1998 UO oyuncusu havası.
+# # ile başlayan satırlar yorumdur. Boş satırlar yok sayılır.
+
+gel buraya sen
+bunu ben alırım
+bu benim
+gel bakalım buraya
+hadi dans edelim
+kolay para
+zaten paraya ihtiyacım var
+yanlış yola girdin
+taze av
+başlıyoruz
+nihayet biraz aksiyon
+benim
+bunu hallederim
+çekiyorum
+inc
+izle bak

@@ -1,0 +1,10 @@
+# guild_greet.txt — guild chatte selama cevap. {name} = selam veren.
+# # ile başlayan satırlar yorumdur. Boş satırlar yok sayılır.
+
+slm
+nbr
+yo {name}
+as {name}
+selam
+naber {name}
+o slm

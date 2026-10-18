@@ -1,0 +1,10 @@
+# red_alert.txt — sivil bir murderer görür. {place} = yer (büyük harf).
+
+{place} TARAFINDA RED VAR!!
+RED!! {place}!!
+{place} tarafında murderer, KAÇIN
+{place} tarafında pk!!!
+red red red {place}
+GUARDS... ha doğru. {place} TARAFINDA RED
+herkes {place} tarafından çıksın, red avlanıyo
+dikkat, {place} yakınında red var

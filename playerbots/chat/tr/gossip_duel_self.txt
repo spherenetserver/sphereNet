@@ -1,0 +1,4 @@
+{when} {other} ile düelloda kazandım
+{other} düello istedi. kırmadım
+{when} {other} ile düello attım. rahat geçti
+{other} düellodan bana hala borçlu

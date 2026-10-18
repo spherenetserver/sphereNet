@@ -1,0 +1,4 @@
+{actor} sold {other} at the bank {when}
+{actor} flipped {other} for 2k
+someone actually bought {other} off {actor}
+{actor}s pet business is doing well. {other} just sold

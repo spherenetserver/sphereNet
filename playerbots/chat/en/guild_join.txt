@@ -1,0 +1,13 @@
+# guild_join.txt — a bot that just got recruited into a player's guild.
+# Said out loud next to whoever is there. 1999 style.
+# Lines starting with # are comments. Blank lines ignored.
+
+ty for the inv
+in
+sweet
+nice tag
+ty
+finally a guild
+ok im in
+cool ty
+whats the tag stand for

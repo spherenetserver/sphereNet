@@ -1,0 +1,18 @@
+# combat_assist.txt — dost bota yardıma koşarken bağırılır.
+# # ile başlayan satırlar yorumdur.
+
+geliyorum!
+dayan!
+arkandayım
+bırakın onu!
+yardım geldi
+dayan biraz
+şimdi iki bir
+yardım lazım mı?
+dövüş sesi duydum
+sabit kal
+seninleyim
+çekilin geliyorum
+omw
+geliyom
+2v1 vuralım

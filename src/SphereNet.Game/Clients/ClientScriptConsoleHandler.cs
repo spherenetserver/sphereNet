@@ -836,7 +836,7 @@ public sealed class ClientScriptConsoleHandler
                 {
                     foreach (var player in _world.GetAllObjects().OfType<Character>())
                     {
-                        if (!player.IsPlayer || !player.IsOnline)
+                        if (!player.IsPlayer || !player.HasClient)
                             continue;
 
                         var callArgs = new ExecTriggerArgs(_character, 0, 0, funcArgs)

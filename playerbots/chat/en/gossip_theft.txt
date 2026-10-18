@@ -1,0 +1,11 @@
+# somebody else's robbery. {actor} = victim, {other} = thief, or "somebody"
+# when nobody saw who did it. {place} and {when} as usual.
+
+{other} picked {actor}'s pocket at {place}
+{actor} got robbed at {place} {when}
+watch your packs at {place}. {actor} lost regs to {other}
+{other} is working {place}. got {actor} {when}
+thief at {place}. {actor} lost gold {when}
+{actor} had his pack lifted at {place}. {other}
+dont go afk at {place}. ask {actor}
+{other} got into {actor}'s pack at {place}

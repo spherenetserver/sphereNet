@@ -1,0 +1,7 @@
+# haggle_broke.txt — alıcı aslında parayı karşılayamıyor. {price}.
+
+dur param eksik
+nvm üstümde yok
+bank'a uğramam lazım
+param yok lol nvm
+hay aksi {price} yok bende

@@ -1,0 +1,10 @@
+# tame_attempt.txt — klasik client taming spamı. {pet} = yaratık adı (article dahil).
+# # ile başlayan satırlar yorumdur. Boş satırlar yok sayılır.
+Hep senin gibi bi hayvanım olsun istemiştim
+Arkadaşım olur musun?
+Gel oğlum gel
+Aferin sana
+Sana zarar vermem
+Aç görünüyorsun. al bak
+yavaaaş... yavaaaş...
+gel kuçu gel kuçu gel kuçu

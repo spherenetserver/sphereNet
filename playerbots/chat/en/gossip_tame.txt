@@ -1,0 +1,4 @@
+{actor} tamed {other} out in the wilds {when}
+saw {actor} walk {other} right down the high street
+{actor} talked {other} into following. took a few tries
+heard {actor} got bit twice before {other} gave in

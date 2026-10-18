@@ -1,0 +1,16 @@
+# thief_victim.txt — çantasında hırsız yakalayan bot, guardların gelmediği
+# bi yerde. Şehirde bunun yerine guards_call satırı söyler.
+# # ile başlayanlar yorum. Boş satırlar yok sayılır.
+
+HIRSIZ
+benden çalıyo
+tutun onu hırsız
+wtf adam benden çaldı
+hırsız!!
+öldürün gray o
+hey geri ver onu
+biri şu hırsızı yakalasın
+çantamdaydı eli
+HIRSIZ HIRSIZ
+gel buraya
+gray oldu tutun

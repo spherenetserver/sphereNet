@@ -1,0 +1,10 @@
+# guild_ask_doing.txt — a guildmate asking the guild what everyone is up to.
+# Lines starting with # are comments. Blank lines ignored.
+
+what is everyone doing
+whats everyone up to
+where is everyone
+what are you guys doing
+anyone doing anything
+where you all at
+whos doing what

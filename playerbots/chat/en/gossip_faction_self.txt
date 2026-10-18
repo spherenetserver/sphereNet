@@ -1,0 +1,4 @@
+{other} took me down in the war at {place}
+fell to {other} at {place}. the war goes on
+{other} got me {when}. next time the shield holds
+lost to {other} at {place}. rematch soon

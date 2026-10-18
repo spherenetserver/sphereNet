@@ -1,0 +1,5 @@
+{actor}, {place} tarafında bi cesetten {other} çıkarmış
+{actor} {place} tarafında {other} bulmuş. şanslı
+{actor} {when} {other} buldu. hala anlatıp duruyo
+{actor} {place} tarafında {other} lootlamış diyolar
+{actor} {other} bulmuş. ben haftalardır orda farm yapıyorum hiç bişey yok

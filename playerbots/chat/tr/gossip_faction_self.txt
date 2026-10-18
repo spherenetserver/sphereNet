@@ -1,0 +1,4 @@
+{place} savaşında {other} beni indirdi
+{place} tarafında {other} beni düşürdü. savaş devam
+{when} {other} beni aldı. bi dahakine kalkan dayanır
+{place} tarafında {other} ile kaybettim. rövanş yakında

@@ -1,0 +1,16 @@
+# ghost_plea.txt — a ghost that has spotted someone who could actually
+# raise it, floating over to ask. Garbled to OoOoOo for the living, same
+# as ghost.txt, so half of these are pre-garbled.
+
+res plz
+res?
+can u res
+OoOoOo
+oOoOoOo
+res me plz
+hey can u res
+need a res
+r u a mage
+plz
+help plz
+ooOOoo res

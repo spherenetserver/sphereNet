@@ -1,0 +1,8 @@
+# shop_deal.txt — satıcı oyuncunun teklifini kabul eder. {price}.
+
+anlaştık
+tamam. {price}
+peki, {price}
+satıldı
+oki, {price}
+ok {price}

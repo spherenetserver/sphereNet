@@ -1,0 +1,19 @@
+# guild_group_yes.txt — guild chatte "grup kuralım mı" diyene guildmate cevabı.
+# Guild chatte söylenir, sonra bot soran kişiye recall atar.
+# # ile başlayan satırlar yorumdur. Boş satırlar yok sayılır.
+
+evet
+he
+tabi
+omw
+geliyorum yoldayım
+sn
+geliyorum
+ok omw
+he bi sn ver
+gelirim
+ben
+ben varım
+recall atıyorum
+hemen ordayım
+brt

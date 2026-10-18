@@ -1,0 +1,9 @@
+# haggle_deal.txt — satıcı kabul eder. {price}.
+
+tamam
+oldu. {price}
+peki, {price}
+satıldı
+aight {price}
+ok anlaştık
+he ok

@@ -1,0 +1,5 @@
+found {other} in {place}. not selling
+pulled {other} off a corpse in {place}. best drop ive had
+{other}. off a random corpse in {place}
+got {other} {when}. its staying in my pack
+finally a real drop in {place}. {other}

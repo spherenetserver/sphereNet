@@ -1,0 +1,13 @@
+# thief_brag.txt — hırsız bankada ganimeti kutuya koyuyor.
+# Sessiz memnuniyet, asla detay yok. 1999 tarzı.
+# # ile başlayan satırlar yorumdur. Boş satırlar atlanır.
+
+bankada iyi gündü
+çantanda asla gold bırakma
+nereye bakacağını bilirsen regler bedava
+ty kimdiysen
+millet üstünde 500 gold ile afk duruyo ya
+kaybetmeden bank'a koy
+kolay para
+brit bank altın madeni
+kira çıktı

@@ -1,0 +1,11 @@
+# birisi bir yaratığa öldü. {other} = öldüren şey, boş olabilir
+{actor} {when} {place} tarafında öldü
+{actor} {place} tarafında {other} yüzünden öldü
+{place} tarafında {other} {actor} adlı kişiyi indirdi
+{place} tarafına tek gitmeyin. {actor} az önce orda öldü
+{actor} rez lazım. {place}
+{actor} yine {place} tarafında öldü
+{actor} {place} tarafında düşmüş diyolar. {other}
+{place} şu an kötü. {actor} geri dönmedi
+{actor} bütün eşyalarını {place} tarafında kaybetti
+rez atan var mı? {actor} {place} tarafında ghost

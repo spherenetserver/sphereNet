@@ -1,0 +1,7 @@
+{other} killed {actor} in the shield war at {place}
+order chaos fight at {place}. {actor} got cut down
+saw {other} kill {actor} at {place}. shield war again
+{actor} died in the faction fight at {place} {when}
+big fight at {place} {when}. {other} got {actor}
+the war took {actor} at {place}
+guards just watched {other} kill {actor} at {place}

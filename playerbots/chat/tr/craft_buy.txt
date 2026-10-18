@@ -1,0 +1,12 @@
+# craft_buy.txt — crafter, toplayıcının malını elden alıyor
+# (gather_deliver sonrası cevap).
+
+bunu bekliyodum
+hepsini alırım
+iyi mal. al paran
+tam zamanında, bitmek üzereydi
+say istersen, hepsi orda
+nihayet. dükkan bomboştu
+geçen seferki fiyat
+bu dükkanı bi süre idare eder
+kaliteli mal, hakkını veririm

@@ -795,6 +795,20 @@ public sealed class SphereConfig
     // were deferred and how late actions ran. Clamped to >= 1.
     public int MaxNpcsPerTick { get; set; } = 500;
 
+    // Server-driven player characters (ini keys PlayerBots / PlayerBotCount /
+    // PlayerBotDataDir / PlayerBotLanguage). Off by default. The count is the
+    // population the engine fills up to; bots already in the save are adopted
+    // first, so a restart resumes the same characters where they stood.
+    public bool PlayerBots { get; set; }
+    public int PlayerBotCount { get; set; } = 50;
+    public string PlayerBotDataDir { get; set; } = "playerbots/";
+    public string PlayerBotLanguage { get; set; } = "en";
+    // Where a dead bot is raised: a murderer at this region's anchor (AREADEF NAME or
+    // DEFNAME), anyone else at the nearest town healer. A corpse within
+    // PlayerBotReclaimRange tiles is walked back to; a farther one is handed back.
+    public string PlayerBotRedRespawn { get; set; } = "Delucia";
+    public int PlayerBotReclaimRange { get; set; } = 40;
+
     // Prestage A* searches accepted per tick (ini key: NpcPathPrestagePerTick).
     // Over-budget chasers take a short path defer and are rotated in on later
     // ticks. Field-tuned to 2; raise only with measurements that support it.
@@ -1414,6 +1428,12 @@ public sealed class SphereConfig
         MulticoreWorkerCount = ini.GetInt(section, "MulticoreWorkerCount", MulticoreWorkerCount);
         MulticorePhaseTimeoutMs = ini.GetInt(section, "MulticorePhaseTimeoutMs", MulticorePhaseTimeoutMs);
         MaxNpcsPerTick = Math.Max(1, ini.GetInt(section, "MaxNpcsPerTick", MaxNpcsPerTick));
+        PlayerBots = ini.GetBool(section, "PlayerBots", PlayerBots);
+        PlayerBotCount = Math.Max(0, ini.GetInt(section, "PlayerBotCount", PlayerBotCount));
+        PlayerBotDataDir = ini.GetValue(section, "PlayerBotDataDir") ?? PlayerBotDataDir;
+        PlayerBotLanguage = (ini.GetValue(section, "PlayerBotLanguage") ?? PlayerBotLanguage).Trim().ToLowerInvariant();
+        PlayerBotRedRespawn = (ini.GetValue(section, "PlayerBotRedRespawn") ?? PlayerBotRedRespawn).Trim();
+        PlayerBotReclaimRange = Math.Max(0, ini.GetInt(section, "PlayerBotReclaimRange", PlayerBotReclaimRange));
         NpcPathPrestagePerTick = Math.Max(0, ini.GetInt(section, "NpcPathPrestagePerTick", NpcPathPrestagePerTick));
         TickSleepMode = ini.GetInt(section, "TickSleepMode", TickSleepMode);
         AsyncReceive = ini.GetBool(section, "AsyncReceive", AsyncReceive);

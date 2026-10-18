@@ -1,0 +1,9 @@
+# {actor} red {other} kişisini {place} tarafında gördü
+{actor} {when} {place} tarafında {other} görmüş
+{place} tarafında red var. {other}
+{other} {place} tarafında görülmüş. uzak durun
+{other} {place} civarında avlanıyo
+bi süre {place} tarafına gitmeyin. {other} orda
+{actor} dedi ki {other} {place} tarafında takılıyomuş
+{when} {place} yakınında red. {other} galiba
+{other}. {place}. bildiğim bu kadar

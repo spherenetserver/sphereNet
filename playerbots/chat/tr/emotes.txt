@@ -1,0 +1,9 @@
+# emotes.txt — sözsüz sosyal katman. *yıldızlı* satırlar gerçek emote olur.
+# Ara sıra herhangi bir botun sohbet sırasını alır.
+# "asdf" tarzı satırlar bilerek — kusur insan gibi okunur.
+
+asdf
+test
+pardon yanlış pencere
+qwe
+..

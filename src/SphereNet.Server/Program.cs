@@ -744,6 +744,7 @@ public static partial class Program
                 _log.LogInformation("Loading scripts from: {Dir}", dir);
                 fileCount += LoadAllScripts(dir);
             }
+            fileCount += LoadPlayerBotScripts(basePath);
             _log.LogInformation("Script files loaded: {Count}", fileCount);
             _resources.LogResourceSummary();
 
@@ -1288,6 +1289,8 @@ public static partial class Program
         int restoredSpellEffects = _spellEngine.RestorePersistedEffectsFromWorld();
         if (restoredSpellEffects > 0)
             _log.LogInformation("Restored {Count} active spell effects from world save", restoredSpellEffects);
+
+        InitializePlayerBots(basePath);
 
         if (!StartNetwork())
             return;

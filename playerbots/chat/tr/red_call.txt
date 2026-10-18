@@ -1,0 +1,25 @@
+# red_call.txt — bot bir katile silah çekiyor.
+#
+# red_alert.txt ile aynı şey değil. O, red gören ve herkese haber vermek
+# isteyen bir sivil; bu ise bir şey yapmaya karar vermiş biri. Silah
+# çekilen anda, ilk giren tarafından söylenir. Red öldürmek yasal ve
+# bedelsiz, yeraltında guard da gelmez, iş sana kalır.
+# # ile başlayan satırlar yorumdur. Boş satırlar atlanır.
+#
+
+red bu
+red! vurun
+red'i öldürün
+red bu, indirin
+katil
+bedava kill
+burda guard yok
+count'u var
+red'i yakalayın
+red, üstüne
+red bu beyler
+red'i alın
+blue değil bu
+katil! yakalayın
+red bu, hadi
+peşinden

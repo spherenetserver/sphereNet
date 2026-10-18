@@ -1,0 +1,20 @@
+# combat_flee.txt — bot dönüp canını kurtarmak için kaçarken bağırır:
+# HP düşük ya da çok güçlü bir yaratık geliyor. Panik. # ile başlayanlar yorum.
+
+KAÇIN
+çok güçlü!
+ben yokum
+yok yok yok
+YARDIM
+geri çekilin!
+böyle olmaz
+kaç kaç!
+healer! healer lazım
+taktiksel geri çekilme!
+herkes başının çaresine baksın
+o ne LAN öyle
+kaçın!
+kendinizi kurtarın
+fazla güçlü
+omg kaç
+sonra zerg yaparız, KAÇ

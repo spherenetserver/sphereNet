@@ -1,0 +1,8 @@
+# haggle_firm.txt — inatçı satıcı. {price}.
+
+dip fiyat yok. {price}
+{price}. ister al ister alma
+acelem yok. {price}
+lol yok. {price}
+{price} yoksa hiç
+bende kalsın. {price}

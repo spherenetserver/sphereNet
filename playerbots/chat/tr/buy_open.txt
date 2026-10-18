@@ -1,0 +1,7 @@
+# buy_open.txt — trade penceresi açılır, botun parası masada. {item} {price}.
+
+{price}, hepsi orda
+gold benim tarafta
+{item} için {price}
+al paran
+{price}, say istersen

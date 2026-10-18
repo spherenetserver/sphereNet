@@ -1,0 +1,8 @@
+# buy_paynow.txt — malı nereye bırakacağı. {item} {price}.
+
+üstüme at
+{item} üstüme at
+ver gitsin, {price}
+üstüme bırak kanka
+üstüme at öderim
+{price} hazır, at hadi

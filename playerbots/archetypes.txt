@@ -1,0 +1,10 @@
+# Player bot archetypes: CHARDEF defname and relative weight.
+# The CHARDEFs live in scripts/playerbots.scp (or anywhere in the script pack).
+c_playerbot_warrior_m   5
+c_playerbot_warrior_f   3
+c_playerbot_mage_m      4
+c_playerbot_mage_f      3
+c_playerbot_archer_m    2
+c_playerbot_archer_f    2
+c_playerbot_townsfolk_m 3
+c_playerbot_townsfolk_f 3

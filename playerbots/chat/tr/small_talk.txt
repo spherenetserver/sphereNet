@@ -1,0 +1,31 @@
+# small_talk.txt — her botun söyleyebileceği genel ortam muhabbeti.
+# Idle ve Wander davranışlarında kullanılır. Kısa, rahat, dönem havası.
+# # ile başlayan satırlar yorumdur. Boş satırlar yok sayılır.
+
+sa
+sa dostum
+selamlar
+merhaba
+kimse var mı?
+online olan var mı?
+bugün burası ölü
+sakin bi akşam
+yoruldum
+bi içki lazım
+herkes nerde?
+son zamanlarda orc gören oldu mu?
+destard yakınında dragon görülmüş diyorlar
+ayaklarım ağrıyor
+etrafta red gördün mü?
+az önce yolda pk varmış diyorlar
+dikkatli olun
+kendinize iyi bakın
+hmm
+fena değil
+aynen
+evet
+lol
+reg satan var mı
+lag nasıl sizde
+dün gece server düştü mü sizde?
+herkes ne kasıyor

@@ -1,0 +1,4 @@
+{actor} took a guild crew to {other} {when}
+saw {actor}'s guild walking to {other} together
+whole guild on the road to {other}
+{actor} and the guildmates headed for {other}

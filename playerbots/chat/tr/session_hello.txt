@@ -1,0 +1,22 @@
+# session_hello.txt — bot az önce "login oldu" ve ortamı selamlıyor.
+# Spawn'dan birkaç saniye sonra, sadece yakında oyuncu varsa.
+
+slm all
+selam herkese
+sa all
+geldim
+geri geldim
+yeni girdim
+nihayet girebildim
+naber
+kimse var mı?
+bu gece kimler on
+iyi akşamlar herkese
+hail all
+yo
+slm slm
+girdim sonunda, server fulldü
+bu gece lag fena değil
+geri gelmek güzel
+bişey kaçırdım mı?
+ne kaçırdım

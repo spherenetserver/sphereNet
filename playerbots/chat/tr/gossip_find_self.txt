@@ -1,0 +1,5 @@
+{place} tarafında {other} buldum. satmıyorum
+{place} içinde bi cesetten {other} çıktı. en iyi dropum
+{other}. {place} içinde rastgele bi cesetten
+{when} {other} düşürdüm. çantamda kalıyor
+nihayet {place} tarafında düzgün drop. {other}

@@ -1,0 +1,12 @@
+# guild_ask_group.txt — a guildmate asking the guild for a group. The
+# other guild bots answer and recall to the asker.
+# Lines starting with # are comments. Blank lines ignored.
+
+anyone wanna group up
+anyone want to hunt
+lfg, anyone
+wanna group up and hit a dungeon
+anyone up for a dungeon run
+group up?
+who wants to hunt
+lets go hunt something

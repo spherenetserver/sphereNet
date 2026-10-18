@@ -1,0 +1,6 @@
+got {other} at {place} {when}
+took {other} down at {place} myself
+me and {other} at {place}. im here, it isnt
+{other} at {place}. wasnt easy
+dropped {other} in {place}. no drop worth a damn
+{other} tried me at {place}. tried

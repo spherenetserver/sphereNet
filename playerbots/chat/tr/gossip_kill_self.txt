@@ -1,0 +1,6 @@
+{when} {place} tarafında {other} kestim
+{place} içinde {other} tek başıma indirdim
+ben ve {other}, {place} tarafında. ben burdayım, o değil
+{place} tarafında {other}. kolay olmadı
+{place} içinde {other} indirdim. düşen bi işe yaramaz
+{other} beni {place} tarafında denedi. denedi işte

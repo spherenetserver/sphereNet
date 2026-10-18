@@ -1,0 +1,12 @@
+# guild_ask_group.txt — guild üyesi guild'den grup istiyor. Diğer
+# guild botları cevap verip soran kişiye recall atar.
+# # ile başlayan satırlar yorumdur. Boş satırlar atlanır.
+
+grup kuralım mı
+ava gelen var mı
+lfg, kimse yok mu
+grup kurup dungeon'a girelim mi
+dungeon turuna gelen var mı
+grup?
+kim ava gelir
+hadi bişey avlayalım

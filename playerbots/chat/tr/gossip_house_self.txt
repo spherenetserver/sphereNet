@@ -1,0 +1,5 @@
+# ev sahibi anlatıyor.
+
+{when} {place} yakınına evimi kurdum
+artık kendi evim var, {place} civarında
+evim {place} yakınında, uğrayın

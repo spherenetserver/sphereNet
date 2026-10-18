@@ -1,0 +1,7 @@
+# haggle_final.txt — satıcının son sözü. {price}.
+
+{price}. son
+{price} o kadar
+son teklif {price}
+{price} yoksa bıraktım
+son kez. {price}

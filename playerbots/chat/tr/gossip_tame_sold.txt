@@ -1,0 +1,4 @@
+{actor} {when} bankada {other} sattı
+{actor} {other} için 2k aldı
+biri cidden {actor} elinden {other} satın almış
+{actor} pet işini iyi döndürüyo. {other} de satıldı

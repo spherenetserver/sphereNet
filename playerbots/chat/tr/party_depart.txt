@@ -1,0 +1,13 @@
+# party_depart.txt — party yola çıkıyor. Lider söyler.
+# {dungeon} = hedef dungeon adı (küçük harf).
+
+tamam gidelim
+{dungeon} geliyoruz
+beni takip edin
+herkes hazır mı? hadi
+tamam bu kadar yeter, çıkalım
+yakın durun
+hadi bakalım
+{dungeon} yolu, ileri
+geri kalmayın
+hareket

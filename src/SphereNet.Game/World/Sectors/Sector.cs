@@ -660,7 +660,9 @@ public sealed class Sector : IScriptObj
                 value = Number.ToString();
                 return true;
             case "CLIENTS":
-                value = ClientCount.ToString();
+                // Clients only: a server-driven player keeps the sector awake
+                // (ClientCount) but is not a client.
+                value = _characters.Count(c => c.IsPlayer && c.HasClient).ToString();
                 return true;
             case "COMPLEXITY":
                 value = CharComplexity.ToString();
@@ -886,7 +888,7 @@ public sealed class Sector : IScriptObj
             case "ALLCHARSIDLE":
                 return RunOnEach(_characters.Where(c => c.IsPlayer && !c.IsOnline).ToList(), args, source);
             case "ALLCLIENTS":
-                return RunOnEach(_characters.Where(c => c.IsPlayer && c.IsOnline).ToList(), args, source);
+                return RunOnEach(_characters.Where(c => c.IsPlayer && c.HasClient).ToList(), args, source);
             case "ALLITEMS":
                 return RunOnEach(_items.ToList(), args, source);
             case "LIGHT":

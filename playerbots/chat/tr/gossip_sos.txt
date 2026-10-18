@@ -1,0 +1,4 @@
+{when} {actor} denizden şişede mesaj çıkarmış
+{actor} denizden mühürlü bi şişe çekmiş. içinde harita
+{actor} iskelede direk treasure map satmış diyorlar
+içinde harita olan bi şişe. {actor} gerçek diye yemin ediyor

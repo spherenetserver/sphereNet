@@ -1,0 +1,19 @@
+# guild_group_yes.txt — a guildmate answering "anyone wanna group up" in
+# guild chat. Said in guild chat, then the bot recalls to the asker.
+# Lines starting with # are comments. Blank lines ignored.
+
+yeah
+ya
+sure
+omw
+on my way
+sec
+coming
+k omw
+yea gimme a sec
+ill come
+me
+im in
+recalling
+be right there
+brt

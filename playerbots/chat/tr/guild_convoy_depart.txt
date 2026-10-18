@@ -1,0 +1,10 @@
+# guild_convoy_depart.txt — konvoy lideri yola çıkıyor.
+# {dest} = hedef adı (küçük harf).
+
+hadi gidiyoruz, hedef {dest}
+{dest} yolundayız, yakın durun
+yola çıktık — {dest}
+toplu durun, {dest} biraz uzak
+herkes burda mı? ok çıkıyoruz
+{dest} guild gezisi şimdi kalkıyo
+{dest}, takip edin

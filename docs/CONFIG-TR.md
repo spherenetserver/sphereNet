@@ -170,6 +170,48 @@ Tick başına kabul edilen ön A* yol araması; diğer takipçiler ertelenir ve 
 - **Tür:** integer (en az 0)
 - **Varsayılan:** `2`
 
+### PLAYERBOTS
+
+Sunucunun yönettiği oyuncu karakterleri: dünya save'ine yazılan, yeniden başlatmadan sonra durduğu yerden devam eden sıradan oyuncu karakterleri; sunucu onları banka, dükkân, han ve şifacılar arasında yürütür, savaştırır ve konuşturur. Online'dırlar ama istemci değildirler: FORCLIENTS, SECTOR.CLIENTS ve girişte söylenen oyuncu sayısı onları saymaz.
+
+- **Tür:** boolean
+- **Varsayılan:** `0`
+
+### PLAYERBOTCOUNT
+
+Sunucunun tek tek bot ekleyerek tamamladığı nüfus; save'deki botlar önce geri alınır. Düşürülürse fazlası log out olur (save'de kalırlar).
+
+- **Tür:** integer (en az 0)
+- **Varsayılan:** `50`
+
+### PLAYERBOTDATADIR
+
+Bot veri klasörü: `nav/` (yol ağı ve hedefler), `chat/<dil>/`, `archetypes.txt` ve `scripts/*.scp` (arketip CHARDEF'leri; PLAYERBOTS açıkken paketle birlikte yüklenir).
+
+- **Tür:** path
+- **Varsayılan:** `playerbots/`
+
+### PLAYERBOTLANGUAGE
+
+`chat/` altındaki sohbet dili klasörü (`en`, `tr`). Seçilen dilde olmayan kategori `en`'e düşer.
+
+- **Tür:** string
+- **Varsayılan:** `en`
+
+### PLAYERBOTREDRESPAWN
+
+Ölen murderer (kırmızı) botun dirildiği bölge (AREADEF `NAME` ya da defname); bölgenin temsil noktası kullanılır. Diğer ölü botlar en yakın şehrin şifacısında dirilir.
+
+- **Tür:** string
+- **Varsayılan:** `Delucia`
+
+### PLAYERBOTRECLAIMRANGE
+
+Dirilen botun cesedi bu kadar kare içindeyse bot yürüyüp eşyalarını kendisi alır; daha uzaktaki cesette kalanlar bota geri verilir. O zamana kadar ceset diğer cesetler gibi loot edilebilir.
+
+- **Tür:** integer (en az 0)
+- **Varsayılan:** `40`
+
 ### MULTICOREDETERMINISMDEBUG
 
 Determinizm doğrulama modu: her tick sonunda dünyanın SHA-256 hash'i hesaplanıp loglanır (ilk 2000 tick).

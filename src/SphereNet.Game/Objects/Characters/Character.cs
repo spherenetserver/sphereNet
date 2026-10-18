@@ -1338,6 +1338,15 @@ public partial class Character : ObjBase
     /// <summary>True when a GameClient is actively controlling this character.</summary>
     public bool IsOnline { get => _isOnline; set => _isOnline = value; }
 
+    /// <summary>A player character the server itself drives (no GameClient). It is
+    /// online - it ticks and keeps its sectors awake - but it is not a client:
+    /// client loops and player counts leave it out. Runtime-only; the persisted
+    /// marker is the PLAYERBOT tag, read back when the engine adopts it.</summary>
+    public bool IsPlayerBot { get; set; }
+
+    /// <summary>Online and driven by a real GameClient.</summary>
+    public bool HasClient => _isOnline && !IsPlayerBot;
+
     /// <summary>True while a disconnected character remains attackable in the
     /// world for the configured client-linger period.</summary>
     public bool IsClientLingering =>

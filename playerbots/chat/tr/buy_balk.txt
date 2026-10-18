@@ -1,0 +1,9 @@
+# buy_balk.txt — mal anlaşılan gibi değil. {item} {price}.
+
+bu {price} etmez ya
+hey sen öyle demedin
+{item}? yok sağol
+anlaşma bu değildi kanka
+iyi denemeydi
+bu {price} etmez sry
+yok abi bu çöp

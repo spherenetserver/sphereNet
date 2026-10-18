@@ -1,0 +1,10 @@
+# the victim telling it. {other} = thief, or "somebody".
+
+{other} lifted my gold at {place}
+got robbed at {place} {when}. check your packs
+somebody was in my pack at {place}
+{other} stole from me at {place}. wheres a guard when you need one
+lost my regs at {place}. thieves everywhere
+{other} took my gold at {place}. never again
+went afk at {place} for one minute. {other}
+my diamond is gone. {place}. {other}

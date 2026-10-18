@@ -1,0 +1,13 @@
+# guards_call.txt — şehirde red dururken sivil bekçi çağırır.
+# Token yok. Kısa ve panik: kimse buna cümle yazmaz.
+
+GUARDS
+GUARDS!!
+GUARDS GUARDS GUARDS
+guards!!
+GUARDS YARDIM
+GUARDS ŞEHİRDE RED VAR
+guards, red burda
+biri guards çağırsın
+GUARDS!!!
+şehirde red, GUARDS

@@ -1,0 +1,10 @@
+# kurban anlatıyor. {other} = hırsız, ya da "biri".
+
+{place} tarafında {other} goldumu çaldı
+{when} {place} tarafında soyuldum. çantanıza bakın
+{place} tarafında biri çantamı karıştırmış
+{place} tarafında {other} benden çaldı. lazım olunca guard yok tabi
+{place} tarafında reglerimi kaptırdım. her yer thief dolu
+{place} tarafında {other} goldumu aldı. bi daha asla
+{place} tarafında 1 dk afk kaldım. {other}
+diamondum gitti. {place}. {other}

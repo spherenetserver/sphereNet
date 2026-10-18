@@ -4,6 +4,66 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-18] - Room lookup index
+------------------------------------------------------------------------
+FIX - GameWorld.FindRoom answers through a per-64-tile cell index of the ROOMDEFs (the first room
+      in list order that contains the point, as the full scan returned) instead of scanning every
+      room on every step. CheckLocationEffects asks it for each step a character takes; measured,
+      the average walk-path step cost halved (about 130 us to 65 us). The index rebuilds when a
+      room is added or a room's rects or map change.
+
+[2026-10-18] - Player bots
+------------------------------------------------------------------------
+ADD - Server-driven player characters (sphere.ini PlayerBots / PlayerBotCount / PlayerBotDataDir /
+      PlayerBotLanguage / PlayerBotRedRespawn / PlayerBotReclaimRange; off by default; docs/PLAYERBOTS.md). Each bot is an ordinary player
+      character played through its own GameClient whose NetState has no socket: attack, cast,
+      bandage, potion, door and speech go through the handlers a connected player's packets reach.
+      The bot is online (ticks, keeps its sectors awake, seen by witnesses and guards) but is not a
+      client: FORCLIENTS, SECTOR.ALLCLIENTS, SECTOR.CLIENTS, the login player count and the
+      all-clients console loop leave it out (Character.HasClient); move notifications skip it.
+ADD - Client wiring split out as CreateWiredClient (a network client registers it in _clients;
+      a bot's client is filed only under its character). GameClient.AttachServerDriven.
+ADD - Bots walk a waypoint road network between banks, shops, inns and healers, linger, and speak
+      lines from chat/<language>/<category>.txt (en, tr; a missing category falls back to en).
+      Trips stay on the connected piece of road the bot stands on; fighters make dungeon runs
+      (entrance, rooms, the way out); a bot away from home takes a moongate. Walking is straight
+      steps plus obstacle edge-following (Bug2) and door opening, with no path search. Routes
+      start and end at the road nodes a stopping spot is linked to (its door side); a stalled
+      first leg seeks the nearest unlocked door, then other start nodes; a leg that makes no
+      ground for a minute lifts the bot onto its target, and a spot that needed it twice is not used
+      again (kept in playerbots_badspots.txt in the save directory). A teleporter or gate tile
+      that carried a bot off is stepped round for three minutes unless the trip is to it.
+ADD - Bots defend themselves and, outside guarded regions, hunt monsters up to a per-bot nerve;
+      melee closes, archers and casters keep range, casters cast; below a per-bot threshold they
+      heal (Greater Heal, bandage, heal potion) or run. A dead bot spends half a minute to a
+      minute as a ghost about its body in war mode (manifested, seen by the living), then is
+      carried off like a stuck one and raised: a murderer at the PlayerBotRedRespawn region (Delucia), anyone else at the
+      nearest town healer. A corpse within PlayerBotReclaimRange tiles is walked back to, opened
+      and emptied one item at a time through the client (worn on the layer it came off, or into
+      the pack); a farther one has what is left on it handed back by the server. Until then the
+      corpse can be looted by others.
+ADD - Bots accept a player's party invitation (the client's accept sub-command), follow the
+      leader, join the leader's fight, and leave when the leader has been gone two minutes.
+ADD - A player saying a bot's name gets an answer, a greeting may get one back (after a typing
+      delay); only real players are answered.
+ADD - Bot clients are skipped by the broadcast and view-refresh loops (BroadcastNearby, the move
+      broadcasts, ForEachClientInRange, the dirty-object refresh, status refresh): no packet,
+      tooltip or view work is built for a client that reads none. Bot decisions share a 12 ms
+      per-tick budget; what does not fit runs next tick, starting where the last one stopped.
+ADD - Bots are saved with the world as player characters (ISPLAYER) carrying PLAYERBOT,
+      PLAYERBOT.HOME, PLAYERBOT.ARCH, PLAYERBOT.GOAL and PLAYERBOT.CORPSE tags; after a restart they are adopted back
+      online where they stood and resume the trip they were on. The save format is unchanged.
+ADD - Bot archetypes are CHARDEFs (playerbots/scripts/playerbots.scp, picked by weight from
+      archetypes.txt) whose ON=@Create dresses, skills and equips the character with the pack's
+      own item defnames (mages get a full spellbook and reagents).
+ADD - Road network nodes are re-seated on the standable surface the local map data has at each
+      point; nodes with no surface are dropped, and a destination or stopping spot on a wall
+      line is seated on the nearest standable tile within two. Road and chat data are MIT-licensed
+      community data, see playerbots/NOTICE.txt.
+ADD - [playerbots] telemetry line every 30 s (tick cost, client timers, steps, searches, doors,
+      fights, rescues, slowest decision, costliest spawn) and the first rescues of each window
+      logged with position and target.
+
 [2026-10-18] - UPDATE / FIX verbs
 ------------------------------------------------------------------------
 FIX - The UPDATE / UPDATEX and FIX verbs on a character end in CChar::Update (CCharAct.cpp:2580):

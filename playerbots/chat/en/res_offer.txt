@@ -1,0 +1,12 @@
+# res_offer.txt — what a bot says as it raises somebody.
+
+hold still
+one sec
+got u
+an corp
+np
+gimme a sec
+ill get u up
+hang on
+stay there
+k

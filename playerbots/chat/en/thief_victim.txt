@@ -1,0 +1,16 @@
+# thief_victim.txt — a bot that just caught a thief in its pack, somewhere
+# the guards will not come. In town it says a guards_call line instead.
+# Lines starting with # are comments. Blank lines ignored.
+
+THIEF
+hes stealing from me
+get him hes a thief
+wtf he just stole from me
+thief!!
+kill him hes gray
+hey give that back
+someone get that thief
+he was in my pack
+THIEF THIEF
+get back here
+hes gray get him

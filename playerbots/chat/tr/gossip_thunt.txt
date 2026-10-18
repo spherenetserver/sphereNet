@@ -1,0 +1,5 @@
+{actor} {when} gerçek bi sandık çıkardı
+duydum {actor} gömülü gold bulmuş. guardianlarıyla beraber
+{actor} {when} kazıdan full çantayla döndü
+diyolar {actor} elindeki map gerçekmiş
+{actor} bi sandık için bi sürü undead ile kapıştı

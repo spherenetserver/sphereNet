@@ -1,0 +1,10 @@
+# warband_recruit.txt — a faction fighter mustering a patrol squad.
+# {dest} = patrol target name (lowercase).
+
+patrol to {dest} — shields with me
+squad for {dest}, fall in
+form up, we patrol {dest}
+going {dest}, whos coming
+patrol to {dest}, bring your shield
+faction sweep to {dest}, need bodies
+form up on me, {dest} patrol

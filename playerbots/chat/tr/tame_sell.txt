@@ -1,0 +1,6 @@
+# tame_sell.txt — şehirde pet satışı. {pet} = yaratık adı.
+satılık {pet}, 2k sabit
+{pet} isteyen? yeni tame, huyu iyi
+satılık {pet}! çanta taşır, ısırmaz. pek
+bu güzelliği kendim tame ettim, teklif verin
+satılık pet, ucuza gidiyo, karım evde istemiyo

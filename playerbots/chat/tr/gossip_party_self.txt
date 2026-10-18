@@ -1,0 +1,4 @@
+ekiple {other} dungeonunu gezdik. iyi loot
+{when} {other} için party çektim. hepimiz döndük. çoğumuz
+grupla {other} tarafından döndüm. değdi
+{when} full partyle {other} run. gelecektin

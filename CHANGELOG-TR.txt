@@ -4,6 +4,67 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-18] - Oda arama indeksi
+------------------------------------------------------------------------
+DUZELTME - GameWorld.FindRoom her adimda butun odalari taramak yerine ROOMDEF'lerin 64 karelik
+       hucre indeksinden cevap verir (tam taramanin dondurdugu gibi, listede noktayi iceren ilk
+       oda). CheckLocationEffects bunu her karakter adiminda sorar; olculen ortalama yurume adimi
+       maliyeti yariya indi (yaklasik 130 us'den 65 us'ye). Oda eklenince ya da bir odanin
+       dikdortgenleri/haritasi degisince indeks yeniden kurulur.
+
+[2026-10-18] - Oyuncu botlari
+------------------------------------------------------------------------
+EKLEME - Sunucunun yonettigi oyuncu karakterleri (sphere.ini PlayerBots / PlayerBotCount /
+       PlayerBotDataDir / PlayerBotLanguage / PlayerBotRedRespawn / PlayerBotReclaimRange; varsayilan kapali; docs/PLAYERBOTS.md). Her bot,
+       soketsiz NetState'li kendi GameClient'i uzerinden oynatilan siradan bir oyuncu karakteridir:
+       saldiri, buyu, bandaj, iksir, kapi ve konusma bagli bir oyuncunun paketlerinin ulastigi
+       handler'lardan gecer. Bot online'dir (tick alir, sektorlerini uyanik tutar, taniklar ve
+       muhafizlar onu gorur) ama istemci degildir: FORCLIENTS, SECTOR.ALLCLIENTS, SECTOR.CLIENTS,
+       giristeki oyuncu sayisi ve tum-istemciler konsol dongusu onu saymaz (Character.HasClient);
+       hareket bildirimleri onu atlar.
+EKLEME - Client kablolamasi CreateWiredClient olarak ayrildi (network client'i _clients'e kaydeder;
+       bot client'i yalnizca karakterinin altina dosyalanir). GameClient.AttachServerDriven.
+EKLEME - Botlar banka, dukkan, han ve sifacilar arasinda waypoint yol aginda yurur, oyalanir ve
+       chat/<dil>/<kategori>.txt dosyalarindan konusur (en, tr; eksik kategori en'e duser).
+       Yolculuk botun durdugu bagli yol parcasinda kalir; savascilar dungeon'a girer (giris,
+       odalar, cikis); memleketinden uzaktaki bot moongate kullanir. Yurume duz adim + engel
+       kenari takibi (Bug2) + kapi acmadir, yol aramasi yoktur. Rota bir durma noktasinin bagli
+       oldugu yol dugumunden (kapi tarafi) baslar ve biter; ilerlemeyen ilk bacak en yakin
+       kilitsiz kapiyi arar, sonra baska baslangic dugumlerini dener; bir dakika ilerlemeyen
+       bacakta bot hedefine tasinir ve buna iki kez yol acan nokta bir daha kullanilmaz (save klasorundeki
+       playerbots_badspots.txt dosyasinda tutulur). Botu tasiyan teleporter ya da gate karesi,
+       yolculuk o kapiya degilse uc dakika boyunca etrafindan dolasilir.
+EKLEME - Botlar kendini savunur, korunakli bolge disinda bota ozgu cesarete gore canavar avlar;
+       yakin dovuscu yaklasir, okcu ve buyucu mesafe korur, buyucu buyu yapar; bota ozgu esigin
+       altinda iyilesir (Greater Heal, bandaj, heal iksiri) ya da kacar. Olen bot yarim ile bir
+       dakika arasi war mode'da hayalet olarak cesedinin cevresinde dolasir (gorunur hayalet,
+       canlilar onu gorur), sonra takilan bot gibi tasinip diriltilir: murderer ise PlayerBotRedRespawn bolgesinde (Delucia), degilse en yakin
+       sehrin sifacisinda. PlayerBotReclaimRange kare icindeki cesede yuruyup onu acar ve client'i
+       uzerinden tek tek bosaltir (cikarildigi katmana giyer ya da cantaya koyar); daha uzaktaki
+       cesette kalanlari server geri verir. O zamana kadar ceseti baskalari loot edebilir.
+EKLEME - Botlar bir oyuncunun party davetini kabul eder (client'in kabul alt-komutuyla), lideri
+       takip eder, liderin savasina katilir, lider iki dakika gorunmezse party'den ayrilir.
+EKLEME - Bir oyuncu botun adini soylerse o bot cevap verir, selama yakindaki biri karsilik
+       verebilir (yazma gecikmesiyle); yalnizca gercek oyunculara cevap verilir.
+EKLEME - Yayin ve gorunum yenileme donguleri (BroadcastNearby, hareket yayinlari,
+       ForEachClientInRange, dirty nesne yenilemesi, durum yenilemesi) bot client'larini atlar:
+       hicbir paket okumayan client icin paket, tooltip ya da gorunum isi kurulmaz. Bot kararlari
+       tick basina 12 ms'lik bir butceyi paylasir; sigmayan bir sonraki tick'te, kalinan yerden
+       devam eder.
+EKLEME - Botlar dunya save'ine oyuncu karakteri (ISPLAYER) olarak PLAYERBOT, PLAYERBOT.HOME,
+       PLAYERBOT.ARCH, PLAYERBOT.GOAL ve PLAYERBOT.CORPSE tag'leriyle yazilir; yeniden baslatmadan sonra durduklari
+       yerde tekrar online alinir ve yarim kalan yolculuga devam ederler. Save formati degismedi.
+EKLEME - Bot arketipleri CHARDEF'tir (playerbots/scripts/playerbots.scp, archetypes.txt'deki
+       agirliga gore); ON=@Create karakteri paketin kendi item defname'leriyle giydirir, skill
+       verir ve donatir (buyuculere dolu spellbook ve reagent).
+EKLEME - Yol agi dugumleri yerel harita verisindeki durulabilir zemine oturtulur; zemini olmayan
+       dugum atilir; duvar cizgisine dusen hedef ya da durma noktasi iki kare icindeki en yakin
+       durulabilir kareye oturtulur. Yol ve sohbet verisi MIT lisansli topluluk verisidir, bkz.
+       playerbots/NOTICE.txt.
+EKLEME - 30 saniyede bir [playerbots] telemetri satiri (tick maliyeti, client zamanlayicilari,
+       adim, arama, kapi, savas, kurtarma, en yavas karar, en pahali dogum); her pencerenin ilk
+       kurtarmalari konum ve hedefle loglanir.
+
 [2026-10-18] - UPDATE / FIX verb'leri
 ------------------------------------------------------------------------
 DUZELTME - Karakter uzerindeki UPDATE / UPDATEX ve FIX verb'leri CChar::Update (CCharAct.cpp:2580)

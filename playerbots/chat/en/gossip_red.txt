@@ -1,0 +1,9 @@
+# {actor} spotted red {other} at {place}
+{actor} saw {other} at {place} {when}
+theres a red at {place}. {other}
+{other} was spotted at {place}. stay clear
+{other} is hunting around {place}
+keep out of {place} for a bit. {other} is there
+{actor} said {other} was working {place}
+red near {place} {when}. {other} i think
+{other}. {place}. thats all i know

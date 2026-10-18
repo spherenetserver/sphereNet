@@ -16,6 +16,7 @@ For the project overview, features, and quick start, see the top-level
 - **[PLUGINS.md](PLUGINS.md)** — Plugins: the bridge for outside programs and in-process .NET plugins, the events they receive and the commands they can send.
 - **[STAFF_COMMANDS.md](STAFF_COMMANDS.md)** — Every in-game staff/GM command and server-console command, by privilege level.
 - **[TRIGGERS.md](TRIGGERS.md)** — Every script trigger that fires, with the `<src>`/`<argo>`/`<argn>`/`<args>` values available inside it.
+- **[PLAYERBOTS.md](PLAYERBOTS.md)** — Server-driven player characters: how they are played, saved and resumed, their data folder, behaviour and telemetry.
 - **[PROTOCOL_MATRIX.md](PROTOCOL_MATRIX.md)** — Incoming client opcodes routed through `PacketManager` (pinned by `PacketManagerTests`).
 - **[PACKET_FLOW_GUIDE.md](PACKET_FLOW_GUIDE.md)** — How a packet travels from network parsing to `GameClient` and its handlers, plus behaviour-level packet sequences (TR + EN).
 - **[DEVELOPER_MAP_TR.md](DEVELOPER_MAP_TR.md)** — Gelistirici haritasi: Source-X → SphereNet eslesmeleri, paket yolculugu, kod haritasi, ozellik ekleme rehberi.

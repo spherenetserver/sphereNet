@@ -1,0 +1,10 @@
+# guild_ask_doing.txt — guild arkadaşı herkesin ne yaptığını soruyor.
+# # ile başlayan satırlar yorumdur. Boş satırlar atlanır.
+
+herkes ne yapıyo
+ne var ne yok millet
+herkes nerde
+siz ne yapıyonuz
+bişey yapan var mı
+nerdesiniz
+kim ne yapıyo

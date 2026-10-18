@@ -171,6 +171,48 @@ Prestage A* path searches accepted per tick; other chasers are deferred and rota
 - **Type:** integer (minimum 0)
 - **Default:** `2`
 
+### PLAYERBOTS
+
+Server-driven player characters: ordinary player characters (saved with the world, resumed where they stood after a restart) that the server walks between banks, shops, inns and healers, fights with and talks through. They are online but not clients: FORCLIENTS, SECTOR.CLIENTS and the login player count leave them out.
+
+- **Type:** boolean
+- **Default:** `0`
+
+### PLAYERBOTCOUNT
+
+Population the server fills up to, one new bot at a time; bots already in the save are adopted first. Lowering it logs the surplus out (they stay in the save).
+
+- **Type:** integer (minimum 0)
+- **Default:** `50`
+
+### PLAYERBOTDATADIR
+
+Bot data directory: `nav/` (road network and destinations), `chat/<language>/`, `archetypes.txt`, and `scripts/*.scp` (archetype CHARDEFs, loaded with the pack when PLAYERBOTS is on).
+
+- **Type:** path
+- **Default:** `playerbots/`
+
+### PLAYERBOTLANGUAGE
+
+Chat language folder under `chat/` (`en`, `tr`). A category the chosen language lacks falls back to `en`.
+
+- **Type:** string
+- **Default:** `en`
+
+### PLAYERBOTREDRESPAWN
+
+Region (AREADEF `NAME` or defname) whose anchor point a dead murderer bot is raised at. Any other dead bot is raised at the nearest town healer.
+
+- **Type:** string
+- **Default:** `Delucia`
+
+### PLAYERBOTRECLAIMRANGE
+
+A raised bot whose corpse lies within this many tiles walks back and takes its things off it; a farther corpse has what is still on it handed back to the bot. Until then the corpse can be looted like any other.
+
+- **Type:** integer (minimum 0)
+- **Default:** `40`
+
 ### MULTICOREDETERMINISMDEBUG
 
 Determinism check mode: a SHA-256 hash of the world is computed and logged at the end of each tick (first 2000 ticks).

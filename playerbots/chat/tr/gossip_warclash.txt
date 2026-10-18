@@ -1,0 +1,5 @@
+{when} {place} tarafında war band'ler kapıştı
+order ile chaos {place} tarafında girişti
+{place} tarafında tam bi shield savaşı. her yer ceset
+savaş {when} {place} tarafına geldi
+{actor} {place} tarafındaki shield kavgasındaydı

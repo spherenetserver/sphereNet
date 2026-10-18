@@ -1,0 +1,40 @@
+# combat_actions.txt — Adventurer tipi botlar için savaş arası laflar.
+# Kısa, acele, döneme uygun. Hava atma, panik, hedef çağrıları karışık.
+# # ile başlayan satırlar yorumdur. Boş satırlar atlanır.
+# Hedef çağrıları
+# Savaş durumu / hava atma
+# Panik / düşük HP
+# Genel savaş sesleri
+# Loot / sonrası (hedef yokken arada söylenir)
+# Maceracı hayatı
+
+al bakalım
+aldım onu
+az kaldı
+bi vuruş daha
+hah
+heal lazım
+healer
+bandaj
+yardım
+azaldım
+healer nerde
+ölücem
+eyvah
+güzel vurdun
+ıskaladım
+o loot benim
+güzel drop
+para düştü
+sıradaki nerde
+devam
+sıradakine
+bu dungeonlarda altın var
+bugün bi düzine kestim
+hayat bu
+bunun için yaşıyorum
+demirci başında durmaktan iyidir
+omw
+sonraki spawn nerde
+heal pls
+bandaj azaldı

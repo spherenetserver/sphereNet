@@ -1,0 +1,7 @@
+# shop_stock.txt — oyuncu ne var diye soruyor. {item} {price}.
+
+{item}, {price}
+{item} var. {price}
+sadece {item}, {price}
+{item} fiyatı {price}
+{item}. {price} pazarlık olur

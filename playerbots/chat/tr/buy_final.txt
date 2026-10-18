@@ -1,0 +1,8 @@
+# buy_final.txt — botun son teklifi. {price}.
+
+en fazla {price}
+elimde bu kadar var, {price}
+{price} yoksa pas
+{price} üstüne çıkamam
+{price}, son
+{price} o kadar kanka

@@ -1,0 +1,8 @@
+# guild_group_nvm.txt — grup istedi ama kimse gelmedi.
+# # ile başlayan satırlar yorumdur. Boş satırlar atlanır.
+
+nvm
+galiba yok
+bi dahaki sefere
+ok solo gidiyom
+peki tek giderim

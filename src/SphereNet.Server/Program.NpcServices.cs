@@ -109,6 +109,9 @@ public static partial class Program
             text = rewritten;        // @Speech may have rewritten <ARGS>
         }
 
+        // Server-driven players around hear it and may answer.
+        _playerBots?.OnHear(speaker, text);
+
         // Source-X Event_Talk_Common (CClientEvent.cpp:1870): GUARD or GUARDS as a
         // whole word. A substring test let "guardsman" call them, and "help" is not
         // a guard call there at all.

@@ -1,0 +1,11 @@
+# guild_group_arrive.txt — guild arkadaşı soranın yanına recall attı.
+# # ile başlayanlar yorum. Boş satırlar yok sayılır.
+
+burdayım
+geldim
+nbr
+ok nereye gidiyoz
+hazırım
+hadi
+ne avlıyoz
+seninleyim

@@ -1,0 +1,8 @@
+# {actor} killed monster {other}
+{actor} killed {other} at {place} {when}
+{actor} soloed {other} at {place}
+{actor} took {other} down at {place}
+{other} at {place}? {actor} handled it
+{actor} got {other} {when}. good drop too they said
+{actor} is farming {place}. got {other}
+saw {actor} drag {other} down in {place}

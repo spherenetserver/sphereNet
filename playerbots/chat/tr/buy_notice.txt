@@ -1,0 +1,12 @@
+# buy_notice.txt — bir oyuncunun WTS bağırışına cevap, yanına gidiyor. {item}.
+
+ne {item}?
+şu {item} bi bakayım
+{item} mı? bekle
+göster bi şu {item}
+{item} ile ilgileniyorum
+{item} nasıl bi şey
+o {item} hala duruyor mu?
+o {item} lazım olabilir bana
+bi sn, geliyorum
+dur dur, onu istiyorum

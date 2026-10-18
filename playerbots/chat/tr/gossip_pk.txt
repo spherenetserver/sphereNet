@@ -1,0 +1,15 @@
+# başkasının öldürülmesi. {actor} = kurban, {other} = katil
+{other}, {place} tarafında {when} {actor} kesti
+{actor} {place} tarafında pk yedi. kuru lootlandı
+{other} {place} tarafında takılıyo. {when} {actor} kesti
+{place} tarafına tek gitmeyin. {other} orda {actor} kesti
+duydum {actor}, {place} dışında {other} elinde gitmiş
+yine {other}. bu sefer {actor}. {place}
+{actor} {place} tarafında {other} yüzünden full kit kaybetti
+{other} {when} {place} tarafındaydı. {actor} geri dönemedi
+{actor} gören var mı? {other} {place} tarafında indirdi
+{other} {place} yakınında {actor} pkladı. bence yine aynı ekip
+{actor} {place} tarafında pusuya düştü
+biri {other} {place} tarafında {actor} öldürdü dedi. şaşırmam
+bi süre {place} yanındaki yoldan uzak dururum ben
+{actor} {when} {place} tarafına gitti, geri sadece {other} döndü

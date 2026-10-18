@@ -473,8 +473,11 @@ public sealed class WorldLoader
 
     /// <summary>Read a single stamp property from the first record of a save file
     /// that opens with the given section. Returns null when the file has no such
-    /// stamp (a legacy save) or it can't be parsed.</summary>
-    private static long? ReadStamp(string path, string section, string prop)
+    /// stamp (a legacy save) or it can't be parsed. With <paramref name="firstRecordOnly"/>
+    /// only the first record is looked at: the [SAVEID] stamp is always the first record
+    /// a world/char shard gets (WorldSaver.WriteSaveIdRecord), so an unstamped classic
+    /// file is not read to its end to learn that it has none.</summary>
+    private static long? ReadStamp(string path, string section, string prop, bool firstRecordOnly = false)
     {
         try
         {
@@ -482,6 +485,8 @@ public sealed class WorldLoader
             while (reader.NextRecord(out string sec))
             {
                 bool match = sec.Equals(section, StringComparison.OrdinalIgnoreCase);
+                if (!match && firstRecordOnly)
+                    return null;
                 while (reader.NextProperty(out string key, out string val))
                 {
                     if (match && key.Equals(prop, StringComparison.OrdinalIgnoreCase)
@@ -545,8 +550,8 @@ public sealed class WorldLoader
             bool isShardFamily = section == SaveIO.SaveIdSection;
             foreach (string path in paths)
             {
-                long? id = ReadStamp(path, section, property)
-                           ?? ReadStamp(path, section, fallback);
+                long? id = ReadStamp(path, section, property, isShardFamily)
+                           ?? ReadStamp(path, section, fallback, isShardFamily);
                 if (id == null)
                 {
                     unstamped++;
@@ -1295,6 +1300,8 @@ public sealed class WorldLoader
                 }
                 if (upper == "CREATE")
                     continue;
+                if (upper == "P" && TrySetLoadPosition(world, item, val))
+                    continue;
                 if (upper == "ID")
                     hasId = true;
                 // A customizable house's committed design, as Source-X writes it
@@ -1838,6 +1845,29 @@ public sealed class WorldLoader
     }
 
     /// <summary>C atoi: optional sign and leading decimal digits; anything else 0.</summary>
+    /// <summary>A record's P= line while the world is read: the point is only stored.
+    /// The record is placed once when it ends (PlaceItem / PlaceCharacter, or its
+    /// container link), as Source-X r_Load only sets the point. Routing P= through
+    /// the world's move put every item - contained ones included - into its ground
+    /// sector first, and the sector's linear membership checks made a crowded sector
+    /// quadratic: most of the load time of a large save. An off-map point is left to
+    /// the generic property path, which keeps the old fallback for it.</summary>
+    private static bool TrySetLoadPosition(GameWorld world, ObjBase obj, string val)
+    {
+        var parts = Point3D.SplitComponents(val);
+        if (parts.Length < 2
+            || !short.TryParse(parts[0], out short x)
+            || !short.TryParse(parts[1], out short y))
+            return false;
+        sbyte z = parts.Length > 2 && sbyte.TryParse(parts[2], out sbyte tz) ? tz : (sbyte)0;
+        byte map = parts.Length > 3 && byte.TryParse(parts[3], out byte tm) ? tm : (byte)0;
+        var point = new Point3D(x, y, z, map);
+        if (world.GetSector(point) == null)
+            return false;
+        obj.Position = point;
+        return true;
+    }
+
     private static int Atoi(string text)
     {
         var s = text.AsSpan().TrimStart();

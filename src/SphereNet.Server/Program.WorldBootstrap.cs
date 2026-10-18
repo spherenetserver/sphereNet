@@ -132,6 +132,7 @@ public static partial class Program
         int spawns = 0;
         int fromTag = 0;
         int typeInherited = 0;
+        using var spawnGroups = SphereNet.Game.Components.SpawnComponent.BeginBulkResolve(_resources);
         foreach (var obj in _world.GetAllObjects())
         {
             if (obj is not SphereNet.Game.Objects.Items.Item item)

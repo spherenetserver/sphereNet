@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-19] - Dunya yukleme suresi
+------------------------------------------------------------------------
+DUZELTME - Bir kaydin P= satiri okunurken item artik GameWorld.PlaceItem'dan gecmiyor. Container
+       icindekiler dahil her item once yer sektorune konuyordu ve sektorun dogrusal uyelik
+       kontrolu kalabalik sektorde karesel maliyet uretiyordu. Yukleyici artik noktayi yalnizca
+       saklar (Source-X r_Load gibi) ve kaydi bittiginde bir kez yerlestirir; harita disi nokta
+       eski yoldan gider. 0.56T save'inde (193k item, 7.6k char) olculdu: Materialize 21.4 sn
+       -> 5 sn, item/char/contained sayilari ayni.
+DUZELTME - Save nesli damga kontrolu world/char shard'inin yalnizca ilk kaydini okur ([SAVEID]
+       hep oraya yazilir); damgasiz klasik dosya artik iki kez sonuna kadar okunmuyor.
+DUZELTME - Acilista spawn baslatma her spawner'in MORE1'ini SPAWN gruplarinin tek geciste kurulan
+       indeksinden cozer (ayni sira, ilk eslesme kazanir); spawner basina tum script
+       kaynaklarini taramaz: 4163 spawner icin ~3 sn -> 1 sn alti. O save'de tum acilis:
+       ~39 sn -> ~10 sn.
+
 [2026-10-18] - Gorunurde oyuncu botlari: adimlar, yetkili listeleri, panel
 ------------------------------------------------------------------------
 DUZELTME - Bir oyuncu botunun adimi yakindaki oyunculara yalnizca menzile girip cikarken

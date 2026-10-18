@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-19] - World load time
+------------------------------------------------------------------------
+FIX - Reading a record's P= line no longer moves the item through GameWorld.PlaceItem. Every
+      item, contained ones included, was put into its ground sector first, and the sector's
+      linear membership check made a crowded sector quadratic. The loader now only stores the
+      point (as Source-X r_Load does) and places the record once when it ends; an off-map point
+      keeps the old path. Measured on a 0.56T save (193k items, 7.6k chars): Materialize 21.4 s
+      -> 5 s, same item, char and contained counts.
+FIX - The save-generation stamp check reads only the first record of a world/char shard, where
+      [SAVEID] is always written, instead of reading an unstamped classic file to its end twice.
+FIX - Spawn initialisation at boot resolves each spawner's MORE1 through a one-pass index of the
+      SPAWN groups (same order, first match wins) instead of scanning every script resource per
+      spawner: about 3 s -> under 1 s for 4163 spawners. Whole boot on that save: ~39 s -> ~10 s.
+
 [2026-10-18] - Player bots in view: steps, staff lists, panel
 ------------------------------------------------------------------------
 FIX - A player bot's step reached nearby players only on enter/leave range: the bot moved through

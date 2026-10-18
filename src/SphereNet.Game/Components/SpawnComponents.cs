@@ -667,6 +667,15 @@ public sealed class SpawnComponent
     {
         _resources = resources;
 
+        if (_bulkGroupIndex != null && ReferenceEquals(_bulkGroupHolder, resources))
+        {
+            if (_bulkGroupIndex.TryGetValue(more1, out var indexed))
+                _spawnGroup = indexed;
+            else
+                _charDefId = (int)more1;
+            return;
+        }
+
         foreach (var res in resources.GetAllResources())
         {
             if (res.Id.Type == ResType.Spawn && res is SpawnGroupDef sgd)
@@ -684,6 +693,43 @@ public sealed class SpawnComponent
         }
 
         _charDefId = (int)more1;
+    }
+
+    [ThreadStatic] private static ResourceHolder? _bulkGroupHolder;
+    [ThreadStatic] private static Dictionary<uint, SpawnGroupDef>? _bulkGroupIndex;
+
+    /// <summary>
+    /// For a pass that resolves many spawners at once (the world load): the scan
+    /// <see cref="SetFromMore1"/> makes over every script resource is done once,
+    /// in the same order and keeping the first match per id, and each spawner then
+    /// looks its MORE1 up in it. Thousands of spawners each walking every resource
+    /// was most of the spawn initialisation time. The resources must not change
+    /// while the scope is open; dispose it when the pass ends.
+    /// </summary>
+    public static IDisposable BeginBulkResolve(ResourceHolder resources)
+    {
+        var index = new Dictionary<uint, SpawnGroupDef>();
+        foreach (var res in resources.GetAllResources())
+        {
+            if (res.Id.Type == ResType.Spawn && res is SpawnGroupDef sgd && !string.IsNullOrEmpty(sgd.DefName))
+            {
+                var spawnRid = resources.ResolveDefName(sgd.DefName);
+                if (spawnRid.IsValid)
+                    index.TryAdd((uint)spawnRid.Index, sgd);
+            }
+        }
+        _bulkGroupHolder = resources;
+        _bulkGroupIndex = index;
+        return new BulkResolveScope();
+    }
+
+    private sealed class BulkResolveScope : IDisposable
+    {
+        public void Dispose()
+        {
+            _bulkGroupHolder = null;
+            _bulkGroupIndex = null;
+        }
     }
 
     /// <summary>

@@ -118,6 +118,14 @@ export const tr: Messages = {
 
   // --- players ---
   'players.online': '{n} çevrimiçi',
+  'players.kindFilter': 'Göster',
+  'players.kindPlayers': 'Oyuncular',
+  'players.kindBots': 'Botlar',
+  'players.kindAll': 'Tümü',
+  'players.counts': '{p} oyuncu · {b} bot',
+  'players.botBadge': 'bot',
+  'players.botTitle': 'Oyuncu botu: sunucu oynatıyor, bağlantısı yok',
+  'players.noneBots': 'Çevrimiçi oyuncu botu yok.',
   'plugins.count': '{n} eklenti',
   'plugins.bridgeOn': 'Köprü {endpoint} adresinde dinliyor',
   'plugins.bridgeOff': 'Köprü kapalı',

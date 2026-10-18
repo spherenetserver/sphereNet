@@ -181,7 +181,9 @@ public record PlayerInfo(
     uint Serial = 0,
     int PrivLevel = 0,
     string ClientVersion = "",
-    int SessionSeconds = 0
+    int SessionSeconds = 0,
+    // A server-driven player bot: no connection (Ip empty, ClientVersion "bot").
+    bool IsBot = false
 );
 
 /// <summary>A character's paperdoll data. <see cref="PaperdollText"/> is the exact

@@ -117,6 +117,14 @@ export const en = {
 
   // --- players ---
   'players.online': '{n} online',
+  'players.kindFilter': 'Show',
+  'players.kindPlayers': 'Players',
+  'players.kindBots': 'Bots',
+  'players.kindAll': 'All',
+  'players.counts': '{p} players · {b} bots',
+  'players.botBadge': 'bot',
+  'players.botTitle': 'Player bot: played by the server, no connection',
+  'players.noneBots': 'No player bots online.',
   'plugins.count': '{n} plugins',
   'plugins.bridgeOn': 'Bridge listening on {endpoint}',
   'plugins.bridgeOff': 'Bridge off',

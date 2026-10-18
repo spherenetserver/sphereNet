@@ -344,6 +344,8 @@ public static partial class Program
             // online player, with the caller as src. Protocol format:
             // _ALLCLIENTS=<srcUid>|<funcName>.
             _ when upper.StartsWith("_ALLCLIENTS=") => HandleAllClients(property[12..]),
+            // serv.allbots <function> - the same run over the online player bots.
+            _ when upper.StartsWith("_ALLBOTS=") => RunLinePerCharacter(property[9..], BuildAllBotsSnapshot),
             _ when upper.StartsWith("_WRITEFILE=") => HandleServWriteFile(property[11..]),
             _ when upper.StartsWith("_DELETEFILE=") => HandleServDeleteFile(property[12..]),
             _ when upper.StartsWith("_CONSOLE=") => HandleServConsole(property[9..]),
@@ -1803,7 +1805,10 @@ public static partial class Program
     /// iterated player becomes the function's target. Sphere admin
     /// scripts use this pattern to tally online clients or push a
     /// system message to everyone.</summary>
-    private static string? HandleAllClients(string data)
+    private static string? HandleAllClients(string data) => RunLinePerCharacter(data, BuildAllClientsSnapshot);
+
+    private static string? RunLinePerCharacter(string data,
+        Func<List<(Character Target, GameClient? Client)>> buildSnapshot)
     {
         int pipe = data.IndexOf('|');
         if (pipe <= 0 || _world == null) return "";
@@ -1834,7 +1839,7 @@ public static partial class Program
         string head = sp > 0 ? payload[..sp] : payload;
         string tail = sp > 0 ? payload[(sp + 1)..].TrimStart() : "";
 
-        var snapshot = BuildAllClientsSnapshot();
+        var snapshot = buildSnapshot();
         // Diagnostic for the admin online-player list ("admin" command tallies
         // clients into CTAG0 via this path). [allclients] shows whether SRC
         // resolved and how many clients the callback runs for — an empty list
@@ -1923,6 +1928,26 @@ public static partial class Program
                 Add(client.Character, client);
         }
 
+        return snapshot;
+    }
+
+    private static List<(Character Target, GameClient? Client)> BuildAllBotsSnapshot() =>
+        BuildAllBotsSnapshot(_world, _clientsByCharUid);
+
+    /// <summary>The online player bots, each with the socketless client that plays
+    /// it. Kept apart from <see cref="BuildAllClientsSnapshot()"/>: a line meant for
+    /// every client (a broadcast sysmessage) must not reach a bot, while a staff
+    /// list may still want to count them.</summary>
+    private static List<(Character Target, GameClient? Client)> BuildAllBotsSnapshot(
+        GameWorld? world, IReadOnlyDictionary<Serial, GameClient> indexedClients)
+    {
+        var snapshot = new List<(Character Target, GameClient? Client)>();
+        if (world == null) return snapshot;
+        foreach (var ch in world.OnlinePlayers)
+        {
+            if (ch.IsDeleted || !ch.IsPlayerBot) continue;
+            snapshot.Add((ch, indexedClients.TryGetValue(ch.Uid, out var c) && c.Character == ch ? c : null));
+        }
         return snapshot;
     }
 

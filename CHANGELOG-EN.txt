@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-18] - Player bots in view: steps, staff lists, panel
+------------------------------------------------------------------------
+FIX - A player bot's step reached nearby players only on enter/leave range: the bot moved through
+      MovementEngine directly, and the move hook leaves still-in-range viewers to the walk
+      handler's 0x77 broadcast, which a bot never ran. Watchers saw the bot frozen while they
+      stood and jumping when they walked. Each accepted bot step now broadcasts the same 0x77
+      (direction | 0x80 when running, hue, mobile flags, notoriety) through
+      GameClient.BroadcastOwnStep; a step that lands off the next tile sends none.
+ADD - SERV.ALLBOTS <function|verb>: SERV.ALLCLIENTS's per-character run over the online player
+      bots (same dispatch, caller as SRC). Character property ISPLAYERBOT. SERV.ALLCLIENTS is
+      unchanged and still leaves bots out.
+ADD - Web panel Players page: Players / Bots / All switch (default Players, remembered in the
+      browser), separate player and bot counts, a "bot" badge on bot rows, no Disconnect on a
+      bot row. PlayerInfo.IsBot (also over the host IPC bridge); the online list adds the bots
+      with an empty IP and client version "bot". Message reaches a bot's client by serial.
+
 [2026-10-18] - Room lookup index
 ------------------------------------------------------------------------
 FIX - GameWorld.FindRoom answers through a per-64-tile cell index of the ROOMDEFs (the first room

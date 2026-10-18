@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-18] - Gorunurde oyuncu botlari: adimlar, yetkili listeleri, panel
+------------------------------------------------------------------------
+DUZELTME - Bir oyuncu botunun adimi yakindaki oyunculara yalnizca menzile girip cikarken
+       ulasiyordu: bot dogrudan MovementEngine ile yuruyordu; hareket kancasi menzilde kalan
+       izleyicileri yurume handler'inin 0x77 yayinina birakir ve bot o yolu hic calistirmiyordu.
+       Izleyen oyuncu dururken botu donmus, yuruyunce isinlanmis goruyordu. Kabul edilen her bot
+       adimi artik ayni 0x77'yi (yon | kosarken 0x80, renk, mobile bayraklari, notoriety)
+       GameClient.BroadcastOwnStep ile yayinlar; bir sonraki kareye dusmeyen adim yayin yapmaz.
+EKLEME - SERV.ALLBOTS <function|verb>: SERV.ALLCLIENTS'in karakter basina calismasi, online oyuncu
+       botlari uzerinde (ayni dagitim, SRC cagiran). Karakter ozelligi ISPLAYERBOT.
+       SERV.ALLCLIENTS degismedi, botlari yine saymaz.
+EKLEME - Web paneli Oyuncular sayfasi: Oyuncular / Botlar / Tumu secimi (varsayilan Oyuncular,
+       tarayicida hatirlanir), oyuncu ve bot sayaclari ayri, bot satirinda "bot" rozeti, bot
+       satirinda Disconnect yok. PlayerInfo.IsBot (host IPC koprusunde de); online listeye botlar
+       bos IP ve "bot" istemci surumuyle eklenir. Mesaj, serial ile botun client'ina ulasir.
+
 [2026-10-18] - Oda arama indeksi
 ------------------------------------------------------------------------
 DUZELTME - GameWorld.FindRoom her adimda butun odalari taramak yerine ROOMDEF'lerin 64 karelik

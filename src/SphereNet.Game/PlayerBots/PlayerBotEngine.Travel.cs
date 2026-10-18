@@ -388,6 +388,11 @@ public sealed partial class PlayerBotEngine
         // Carried off by the step itself: the tile was a teleporter or a gate.
         if (moved && (ch.Position.Map != from.Map || ch.Position.GetDistanceTo(from) > 12) && MindOf(ch) is { } carried)
             carried.RememberPortal(tx, ty, from.Map, Environment.TickCount64);
+        // The viewers get the step as from a walking player. Like the walk handler,
+        // a step that landed anywhere but the next tile (teleporter, script) sends no
+        // 0x77: the move hook has already told the viewers about the jump.
+        if (moved && ch.Position.Map == from.Map && ch.X == tx && ch.Y == ty)
+            MindOf(ch)?.Client?.BroadcastOwnStep(run);
         if (!timed) return moved;
         long us = (Stopwatch.GetTimestamp() - m0) * 1_000_000 / Stopwatch.Frequency;
         WindowMoveUs += us * 16;

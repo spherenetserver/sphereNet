@@ -311,6 +311,27 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
     /// it would be sent is dropped.</summary>
     public void AttachServerDriven(Character ch) => _character = ch;
 
+    /// <summary>The viewers' half of an accepted step taken by a server-driven
+    /// player: the 0x77 the walk handler broadcasts after a step (Source-X
+    /// CChar::UpdateMove). The step itself went through MovementEngine, which only
+    /// tells enter/leave-range viewers; the ones already seeing the mover need the
+    /// move packet or it stands frozen on their screen.</summary>
+    public void BroadcastOwnStep(bool running)
+    {
+        if (_character == null) return;
+        byte flags = BuildMobileFlags(_character);
+        byte noto = GetNotoriety(_character);
+        byte dir77 = (byte)(((byte)_character.Direction & 0x07) | (running ? 0x80 : 0));
+        var movePacket = new PacketMobileMoving(
+            _character.Uid.Value, _character.BodyId,
+            _character.X, _character.Y, _character.Z, dir77,
+            _character.Hue, flags, noto);
+        if (BroadcastMoveNearby != null)
+            BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value, _character);
+        else
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value);
+    }
+
     /// <summary>A disconnect changes the party like any other departure, so the people
     /// still connected are told: Source-X takes the same RemoveMember path when a
     /// character disconnects (SetDisconnected, CChar.cpp:528 -> CParty.cpp:296), which

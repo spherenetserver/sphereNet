@@ -264,6 +264,53 @@ public sealed class PlayerBotEngineTests : IDisposable
         Assert.Equal(0, engine.StuckRescues);
     }
 
+    [Fact]
+    public void EachBotStepReachesTheViewersAsAMovePacket()
+    {
+        var world = World();
+        var bot = SavedBot(world, new Point3D(100, 100, 0, 0), goal: "Town Bank");
+        var engine = Engine(world, Nav(world));
+        var moves = new List<byte[]>();
+        engine.CreateClient = ch =>
+        {
+            var c = new SphereNet.Game.Clients.GameClient(
+                new SphereNet.Network.State.NetState(NullLogger.Instance), world,
+                new SphereNet.Game.Accounts.AccountManager(NullLoggerFactory.Instance), NullLogger.Instance);
+            c.AttachServerDriven(ch);
+            c.BroadcastMoveNearby = (_, _, packet, exclude, mover) =>
+            {
+                Assert.Equal(ch.Uid.Value, exclude);
+                Assert.Same(ch, mover);
+                moves.Add(packet.Build().Span.ToArray());
+            };
+            return c;
+        };
+        engine.AdoptSaved();
+
+        long now = 1_000_000;
+        var steps = new List<Point3D>();
+        for (int i = 0; i < 3000 && bot.Position.GetDistanceTo(new Point3D(122, 101, 0, 0)) > 0; i++)
+        {
+            var before = bot.Position;
+            engine.Tick(now);
+            if (bot.Position != before) steps.Add(bot.Position);
+            now += 100;
+        }
+
+        Assert.Equal(new Point3D(122, 101, 0, 0), bot.Position);
+        Assert.NotEmpty(steps);
+        // One 0x77 per step, carrying where the step ended.
+        Assert.Equal(steps.Count, moves.Count);
+        for (int i = 0; i < steps.Count; i++)
+        {
+            var p = moves[i];
+            Assert.Equal(0x77, p[0]);
+            Assert.Equal(bot.Uid.Value, (uint)(p[1] << 24 | p[2] << 16 | p[3] << 8 | p[4]));
+            Assert.Equal(steps[i].X, (short)(p[7] << 8 | p[8]));
+            Assert.Equal(steps[i].Y, (short)(p[9] << 8 | p[10]));
+        }
+    }
+
     private static PlayerBotEngine EngineWithClients(GameWorld world, BotNavGraph nav)
     {
         var engine = Engine(world, nav);

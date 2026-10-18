@@ -321,23 +321,11 @@ public static partial class Program
                         SaveCount: _saveCount);
                 }, "stats snapshot"),
 
-                GetOnlinePlayers = () => InvokePanelOnMainLoop<IReadOnlyList<PlayerInfo>>(() => _clients.Values
-                    .Where(c => c.IsPlaying && c.Character != null)
-                    .Select(c => new PlayerInfo(
-                        c.Character!.Name,
-                        c.Account?.Name ?? "",
-                        c.Character.Position.Map,
-                        c.Character.Position.X,
-                        c.Character.Position.Y,
-                        c.NetState.RemoteEndPoint?.Address.ToString() ?? "",
-                        c.Character.Uid.Value,
-                        (int)c.Character.PrivLevel,
-                        c.NetState.ClientVersion,
-                        c.SessionStartedUtc is { } entered
-                            ? (int)(DateTime.UtcNow - entered).TotalSeconds
-                            : 0))
-                    .ToList(), "player snapshot"),
+                GetOnlinePlayers = () => InvokePanelOnMainLoop<IReadOnlyList<PlayerInfo>>(
+                    () => BuildPanelPlayerList(_clients.Values, _world), "player snapshot"),
 
+                // A connection only: a player bot has none to close (the panel offers
+                // no disconnect for it), so its serial is "not online" here.
                 DisconnectPlayer = serial => InvokePanelOnMainLoop(() =>
                 {
                     var client = FindPlayingClient(serial);
@@ -347,7 +335,7 @@ public static partial class Program
                 }, "player disconnect"),
                 MessagePlayer = (serial, text) => InvokePanelOnMainLoop(() =>
                 {
-                    var client = FindPlayingClient(serial);
+                    var client = FindPlayingClient(serial) ?? FindPlayerBotClient(serial);
                     if (client == null) return false;
                     client.SysMessage(text);
                     return true;
@@ -662,6 +650,56 @@ public static partial class Program
 
     private static SphereNet.Game.Clients.GameClient? FindPlayingClient(uint serial) =>
         _clients.Values.FirstOrDefault(c => c.IsPlaying && c.Character?.Uid.Value == serial);
+
+    /// <summary>The socketless client playing an online player bot.</summary>
+    private static SphereNet.Game.Clients.GameClient? FindPlayerBotClient(uint serial) =>
+        _clientsByCharUid.TryGetValue(new Serial(serial), out var c) &&
+        c.IsPlaying && c.Character is { IsPlayerBot: true } ? c : null;
+
+    /// <summary>The panel's online list: every playing connection, then the online
+    /// player bots. A bot has no connection, so it carries no IP and the client
+    /// version "bot", and is flagged <see cref="PlayerInfo.IsBot"/>.</summary>
+    internal static List<PlayerInfo> BuildPanelPlayerList(
+        IEnumerable<SphereNet.Game.Clients.GameClient> clients, GameWorld? world)
+    {
+        var list = new List<PlayerInfo>();
+        foreach (var c in clients)
+        {
+            if (!c.IsPlaying || c.Character == null || c.Character.IsPlayerBot) continue;
+            var ch = c.Character;
+            list.Add(new PlayerInfo(
+                ch.Name,
+                c.Account?.Name ?? "",
+                ch.Position.Map,
+                ch.Position.X,
+                ch.Position.Y,
+                c.NetState.RemoteEndPoint?.Address.ToString() ?? "",
+                ch.Uid.Value,
+                (int)ch.PrivLevel,
+                c.NetState.ClientVersion,
+                c.SessionStartedUtc is { } entered
+                    ? (int)(DateTime.UtcNow - entered).TotalSeconds
+                    : 0));
+        }
+        if (world == null) return list;
+        foreach (var ch in world.OnlinePlayers)
+        {
+            if (ch.IsDeleted || !ch.IsPlayerBot) continue;
+            list.Add(new PlayerInfo(
+                ch.Name,
+                "",
+                ch.Position.Map,
+                ch.Position.X,
+                ch.Position.Y,
+                "",
+                ch.Uid.Value,
+                (int)ch.PrivLevel,
+                "bot",
+                0,
+                IsBot: true));
+        }
+        return list;
+    }
 
     // ==================== Panel character / server actions ====================
 

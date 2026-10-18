@@ -5799,6 +5799,9 @@ public partial class Character : ObjBase
             case "ISONLINE":
                 value = _isPlayer ? (_isOnline ? "1" : "0") : (IsStatFlag(StatFlag.Ridden) ? "0" : "1");
                 return true;
+            // A player character the server itself is playing (SphereNet player bots);
+            // staff lists use it to mark and filter those rows.
+            case "ISPLAYERBOT": value = IsPlayerBot ? "1" : "0"; return true;
 
             // --- Calculated properties ---
             case "SERIAL": value = $"0{Uid.Value:x}"; return true;

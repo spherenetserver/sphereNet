@@ -2,7 +2,13 @@
   <div>
     <div class="toolbar">
       <div class="toolbar-left">
-        <span class="count">{{ t('players.online', { n: players.length }) }}</span>
+        <div class="kind-switch" role="group" :aria-label="t('players.kindFilter')">
+          <button v-for="k in PLAYER_KINDS" :key="k" type="button" class="kind-btn" :class="{ active: kind === k }"
+            :aria-pressed="kind === k" @click="setKind(k)">
+            {{ kindLabel(k) }}
+          </button>
+        </div>
+        <span class="count">{{ t('players.counts', { p: counts.players, b: counts.bots }) }}</span>
         <input v-model="search" class="search-input" :placeholder="t('players.search')" />
         <form class="serial-form" @submit.prevent="openBySerial">
           <input v-model="serialInput" class="search-input serial-input" :placeholder="t('players.serialPlaceholder')" />
@@ -48,6 +54,7 @@
           <tr v-for="p in filtered" :key="p.serial">
             <td class="bold">
               <button class="link-btn" :title="t('players.openPaperdoll')" @click="paperdollSerial = p.serial">{{ p.charName }}</button>
+              <span v-if="p.isBot" class="badge bot-badge" :title="t('players.botTitle')">{{ t('players.botBadge') }}</span>
             </td>
             <td class="mono text-muted">{{ hex(p.serial) }}</td>
             <td>{{ p.accountName }}</td>
@@ -67,7 +74,7 @@
               <button class="icon-btn" :title="t('players.sendMessage')" :disabled="busy.has(p.serial)" @click="openMessage(p)">
                 <MessageSquare :size="15" />
               </button>
-              <button class="icon-btn danger" :title="t('players.disconnect')" :disabled="busy.has(p.serial)" @click="disconnect(p)">
+              <button v-if="!p.isBot" class="icon-btn danger" :title="t('players.disconnect')" :disabled="busy.has(p.serial)" @click="disconnect(p)">
                 <Unplug :size="15" />
               </button>
             </td>
@@ -84,13 +91,13 @@
         <p>{{ t('players.loadError', { error: loadError }) }}</p>
         <button class="btn-ghost" @click="refetch()">{{ t('common.retry') }}</button>
       </div>
-      <div v-else-if="players.length > 0" class="empty">
+      <div v-else-if="shown.length > 0" class="empty">
         <Search :size="32" class="empty-icon" />
         <p>{{ t('players.noMatch', { q: search.trim() }) }}</p>
       </div>
       <div v-else class="empty">
         <Users :size="32" class="empty-icon" />
-        <p>{{ t('players.none') }}</p>
+        <p>{{ kind === 'bots' ? t('players.noneBots') : t('players.none') }}</p>
       </div>
     </div>
     <p v-if="isError && players.length > 0" class="stale-note">
@@ -133,6 +140,7 @@ import { t } from '@/i18n'
 import PaperdollModal from '@/components/PaperdollModal.vue'
 import PlayerActionsModal from '@/components/PlayerActionsModal.vue'
 import { hexSerial, parseSerial } from '@/lib/paperdoll'
+import { PLAYER_KINDS, countKinds, ofKind, readPlayerKind, savePlayerKind, type PlayerKind } from '@/lib/playerKind'
 
 const qc = useQueryClient()
 const { data, isPending, isError, error, isFetching, refetch } = useQuery({
@@ -144,11 +152,25 @@ const { data, isPending, isError, error, isFetching, refetch } = useQuery({
 const players   = computed(() => data.value ?? [])
 const loadError = computed(() => errorMessage(error.value))
 
+// Players / Bots / All, remembered per browser; the counts are over the whole list.
+const kind   = ref<PlayerKind>(readPlayerKind())
+const counts = computed(() => countKinds(players.value))
+const shown  = computed(() => ofKind(players.value, kind.value))
+
+function setKind(k: PlayerKind) {
+  kind.value = k
+  savePlayerKind(k)
+}
+
+function kindLabel(k: PlayerKind): string {
+  return k === 'bots' ? t('players.kindBots') : k === 'all' ? t('players.kindAll') : t('players.kindPlayers')
+}
+
 const search   = ref('')
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
-  if (!q) return players.value
-  return players.value.filter(p =>
+  if (!q) return shown.value
+  return shown.value.filter(p =>
     p.charName.toLowerCase().includes(q) ||
     p.accountName.toLowerCase().includes(q) ||
     p.ip.toLowerCase().includes(q) ||
@@ -304,6 +326,37 @@ function mapName(id: number): string {
 .search-input:focus { border-color: var(--accent); }
 
 .serial-form { display: flex; gap: 6px; align-items: center; }
+
+.kind-switch {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.kind-btn {
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.kind-btn:last-child { border-right: none; }
+.kind-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.kind-btn.active { background: var(--accent); color: #0d1117; }
+
+.bot-badge {
+  margin-left: 8px;
+  background: rgba(163,113,247,0.15);
+  color: #a371f7;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .serial-input { width: 170px; }
 
 .link-btn {

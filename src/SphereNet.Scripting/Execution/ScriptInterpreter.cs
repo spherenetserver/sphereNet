@@ -500,6 +500,18 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // SERV.ALLBOTS <function> — the same per-character run over the online
+        // player bots, which ALLCLIENTS leaves out (they have no client). Lets a
+        // staff list count them on their own path.
+        if (cmd.Equals("SERV.ALLBOTS", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("ALLBOTS", StringComparison.OrdinalIgnoreCase))
+        {
+            string srcUid = args?.Source != null && args.Source.TryGetProperty("UID", out string suid)
+                ? suid : "0";
+            ServerPropertyResolver?.Invoke($"_ALLBOTS={srcUid}|{resolvedArg}");
+            return;
+        }
+
         // SERV.VARLIST [prefix] / SERV.PRINTLISTS — diagnostic dumps written to the
         // caller's console (Source-X output goes to the invoking client), not just the
         // server log. srcUid is carried so the server side can find that console.

@@ -101,6 +101,8 @@ export interface PlayerInfo {
   privLevel: number
   clientVersion: string
   sessionSeconds: number
+  /** A player bot the server plays: no connection (ip empty, clientVersion "bot"). */
+  isBot?: boolean
 }
 
 export type PlayerActionName =

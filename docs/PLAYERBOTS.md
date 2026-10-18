@@ -22,8 +22,26 @@ apply to bots unchanged.
 | In `_clientsByCharUid` (the world finds "this character's client") | yes | yes |
 
 Client-only loops and counts use `HasClient`: `FORCLIENTS`, `SECTOR.ALLCLIENTS`,
-`SECTOR.CLIENTS`, the "N other players" line at login, the all-clients console loop.
-Move notifications skip bots (they keep no view of the world).
+`SERV.ALLCLIENTS`, `SECTOR.CLIENTS`, the "N other players" line at login, the
+all-clients console loop. Move notifications skip bots as recipients (they keep no view
+of the world).
+
+### Seen by staff
+
+- `SERV.ALLBOTS <function|verb>` runs a line once per online bot, as `SERV.ALLCLIENTS`
+  does per client (same dispatch, SRC is the caller). `ISPLAYERBOT` reads 1 on a bot.
+  `SERV.ALLCLIENTS` itself still leaves bots out, so a broadcast never reaches one.
+- The Scripts-X `.admin` dialog (`core/dialogs/admin/d_admin_main.scp` in the script
+  pack) has a Players / Bots / All switch on its bottom bar, Players by default. Bot
+  rows read `[bot]` in the account and name columns; the row opens the same player page
+  (go, summon, tweak) as for a player. The pack lives outside this repository, so the
+  switch is a change to the pack's own file.
+- The web panel's Players page has the same Players / Bots / All switch (remembered in
+  the browser) and counts players and bots separately. `PlayerInfo.IsBot` marks a bot
+  row (no IP, client version `bot`), also across the host IPC bridge. A bot row has no
+  Disconnect (there is no connection to close; the endpoint answers "not online" for a
+  bot); Message (delivered to the bot's socketless client, so nobody reads it) and the
+  detail / actions page work as for a player.
 
 ## Persistence
 
@@ -124,6 +142,13 @@ second rescue on the way out of or into the same stopping spot marks it as unrea
 not one per visit. Learned spots are kept in `playerbots_badspots.txt` in the world save
 directory (one `destination|spot` per line) and read back at start; deleting the file
 lets bots try every spot again.
+
+Every accepted step is broadcast to the players who can see the bot as a 0x77 move
+(direction, `| 0x80` when running, hue, mobile flags, notoriety), exactly what the walk
+handler sends after a player's step. The step goes through `MovementEngine` directly,
+whose move hook only tells viewers about enter and leave range; without the 0x77 a
+watching player saw the bot stand still and then jump when they moved themselves. A
+step that lands anywhere but the next tile (a teleporter) sends no 0x77, as for a player.
 
 A bot carried far without walking (a gate, a teleporter, a script) plans again from
 where it landed. A tile whose step carried it off is remembered as a portal for three

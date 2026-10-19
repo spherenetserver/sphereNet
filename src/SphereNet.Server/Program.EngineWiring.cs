@@ -3200,15 +3200,11 @@ public static partial class Program
                 if (ch == null) return null;
                 if (ch.TryGetTag("ACCOUNT", out string? acctName) && !string.IsNullOrEmpty(acctName))
                     return _accounts.FindAccount(acctName);
-                foreach (var acct in _accounts.GetAllAccounts())
-                {
-                    for (int i = 0; i < 7; i++)
-                    {
-                        if (acct.GetCharSlot(i) == uid)
-                            return acct;
-                    }
-                }
-                return null;
+                // Which account lists this character in a slot: from an index of every
+                // slot, rebuilt when any slot or the account list changes. It used to
+                // walk every account's seven slots on each call, and PrivLevel asks this
+                // for every character a view or a notoriety check touches.
+                return AccountBySlot().GetValueOrDefault(uid);
             };
             SphereNet.Game.Objects.Items.Item.ResolveGuild = uid => _guildManager.GetGuild(uid);
             // Stone war/alliance questions consult f_stonesys_internal_isatwarwith /

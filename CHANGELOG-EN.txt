@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-19] - Server throughput with a thousand clients
+------------------------------------------------------------------------
+FIX - Character.PrivLevel resolved the account on every read, and for a character with no
+      ACCOUNT tag that meant walking every account's seven slots; view building asks it for
+      every mobile each viewer sees (mobile flags), so with 1000 accounts one tick spent most of
+      its time there. A creature (not a player) answers its own level without asking for an
+      account (Source-X CChar::GetPrivLevel), and the account resolver reads a slot-to-account
+      index rebuilt when a slot or the account list changes (Account.LinkVersion).
+FIX - An NPC step reached each viewer with a 0x77 built and a buffer rented for that viewer
+      alone. Viewers shown the same body, hue, flags and notoriety now share one built packet
+      (ClientViewUpdater.PrepareCharMoved + Program.SendNpcMoves), as player steps already did.
+FIX - Packet buffers rent from PacketArrayPool instead of ArrayPool.Shared: a bounded shared
+      stack per power-of-two size behind a small stack per thread, handing batches across.
+      Buffers are rented on the main loop and returned by the send workers; ArrayPool.Shared
+      dropped most of those returns, so most rents allocated anew. Renting and returning
+      allocate nothing (PacketPathAllocationTests holds it).
+FIX - The world's dirty set is a lock-free queue with a per-object queued flag (0 / 1 / 2 for
+      deleted while queued) instead of a ConcurrentDictionary whose adds contended on every
+      step; HasDirty keeps counting only live entries. The total-weight walk the stamina cost
+      runs every step reuses its set and stack per thread.
+DOC - MAXSIZECLIENTOUT: in a crowd of several hundred the login burst exceeds the Source-X
+      default of 80000 bytes in 10 s and drops arriving clients; raise it for such shards.
+      Real-socket load test, 8 workers, 2000 NPCs: 1000 clients spread over a town went from
+      tick p50 820 ms / move answer p95 4.2 s to 9.8 ms / 21 ms; 1000 clients in one screen
+      (MaxSizeClientOut 400000) from overloaded to tick p95 36 ms / move answer p95 192 ms.
+
 [2026-10-19] - Multi and ground item lookups by area
 ------------------------------------------------------------------------
 FIX - The walk check, the legacy height/line-of-sight probe and the advanced line of sight

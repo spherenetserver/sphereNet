@@ -94,8 +94,19 @@ public sealed class Account : IScriptObj
         if (index < 0 || index >= _charSlots.Length) return false;
         _charSlots[index] = charUid;
         _charCount = _charSlots.Count(s => s.IsValid);
+        BumpLinks();
         return true;
     }
+
+    private static int s_linkVersion;
+
+    /// <summary>Changes whenever a character slot of any account, or the account list
+    /// itself, changes: whoever indexes "which account holds this character" rebuilds
+    /// when it moves.</summary>
+    public static int LinkVersion => Volatile.Read(ref s_linkVersion);
+
+    /// <summary>An account's character slots or the account list changed.</summary>
+    public static void BumpLinks() => Interlocked.Increment(ref s_linkVersion);
 
     public int FindFreeSlot()
     {

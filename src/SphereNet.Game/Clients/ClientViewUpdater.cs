@@ -633,11 +633,24 @@ public sealed class ClientViewUpdater
     /// </summary>
     public void NotifyCharMoved(Character ch, Point3D oldPos)
     {
+        if (PrepareCharMoved(ch, oldPos) is { } mv)
+            _client.SendMove(ch, mv);
+    }
+
+    /// <summary>
+    /// <see cref="NotifyCharMoved"/> without the 0x77: an appear, a delete or a
+    /// statue animation goes out here as before, the position this viewer knows is
+    /// recorded, and when a 0x77 is due its fields come back (null otherwise) for the
+    /// caller to send - an NPC step reaching a crowd builds that packet once per
+    /// distinct set of fields instead of once per viewer.
+    /// </summary>
+    public MobileMove? PrepareCharMoved(Character ch, Point3D oldPos)
+    {
         var me = _client.Character;
-        if (me == null || !_client.IsPlaying) return;
-        if (ch == me) return;
-        if (ch.IsDeleted) return;
-        if (ch.IsStatFlag(Core.Enums.StatFlag.Ridden)) return;
+        if (me == null || !_client.IsPlaying) return null;
+        if (ch == me) return null;
+        if (ch.IsDeleted) return null;
+        if (ch.IsStatFlag(Core.Enums.StatFlag.Ridden)) return null;
 
         int range = _client.NetState.ViewRange;
         bool wasInRange = InRange(me.Position, oldPos, range) && oldPos.Map == me.Position.Map;
@@ -658,19 +671,18 @@ public sealed class ClientViewUpdater
             if (!IsCharVisible(me, ch))
             {
                 RemoveKnownChar(uid, sendDelete: true);
-                return;
+                return null;
             }
 
             if (View.LastKnownPos.TryGetValue(uid, out var last))
             {
                 bool posChanged = last.X != ch.X || last.Y != ch.Y || last.Z != ch.Z || last.Dir != (byte)ch.Direction;
-                if (!posChanged) return;
+                if (!posChanged) return null;
             }
-            if (DrawsGreyed(ch))
-                _client.SendUpdateMobileHidden(ch);
-            else
-                _client.SendUpdateMobile(ch);
-            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch), _client.GetNotoriety(ch));
+            var mv = _client.MoveUpdateFor(ch, DrawsGreyed(ch));
+            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch),
+                mv?.Noto ?? _client.GetNotoriety(ch));
+            return mv;
         }
         else if (nowInRange)
         {
@@ -681,6 +693,7 @@ public sealed class ClientViewUpdater
             // NotifyCharacterAppear re-applies the hidden/ghost filters.
             NotifyCharacterAppear(ch);
         }
+        return null;
     }
 
     /// <summary>

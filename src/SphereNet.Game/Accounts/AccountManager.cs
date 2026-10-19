@@ -198,6 +198,7 @@ public sealed class AccountManager
             return null;
         }
         _accounts[name] = account;
+        Account.BumpLinks();
         // The password is set on the listed account, through f_onaccount_pwchange
         // with an empty LOCAL.oldPassword (Cmd_AddNew, CAccount.cpp:284-289).
         account.ChangePassword(password);
@@ -237,6 +238,7 @@ public sealed class AccountManager
         };
         account.SetPassword(password);
         _accounts[name] = account;
+        Account.BumpLinks();
         _logger.LogInformation("Internal account '{Name}' created", name);
         return account;
     }
@@ -265,6 +267,7 @@ public sealed class AccountManager
         }
 
         _accounts.Remove(name);
+        Account.BumpLinks();
         AccountDeleted?.Invoke(account);
         NotifyAccountsChanged();
         return true;
@@ -320,5 +323,6 @@ public sealed class AccountManager
         if (account == null || string.IsNullOrWhiteSpace(account.Name)) return;
         account.UseMd5Passwords = Md5Passwords;
         _accounts[account.Name] = account;
+        Account.BumpLinks();
     }
 }

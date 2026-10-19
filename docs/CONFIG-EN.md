@@ -2302,6 +2302,8 @@ Maximum bytes the server may receive from one client in 10 seconds. Over it, `f_
 
 Maximum bytes the server may send to one client in 10 seconds. Over it, `f_onclient_exceed_network_quota` runs with `ARGN1=1`.
 
+The count is wire bytes (after compression and encryption), as in Source-X. A client stepping into a crowd is sent every mobile and item it can see at once: measured on a load test, with several hundred players in one screen the first ten seconds after login exceeded 80000 and a quarter of the arriving clients were dropped. A shard expecting crowds of that size should raise it (400000 kept every client of a 1000-player crowd) or set `0`.
+
 - **Type:** integer (bytes, `0` = disabled)
 - **Default:** `80000` when the key is absent
 

@@ -55,6 +55,33 @@ namespace SphereNet.Server;
 
 public static partial class Program
 {
+    private sealed class SlotIndex(int version, Dictionary<SphereNet.Core.Types.Serial, SphereNet.Game.Accounts.Account> map)
+    {
+        public int Version { get; } = version;
+        public Dictionary<SphereNet.Core.Types.Serial, SphereNet.Game.Accounts.Account> Map { get; } = map;
+    }
+
+    private static volatile SlotIndex? s_slotIndex;
+
+    /// <summary>Character serial to the account that lists it in a slot (the first
+    /// account in list order, as the slot walk returned). Published whole, so callers
+    /// in the parallel phase never see one half built.</summary>
+    private static Dictionary<SphereNet.Core.Types.Serial, SphereNet.Game.Accounts.Account> AccountBySlot()
+    {
+        int version = SphereNet.Game.Accounts.Account.LinkVersion;
+        var index = s_slotIndex;
+        if (index != null && index.Version == version) return index.Map;
+        var map = new Dictionary<SphereNet.Core.Types.Serial, SphereNet.Game.Accounts.Account>();
+        foreach (var acct in _accounts.GetAllAccounts())
+            for (int i = 0; i < 7; i++)
+            {
+                var uid = acct.GetCharSlot(i);
+                if (uid.IsValid) map.TryAdd(uid, acct);
+            }
+        s_slotIndex = new SlotIndex(version, map);
+        return map;
+    }
+
     private static readonly AnsiConsoleTheme WarningConsoleTheme = new(
         new Dictionary<ConsoleThemeStyle, string>
         {

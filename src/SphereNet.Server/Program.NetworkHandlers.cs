@@ -843,9 +843,13 @@ public static partial class Program
         ch.MoveDelivered = (ch.Position, ch.Direction);
     }
 
+    [ThreadStatic] private static List<(GameClient Client, MobileMove Move)>? t_npcMoveRecipients;
+
     private static void NotifyMovedInSectors(Character ch, Point3D oldPos, bool isPlayer,
         byte mapId, int minSx, int maxSx, int minSy, int maxSy)
     {
+        var moves = isPlayer ? null : (t_npcMoveRecipients ??= new(64));
+        moves?.Clear();
         for (int sx = minSx; sx <= maxSx; sx++)
         for (int sy = minSy; sy <= maxSy; sy++)
         {
@@ -858,10 +862,56 @@ public static partial class Program
                 if (!_clientsByCharUid.TryGetValue(other.Uid, out var c) || !c.IsPlaying) continue;
                 if (isPlayer)
                     c.NotifyCharEnterLeave(ch, oldPos);
-                else
-                    c.NotifyCharMoved(ch, oldPos);
+                else if (c.PrepareCharMoved(ch, oldPos) is { } mv)
+                    moves!.Add((c, mv));
             }
         }
+        if (moves is { Count: > 0 })
+            SendNpcMoves(ch, moves);
+    }
+
+    /// <summary>The 0x77 of one NPC step to every viewer that is due one: viewers
+    /// shown the same body, hue, flags and notoriety (nearly all of a crowd) share
+    /// one built packet, as BroadcastMoveNearby does for a player's step, instead of
+    /// each getting a packet built and a buffer rented of its own.</summary>
+    private static void SendNpcMoves(Character ch, List<(GameClient Client, MobileMove Move)> moves)
+    {
+        if (moves.Count == 1)
+        {
+            moves[0].Client.SendMove(ch, moves[0].Move);
+            moves.Clear();
+            return;
+        }
+        // Group in place: sort by the fields so equal moves sit together.
+        moves.Sort(static (a, b) =>
+        {
+            int c = a.Move.Body.CompareTo(b.Move.Body);
+            if (c != 0) return c;
+            c = a.Move.Hue.CompareTo(b.Move.Hue);
+            if (c != 0) return c;
+            c = a.Move.Flags.CompareTo(b.Move.Flags);
+            return c != 0 ? c : a.Move.Noto.CompareTo(b.Move.Noto);
+        });
+        int start = 0;
+        while (start < moves.Count)
+        {
+            var mv = moves[start].Move;
+            int end = start + 1;
+            while (end < moves.Count && moves[end].Move == mv) end++;
+            int count = end - start;
+            if (count == 1)
+                moves[start].Client.SendMove(ch, mv);
+            else
+            {
+                var shared = new SphereNet.Network.Packets.Outgoing.PacketMobileMoving(ch.Uid.Value, mv.Body,
+                    ch.X, ch.Y, ch.Z, (byte)ch.Direction, mv.Hue, mv.Flags, mv.Noto).Build();
+                shared.MarkShared(count);
+                for (int i = start; i < end; i++)
+                    moves[i].Client.NetState.EnqueueShared(shared);
+            }
+            start = end;
+        }
+        moves.Clear();
     }
 
     /// <summary>Mark nearby clients for a view refresh when an object at the given position changes.</summary>

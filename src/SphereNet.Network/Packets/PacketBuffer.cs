@@ -72,7 +72,7 @@ public sealed class PacketBuffer
     /// _data.Length, so the slack is never observed.</summary>
     public PacketBuffer(int capacity = 64)
     {
-        _data = ArrayPool<byte>.Shared.Rent(capacity);
+        _data = PacketArrayPool.Rent(capacity);
         _pooled = true;
     }
 
@@ -92,7 +92,7 @@ public sealed class PacketBuffer
     /// keeps the buffer past OnReceive (values are read out, ReadBytes copies).</summary>
     public static PacketBuffer RentIncoming(ReadOnlySpan<byte> payload)
     {
-        byte[] data = ArrayPool<byte>.Shared.Rent(Math.Max(1, payload.Length));
+        byte[] data = PacketArrayPool.Rent(Math.Max(1, payload.Length));
         payload.CopyTo(data);
         return new PacketBuffer(data, payload.Length);
     }
@@ -120,9 +120,9 @@ public sealed class PacketBuffer
         {
             // Grow within the pool: rent a bigger array, copy the written
             // bytes, return the old one.
-            byte[] bigger = ArrayPool<byte>.Shared.Rent(newSize);
+            byte[] bigger = PacketArrayPool.Rent(newSize);
             Buffer.BlockCopy(_data, 0, bigger, 0, _length);
-            ArrayPool<byte>.Shared.Return(_data);
+            PacketArrayPool.Return(_data);
             _data = bigger;
         }
         else
@@ -143,7 +143,7 @@ public sealed class PacketBuffer
         if (!_pooled || _returned) return;
         if (System.Threading.Interlocked.Decrement(ref _refCount) > 0) return;
         _returned = true;
-        ArrayPool<byte>.Shared.Return(_data);
+        PacketArrayPool.Return(_data);
         _data = Array.Empty<byte>();
     }
 

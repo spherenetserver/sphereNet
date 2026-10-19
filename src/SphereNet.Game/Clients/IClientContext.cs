@@ -131,6 +131,8 @@ internal interface IClientContext : ITextConsole
     void SendUpdateMobile(Character ch);
     void SendUpdateMobileWithHue(Character ch, ushort hue);
     void SendUpdateMobileHidden(Character ch);
+    MobileMove? MoveUpdateFor(Character ch, bool greyed);
+    void SendMove(Character ch, MobileMove mv);
     /// <summary>Send a container-add and hand the uid over from the ground view to
     /// the container view. Never send a 0x25 any other way: the ground view would
     /// keep the uid and delete it on the next tick.</summary>

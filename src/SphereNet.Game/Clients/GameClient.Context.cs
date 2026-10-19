@@ -159,6 +159,8 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.SendUpdateMobile(Character ch) => SendUpdateMobile(ch);
     void IClientContext.SendUpdateMobileWithHue(Character ch, ushort hue) => SendUpdateMobileWithHue(ch, hue);
     void IClientContext.SendUpdateMobileHidden(Character ch) => SendUpdateMobileHidden(ch);
+    MobileMove? IClientContext.MoveUpdateFor(Character ch, bool greyed) => MoveUpdateFor(ch, greyed);
+    void IClientContext.SendMove(Character ch, MobileMove mv) => SendMove(ch, mv);
     void IClientContext.SendWorldItem(Item item) => SendWorldItem(item);
     void IClientContext.SendWorldItemAllShow(Item item) => SendWorldItemAllShow(item);
     void IClientContext.SendSelfRedraw() => SendSelfRedraw();

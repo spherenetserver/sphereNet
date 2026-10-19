@@ -1791,6 +1791,9 @@ public partial class Character : ObjBase
     {
         get
         {
+            // No player part, no account (Source-X CChar::GetPrivLevel): a creature's
+            // level is its own. Views and notoriety ask this for every NPC they touch.
+            if (!_isPlayer) return _privLevel;
             var acct = ResolveAccountForChar?.Invoke(Uid);
             return acct?.PrivLevel ?? _privLevel;
         }

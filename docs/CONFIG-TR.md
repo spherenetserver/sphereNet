@@ -2301,6 +2301,8 @@ Bir istemciden 10 saniyede alınabilecek en fazla veri (byte). Aşılırsa `f_on
 
 Bir istemciye 10 saniyede gönderilebilecek en fazla veri (byte). Aşılırsa `f_onclient_exceed_network_quota` `ARGN1=1` ile çalışır.
 
+Sayılan, Source-X'teki gibi ağa giden byte'tır (sıkıştırma ve şifrelemeden sonra). Kalabalığa giren bir istemciye görebildiği tüm mobil ve itemler bir anda gönderilir: yük testinde, aynı ekranda birkaç yüz oyuncu varken girişten sonraki ilk on saniye 80000'i aştı ve gelen istemcilerin dörtte biri düşürüldü. Bu büyüklükte kalabalık bekleyen bir shard değeri yükseltmeli (400000, 1000 kişilik bir kalabalıkta herkesi tuttu) ya da `0` yapmalıdır.
+
 - **Tür:** integer (byte, `0` = kapalı)
 - **Varsayılan:** anahtar yoksa `80000`
 

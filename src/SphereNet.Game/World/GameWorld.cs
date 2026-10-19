@@ -25,8 +25,9 @@ namespace SphereNet.Game.World;
 /// ApplyDecision, world load). Parallel phases (NPC BuildDecision, view-delta
 /// building) may READ them concurrently because the serial phases never run
 /// at the same time as the parallel ones.</item>
-/// <item><c>_dirtyObjects</c> is a ConcurrentDictionary because parallel phases
-/// write to it (ObjBase dirty-flag transitions call <see cref="NotifyDirty"/>).
+/// <item><c>_dirtyQueue</c> is a lock-free queue because parallel phases write to
+/// it (ObjBase dirty-flag transitions call <see cref="NotifyDirty"/>); each object
+/// is queued once until drained (its DirtyQueued flag).
 /// Region lookups read an immutable <see cref="RegionIndex"/> and write nothing.</item>
 /// <item>When adding a new parallel stage: it must not call CreateItem /
 /// CreateCharacter / PlaceCharacter / MoveCharacter / DeleteObject — collect
@@ -118,7 +119,13 @@ public sealed class GameWorld
     public Serial ObjReference { get; set; } = Serial.Invalid;
 
     // --- Delta-based update: dirty object tracking ---
-    private readonly ConcurrentDictionary<uint, ObjBase> _dirtyObjects = new();
+    // Objects with pending delta updates, each queued once (ObjBase.DirtyQueued)
+    // until the next drain. A ConcurrentDictionary did the same job with a bucket
+    // lock per add, contended on every step a crowd took.
+    private readonly ConcurrentQueue<ObjBase> _dirtyQueue = new();
+    // Queued objects not deleted since (DirtyQueued 1); a deleted one stays in the
+    // queue as 2 until a drain passes it, but no longer counts.
+    private int _dirtyLive;
 
     // Active sector tracking — shared by single-thread and multicore tick paths.
     // _activeSectors is the authoritative set for the current tick; NpcAI uses it
@@ -546,11 +553,15 @@ public sealed class GameWorld
     public void NotifyDirty(ObjBase obj)
     {
         if (SuppressDirtyNotify) return;
-        _dirtyObjects.TryAdd(obj.Uid.Value, obj);
+        if (Interlocked.CompareExchange(ref obj.DirtyQueued, 1, 0) == 0)
+        {
+            Interlocked.Increment(ref _dirtyLive);
+            _dirtyQueue.Enqueue(obj);
+        }
     }
 
     /// <summary>O(1) check — true if any object has pending delta updates.</summary>
-    public bool HasDirty => !_dirtyObjects.IsEmpty;
+    public bool HasDirty => Volatile.Read(ref _dirtyLive) > 0;
 
     /// <summary>Consume all dirty objects and clear the set. Call once per tick after mutations.</summary>
     public void ConsumeDirtyObjects()
@@ -564,16 +575,18 @@ public sealed class GameWorld
     /// </summary>
     public List<ObjBase> DrainDirtyObjectsSnapshot()
     {
-        var list = new List<ObjBase>(_dirtyObjects.Count);
-        uint[] keys = _dirtyObjects.Keys.ToArray();
-        foreach (uint key in keys)
+        // What is queued now; anything marked while this runs waits for the next drain.
+        int count = _dirtyQueue.Count;
+        var list = new List<ObjBase>(count);
+        for (int i = 0; i < count && _dirtyQueue.TryDequeue(out var obj); i++)
         {
-            if (!_dirtyObjects.TryRemove(key, out var obj))
+            int state = Interlocked.Exchange(ref obj.DirtyQueued, 0);
+            if (state == 1) Interlocked.Decrement(ref _dirtyLive);
+            // A deleted object left the set when it was deleted (its flags consumed there).
+            if (state != 1 || obj.IsDeleted)
                 continue;
-
             obj.ConsumeDirty();
-            if (!obj.IsDeleted)
-                list.Add(obj);
+            list.Add(obj);
         }
         return list;
     }
@@ -1002,7 +1015,9 @@ public sealed class GameWorld
 
         NotifySpawnerOfLoss(obj);
         ObjectDeleting?.Invoke(obj);
-        _dirtyObjects.TryRemove(obj.Uid.Value, out _);
+        // Out of the dirty set: still in the queue, it is skipped by the next drain.
+        if (Interlocked.CompareExchange(ref obj.DirtyQueued, 2, 1) == 1)
+            Interlocked.Decrement(ref _dirtyLive);
         obj.ConsumeDirty();
         obj.SetDirtyNotify(null);
 

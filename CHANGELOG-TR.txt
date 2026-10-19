@@ -4,6 +4,34 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-19] - Bin istemcide sunucu kapasitesi
+------------------------------------------------------------------------
+DUZELTME - Character.PrivLevel her okunusta hesabi cozuyordu; ACCOUNT tag'i olmayan bir karakter
+       icin bu, tum hesaplarin yedi yuvasini dolasmak demekti. Gorus olusturma bunu her
+       izleyicinin gordugu her mobil icin sorar (mobil bayraklari); 1000 hesapta bir tick'in
+       cogu orada geciyordu. Oyuncu olmayan karakter hesaba bakmadan kendi seviyesini dondurur
+       (Source-X CChar::GetPrivLevel); hesap cozucu, bir yuva ya da hesap listesi degisince
+       yeniden kurulan yuva-hesap indeksini okur (Account.LinkVersion).
+DUZELTME - Bir NPC adimi her izleyiciye o izleyici icin ayrica olusturulan bir 0x77 ve kiralanan
+       bir tamponla gidiyordu. Ayni govde, renk, bayrak ve notoriety ile gosterilen izleyiciler
+       artik tek bir olusturulmus paketi paylasir (ClientViewUpdater.PrepareCharMoved +
+       Program.SendNpcMoves); oyuncu adimlari zaten boyle gidiyordu.
+DUZELTME - Paket tamponlari ArrayPool.Shared yerine PacketArrayPool'dan kiralanir: ikinin kuvveti
+       boyut basina sinirli ortak bir yigin, onunde thread basina kucuk bir yigin, aralarinda
+       toplu aktarim. Tamponlar ana dongude kiralanip gonderici thread'lerde iade edilir;
+       ArrayPool.Shared bu iadelerin cogunu atiyordu, kiralamalarin cogu yeniden ayiriyordu.
+       Kiralama ve iade hic bellek ayirmaz (PacketPathAllocationTests bunu tutar).
+DUZELTME - Dunyanin kirli kumesi, her adimda eklemeleri kilitlenen bir ConcurrentDictionary yerine
+       nesne basina kuyruk bayragi (0 / 1 / kuyruktayken silinmis 2) olan kilitsiz bir kuyruk;
+       HasDirty yalnizca canli kayitlari sayar. Stamina maliyetinin her adimda calistirdigi
+       toplam agirlik yuruyusu kumesini ve yiginini thread basina yeniden kullanir.
+BELGE - MAXSIZECLIENTOUT: birkac yuz kisilik kalabalikta giris patlamasi Source-X varsayilani olan
+       10 sn'de 80000 byte'i asar ve gelen istemcileri dusurur; boyle shard'lar degeri
+       yukseltmeli. Gercek soketli yuk testi, 8 worker, 2000 NPC: kasabaya dagilmis 1000
+       istemci tick p50 820 ms / hareket cevabi p95 4.2 sn'den 9.8 ms / 21 ms'ye; tek ekranda
+       1000 istemci (MaxSizeClientOut 400000) asiri yukten tick p95 36 ms / hareket cevabi p95
+       192 ms'ye.
+
 [2026-10-19] - Multi ve yer itemlarina alan ile erisim
 ------------------------------------------------------------------------
 DUZELTME - Yurume kontrolu, eski yukseklik/gorus hatti sondasi ve gelismis gorus hatti test

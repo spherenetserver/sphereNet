@@ -39,15 +39,42 @@ Capabilities the classic engine does not have:
 
 ## Performance
 
-### Current measurement (2026-10-12)
+### Current measurement (2026-10-19): 1,000 clients
 
 Measured with `SphereNet.LoadTest` (in-tree, reproducible): real TCP bot clients in a
 separate process log in through the normal flow, walk (a step every ~450 ms), talk and
-double-click in a synthetic town of **2,000 wandering NPCs and 4,000 ground items**, all
-bots **clustered** so every one of them sees the others; one world save runs in the middle
-of each 45 s window. Machine: AMD Ryzen 7 5700X3D (8C/16T), Windows 11, an ordinary busy
-desktop; 4 multicore workers. *Step answer* is the time from a bot's walk request to the
-server's answer, measured on the bot.
+double-click in a synthetic town of **2,000 wandering NPCs and 4,000 ground items**; one
+world save runs in the middle of each 45 s window. *Town* spreads the bots over the whole
+town; *one screen* clusters them so every bot sees every other. Machine: AMD Ryzen 7
+5700X3D (8C/16T), Windows 11, an ordinary busy desktop, the bots on the same machine; 8
+multicore workers. *Step answer* is the time from a bot's walk request to the server's
+answer, measured on the bot.
+
+| Clients | Placement | Tick p50 / p95 / p99 | Step answer p50 / p95 / p99 |
+|---|---|---|---|
+| 1,000 | town | 9.8 / 16.4 / 21.9 ms | 9.5 / 20.8 / 34.9 ms |
+| 500 | one screen | 5.6 / 20.9 / 32.7 ms | 6.8 / 18.2 / 92.4 ms |
+| 1,000 | one screen | 10.3 / 36.0 / 48.3 ms | 50.3 / 191.8 / 331.4 ms |
+
+Before the 2026-10-19 work the same 1,000-client town run overloaded the server (tick p50
+820 ms, step answer p95 4.2 s) and 500 on one screen did too. Profiling showed the time in
+four places, all fixed: a character's privilege level resolved by walking every account on
+every read (asked for every mobile every viewer sees), an NPC step's packet built once per
+viewer, packet buffers allocated anew because the shared array pool dropped buffers
+returned by the send threads, and a contended dirty-object dictionary. Details in
+[CHANGELOG-EN](CHANGELOG-EN.txt).
+
+- **Crowds and `MAXSIZECLIENTOUT`**: a client stepping into a crowd of several hundred is
+  sent everything it can see at once, which exceeds the Source-X default of 80,000 bytes in
+  10 s and drops it. The one-screen rows above ran with `MaxSizeClientOut=400000`; a shard
+  expecting crowds that size should raise it too ([CONFIG](docs/CONFIG-EN.md)).
+- **Limit**: 1,000 on one screen is the heaviest case here - every step goes to 999
+  viewers. Spread over a town, the same count is far cheaper: what costs is how many
+  players see each other.
+
+### Earlier measurement (2026-10-12)
+
+The same scenario, all bots on one screen, 4 multicore workers:
 
 | Bots | Tick | Tick p50 / p95 | Step answer p50 / p95 | Alloc |
 |---|---|---|---|---|
@@ -64,9 +91,6 @@ server's answer, measured on the bot.
   timers checked on the tick (swings, casts) from 100 to 50 ms granularity; NPC actions are
   scheduled on a 100 ms timer wheel and player steps are handled every loop iteration, so
   neither changes. The default stays 100 ms (Source-X `MSECS_PER_TICK`).
-- **Limit**: 500 bots on **one screen** overload this machine in every configuration (tick
-  p95 ~90 ms, step answer p95 ~0.6 s): every step goes to 499 viewers. Spread over a map
-  the same count is far cheaper — what costs is how many players see each other.
 - **Real world**: a copy of a live shard (86,055 items, 26,767 characters, 10,048 spawners,
   Scripts-X pack) with 200 bots spread over the cities ran with no slow tick and no stall
   after the login burst; the script interpreter was under 0.1 % of server time in a 90 s

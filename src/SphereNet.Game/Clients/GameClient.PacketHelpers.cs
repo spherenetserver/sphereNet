@@ -32,6 +32,10 @@ using ScriptDbAdapter = SphereNet.Scripting.Execution.ScriptDbAdapter;
 
 namespace SphereNet.Game.Clients;
 
+/// <summary>The per-viewer fields of a 0x77 move: viewers that get the same four
+/// share one built packet.</summary>
+public readonly record struct MobileMove(ushort Body, ushort Hue, byte Flags, byte Noto);
+
 public sealed partial class GameClient
 {
 
@@ -929,6 +933,26 @@ public sealed partial class GameClient
             hue, flags, noto
         ));
     }
+
+    /// <summary>What a 0x77 for <paramref name="ch"/> carries to this viewer: body and
+    /// hue as this viewer is shown them, the mobile flags (greyed when
+    /// <paramref name="greyed"/>) and the notoriety. Null when a statue was sent its
+    /// animation instead (SendStatueAnimation, as SendUpdateMobile does).</summary>
+    internal MobileMove? MoveUpdateFor(Character ch, bool greyed)
+    {
+        if (SendStatueAnimation(ch)) return null;
+        byte flags = BuildMobileFlags(ch);
+        if (greyed) flags |= 0x80;
+        byte noto = GetNotoriety(ch);
+        var (body, hue) = AdjustCharViewForViewer(ch);
+        return new MobileMove(body, hue, flags, noto);
+    }
+
+    /// <summary>Send this viewer the 0x77 for <paramref name="ch"/> with the fields
+    /// <see cref="MoveUpdateFor"/> gave.</summary>
+    public void SendMove(Character ch, MobileMove mv) =>
+        _netState.Send(new PacketMobileMoving(ch.Uid.Value, mv.Body, ch.X, ch.Y, ch.Z, (byte)ch.Direction,
+            mv.Hue, mv.Flags, mv.Noto));
 
     internal void SendUpdateMobileWithHue(Character ch, ushort hue)
     {

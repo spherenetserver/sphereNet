@@ -66,6 +66,7 @@ public sealed partial class GameClient
 
     /// <summary>NPC move notification: enter (0x78) / leave (0x1D) / update (0x77).</summary>
     public void NotifyCharMoved(Character ch, Point3D oldPos) => ViewUpdater.NotifyCharMoved(ch, oldPos);
+    public MobileMove? PrepareCharMoved(Character ch, Point3D oldPos) => ViewUpdater.PrepareCharMoved(ch, oldPos);
 
     /// <summary>Player enter/leave range notification (0x78/0x1D only).</summary>
     public void NotifyCharEnterLeave(Character ch, Point3D oldPos) => ViewUpdater.NotifyCharEnterLeave(ch, oldPos);

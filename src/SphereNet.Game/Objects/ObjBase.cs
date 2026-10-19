@@ -49,6 +49,10 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     /// <summary>Resolve the GameWorld instance (set at startup).</summary>
     public static Func<World.GameWorld>? ResolveWorld;
 
+    /// <summary>The world's dirty queue: 0 not queued, 1 queued, 2 queued but deleted
+    /// since (GameWorld.NotifyDirty / DrainDirtyObjectsSnapshot).</summary>
+    internal int DirtyQueued;
+
     /// <summary>Built AOS tooltip (OPL) cached on the object, shared by every
     /// observing client — Source-X CObjBase::SetPropertyList. Expiry is purely
     /// time-based (sphere.ini ToolTipCache seconds, checked on read); the entry

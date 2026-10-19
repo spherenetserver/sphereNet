@@ -1999,11 +1999,35 @@ public class Item : ObjBase
     /// <summary>Total item tree weight in tenths of a stone for capacity checks.</summary>
     public int TotalWeightTenths => CalcTotalWeightTenths();
 
+    // The walk asks a character's total weight every step (stamina cost); the set
+    // and stack of this walk are kept per thread instead of allocated per call. A
+    // call made while one is already running on this thread gets its own.
+    [ThreadStatic] private static HashSet<Item>? t_weightSeen;
+    [ThreadStatic] private static Stack<Item>? t_weightPending;
+    [ThreadStatic] private static bool t_weightBusy;
+
     private int CalcTotalWeightTenths()
     {
+        if (t_weightBusy)
+            return CalcTotalWeightTenths(new HashSet<Item>(ReferenceEqualityComparer.Instance), new Stack<Item>());
+        t_weightBusy = true;
+        try
+        {
+            var seen = t_weightSeen ??= new HashSet<Item>(ReferenceEqualityComparer.Instance);
+            var pending = t_weightPending ??= new Stack<Item>();
+            seen.Clear();
+            pending.Clear();
+            return CalcTotalWeightTenths(seen, pending);
+        }
+        finally
+        {
+            t_weightBusy = false;
+        }
+    }
+
+    private int CalcTotalWeightTenths(HashSet<Item> seen, Stack<Item> pending)
+    {
         long weight = 0;
-        var seen = new HashSet<Item>(ReferenceEqualityComparer.Instance);
-        var pending = new Stack<Item>();
         pending.Push(this);
         while (pending.Count > 0)
         {

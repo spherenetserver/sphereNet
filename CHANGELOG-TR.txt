@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-19] - Multi ve yer itemlarina alan ile erisim
+------------------------------------------------------------------------
+DUZELTME - Yurume kontrolu, eski yukseklik/gorus hatti sondasi ve gelismis gorus hatti test
+       ettikleri her kare icin tum yer multi listesini dolasiyordu (multinin parcalari 32 kare
+       icindedir); her adimin maliyeti dunyadaki ev ve gemi sayisiyla buyuyordu.
+       GameWorld.MultisNear multileri konumlarinin 32 karelik hucresine gore gruplar ve bir
+       karenin cevresindeki 3x3 hucreyi GroundMultis sirasiyla dondurur (ayni adaylar, ayni
+       sira); indeks, multi eklenince, cikarilinca, turu degisince ya da yer degistirince
+       yeniden kurulan degismez, surumlu bir anlik goruntudur. Gercek haritada olculdu:
+       kasabada yurume kontrolu dunyada 2000 ev varken de hic yokken de ayni (5.3 / 5.6 us).
+DUZELTME - Eski yukseklik/gorus hatti sondasi ve gelismis gorus hatti bir karenin yer itemlarini
+       sektorun tum item listesini tarayarak buluyordu; artik sektorlerin kare indeksini ayni
+       en-yeni-once sirasiyla okurlar.
+
 [2026-10-19] - Yurume kontrolu ve yol arama hizi
 ------------------------------------------------------------------------
 DUZELTME - Yurume kontrolu ve yol arama bir karenin yerdeki itemlarini sektorun tum item

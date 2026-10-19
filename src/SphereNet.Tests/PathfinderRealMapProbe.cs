@@ -147,4 +147,40 @@ public sealed class PathfinderRealMapProbe(ITestOutputHelper output)
         foreach (var (x, y) in pts) sum += world.FindRegion(new Point3D((short)x, (short)y, 0, 0)) == null ? 1 : 0;
         output.WriteLine($"FindRegion: {sw.Elapsed.TotalMilliseconds * 1000 / n:F2} us {sum}");
     }
+
+    /// <summary>A walk check in town with no houses in the world and with two thousand
+    /// spread over the map: the multi area index keeps the far ones out of it.</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2000)]
+    public void WalkCheckWithManyHousesInTheWorld(int houses)
+    {
+        const string mul = @"C:\sphereNetServer\mul";
+        if (Gate.Missing(output, "mul tables", !File.Exists(Path.Combine(mul, "tiledata.mul")))) return;
+        var lf = LoggerFactory.Create(_ => { });
+        var map = new MapDataManager(mul);
+        map.Load();
+        map.InitMap(0, 7168, 4096);
+        var world = new GameWorld(lf);
+        world.InitMap(0, 7168, 4096);
+        world.MapData = map;
+        ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+        var rng = new Random(3);
+        for (int i = 0; i < houses; i++)
+        {
+            var house = world.CreateItem();
+            house.BaseId = 0x0064;
+            house.ItemType = SphereNet.Core.Enums.ItemType.Multi;
+            world.PlaceItem(house, new Point3D((short)rng.Next(200, 5000), (short)rng.Next(2000, 4000), 0, 0));
+        }
+        var walker = world.CreateCharacter();
+        var sx = new SourceXWalk(world);
+        const int n = 20000;
+        var pts = Enumerable.Range(0, n).Select(_ => (X: 1410 + rng.Next(60), Y: 1660 + rng.Next(60))).ToArray();
+        long sum = 0;
+        var sw = Stopwatch.StartNew();
+        foreach (var (x, y) in pts) sum += sx.CheckValidMove(walker, 0, x, y, 0, Direction.East, true, out int nz, out _) ? nz : 0;
+        output.WriteLine($"CheckValidMove with {houses} houses in the world: {sw.Elapsed.TotalMilliseconds * 1000 / n:F2} us ({sum})");
+    }
 }

@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-19] - Multi and ground item lookups by area
+------------------------------------------------------------------------
+FIX - The walk check, the legacy height/line-of-sight probe and the advanced line of sight
+      walked the whole ground multi list for every tile they tested (a multi's components lie
+      within 32 tiles of it), so each step cost grew with the number of houses and ships in
+      the world. GameWorld.MultisNear buckets the multis by 32-tile cell of their position and
+      hands back the 3x3 cells around a tile in GroundMultis order (same candidates, same
+      order); the index is an immutable versioned snapshot rebuilt after a multi is added,
+      removed, retyped or moved. Measured on the real map: a town walk check costs the same
+      with 2000 houses in the world as with none (5.3 / 5.6 us).
+FIX - The legacy height/line-of-sight probe and the advanced line of sight found a tile's ground
+      items by scanning the sector's whole item list; they read the sectors' per-tile index
+      now, in the same newest-first order.
+
 [2026-10-19] - Walk check and path search speed
 ------------------------------------------------------------------------
 FIX - The walk check and the path search found the ground items of one tile by scanning the

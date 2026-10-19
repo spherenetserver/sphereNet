@@ -53,4 +53,31 @@ public sealed class SectorTileIndexTests
         world.DeleteObject(box);
         Assert.DoesNotContain(world.GroundItemsOnTile(0, 50, 50), i => !i.IsDeleted && i == box);
     }
+
+    [Fact]
+    public void TheMultiAreaIndexFollowsGroundMultisInListOrder()
+    {
+        var world = World();
+        SphereNet.Game.Objects.Items.Item Multi(int x, int y)
+        {
+            var m = world.CreateItem();
+            m.BaseId = 0x0064;
+            m.ItemType = SphereNet.Core.Enums.ItemType.Multi;
+            world.PlaceItem(m, new Point3D((short)x, (short)y, 0, 0));
+            return m;
+        }
+        var near = Multi(120, 100);    // a cell east of the probe's
+        var here = Multi(100, 100);
+        var far = Multi(300, 300);
+        Assert.Equal([near, here], world.MultisNear(0, 100, 100));
+        Assert.Empty(world.MultisNear(0, 200, 200));
+
+        // A ship sails off: found where it is now, not where it was.
+        near.Position = new Point3D(290, 300, 0, 0);
+        Assert.Equal([here], world.MultisNear(0, 100, 100));
+        Assert.Equal([near, far], world.MultisNear(0, 300, 300));
+
+        world.DeleteObject(here);
+        Assert.Empty(world.MultisNear(0, 100, 100));
+    }
 }

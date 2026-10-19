@@ -247,12 +247,9 @@ public sealed class GameWorld
         // Same items in the same order (newest first) as that query: on the ground,
         // within distance 0 of the probe point, on this tile.
         var cell = new Core.Types.Point3D(x, y, 0, mapId);
-        var sector = x < 0 || y < 0 ? null : GetSector(mapId, x / Sector.SectorSize, y / Sector.SectorSize);
-        var groundItems = sector?.Items;
-        for (int i = (groundItems?.Count ?? 0) - 1; i >= 0; i--)
+        // The tile's own items from the sector's per-tile index (same newest-first order).
+        foreach (var item in GroundItemsOnTile(mapId, x, y))
         {
-            if (i >= groundItems!.Count) continue;
-            var item = groundItems[i];
             if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) continue;
             if (cell.GetDistanceTo(item.Position) > 0) continue;
             if (item.X != x || item.Y != y || item.MapIndex != mapId) continue;
@@ -296,7 +293,7 @@ public sealed class GameWorld
 
         // Multi components (fHouseCheck): placed houses/ships and committed
         // custom-house design tiles.
-        var multis = GroundMultis;
+        var multis = MultisNear(mapId, x, y);
         for (int m = 0; m < multis.Count; m++)
         {
             var multi = multis[m];
@@ -718,6 +715,7 @@ public sealed class GameWorld
         a?.InvalidateTiles();
         var b = GetSector(item.Position);
         if (b != a) b?.InvalidateTiles();
+        if (Item.IsMultiItemType(item.ItemType)) InvalidateMultis();
     }
 
     /// <summary>The ground items on tile (x, y) by the sector's per-tile index:
@@ -1077,7 +1075,7 @@ public sealed class GameWorld
         else if (obj is Item removedItem)
         {
             _groundItems.Remove(removedItem);
-            _multiItems.Remove(removedItem);
+            if (_multiItems.Remove(removedItem)) InvalidateMultis();
             _unplacedNewItems.Remove(removedItem);
             // CWorldTicker::DelTimedObject: a deleted object leaves the ticking list
             // now, not when its old deadline surfaces.
@@ -1254,11 +1252,96 @@ public sealed class GameWorld
         // that dominated the live apply phase). The ItemType getter resolves
         // def-typed multis from legacy saves here too.
         if (Item.IsMultiItemType(item.ItemType) && !_multiItems.Contains(item))
+        {
             _multiItems.Add(item);
+            InvalidateMultis();
+        }
         return true;
     }
 
     private readonly List<Item> _multiItems = [];
+
+    // ------------------------------------------------------------------
+    //  Ground multis by area
+    // ------------------------------------------------------------------
+    //  Every walk check, line-of-sight step and height probe asks which multis
+    //  could have a component on one tile (a multi's components lie within 32
+    //  tiles of it). Walking the whole multi list for that cost a shard with a
+    //  thousand houses a thousand comparisons per tile. The multis are bucketed by
+    //  32-tile cell of their own position; a tile's candidates are the 3x3 cells
+    //  around it, handed back in list order so callers see what the full walk saw.
+    //  Same publication rule as the sectors' tile index: an immutable snapshot
+    //  tagged with the version it was built from, rebuilt by the next reader after
+    //  a multi is added, removed, retyped or moved (a ship sailing).
+
+    private const int MultiCell = 32;
+
+    private sealed class MultiSnapshot(int version, Dictionary<long, (int Ord, Item Multi)[]> cells)
+    {
+        public int Version { get; } = version;
+        public Dictionary<long, (int Ord, Item Multi)[]> Cells { get; } = cells;
+    }
+
+    private int _multiVersion;
+    private volatile MultiSnapshot? _multiSnap;
+    [ThreadStatic] private static List<(int Ord, Item Multi)>? t_multiHits;
+    [ThreadStatic] private static List<Item>? t_multiOut;
+
+    private void InvalidateMultis() => Interlocked.Increment(ref _multiVersion);
+
+    private static long MultiCellKey(int mapId, int cx, int cy) =>
+        ((long)mapId << 48) | ((long)(cx & 0xFFFFFF) << 24) | (uint)(cy & 0xFFFFFF);
+
+    private MultiSnapshot RebuildMultis(int version)
+    {
+        var lists = new Dictionary<long, List<(int, Item)>>();
+        for (int i = 0; i < _multiItems.Count; i++)
+        {
+            var multi = _multiItems[i];
+            if (multi == null || multi.IsDeleted || multi.X < 0 || multi.Y < 0) continue;
+            long key = MultiCellKey(multi.MapIndex, multi.X / MultiCell, multi.Y / MultiCell);
+            if (!lists.TryGetValue(key, out var list))
+                lists[key] = list = [];
+            list.Add((i, multi));
+        }
+        var cells = new Dictionary<long, (int, Item)[]>(lists.Count);
+        foreach (var (key, list) in lists)
+            cells[key] = [.. list];
+        var snap = new MultiSnapshot(version, cells);
+        _multiSnap = snap;
+        return snap;
+    }
+
+    /// <summary>The ground multis that could have a component on tile (x, y) - those
+    /// standing within the 3x3 cells of 32 tiles around it - in GroundMultis order.
+    /// Candidates: callers still test each one's distance and components. The list
+    /// is this thread's scratch, valid until its next call.</summary>
+    public IReadOnlyList<Item> MultisNear(int mapId, int x, int y)
+    {
+        if (_multiItems.Count == 0 || x < 0 || y < 0) return [];
+        int version = Volatile.Read(ref _multiVersion);
+        var snap = _multiSnap;
+        if (snap == null || snap.Version != version)
+            snap = RebuildMultis(version);
+        var hits = t_multiHits ??= [];
+        hits.Clear();
+        int cx = x / MultiCell, cy = y / MultiCell;
+        int cells = 0;
+        for (int dx = -1; dx <= 1; dx++)
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            if (cx + dx < 0 || cy + dy < 0) continue;
+            if (!snap.Cells.TryGetValue(MultiCellKey(mapId, cx + dx, cy + dy), out var found)) continue;
+            hits.AddRange(found);
+            cells++;
+        }
+        if (hits.Count == 0) return [];
+        if (cells > 1) hits.Sort(static (a, b) => a.Ord.CompareTo(b.Ord));
+        var output = t_multiOut ??= [];
+        output.Clear();
+        foreach (var (_, multi) in hits) output.Add(multi);
+        return output;
+    }
 
     /// <summary>Ground multi structures (houses, ships, addons, custom
     /// foundations) — maintained on place/remove/retype so hot paths can
@@ -1278,6 +1361,7 @@ public sealed class GameWorld
         {
             _multiItems.Remove(item);
         }
+        InvalidateMultis();
     }
 
     /// <summary>Source-X CCharBase::Region_Notify hook. Fired for every

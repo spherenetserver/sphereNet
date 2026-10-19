@@ -355,7 +355,7 @@ internal sealed class SourceXWalk
             into.Add(new ColumnEntry(flags, s.Z, height, s.TileId + TerrainQty));
         }
 
-        var multis = _world.GroundMultis;
+        var multis = _world.MultisNear(mapId, x, y);
         for (int m = 0; m < multis.Count; m++)
         {
             var multi = multis[m];

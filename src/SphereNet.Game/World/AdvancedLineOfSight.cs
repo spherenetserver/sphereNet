@@ -210,11 +210,9 @@ internal sealed class AdvancedLineOfSight
             var sector = _world.GetSector(now);
             if (sector != null)
             {
-                var items = sector.Items;
-                for (int i = items.Count - 1; i >= 0; i--)
+                // The tile's own items from the sector's per-tile index (newest first).
+                foreach (var item in sector.ItemsOnTile(x, y))
                 {
-                    if (i >= items.Count) continue;
-                    var item = items[i];
                     if (item.IsDeleted || !item.IsOnGround || item.X != x || item.Y != y || item.MapIndex != c.Map)
                         continue;
                     // A multi's own item carries a multi index, not an art id; its
@@ -237,7 +235,7 @@ internal sealed class AdvancedLineOfSight
         if ((flags & LosFlags.NbMulti) == 0 &&
             !((flags & LosFlags.NbLocalMulti) != 0 && sameRegion))
         {
-            var multis = _world.GroundMultis;
+            var multis = _world.MultisNear(c.Map, x, y);
             for (int m = 0; m < multis.Count; m++)
             {
                 var multi = multis[m];

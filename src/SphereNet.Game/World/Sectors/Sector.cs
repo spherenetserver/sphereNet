@@ -302,14 +302,77 @@ public sealed class Sector : IScriptObj
         if (_items.Contains(item))
             return;
         _items.Add(item);
+        InvalidateTiles();
         if (IsListenItemType(item.ItemType))
             _listenItems++;
     }
 
     public void RemoveItem(Item item)
     {
-        if (_items.Remove(item) && _listenItems > 0 && IsListenItemType(item.ItemType))
+        bool removed = _items.Remove(item);
+        if (removed) InvalidateTiles();
+        if (removed && _listenItems > 0 && IsListenItemType(item.ItemType))
             _listenItems--;
+    }
+
+    // ------------------------------------------------------------------
+    //  Ground items by tile
+    // ------------------------------------------------------------------
+    //  A walk check and the path search ask "what lies on this one tile" for
+    //  every step and every neighbour they test; scanning the whole sector list
+    //  for it cost a town sector (hundreds of decorations) hundreds of
+    //  comparisons per question. The answer comes from a per-tile index built
+    //  from the list on first use after any change: an item added or removed, or
+    //  a ground item moved within the sector (World.OnGroundItemMoved). The index
+    //  is published as an immutable snapshot tagged with the version it was built
+    //  from, so readers in the parallel phase never see one half built; a stale
+    //  snapshot is rebuilt by the next reader. Entries are candidates only: the
+    //  callers still check the item's own position and that it lies on the ground.
+
+    private sealed class TileSnapshot(int version, Dictionary<int, Item[]> map)
+    {
+        public int Version { get; } = version;
+        public Dictionary<int, Item[]> Map { get; } = map;
+    }
+
+    private int _tileVersion;
+    private volatile TileSnapshot? _tiles;
+
+    /// <summary>Something on the ground here changed: the tile index is rebuilt on next use.</summary>
+    internal void InvalidateTiles() => Interlocked.Increment(ref _tileVersion);
+
+    private static int TileKey(int x, int y) => ((x & (SectorSize - 1)) << 6) | (y & (SectorSize - 1));
+
+    /// <summary>The items of this sector that lay on tile (x, y) when the index was
+    /// last built (empty when none). Candidates: check each one's position.</summary>
+    public Item[] ItemsOnTile(int x, int y)
+    {
+        int version = Volatile.Read(ref _tileVersion);
+        var snap = _tiles;
+        if (snap == null || snap.Version != version)
+            snap = RebuildTiles(version);
+        return snap.Map.TryGetValue(TileKey(x, y), out var items) ? items : [];
+    }
+
+    private TileSnapshot RebuildTiles(int version)
+    {
+        var lists = new Dictionary<int, List<Item>>();
+        for (int i = _items.Count - 1; i >= 0; i--)
+        {
+            if (i >= _items.Count) continue;
+            var item = _items[i];
+            if (item == null || item.IsDeleted) continue;
+            int key = TileKey(item.X, item.Y);
+            if (!lists.TryGetValue(key, out var list))
+                lists[key] = list = [];
+            list.Add(item);
+        }
+        var map = new Dictionary<int, Item[]>(lists.Count);
+        foreach (var (key, list) in lists)
+            map[key] = [.. list];
+        var snap = new TileSnapshot(version, map);
+        _tiles = snap;
+        return snap;
     }
 
     /// <summary>A ground item in this sector changed its effective TYPE (script

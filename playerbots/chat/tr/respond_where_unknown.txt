@@ -1,0 +1,6 @@
+# respond_where_unknown.txt — the bot does not know the place asked about.
+
+bilmiyorum orayı
+hiç duymadım
+bilmem kanka
+guarda sor

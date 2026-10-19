@@ -1,0 +1,14 @@
+# How likely a bot goes to a place of each type, by weight (destinations.json
+# "Type"). A bank is where the crowd stood; a tailor's shop saw one customer.
+# '*' is the weight of a type not listed.
+*                  1
+Bank              14
+Healer             4
+Inn                3
+Tavern             3
+Moongate           3
+Landmark           2
+VendorProvisioner  2
+VendorSmith        2
+VendorMage         2
+Forge              2

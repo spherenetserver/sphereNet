@@ -475,7 +475,15 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     public Point3D Position
     {
         get => _position;
-        set { _position = value; MarkDirty(DirtyFlag.Position); }
+        set
+        {
+            var old = _position;
+            _position = value;
+            MarkDirty(DirtyFlag.Position);
+            // A ground item moved: the sectors' per-tile index must hear of it.
+            if (this is Items.Item { IsOnGround: true } item && old != value)
+                ResolveWorld?.Invoke()?.OnGroundItemMoved(item, old);
+        }
     }
 
     public short X => _position.X;

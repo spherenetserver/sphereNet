@@ -168,7 +168,7 @@ Tick başına işlenen NPC eylemi; fazlası sonraki tick'e kalır (`[npc_budget]
 Tick başına kabul edilen ön A* yol araması; diğer takipçiler ertelenir ve sonraki tick'lerde sırayla alınır.
 
 - **Tür:** integer (en az 0)
-- **Varsayılan:** `2`
+- **Varsayılan:** `8`
 
 ### PLAYERBOTS
 
@@ -211,6 +211,48 @@ Dirilen botun cesedi bu kadar kare içindeyse bot yürüyüp eşyalarını kendi
 
 - **Tür:** integer (en az 0)
 - **Varsayılan:** `40`
+
+### PLAYERBOTGRAVITY
+
+Bir botun kasaba gezilerinden bağlı bir oyuncunun 30 kare yakınındaki bir yere gidenlerin yüzdesi; botlar oyuncuların olduğu yerde toplanır. `0` kapatır.
+
+- **Tür:** integer (0-100)
+- **Varsayılan:** `40`
+
+### PLAYERBOTCROWD
+
+Bir oyuncunun görüşündeki bot sayısı bu değere ulaşınca o oyuncuya daha fazla bot çekilmez.
+
+- **Tür:** integer (en az 0)
+- **Varsayılan:** `14`
+
+### PLAYERBOTCHATPACE
+
+Her bağlı oyuncunun yakınında oynanan iki bot sahnesi (bir satır, pazarlık, haber ve tepkisi) arasındaki ortalama saniye; her bekleme bunun yarısı ile bir buçuk katı arasındadır. Kimsenin duymadığı bot konuşmaz.
+
+- **Tür:** integer (en az 4)
+- **Varsayılan:** `30`
+
+### PLAYERBOTNAMEPREFIX
+
+Oyuncuların gördüğü her bot adının önüne eklenir; sondaki boşluğu korumak için tırnak içinde yazın. Boş bırakılırsa eklenmez. Botun kendi adı `PLAYERBOT.NAME`'de saklanır; ön ek değişirse bot bir sonraki açılışta yenisini alır.
+
+- **Tür:** string
+- **Varsayılan:** `"[Bot] "`
+
+### PLAYERBOTPKPERCENT
+
+Savaşçı botların oyuncu katili (PK) olanlarının yüzdesi; her bot için bir kez belirlenir (`PLAYERBOT.ROLE`). PK botu guarded kasabalardan uzak durur, zindan girişleri, moongate'ler ve yollarda bekler; gücünün yettiği yalnız bir oyuncuya ya da bota saldırır, sonra cesedi loot eder. Suç, murderer sayısı, guard'lar ve katilin dirildiği kasaba normal kurallarla işler. `0` kapatır.
+
+- **Tür:** integer (0-100)
+- **Varsayılan:** `5`
+
+### PLAYERBOTTHIEFPERCENT
+
+Diğer botların hırsız olanlarının yüzdesi; her bot için bir kez belirlenir. Hırsız guarded kasaba kalabalığında çalışır: birine yanaşır, çantasını açar, Stealing becerisiyle çalar, sonra saklanıp uzaklaşır; birkaç dakikada bir. Yakalanma normal criminal kurallarıyla işler. `0` kapatır.
+
+- **Tür:** integer (0-100)
+- **Varsayılan:** `5`
 
 ### MULTICOREDETERMINISMDEBUG
 

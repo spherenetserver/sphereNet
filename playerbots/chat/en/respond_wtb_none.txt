@@ -1,0 +1,6 @@
+# respond_wtb_none.txt — a player wants to buy something the bot does not sell. {item} may be filled.
+
+dont have {item}
+no {item} here sorry
+nope, try the vendor
+dont have any

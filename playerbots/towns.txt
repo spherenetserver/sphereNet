@@ -1,0 +1,13 @@
+# Home towns of new bots, by weight: a town gets about weight/total of the
+# population. Bots of a town over its share move, out of sight, to one below it.
+# Names are destinations.json "City" values. A town not listed gets no new bots.
+Britain          34
+Trinsic          12
+Moonglow          9
+Vesper            9
+Minoc             7
+Buccaneer's Den   6
+Yew               6
+Jhelom            6
+Skara Brae        6
+Magincia          5

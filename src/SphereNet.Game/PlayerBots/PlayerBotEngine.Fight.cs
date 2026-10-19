@@ -28,19 +28,30 @@ public sealed partial class PlayerBotEngine
             if (c == ch || c.IsDeleted || c.IsDead || c.MapIndex != ch.MapIndex) continue;
             if (c.IsInvisible || c.IsStatFlag(StatFlag.Hidden)) continue;
             int d = ch.Position.GetDistanceTo(c.Position);
-            if (c.FightTarget == ch.Uid && !c.IsPlayer)
+            // Anything set on this bot is fought back: a monster, a player or another
+            // bot. A player is a threat once in war mode against it, as a player would
+            // read the attack; striking back at an aggressor is not a crime.
+            if (c.FightTarget == ch.Uid && (!c.IsPlayer || c.IsInWarMode))
             {
                 if (d < threatDist) { threat = c; threatDist = d; }
                 continue;
             }
             if (guarded || !mind.IsFighter || c.IsPlayer || c.OwnerSerial.IsValid) continue;
             if (c.NpcBrain is not (NpcBrainType.Monster or NpcBrainType.Berserk or NpcBrainType.Dragon)) continue;
+            // A monster a player is already fighting is that player's: no kill stealing.
+            if (c.FightTarget.IsValid && _world.FindChar(c.FightTarget) is { HasClient: true }) continue;
             if (d > 8 || c.MaxHits > ch.MaxHits * mind.Nerve) continue;
             if (d < preyDist) { prey = c; preyDist = d; }
         }
-        var foe = threat ?? (prey != null && _rng.Next(100) < 70 ? prey : null);
+        var victim = threat == null ? PickVictim(mind, now, guarded) : null;
+        var foe = threat ?? victim ?? (prey != null && _rng.Next(100) < 70 ? prey : null);
         if (foe == null) return false;
         Engage(mind, foe, now);
+        if (victim != null && _rng.Next(100) < 70) Speak(mind, "pk_taunt", fallback: null);
+        // Set on in a guarded town by a criminal or a murderer: call the guards, as
+        // anyone would (the words reach the guard call like a player's).
+        if (threat != null && threat.IsPlayer && guarded && (threat.IsFlaggedAsCriminal || threat.IsMurderer))
+            Speak(mind, "guards_call", fallback: null, force: true);
         return true;
     }
 
@@ -82,6 +93,12 @@ public sealed partial class PlayerBotEngine
             return;
         }
 
+        if (ch.IsPoisoned && now >= mind.NextCureMs && TryCure(mind, now))
+        {
+            mind.NextActMs = now + 400;
+            return;
+        }
+
         if (hp < 60 && now >= mind.NextHealMs && TryHeal(mind, now, hp))
         {
             mind.NextActMs = now + 400;
@@ -111,10 +128,14 @@ public sealed partial class PlayerBotEngine
     {
         mind.Client?.HandleWarMode(false);
         if (won && _rng.Next(100) < 40) Speak(mind, "combat_victory", fallback: null);
+        var foe = mind.Foe;
         mind.EndFightState();
         mind.Mode = mind.ResumeMode;
         mind.ResetLeg(now);
         mind.NextActMs = now + _rng.Next(800, 2500);
+        // The body of what it killed: supplies off a monster, anything off a victim.
+        if (won && foe != null && !mind.Char.IsDead)
+            StartLoot(mind, foe, now);
     }
 
     private void ActFlee(BotMind mind, long now)
@@ -142,7 +163,18 @@ public sealed partial class PlayerBotEngine
             return;
         }
         var from = foe?.Position ?? mind.FleeFrom;
-        bool stepped = StepToward(mind, Away(ch.Position, from, 8), run: true);
+        if (ch.IsPoisoned && now >= mind.NextCureMs && TryCure(mind, now))
+        {
+            mind.NextActMs = now + 300;
+            return;
+        }
+        // Run for the road, away from the threat, rather than straight into a wall.
+        if (mind.FleeTarget == null || now - mind.FleeTargetMs > 3000)
+        {
+            mind.FleeTarget = FleePoint(ch.Position, from);
+            mind.FleeTargetMs = now;
+        }
+        bool stepped = StepToward(mind, mind.FleeTarget ?? Away(ch.Position, from, 8), run: true);
         mind.NextActMs = now + (stepped ? MovementEngine.GetMoveDelay(ch.IsMounted, true) : 300);
     }
 
@@ -181,6 +213,61 @@ public sealed partial class PlayerBotEngine
         mind.NextHealMs = now + 5000;
         return false;
     }
+
+    /// <summary>A road node within 30 tiles that is farther from the threat than the
+    /// bot is: the one that gains the most distance for the least running. Null when
+    /// none does (then the bot runs straight away).</summary>
+    internal Point3D? FleePoint(Point3D here, Point3D threat)
+    {
+        int now = here.GetDistanceTo(threat);
+        Point3D? best = null;
+        int bestScore = int.MinValue;
+        foreach (int i in Nav.NodesNear(here, 30))
+        {
+            var p = Nav.Waypoints[i].Pos;
+            int gain = p.GetDistanceTo(threat) - now;
+            if (gain <= 2) continue;
+            int score = gain * 2 - here.GetDistanceTo(p);
+            if (score > bestScore) { bestScore = score; best = p; }
+        }
+        return best;
+    }
+
+    /// <summary>Poisoned: Cure for a caster with the mana, else a cure potion.</summary>
+    private bool TryCure(BotMind mind, long now)
+    {
+        var ch = mind.Char;
+        var client = mind.Client;
+        mind.NextCureMs = now + 5000;
+        if (client == null) return false;
+        if (mind.IsCaster && ch.Mana >= 6 && !ch.TryGetCastingSpell(out _))
+        {
+            client.HandleCastSpell(SpellType.Cure, ch.Uid.Value);
+            return true;
+        }
+        var potion = FindInPack(ch, i => i.ItemType == ItemType.Potion &&
+            i.GetName().Contains("cure", StringComparison.OrdinalIgnoreCase));
+        if (potion == null) return false;
+        client.HandleDoubleClick(potion.Uid.Value);
+        mind.NextCureMs = now + 10_000;
+        return true;
+    }
+
+    /// <summary>Out of a fight with little mana: a caster stops to meditate.</summary>
+    private bool TryMeditate(BotMind mind, long now)
+    {
+        var ch = mind.Char;
+        if (!mind.IsCaster || mind.Client == null || now < mind.NextMeditateMs || ch.MaxMana <= 0 ||
+            ch.Mana * 100 / ch.MaxMana >= 40 || ch.TryGetCastingSpell(out _))
+            return false;
+        mind.NextMeditateMs = now + 15_000;
+        mind.Client.HandleUseSkill((int)SkillType.Meditation);
+        mind.NextActMs = now + 8000; // still while it works
+        WindowMeditations++;
+        return true;
+    }
+
+    public long WindowMeditations { get; private set; }
 
     private SpellType PickAttackSpell(Character ch)
     {

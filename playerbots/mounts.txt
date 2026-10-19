@@ -1,0 +1,12 @@
+# Riding. "riders N": percent of bots that ride (decided once per bot and kept).
+# Then the creatures a rider gets in town, as CHARDEF defname and weight; a defname
+# the running pack does not define is skipped.
+riders 45
+
+c_horse_brown_dk  4
+c_horse_brown_lt  4
+c_horse_gray      4
+c_horse_tan       4
+c_llama           1
+c_ostard_desert   1
+c_ostard_forest   1

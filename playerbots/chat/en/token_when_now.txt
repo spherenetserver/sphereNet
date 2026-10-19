@@ -1,0 +1,6 @@
+# token_when_now.txt — when a story happened, within the last ten minutes.
+
+just now
+a minute ago
+right now
+just a sec ago

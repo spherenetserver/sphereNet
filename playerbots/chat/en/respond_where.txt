@@ -1,0 +1,7 @@
+# respond_where.txt — directions. {target} = what was asked, {dir} = compass point, {dist} = steps.
+
+{target}? {dir} of here, about {dist} steps
+head {dir}, {dist} steps or so
+{dist} steps {dir}
+{target} is {dir}, not far. {dist} steps maybe
+go {dir}, {dist} steps

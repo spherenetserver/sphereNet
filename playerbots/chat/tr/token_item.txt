@@ -1,0 +1,22 @@
+# token_item.txt — goods named in trade talk (era slang, both languages trade in it).
+
+gm katana
+gm hally
+gm kryss
+gm war fork
+plate set
+chain set
+bandaj
+100 bm
+100 blood moss
+reg
+gm bow
+heavy crossbow
+vanq longsword
+power katana
+magic kalkan
+100 ingot
+500 ok
+ev deed
+küçük gemi deed
+gm spear

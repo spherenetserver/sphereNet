@@ -710,6 +710,25 @@ public sealed class GameWorld
         return grid[index % columns, index / columns];
     }
 
+    /// <summary>A ground item's position changed: the per-tile index of the sector it
+    /// left and the one it is in now is rebuilt on next use.</summary>
+    internal void OnGroundItemMoved(Item item, Point3D from)
+    {
+        var a = GetSector(from);
+        a?.InvalidateTiles();
+        var b = GetSector(item.Position);
+        if (b != a) b?.InvalidateTiles();
+    }
+
+    /// <summary>The ground items on tile (x, y) by the sector's per-tile index:
+    /// candidates, as listed when the index was built; each one's own position and
+    /// IsOnGround decide.</summary>
+    public Item[] GroundItemsOnTile(int mapId, int x, int y)
+    {
+        if (x < 0 || y < 0) return [];
+        return GetSector(mapId, x / Sector.SectorSize, y / Sector.SectorSize)?.ItemsOnTile(x, y) ?? [];
+    }
+
     public Sector? GetSector(Point3D pt)
     {
         // C# integer division truncates toward zero, so X in [-63,-1] would
@@ -1932,11 +1951,9 @@ public sealed class GameWorld
                 }
             }
 
-            var items = sector.Items;
-            for (int i = items.Count - 1; i >= 0; i--)
+            // Only the tile's own items, through the sector's per-tile index.
+            foreach (var item in sector.ItemsOnTile(pos.X, pos.Y))
             {
-                if (i >= items.Count) continue;
-                var item = items[i];
                 if (item.IsDeleted || !item.IsOnGround || pos.GetDistanceTo(item.Position) > 0) continue;
                 bool passWalls = (canFlags & CanFlags.C_PassWalls) != 0;
                 bool passDoor = ((canFlags & CanFlags.C_Ghost) != 0 || self?.IsDead == true) &&

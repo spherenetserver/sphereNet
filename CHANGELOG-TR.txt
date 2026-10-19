@@ -4,6 +4,92 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-19] - Yurume kontrolu ve yol arama hizi
+------------------------------------------------------------------------
+DUZELTME - Yurume kontrolu ve yol arama bir karenin yerdeki itemlarini sektorun tum item
+       listesini tarayarak buluyordu (kasaba sektorunde yuzlerce dekor). Sektorler artik yerdeki
+       itemlar icin kare basina bir indeks tutar; degisiklikten (item eklenmesi, cikarilmasi,
+       yerdeki itemin konum degisimi) sonraki ilk kullanimda kurulur ve degismez bir anlik
+       goruntu olarak yayinlanir, paralel fazdaki okuyucu yarim kurulmus yapi gormez; cagiranlar
+       her itemin kendi konumunu yine kontrol eder. Canli save kopyasinda 1000 botla ortalama
+       adim maliyeti: 80 -> 56 us.
+DUZELTME - Yol arama ayni karenin static, multi parca, item ve zemin bilgisini on alti kereye
+       kadar okuyordu (sekiz dugumun komsusu ve her adimin ciktigi dugum olarak). GetHeightPoint
+       karenin sutununu toplama ve yuruyene gore tartma olarak ikiye ayrildi; bir thread'de arama
+       surerken her sutun bir kez toplanir. Gercek haritada ulasilamaz 500 dugumlu arama: ~39 ms
+       -> 6 ms; kisa rotalar 2-3 kat hizli.
+EKLEME - Pathfinder.FindPath istege bagli bir sure siniri (Stopwatch zaman damgasi) alir, gecince
+       birakir.
+DEGISIKLIK - NpcPathPrestagePerTick varsayilani 2 -> 8: yeni arama maliyetinde sekiz arama, eskiden
+       ikisinin tuttugunun altinda kalir.
+
+[2026-10-19] - Oyuncu botlari: sohbet, toplandiklari yerler, binek, kiyafet, yuruyus
+------------------------------------------------------------------------
+EKLEME - Botlar yalnizca bagli bir oyuncunun duyabildigi yerde (18 kare) konusur. Her oyuncu
+       icin PlayerBotChatPace saniyede bir (varsayilan 30) yakindaki bir veya iki bot
+       playerbots/scenes.txt'den bir sahne oynar: yer muhabbeti, pazarligiyla WTS, cevabiyla
+       grup cagrisi, tepkisiyle gercek haber. Bot yanina gelen oyuncuyu selamlar, taniyorsa
+       adiyla (PLAYERBOT.KNOWN); buyucu yakindaki hayaleti diriltir; botlarin arasindaki
+       katil ilan edilir.
+EKLEME - Botlar oyuncunun satirini anlar (playerbots/intents.txt, her dil): selam, nerede + yer
+       (yol verisinden yon tarifi: en yakin o turden yere, kasabaya ya da zindana pusula yonu ve
+       adim), party/lfg, res, wts/wtb, tesekkur, veda, nasilsin, soru. Adi soylenen bot oyuncunun
+       ilgisini bir dakika tutar. Cevap oyuncunun yazdigi dilde gelir; tum chat/<dil> klasorleri
+       yuklenir.
+EKLEME - Gercek olumler haber olur (DeathEngine.OnDeath): oyuncu olumleri, PK, buyuk canavar
+       oldurmeleri, gorulen katiller. event= sahneleri bunlari gercek isim ve yerle anlatir.
+EKLEME - Botlarin vakit gecirdigi yerler: towns.txt (ev kasabasi agirliklari; payindan fazla
+       botu olan kasaba, gozden uzakta, eksik kasabaya bot tasir), places.txt (hedef turu
+       agirliklari, banka kalabalik toplar), PlayerBotGravity (kasaba gezilerinin oyuncu yakinina
+       giden yuzdesi, varsayilan 40), bir oyuncu etrafinda en fazla PlayerBotCrowd bot
+       (varsayilan 14). Izlenen bot banka, healer, han ve moongate'te daha uzun kalir.
+       Telemetri: watchers, seen avg/max, lines, replies, scenes.
+EKLEME - PlayerBotNamePrefix (varsayilan "[Bot] ") her bot adinin onune eklenir; botun kendi adi
+       PLAYERBOT.NAME'de saklanir ve konusmada o kullanilir.
+EKLEME - Binek: playerbots/mounts.txt (binici orani, hayvan CHARDEF'leri). Binici bot guarded
+       bolgede hayvanini alir, sahibi bot olur ve client'i uzerinden cift tiklayarak biner;
+       olumden sonra hayvanina yuruyerek doner ya da kasabada yenisini alir.
+EKLEME - Hicbir esyasi kalmadan dirilen bot guarded kasabada archetype'inin @Create'i ile yeni
+       kit alir (vekil karakterde calisir; giyilenler ve canta malzemesi, altin haric). Esyasini
+       geri almis bot dirilis cubbesini cikarir; ceset yolculugu basinda cubbe once cikar ki
+       esyalar geldikleri katmana geri giyilsin. Once uzun calisan nufusun yaklasik besete biri
+       duz cubbeyle, zirhinin ustunde ya da tek basina, dolasiyordu.
+EKLEME - Archetype kitleri: karisik zirh parcalari, sansa bagli kask/kol/gorget/kalkan, boyali
+       pelerin/surcoat/kusak, archetype becerisine uygun silahlar, crossbow'lu okcuya bolt.
+DUZELTME - Bir satirin {name} token'i konusan botun kendi adiydi, selam kendine gidiyordu; artik
+       konusulan kisi. {item} {when} {mat} {pet} {dungeon} {actor} hic doldurulmuyordu ve bunlari
+       kullanan her satir susuyordu; chat/<dil>/token_* ve haberlerden dolar.
+DUZELTME - Baska bir karakterin durdugu duraga varilamiyor, bot bir dakika sonra
+       kaldiriliyordu: durak, uzerinde biri varken bir kare, son adimlar takilinca uc kare
+       kisadan sayilir. Sonuna 40 kare kala 5 sn ilerlemeyen ayak bir kare aramasi alir (800
+       dugum, 4 ms sure siniri), 25. sn'de bir kez daha; 8. sn'de her ayak 8 kare icindeki en
+       yakin kilitsiz kapali kapiyi acmaya gider (once yalnizca ilk ayak yapiyordu); 20 sn takilan
+       son ayak yerin baska bir duragini dener.
+DUZELTME - Ulasilamaz durak ogrenme: hedefin dibindeki kurtarma (bot dolu bir kapi agzi) artik
+       duragi kotu saymaz - iki bankanin tum duraklari boyle isaretlenmis, her ziyaret binanin
+       ortasina yonelip kurtariliyordu. Kullanilabilir duragi kalmayan yer secilmez. Ayni yol
+       baglantisinda iki kurtarma baglantiyi rotalardan cikarir (playerbots_badspots.txt'de
+       "link|from|to"). Canli save kopyasinda 1000 botla olculdu: 30 sn'deki kurtarma
+       56 -> 7.
+EKLEME - Botlar kendilerine karsi savas modundaki oyuncuya karsilik verir; guarded bolgede
+       saldiran criminal ya da katilse guard cagirir; oyuncunun dovustugu canavara girmez.
+       Zehirlenince cure yapar (Cure, yoksa cure potu); manasi azalan buyucu meditasyon yapar
+       (beceri, client uzerinden); kacan bot tehditten uzaklasan en yakin yol dugumune kosar.
+EKLEME - Malzeme: kazanilan dovus cesette biter; canavar cesedinden altin, reagent, bandaj, pot,
+       ok ve bolt client uzerinden alinir. Dovustugu malzemesi azalan bot onu satan bir yere
+       yurur (playerbots/shopping.txt), vendor'un alis listesini acar ve kendi altininin yettigi
+       kadar alir.
+EKLEME - Haydutlar: savasci botlarin PlayerBotPkPercent'i (varsayilan 5) oyuncu katilidir;
+       guarded kasabalardan uzak, zindan girisleri, moongate'ler ve yollarda, kendinden pek
+       guclu olmayan yalniz bir oyuncuya ya da bota saldirir ve cesedi loot eder; digerlerinin
+       PlayerBotThiefPercent'i (varsayilan 5) guarded kasaba kalabaliginda snoop yapip calan
+       (Stealing hedef imleci), sonra saklanip uzaklasan hirsizdir. PLAYERBOT.ROLE. Suc, katil
+       sayisi ve guard'lar normal kurallarla isler.
+DUZELTME - Hicbir sey uretmeyen ITEM= satiri (tutmayan R sansi, bilinmeyen defname) onceki itemi
+       "son uretilen" olarak birakiyordu; onun icin yazilan COLOR= o itemi, item yoksa yaratigin
+       govdesini boyuyordu. Renk satiri artik atlanir; Source-X ReadScriptReduced de basarisiz
+       ITEM'den sonraki satirlari atlar (m_UIDLastNewItem = GetUID()).
+
 [2026-10-19] - Dunya yukleme suresi
 ------------------------------------------------------------------------
 DUZELTME - Bir kaydin P= satiri okunurken item artik GameWorld.PlaceItem'dan gecmiyor. Container

@@ -1,0 +1,6 @@
+# respond_where_unknown.txt — the bot does not know the place asked about.
+
+no idea
+never heard of it
+dunno sorry
+ask a guard maybe

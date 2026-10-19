@@ -1,0 +1,6 @@
+# token_when_earlier.txt — when a story happened, ten minutes to an hour ago.
+
+earlier
+a bit ago
+not long ago
+this hour

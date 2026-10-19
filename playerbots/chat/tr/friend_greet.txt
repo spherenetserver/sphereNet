@@ -1,5 +1,5 @@
 # friend_greet.txt — arkadaşı ya da guild arkadaşını görünce ADIYLA selamlama.
-# {name} = diğer botun ilk adı.
+# {name} = selam verilenin ilk adı (oyuncu ya da başka bir bot).
 
 yo {name}
 slm {name}

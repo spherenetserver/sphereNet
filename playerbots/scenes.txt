@@ -1,0 +1,35 @@
+# Little scenes bots act out near players. One per line:
+#   name weight [condition ...] : A:category > B:category/category*70 > ...
+# A speaks first; B is a second bot standing by (a scene with B lines needs two).
+# Conditions: at=Bank|Inn (where A stands), night / day, fighter / caster (what A
+# is), event=death|pk|kill|red (real news; fills {actor} {other} {place} {when}).
+# $place: what is said where A stands. *N: N percent of the scene's asking price.
+# {name} in a line is the other bot of the scene.
+
+# One voice
+place       30            : A:$place
+small       12            : A:small_talk/emotes
+night       10 night      : A:night_talk
+wts          8 at=Bank    : A:wts/wts_offer
+wtb          5 at=Bank    : A:wtb
+beg          1 at=Bank    : A:beg
+lfg          5 fighter    : A:lfg
+gearup       3 at=Bank fighter : A:gear_up
+newbie       2            : A:newbie
+death1       2 event=death : A:gossip_death
+pk1          2 event=pk    : A:gossip_pk
+kill1        2 event=kill  : A:gossip_kill
+
+# Two voices
+greet        8            : A:friend_greet > B:friend_greet/respond_greet
+group_yes    5 fighter    : A:guild_ask_group > B:guild_group_yes
+group_no     3 fighter    : A:guild_ask_group > B:guild_group_cant > A:guild_group_nvm
+doing        3            : A:guild_ask_doing > B:small_talk
+haggle_down  4 at=Bank    : A:wts_offer > B:haggle_offer*70 > A:haggle_counter*85 > B:haggle_take
+haggle_firm  3 at=Bank    : A:wts_offer > B:haggle_offer*65 > A:haggle_firm*100 > B:haggle_walkaway
+haggle_buy   4 at=Bank    : A:haggle_ask > B:haggle_price > A:haggle_offer*75 > B:haggle_deal*75 > A:haggle_take
+trade_no     2 at=Bank    : A:wts_offer > B:trade_not_buying
+news_death   6 event=death : A:gossip_death > B:gossip_react_death/gossip_react
+news_pk      6 event=pk    : A:gossip_pk > B:gossip_react_pk/gossip_react
+news_kill    5 event=kill  : A:gossip_kill > B:gossip_react_kill/gossip_react
+news_red     5 event=red   : A:gossip_red > B:gossip_react_red/gossip_react

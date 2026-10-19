@@ -16,9 +16,26 @@ public sealed partial class PlayerBotEngine
 {
     private void ActLinger(BotMind mind, long now)
     {
+        // Acting in a scene: stay put until it is played out.
+        if (mind.Scene != null)
+        {
+            mind.NextActMs = now + 1000;
+            return;
+        }
         if (now >= mind.LingerUntilMs)
         {
-            mind.Goal = PickDestination(mind, spawnable: false);
+            // Where players are, a crowd lingers: a bank or a healer keeps a bot a
+            // while longer when someone is there to see it.
+            if (mind.LingerExtensions < 3 && mind.At is { } at && IsLingerPlace(at) &&
+                _rng.Next(100) < 60 && IsWatched(mind.Char.Position))
+            {
+                mind.LingerExtensions++;
+                mind.LingerUntilMs = now + _rng.Next(60_000, 150_000);
+                mind.NextActMs = now + _rng.Next(4000, 12_000);
+                return;
+            }
+            MaybeMoveHouse(mind, now);
+            mind.Goal = PickShopping(mind, now) ?? PickDestination(mind, spawnable: false);
             if (mind.Goal == null) { mind.NextActMs = now + 30_000; return; }
             mind.Char.SetTag(GoalTag, mind.Goal.Name);
             mind.Mode = BotMode.Travel;
@@ -27,17 +44,19 @@ public sealed partial class PlayerBotEngine
             return;
         }
 
-        // Idle life: now and then a word, now and then a step or two about.
-        if (now >= mind.NextChatMs)
-        {
-            mind.NextChatMs = now + _rng.Next(45_000, 150_000);
-            if (_rng.Next(100) < 55)
-                Speak(mind, LingerCategory(mind.At));
-        }
+        // Idle life: now and then a step or two about. What is said is up to the
+        // scenes played for the players around (see Direct); nobody near, no talk.
         if (_rng.Next(100) < 25 && mind.At != null)
             WanderNear(mind, mind.LingerAnchor, 3, run: false);
         mind.NextActMs = now + _rng.Next(4000, 12_000);
     }
+
+    private static bool IsLingerPlace(BotDestination d) =>
+        d.Type.Equals("Bank", StringComparison.OrdinalIgnoreCase) ||
+        d.Type.Equals("Healer", StringComparison.OrdinalIgnoreCase) ||
+        d.Type.Equals("Inn", StringComparison.OrdinalIgnoreCase) ||
+        d.Type.Equals("Tavern", StringComparison.OrdinalIgnoreCase) ||
+        d.Type.Equals("Moongate", StringComparison.OrdinalIgnoreCase);
 
     private void ActTravel(BotMind mind, long now)
     {
@@ -104,7 +123,13 @@ public sealed partial class PlayerBotEngine
         }
 
         var target = mind.LegTarget(Nav);
-        int range = mind.Leg < mind.Route.Count ? Nav.Waypoints[mind.Route[mind.Leg]].ArrivalRange : 0;
+        // The stopping spot is stepped on; one tile short does when someone else
+        // stands on it, three short once the last steps stall: a visitor in the way
+        // is no reason to grind against them.
+        bool finalLeg = mind.Leg >= mind.Route.Count;
+        int range = !finalLeg ? Nav.Waypoints[mind.Route[mind.Leg]].ArrivalRange
+            : now - mind.LegProgressMs > 4000 ? 3
+            : SomeoneOn(target, ch) ? 1 : 0;
         if (ch.Position.GetDistanceTo(target) <= range && Math.Abs(ch.Z - target.Z) <= 8)
         {
             mind.BadStarts.Clear();
@@ -150,10 +175,15 @@ public sealed partial class PlayerBotEngine
             WindowRescues++;
             // Learn the spot: the way out of where it stood, or into where it was
             // going, does not exist in this world. Nobody is sent there again.
+            // A bot stuck right by its target (a doorway full of others) proves
+            // nothing about the way, so only a rescue from more than three tiles counts.
+            bool farOff = dist > 3;
             if (mind.Leg == 0 && mind.At != null && mind.At.ArrivalAt(ch.Position) is int outOf and >= 0)
                 LearnBadSpot(mind.At, outOf);
-            else if (mind.Leg >= mind.Route.Count && mind.GoalSpot >= 0)
+            else if (mind.Leg >= mind.Route.Count && mind.GoalSpot >= 0 && farOff)
                 LearnBadSpot(goal, mind.GoalSpot);
+            else if (mind.Leg > 0 && mind.Leg < mind.Route.Count && farOff)
+                LearnBadLink(mind.Route[mind.Leg - 1], mind.Route[mind.Leg]);
             if (WindowRescues <= 15)
                 _logger.LogInformation(
                     "[playerbots] rescue {Name} at {Pos} -> {Target} (leg {Leg}/{Legs} to {Goal}, mode {Mode}, dead {Dead})",
@@ -162,6 +192,57 @@ public sealed partial class PlayerBotEngine
             mind.ResetLeg(now);
             mind.NextActMs = now + 500;
             return;
+        }
+
+        // Stalled on any leg: a shut door near by is the usual reason (the way into a
+        // shop on another wall), so go and open it, once per leg. No tile search: a
+        // search costs a walk check per opened node, measured at up to a second on a
+        // town map, which a stall that happens a hundred times a minute cannot pay.
+        long stalledMs = now - mind.LegProgressMs;
+        if (stalledMs > 8000 && !mind.DoorTried && mind.Client != null && FindNearDoor(ch) is { } stuckDoor)
+        {
+            mind.DoorTried = true;
+            mind.DoorTarget = stuckDoor;
+            mind.DoorSinceMs = now;
+            WindowStallDoors++;
+            mind.NextActMs = now + 200;
+            return;
+        }
+        // Stalled near the leg's end: a tile search, on a deadline so one hard case
+        // cannot hold the tick (the sectors' per-tile index keeps a search to a few
+        // milliseconds in a town).
+        if (mind.TilePath == null && dist <= StallSearchRange && mind.StallSearches < 2 &&
+            stalledMs > (mind.StallSearches == 0 ? 5000 : 25_000) && CanSearch())
+        {
+            mind.StallSearches++;
+            WindowSearches++;
+            WindowStallSearches++;
+            long s0 = Stopwatch.GetTimestamp();
+            mind.TilePath = _pathfinder.FindPath(ch.Position, target, ch.MapIndex, CanFlags.None, ch,
+                maxNodes: StallSearchMaxNodes, maxRadius: dist + 8,
+                deadline: s0 + (long)(StallSearchMs * Stopwatch.Frequency / 1000.0));
+            long us = (Stopwatch.GetTimestamp() - s0) * 1_000_000 / Stopwatch.Frequency;
+            if (us > WindowMaxSearchUs) WindowMaxSearchUs = us;
+            mind.TileIndex = 0;
+            mind.FollowSide = 0;
+            if (mind.TilePath == null) WindowFailedSearches++;
+        }
+
+        // The last leg still stalled: another stopping spot of the same place may be
+        // reachable where this one is not.
+        if (finalLeg && stalledMs > 20_000 && mind.SpotTries == 0 && goal.Arrivals.Count > 1)
+        {
+            mind.SpotTries = 1;
+            int other = goal.PickArrival(_rng);
+            if (other >= 0 && other != mind.GoalSpot)
+            {
+                mind.GoalSpot = other;
+                mind.FinalSpot = goal.Arrivals[other];
+                mind.BestLegDist = int.MaxValue;
+                mind.LegProgressMs = now;
+                mind.FollowSide = 0;
+                WindowSpotSwitches++;
+            }
         }
 
         bool run = mind.Running && ch.Stam > ch.MaxStam / 3;
@@ -173,6 +254,14 @@ public sealed partial class PlayerBotEngine
             mind.NextActMs = now + MovementEngine.GetMoveDelay(ch.IsMounted, run);
         else
             mind.NextActMs = now + 400;
+    }
+
+    private bool SomeoneOn(Point3D tile, Character self)
+    {
+        foreach (var c in _world.GetCharsInRange(tile, 0))
+            if (c != self && !c.IsDeleted && c.X == tile.X && c.Y == tile.Y && Math.Abs(c.Z - tile.Z) <= 8)
+                return true;
+        return false;
     }
 
     private void Arrive(BotMind mind, BotDestination goal, long now)
@@ -204,6 +293,13 @@ public sealed partial class PlayerBotEngine
             }
         }
         mind.GateTries = 0;
+        // Come to buy: find the vendor that sells what it needs.
+        if (mind.ShoppingFor != null)
+        {
+            mind.BeginLinger(goal, now, _rng, short_: true);
+            StartShopping(mind, now);
+            return;
+        }
         // A dungeon mouth: step onto its spot (the way in), then live inside.
         if (goal.Type.Equals("DungeonEntrance", StringComparison.OrdinalIgnoreCase) && !IsUnderground(ch.Position))
         {
@@ -479,22 +575,33 @@ public sealed partial class PlayerBotEngine
                 var gates = list0.Where(d => d.Type.Equals("Moongate", StringComparison.OrdinalIgnoreCase) && d != mind.At).ToList();
                 if (gates.Count > 0) return gates[_rng.Next(gates.Count)];
             }
-            if (!IsUnderground(mind.Char.Position) && mind.IsFighter && _rng.Next(100) < 25)
+            // A fighter goes hunting now and then; less often while players are about
+            // to see it in town.
+            int huntPct = IsWatched(mind.Char.Position, 40) ? 8 : 25;
+            if (!IsUnderground(mind.Char.Position) && mind.IsFighter && _rng.Next(100) < huntPct)
             {
                 var mouths = list0.Where(d => d.Type.Equals("DungeonEntrance", StringComparison.OrdinalIgnoreCase)).ToList();
                 if (mouths.Count > 0) return mouths[_rng.Next(mouths.Count)];
             }
-            // Town life: most trips stay in the home town.
+            // A player killer keeps to where people pass, out of town.
+            if (PickPkHaunt(mind, list0) is { } haunt) return haunt;
+            // Town life: toward the players, else most trips stay in the home town.
             pool = list0.Where(d => d.City.Length > 0);
+            if (!IsPk(mind) && PickNearPlayers(mind, pool) is { } pulled) return pulled;
             if (_rng.Next(100) < 85)
             {
                 var home = pool.Where(d => d.City.Equals(mind.Home, StringComparison.OrdinalIgnoreCase)).ToList();
                 if (home.Count > 0) pool = home;
             }
         }
-        var list = pool.Where(d => mind == null || d != mind.At).ToList();
+        // A place whose every stopping spot is known to be unreachable is not a
+        // place to go: aiming at its middle would only end in a rescue each time.
+        var list = pool.Where(d => (mind == null || d != mind.At) &&
+                                   (d.Arrivals.Count == 0 || d.BadArrivals.Count < d.Arrivals.Count)).ToList();
         if (list.Count == 0) return null;
-        return list[_rng.Next(list.Count)];
+        if (spawnable && PickSpawnTown(list.Select(d => d.City).Distinct(StringComparer.OrdinalIgnoreCase).ToList()) is { } town)
+            list = list.Where(d => d.City.Equals(town, StringComparison.OrdinalIgnoreCase)).ToList();
+        return WeightedPick(list, PlaceWeight);
     }
 
     private string? PickArchetype()

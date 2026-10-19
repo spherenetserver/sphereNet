@@ -5,7 +5,7 @@ using SphereNet.Game.Objects.Characters;
 
 namespace SphereNet.Game.PlayerBots;
 
-public enum BotMode { Linger, Travel, Fight, Flee, Reclaim }
+public enum BotMode { Linger, Travel, Fight, Flee, Reclaim, Loot, Shop }
 
 /// <summary>What one bot is doing right now. Runtime only; the parts worth
 /// resuming after a restart live in the character's PLAYERBOT tags.</summary>
@@ -40,6 +40,10 @@ public sealed class BotMind
     public int FollowFromDist { get; set; }
     public int BestLegDist { get; set; } = int.MaxValue;
     public long LegProgressMs { get; set; }
+    /// <summary>Other stopping spots tried on this leg after it stalled.</summary>
+    public int SpotTries { get; set; }
+    /// <summary>Tile searches spent on this leg after it stalled.</summary>
+    public int StallSearches { get; set; }
     public bool Running { get; set; }
     public long CrawlUntilMs { get; set; }
     public Point3D LastPos { get; set; }
@@ -81,9 +85,54 @@ public sealed class BotMind
     public long NextInviteScanMs { get; set; }
     public long LeaderSeenMs { get; set; }
 
-    // A reply waiting out its typing delay.
+    // A reply waiting out its typing delay: what to say, to whom, in which language,
+    // with which tokens, and what to do once it is said (cast a resurrection, say).
     public string? PendingCategory { get; set; }
     public long PendingSayMs { get; set; }
+    public string? PendingFallback { get; set; }
+    public Character? PendingTo { get; set; }
+    public string? PendingLanguage { get; set; }
+    public Dictionary<string, string>? PendingTokens { get; set; }
+    public Action? PendingAction { get; set; }
+
+    // Talking with players and other bots.
+    /// <summary>The scene this bot is acting in, if any; it stays put meanwhile.</summary>
+    public BotScene? Scene { get; set; }
+    /// <summary>Players this bot has said hello to (or decided not to) on sight, and when.</summary>
+    public Dictionary<uint, long> Greeted { get; } = [];
+    /// <summary>What a player is haggling with this bot about: the goods and the last price.</summary>
+    public string? TalkTopic { get; set; }
+    public string? TalkItem { get; set; }
+    public long NextResMs { get; set; }
+    public long NextMountCheckMs { get; set; }
+
+    // Taking what a kill dropped: whose body, where it fell, until when.
+    public Serial LootVictim { get; set; } = Serial.Invalid;
+    public Point3D LootFrom { get; set; }
+    public long LootUntilMs { get; set; }
+    public Objects.Items.Item? LootCorpse { get; set; }
+    public bool LootOpened { get; set; }
+    public bool LootAll { get; set; }
+    public int LootTaken { get; set; }
+    public HashSet<uint> LootSkipped { get; } = [];
+
+    // Shopping: what for, at which vendor, and how far the purchase got.
+    public BotNeed? ShoppingFor { get; set; }
+    public Character? ShopVendor { get; set; }
+    public long ShopUntilMs { get; set; }
+    public bool ShopListOpen { get; set; }
+    public long NextSupplyCheckMs { get; set; }
+
+    // Self care and the trade a rogue plies.
+    public long NextMeditateMs { get; set; }
+    public long NextCureMs { get; set; }
+    public Point3D? FleeTarget { get; set; }
+    public long FleeTargetMs { get; set; }
+    public long NextRogueMs { get; set; }
+    public Character? Mark { get; set; }
+    public int RogueStage { get; set; }
+    public long NextGearCheckMs { get; set; }
+    public int LingerExtensions { get; set; }
 
     // Fighting
     public Character? Foe { get; set; }
@@ -136,12 +185,15 @@ public sealed class BotMind
         FollowSide = 0;
         BestLegDist = int.MaxValue;
         LegProgressMs = now;
+        SpotTries = 0;
+        StallSearches = 0;
     }
 
     public void EndFightState()
     {
         Foe = null;
         TilePath = null;
+        FleeTarget = null;
     }
 
     public void BeginLinger(BotDestination? at, long now, Random rng, bool short_)
@@ -154,6 +206,7 @@ public sealed class BotMind
         TilePath = null;
         Char.RemoveTag(PlayerBotEngine.GoalTag);
         LingerAnchor = Char.Position;
+        LingerExtensions = 0;
         bool bank = at != null && at.Type.Equals("Bank", StringComparison.OrdinalIgnoreCase);
         long span = short_ ? rng.Next(10_000, 60_000)
             : bank ? rng.Next(180_000, 480_000) : rng.Next(60_000, 240_000);

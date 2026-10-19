@@ -1,0 +1,5 @@
+# respond_where_far.txt — directions to somewhere far. {target} {dir}.
+
+{target} çok uzak, {dir} tarafta. gate ile git
+{dir} tarafta ama çok uzak, moongate kullan
+{target}? baya uzak {dir} tarafta. recall at

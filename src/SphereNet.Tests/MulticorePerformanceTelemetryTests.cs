@@ -333,7 +333,7 @@ public sealed class NpcBudgetConfigAndTelemetryTests
     {
         var c = new SphereConfig();
         Assert.Equal(500, c.MaxNpcsPerTick);
-        Assert.Equal(2, c.NpcPathPrestagePerTick);
+        Assert.Equal(8, c.NpcPathPrestagePerTick);
         Assert.Equal(SphereNet.Server.Program.DefaultMaxNpcsPerTick, c.MaxNpcsPerTick);
         Assert.Equal(SphereNet.Server.Program.DefaultNpcPathPrestagePerTick, c.NpcPathPrestagePerTick);
     }
@@ -341,7 +341,7 @@ public sealed class NpcBudgetConfigAndTelemetryTests
     [Theory]
     [InlineData("MaxNpcsPerTick=800\nNpcPathPrestagePerTick=4\n", 800, 4)]
     [InlineData("MaxNpcsPerTick=0\nNpcPathPrestagePerTick=-3\n", 1, 0)]
-    [InlineData("", 500, 2)]
+    [InlineData("", 500, 8)]
     public void TheIniKeysAreReadAndClamped(string body, int expectedNpcs, int expectedPaths)
     {
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_cfg_{Guid.NewGuid():N}.ini");

@@ -1,0 +1,8 @@
+# token_pet.txt — a tamed animal, with its article.
+
+a horse
+a llama
+a grizzly bear
+a cougar
+a white wolf
+a giant toad

@@ -46,6 +46,9 @@ public sealed partial class PlayerBotEngine
             ch.RemoveTag(CorpseTag);
             return;
         }
+        // Its own things are coming back: off with the robe it was raised in, so
+        // they go back on where they came off instead of into the pack.
+        DropResRobe(ch);
         // Long enough for the walk back on a road trip; reset to four minutes at the
         // body (see Arrive).
         mind.ReclaimUntilMs = now + 900_000;
@@ -149,7 +152,8 @@ public sealed partial class PlayerBotEngine
         }
         int returned = 0;
         var pack = ch.Backpack;
-        foreach (var item in corpse!.Contents.ToList())
+        if (corpse!.Contents.Any()) DropResRobe(ch);
+        foreach (var item in corpse.Contents.ToList())
         {
             if (item.IsDeleted) continue;
             corpse.RemoveItem(item);

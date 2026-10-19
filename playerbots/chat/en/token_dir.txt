@@ -1,0 +1,10 @@
+# token_dir.txt — compass points in this ORDER: north, northeast, east, southeast, south, southwest, west, northwest. One per line; do not add or reorder.
+
+north
+northeast
+east
+southeast
+south
+southwest
+west
+northwest

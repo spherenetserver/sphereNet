@@ -4,6 +4,89 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-19] - Walk check and path search speed
+------------------------------------------------------------------------
+FIX - The walk check and the path search found the ground items of one tile by scanning the
+      whole sector's item list (a town sector holds hundreds of decorations). Sectors now keep a
+      per-tile index of their ground items, built on first use after a change (item added,
+      removed, or a ground item's position changed) and published as an immutable snapshot, so
+      readers in the parallel phase never see one half built; callers still check each item's
+      own position. Average step cost with 1000 bots on a live-save copy: 80 -> 56 us.
+FIX - A path search read the same tile's statics, multi components, items and terrain up to
+      sixteen times (as the neighbour of eight nodes and as the node each step leaves).
+      GetHeightPoint is split into collecting a tile's column and weighing it against the
+      walker; while a search runs on a thread each column is collected once. An unreachable
+      500-node search on the real map: about 39 ms -> 6 ms; short hops 2-3x faster.
+ADD - Pathfinder.FindPath takes an optional deadline (Stopwatch timestamp) and gives up past it.
+CHANGE - NpcPathPrestagePerTick default 2 -> 8: at the new search cost eight searches stay under
+         what two cost before.
+
+[2026-10-19] - Player bots: talk, where they gather, riding, gear, walking
+------------------------------------------------------------------------
+ADD - Bots talk where a connected player hears them (18 tiles) and nowhere else. Per player, a
+      scene from playerbots/scenes.txt is played every PlayerBotChatPace seconds (default 30)
+      by one or two lingering bots near them: place talk, trade shouts with their haggle, group
+      calls with answers, real news with reactions. A bot greets a player walking up to it, by
+      name when it knows them (PLAYERBOT.KNOWN); a caster raises a ghost near it; a murderer
+      among bots is called out.
+ADD - Bots understand a player's line (playerbots/intents.txt, any language): greet, where +
+      place (directions from the road data: compass point and steps to the nearest place of
+      that type, a town or a dungeon), party/lfg, res, wts/wtb, thanks, bye, how are you,
+      questions. A named bot keeps the player's attention for a minute. Answers come in the
+      language the player wrote in; every chat/<language> directory is loaded.
+ADD - Real deaths are news (DeathEngine.OnDeath): player deaths, murders, big monster kills,
+      murderers seen. Scenes with event= tell them with the real names and place.
+ADD - Where bots spend their time: towns.txt (home town weights; over-share towns move bots,
+      out of sight, to under-share ones), places.txt (destination type weights, a bank holds a
+      crowd), PlayerBotGravity (percent of town trips to a place near a player, default 40) up
+      to PlayerBotCrowd bots around one player (default 14). A watched bot lingers longer at a
+      bank, healer, inn or moongate. Telemetry: watchers, seen avg/max, lines, replies, scenes.
+ADD - PlayerBotNamePrefix (default "[Bot] ") before every bot's name; the bot's own name is kept
+      in PLAYERBOT.NAME and used in speech.
+ADD - Riding: playerbots/mounts.txt (share of riders, creature CHARDEFs). A rider gets a creature
+      in a guarded region, owned by the bot and mounted by a double click through its client;
+      after death it walks back to its creature or gets another in town.
+ADD - A bot raised with nothing of its own gets a new kit in a guarded town from its archetype's
+      @Create (run on a stand-in; worn items and pack supplies, not gold). A bot with its things
+      back takes off the resurrection robe; a corpse run takes it off first so the things go back
+      on where they came off. Before, about a fifth of a long-running population wore the plain
+      robe, over their armour or alone.
+ADD - Archetype kits: mixed armour pieces, chance helm/sleeves/gorget/shield, dyed cape, surcoat
+      or sash, weapons matching the archetype's skills, bolts for crossbow archers.
+FIX - A line's {name} was the speaking bot's own name, so a greeting greeted itself; it is now
+      whoever is spoken to. {item} {when} {mat} {pet} {dungeon} {actor} were never filled, which
+      silenced every line using them; they come from chat/<language>/token_* and the news.
+FIX - A trip's stopping spot taken by another character could not be reached and the bot was
+      lifted after a minute: the spot now counts one tile short when someone stands on it and
+      three short once the last steps stall. A leg stalled for 5 s within 40 tiles of its end
+      gets a tile search (800 nodes, 4 ms deadline), again at 25 s; at 8 s any leg goes to open
+      the nearest unlocked shut door within 8 tiles (before, only the first leg did); a last leg
+      stalled for 20 s tries another stopping spot of the place.
+FIX - Unreachable-spot learning: a rescue right beside the target (a doorway full of bots) no
+      longer marks the stopping spot bad - two banks had every spot marked that way and every
+      visit aimed at the building's middle and was rescued. A place with no usable spot left is
+      not chosen. Two rescues on the same road link leave the link out of routes ("link|from|to"
+      in playerbots_badspots.txt). Measured with 1000 bots on a live-save copy: rescues per 30 s
+      56 -> 7.
+ADD - Bots fight back against a player in war mode against them, and call the guards when the
+      aggressor in a guarded region is criminal or a murderer; a monster a player is fighting is
+      left to that player. Poisoned they cure (Cure, else a cure potion); casters low on mana
+      meditate (the skill, through the client); a fleeing bot runs for the nearest road node
+      away from the threat.
+ADD - Supplies: a won fight ends at the body, and gold, reagents, bandages, potions, arrows and
+      bolts are taken off a monster's corpse through the client. A bot short of what it fights
+      with walks to a place that sells it (playerbots/shopping.txt), opens the vendor's buy list
+      and buys what its own gold allows.
+ADD - Rogues: PlayerBotPkPercent (default 5) of fighter bots are player killers, out of guarded
+      towns about dungeon mouths, moongates and roads, setting on a lone player or bot not much
+      tougher than they are and looting the body; PlayerBotThiefPercent (default 5) of the others
+      are thieves that snoop and steal (Stealing skill target cursor) in guarded town crowds, then
+      hide and leave. PLAYERBOT.ROLE. Crime, murder counts and guards follow the normal rules.
+FIX - An ITEM= line that created nothing (failed R chance, unknown defname) left the item before
+      it as "last created", so the COLOR= written for it dyed that item, or the creature's body
+      when there was none. The colour line is now skipped, as Source-X ReadScriptReduced skips
+      the lines after a failed ITEM (m_UIDLastNewItem = GetUID()).
+
 [2026-10-19] - World load time
 ------------------------------------------------------------------------
 FIX - Reading a record's P= line no longer moves the item through GameWorld.PlaceItem. Every

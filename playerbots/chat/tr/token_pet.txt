@@ -1,0 +1,8 @@
+# token_pet.txt — a tamed animal, with its article.
+
+at
+lama
+boz ayı
+puma
+beyaz kurt
+dev kurbağa

@@ -1,0 +1,7 @@
+# token_when.txt — a time in passing, for any story.
+
+yesterday
+last night
+earlier today
+this morning
+a while ago

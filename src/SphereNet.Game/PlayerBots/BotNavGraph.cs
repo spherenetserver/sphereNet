@@ -229,6 +229,25 @@ public sealed class BotNavGraph
         return best;
     }
 
+    /// <summary>Every node within <paramref name="maxDist"/> tiles on the same floor
+    /// band (|dz| &lt;= 16).</summary>
+    public IEnumerable<int> NodesNear(Point3D p, int maxDist)
+    {
+        int r = maxDist / CellSize + 1;
+        int cx = p.X / CellSize, cy = p.Y / CellSize;
+        for (int x = cx - r; x <= cx + r; x++)
+        for (int y = cy - r; y <= cy + r; y++)
+        {
+            if (!_cells.TryGetValue(((long)x << 32) | (uint)y, out var list)) continue;
+            foreach (int i in list)
+            {
+                var w = _waypoints[i].Pos;
+                if (Math.Abs(w.Z - p.Z) > 16) continue;
+                if (Math.Max(Math.Abs(w.X - p.X), Math.Abs(w.Y - p.Y)) <= maxDist) yield return i;
+            }
+        }
+    }
+
     /// <summary>A* over the waypoint graph. Returns the node indices from
     /// <paramref name="from"/> to <paramref name="to"/> inclusive, or null.</summary>
     public List<int>? Route(int from, int to, int maxExpanded = 20000)
@@ -254,6 +273,7 @@ public sealed class BotNavGraph
             int gc = g[cur];
             foreach (int n in _waypoints[cur].Links)
             {
+                if (_badLinks.Count > 0 && _badLinks.Contains((Math.Min(cur, n), Math.Max(cur, n)))) continue;
                 int cost = gc + Heuristic(_waypoints[cur].Pos, _waypoints[n].Pos);
                 if (g.TryGetValue(n, out int old) && old <= cost) continue;
                 g[n] = cost;
@@ -262,6 +282,17 @@ public sealed class BotNavGraph
             }
         }
         return null;
+    }
+
+    private readonly HashSet<(int, int)> _badLinks = [];
+
+    /// <summary>Leave the link between two nodes out of every route from now on
+    /// (bots kept failing to walk it). False when either node is unknown or the
+    /// link was already out.</summary>
+    public bool MarkBadLink(int a, int b)
+    {
+        if (a < 0 || b < 0 || a >= _waypoints.Count || b >= _waypoints.Count) return false;
+        return _badLinks.Add((Math.Min(a, b), Math.Max(a, b)));
     }
 
     private static int Heuristic(Point3D a, Point3D b) =>

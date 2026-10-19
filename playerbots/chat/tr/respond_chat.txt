@@ -1,0 +1,11 @@
+# respond_chat.txt — small answers while a player keeps talking to the bot.
+
+aynen
+lol
+hm
+olabilir
+haklısın
+heh
+anladım
+evet
+doğru

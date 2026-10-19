@@ -1,0 +1,7 @@
+# respond_where.txt — directions. {target} = what was asked, {dir} = compass point, {dist} = steps.
+
+{target}? {dir} tarafında, {dist} adım falan
+{dir} tarafa yürü, {dist} adım var
+şurdan {dir} tarafa {dist} adım
+{target} {dir} tarafta, {dist} adım kadar
+{dir} tarafı, {dist} adım

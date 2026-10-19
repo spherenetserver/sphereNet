@@ -1,0 +1,6 @@
+# respond_where_here.txt — the player is already there. {target}.
+
+right here lol
+ur standing at it
+this is it
+{target}? its right here

@@ -280,9 +280,67 @@ internal sealed class SourceXWalk
         return half + roundUp;
     }
 
+    /// <summary>One thing a tile holds, as the walk sees it: flags, bottom Z, height
+    /// and id (an art id is offset by TerrainQty).</summary>
+    private readonly record struct ColumnEntry(uint Flags, int Z, int Height, int Id);
+
+    /// <summary>Everything a tile holds, collected once: statics, multi components and
+    /// dynamic items in that order, then the terrain. Weighing it against a walker's
+    /// height and Z (<see cref="ApplyColumn"/>) is the cheap half.</summary>
+    private sealed class Column(ColumnEntry[] items, uint land, int terrainZ, ushort landId)
+    {
+        public ColumnEntry[] Items { get; } = items;
+        public uint Land { get; } = land;
+        public int TerrainZ { get; } = terrainZ;
+        public ushort LandId { get; } = landId;
+    }
+
+    // A path search asks about the same tile up to sixteen times: as the neighbour
+    // eight nodes step to, and as the node every step leaves (the climb height). What
+    // a tile holds does not change within one search, so while one runs on this
+    // thread (BeginSearch / EndSearch) each tile is collected once.
+    [ThreadStatic] private static Dictionary<long, Column>? t_columns;
+    [ThreadStatic] private static int t_searchDepth;
+    [ThreadStatic] private static List<ColumnEntry>? t_scratch;
+
+    /// <summary>A path search starts on this thread: tile columns are kept until it ends.</summary>
+    internal static void BeginSearch()
+    {
+        if (t_searchDepth++ == 0)
+            (t_columns ??= []).Clear();
+    }
+
+    /// <summary>The search on this thread ended: the kept columns are dropped.</summary>
+    internal static void EndSearch()
+    {
+        if (t_searchDepth > 0 && --t_searchDepth == 0)
+            t_columns?.Clear();
+    }
+
     /// <summary>CWorldMap::GetHeightPoint with fHouseCheck (CWorldMap.cpp:1258):
     /// statics, multi components, dynamic items, then the terrain.</summary>
     private void GetHeightPoint(MapDataManager md, int mapId, int x, int y, BlockingState block)
+    {
+        if (t_searchDepth > 0 && t_columns != null)
+        {
+            long key = ((long)mapId << 40) | ((long)(uint)x << 20) | (uint)y;
+            if (!t_columns.TryGetValue(key, out var column))
+            {
+                var list = new List<ColumnEntry>(8);
+                CollectColumn(md, mapId, x, y, list, out uint l, out int tz, out ushort lid);
+                t_columns[key] = column = new Column([.. list], l, tz, lid);
+            }
+            ApplyColumn(column.Items, column.Land, column.TerrainZ, column.LandId, block);
+            return;
+        }
+        var scratch = t_scratch ??= new List<ColumnEntry>(16);
+        scratch.Clear();
+        CollectColumn(md, mapId, x, y, scratch, out uint land, out int terrainZ, out ushort landId);
+        ApplyColumn(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(scratch), land, terrainZ, landId, block);
+    }
+
+    private void CollectColumn(MapDataManager md, int mapId, int x, int y, List<ColumnEntry> into,
+        out uint land, out int terrainZ, out ushort landId)
     {
         var statics = md.GetStaticBlock(mapId, x, y, out int offX, out int offY);
         for (int i = 0; i < statics.Length; i++)
@@ -294,7 +352,7 @@ internal sealed class SourceXWalk
             // A map-static door the world has swung open is no door at the moment.
             if ((flags & Door) != 0 && _world.IsMapStaticDoorOpen((byte)mapId, (short)x, (short)y, s.Z))
                 flags &= ~Door;
-            block.CheckTileItem(flags, s.Z, height, s.TileId + TerrainQty);
+            into.Add(new ColumnEntry(flags, s.Z, height, s.TileId + TerrainQty));
         }
 
         var multis = _world.GroundMultis;
@@ -313,7 +371,7 @@ internal sealed class SourceXWalk
                     if (!comp.IsVisible || multi.X + comp.XOffset != x || multi.Y + comp.YOffset != y)
                         continue;
                     ItemFlags(md, comp.TileId, out uint flags, out int height);
-                    block.CheckTileItem(flags, multi.Z + comp.ZOffset, height, comp.TileId + TerrainQty);
+                    into.Add(new ColumnEntry(flags, multi.Z + comp.ZOffset, height, comp.TileId + TerrainQty));
                 }
             }
             if (multi.ItemType == ItemType.MultiCustom && WalkCheck.ResolveCustomDesign != null)
@@ -323,13 +381,14 @@ internal sealed class SourceXWalk
                     if (!tile.Visible || multi.X + tile.X != x || multi.Y + tile.Y != y)
                         continue;
                     ItemFlags(md, tile.TileId, out uint flags, out int height);
-                    block.CheckTileItem(flags, multi.Z + tile.Z, height, tile.TileId + TerrainQty);
+                    into.Add(new ColumnEntry(flags, multi.Z + tile.Z, height, tile.TileId + TerrainQty));
                 }
             }
         }
 
-        var pivot = new Core.Types.Point3D((short)x, (short)y, 0, (byte)mapId);
-        foreach (var item in _world.GetItemsInRange(pivot, 0))
+        // The tile's own items, by the sector's per-tile index (a whole-sector scan
+        // per step cost a town sector hundreds of comparisons).
+        foreach (var item in _world.GroundItemsOnTile(mapId, x, y))
         {
             if (item.IsDeleted || item.IsEquipped || !item.IsOnGround)
                 continue;
@@ -343,11 +402,10 @@ internal sealed class SourceXWalk
             // changing its art, and the open art's definition carries no DOOR.
             int dispId = item.DispIdFull;
             ItemFlags(md, dispId, out uint flags, out int height);
-            block.CheckTileItem(flags, item.Z, height, dispId + TerrainQty);
+            into.Add(new ColumnEntry(flags, item.Z, height, dispId + TerrainQty));
         }
 
-        int terrainZ = AdjustedTerrainZ(md, mapId, x, y, out ushort landId);
-        uint land;
+        terrainZ = AdjustedTerrainZ(md, mapId, x, y, out landId);
         // The cave void (0x1AE-0x1B5, 0x1DB) is taken as no floor, like TERRAIN_HOLE.
         // Source-X reads its empty tiledata as PLATFORM, but the client never walks it
         // and creatures born on it could not walk out - a reported fault this keeps
@@ -366,6 +424,13 @@ internal sealed class SourceXWalk
             if (land == 0 || (lf & TileFlag.Surface) != 0)
                 land = Platform;
         }
+    }
+
+    private static void ApplyColumn(ReadOnlySpan<ColumnEntry> items, uint land, int terrainZ, ushort landId,
+        BlockingState block)
+    {
+        foreach (var e in items)
+            block.CheckTileItem(e.Flags, e.Z, e.Height, e.Id);
         block.CheckTileTerrain(land, terrainZ, landId);
 
         if (block.Bottom.Z == SizeMinZ)

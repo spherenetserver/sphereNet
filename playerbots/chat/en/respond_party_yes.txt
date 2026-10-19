@@ -1,0 +1,7 @@
+# respond_party_yes.txt — a fighter answering a player looking for a group: it wants an invite.
+
+inv me
+sure, invite
+im in, inv
+yeah lets go, inv
+inv, ill follow

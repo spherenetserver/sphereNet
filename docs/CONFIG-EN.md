@@ -169,7 +169,7 @@ Due NPC actions processed per server tick; the rest are deferred to the next tic
 Prestage A* path searches accepted per tick; other chasers are deferred and rotated in on later ticks.
 
 - **Type:** integer (minimum 0)
-- **Default:** `2`
+- **Default:** `8`
 
 ### PLAYERBOTS
 
@@ -212,6 +212,48 @@ A raised bot whose corpse lies within this many tiles walks back and takes its t
 
 - **Type:** integer (minimum 0)
 - **Default:** `40`
+
+### PLAYERBOTGRAVITY
+
+Percent of a bot's town trips that go to a place within 30 tiles of a connected player, so bots gather where players are. `0` turns it off.
+
+- **Type:** integer (0-100)
+- **Default:** `40`
+
+### PLAYERBOTCROWD
+
+Bots standing within sight of one player beyond which no more are drawn toward that player.
+
+- **Type:** integer (minimum 0)
+- **Default:** `14`
+
+### PLAYERBOTCHATPACE
+
+Mean seconds between two bot scenes (a line, a trade haggle, news and its reaction) played near each connected player; each wait is half to one and a half of it. Bots nobody hears say nothing.
+
+- **Type:** integer (minimum 4)
+- **Default:** `30`
+
+### PLAYERBOTNAMEPREFIX
+
+Put before every bot's name as players see it; quote it to keep a trailing space. Empty for none. The bot's own name is kept in `PLAYERBOT.NAME`, so a changed prefix replaces the old one the next time the bot comes online.
+
+- **Type:** string
+- **Default:** `"[Bot] "`
+
+### PLAYERBOTPKPERCENT
+
+Percent of fighter bots that are player killers, decided once per bot (`PLAYERBOT.ROLE`). A player killer keeps out of guarded towns, waits about dungeon mouths, moongates and the roads, and sets on a lone player or bot it rates itself against, then goes through the body. Crime, murder counts, guards and the murderer's resurrection town follow the normal rules. `0` for none.
+
+- **Type:** integer (0-100)
+- **Default:** `5`
+
+### PLAYERBOTTHIEFPERCENT
+
+Percent of the other bots that are thieves, decided once per bot. A thief works guarded town crowds: it steps up to someone, opens their pack, steals with the Stealing skill, then hides and walks off, every few minutes. Getting caught follows the normal criminal rules. `0` for none.
+
+- **Type:** integer (0-100)
+- **Default:** `5`
 
 ### MULTICOREDETERMINISMDEBUG
 

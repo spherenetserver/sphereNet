@@ -839,8 +839,8 @@ public static partial class Program
     internal const int DefaultMaxNpcsPerTick = 500;
     private static int MaxNpcsPerTick => Math.Max(1, _config?.MaxNpcsPerTick ?? DefaultMaxNpcsPerTick);
 
-    // Prestage A* acceptances per tick, sphere.ini NpcPathPrestagePerTick (default 2).
-    internal const int DefaultNpcPathPrestagePerTick = 2;
+    // Prestage A* acceptances per tick, sphere.ini NpcPathPrestagePerTick (default 8).
+    internal const int DefaultNpcPathPrestagePerTick = 8;
     private static int NpcPathPrestagePerTick =>
         Math.Max(0, _config?.NpcPathPrestagePerTick ?? DefaultNpcPathPrestagePerTick);
 
@@ -1094,7 +1094,7 @@ public static partial class Program
         // order, rather than by whichever worker reaches the counter first — the losers
         // take a 150ms path defer, which is state, so racing for it made the same tick
         // produce different worlds (review finding B5).
-        // The acceptance count is sphere.ini NpcPathPrestagePerTick (default 2).
+        // The acceptance count is sphere.ini NpcPathPrestagePerTick (default 8).
         _npcAI.BeginTickPathfindBudget(NpcPathPrestagePerTick, npcSnapshot, _tickCounter);
         if (npcSnapshot.Count >= ParallelComputeMinBatch)
         {

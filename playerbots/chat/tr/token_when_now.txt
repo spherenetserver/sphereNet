@@ -1,0 +1,6 @@
+# token_when_now.txt — when a story happened, within the last ten minutes.
+
+az önce
+demin
+şimdi
+bir dakika önce

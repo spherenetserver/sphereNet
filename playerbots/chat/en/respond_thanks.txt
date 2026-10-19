@@ -1,0 +1,8 @@
+# respond_thanks.txt — a player thanked the bot.
+
+np
+yw
+no prob
+anytime
+sure thing
+no worries

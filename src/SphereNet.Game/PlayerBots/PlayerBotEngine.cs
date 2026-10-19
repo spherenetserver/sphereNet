@@ -39,6 +39,14 @@ public sealed partial class PlayerBotEngine
     public const string ArchetypeTag = "PLAYERBOT.ARCH";
     public const string GoalTag = "PLAYERBOT.GOAL";
     public const string CorpseTag = "PLAYERBOT.CORPSE";
+    /// <summary>The bot's own name, without <see cref="NamePrefix"/>.</summary>
+    public const string NameTag = "PLAYERBOT.NAME";
+
+    /// <summary>Put before every bot's name as players see it ("[Bot] "), so nobody
+    /// takes a bot for a person. Empty for none. Applied when a bot comes online; the
+    /// name without it is kept in <see cref="NameTag"/>, so a changed prefix replaces
+    /// the old one.</summary>
+    public string NamePrefix { get; set; } = "";
 
     private readonly GameWorld _world;
     private readonly MovementEngine _movement;
@@ -54,6 +62,14 @@ public sealed partial class PlayerBotEngine
 
     public BotNavGraph Nav { get; }
     public BotChatBook Chat { get; }
+    /// <summary>What a player's line asks for (intents.txt).</summary>
+    public BotIntents Intents { get; set; } = new();
+    /// <summary>The little exchanges bots act out for players (scenes.txt).</summary>
+    public BotSceneBook Scenes { get; set; } = new();
+    /// <summary>Real happenings bots talk about.</summary>
+    public BotGossip Gossip { get; } = new();
+    /// <summary>Mean seconds between two scenes played for one player.</summary>
+    public int ChatPaceSeconds { get; set; } = 30;
     public int TargetCount { get; set; }
 
     /// <summary>Tile path searches allowed per tick across every bot, and the time
@@ -63,6 +79,18 @@ public sealed partial class PlayerBotEngine
     public int PathSearchesPerTick { get; set; } = 1;
     public double PathSearchBudgetMs { get; set; } = 3.0;
     public int PathSearchMaxNodes { get; set; } = 300;
+    /// <summary>Stalled legs sent to open a door near by, and last legs moved to
+    /// another stopping spot.</summary>
+    public long WindowStallDoors { get; private set; }
+    /// <summary>A stalled leg this near its end gets a tile search of at most this
+    /// many nodes and milliseconds.</summary>
+    public int StallSearchRange { get; set; } = 40;
+    public int StallSearchMaxNodes { get; set; } = 800;
+    public double StallSearchMs { get; set; } = 4.0;
+    public long WindowStallSearches { get; private set; }
+    /// <summary>Tile searches given up at their deadline, since start.</summary>
+    public long SearchTimeouts => _pathfinder.TimedOut;
+    public long WindowSpotSwitches { get; private set; }
     /// <summary>Time all bot decisions of one tick may take together.</summary>
     public double ActBudgetMs { get; set; } = 12.0;
 
@@ -94,6 +122,13 @@ public sealed partial class PlayerBotEngine
         int n = 0;
         foreach (string line in File.ReadAllLines(BadSpotFile))
         {
+            if (line.StartsWith("link|", StringComparison.Ordinal))
+            {
+                var parts = line.Split('|');
+                if (parts.Length == 3 && Nav.MarkBadLink(Nav.FindWaypoint(parts[1]), Nav.FindWaypoint(parts[2])))
+                    BadLinks++;
+                continue;
+            }
             int bar = line.LastIndexOf('|');
             if (bar <= 0 || !int.TryParse(line.AsSpan(bar + 1), out int spot)) continue;
             if (Nav.FindDestination(line[..bar]) is { } dest && spot >= 0 && spot < dest.Arrivals.Count &&
@@ -105,6 +140,28 @@ public sealed partial class PlayerBotEngine
     }
 
     private const int RescuesToMarkSpot = 2;
+
+    /// <summary>A road link a bot had to be lifted off twice is left out of routes
+    /// (kept in the bad-spot file as "link|from|to" by node name).</summary>
+    private void LearnBadLink(int from, int to)
+    {
+        var key = (Math.Min(from, to), Math.Max(from, to));
+        int seen = _linkFailures.GetValueOrDefault(key) + 1;
+        _linkFailures[key] = seen;
+        if (seen < RescuesToMarkSpot || !Nav.MarkBadLink(from, to)) return;
+        BadLinks++;
+        if (BadSpotFile == null) return;
+        try
+        {
+            File.AppendAllText(BadSpotFile,
+                $"link|{Nav.Waypoints[from].Name}|{Nav.Waypoints[to].Name}{Environment.NewLine}");
+        }
+        catch (IOException ex) { _logger.LogWarning(ex, "[playerbots] could not record a bad link"); }
+    }
+
+    private readonly Dictionary<(int, int), int> _linkFailures = [];
+    /// <summary>Road links learned to be impassable.</summary>
+    public int BadLinks { get; private set; }
 
     private void LearnBadSpot(BotDestination dest, int spot)
     {
@@ -142,8 +199,15 @@ public sealed partial class PlayerBotEngine
     public long WindowMoveUs { get; private set; }
     public long WindowMaxMoveUs { get; private set; }
     public string WindowMaxMoveWhere { get; private set; } = "";
+    /// <summary>Lines said, answers to players, scenes started.</summary>
+    public long WindowLines { get; private set; }
+    public long WindowReplies { get; private set; }
+    public long WindowScenes { get; private set; }
     public void ResetWindow()
     {
+        WindowLines = WindowReplies = WindowScenes = WindowSeenSum = WindowSeenSamples = WindowMovedHouse = WindowMounts = WindowRegears = WindowRobesShed = WindowStallDoors = WindowSpotSwitches = WindowStallSearches = 0;
+        WindowPurchases = WindowMeditations = WindowPkAttacks = WindowThefts = 0;
+        WindowSeenMax = 0;
         WindowTicks = WindowTotalUs = WindowMaxUs = WindowSearches = WindowSteps = WindowFights = 0;
         WindowMaxSearchUs = WindowFailedSearches = WindowDoors = WindowRescues = 0;
         WindowSlowestActUs = WindowSpawnUs = WindowMaxRouteUs = WindowMaxStepUs = 0;
@@ -291,6 +355,9 @@ public sealed partial class PlayerBotEngine
 
     private void BringOnline(Character ch)
     {
+        string own = BaseName(ch);
+        ch.SetTag(NameTag, own);
+        ch.Name = NamePrefix + own;
         ch.IsPlayer = true;
         ch.IsPlayerBot = true;
         ch.IsOnline = true;
@@ -309,6 +376,7 @@ public sealed partial class PlayerBotEngine
     {
         if (!_minds.Remove(ch.Uid.Value, out var mind)) return;
         _order.Remove(mind);
+        if (mind.Scene != null) EndScene(mind.Scene);
         if (mind.Client != null) DropClient?.Invoke(ch);
         ch.IsOnline = false;
         ch.IsPlayerBot = false;
@@ -344,7 +412,10 @@ public sealed partial class PlayerBotEngine
     public void Tick(long now)
     {
         long t0 = Stopwatch.GetTimestamp();
+        _nowMs = now;
         KeepPopulation(now);
+        RefreshAudience(now);
+        TickScenes(now);
         _searchesLeft = PathSearchesPerTick;
         _searchDeadline = t0 + (long)(PathSearchBudgetMs * Stopwatch.Frequency / 1000.0);
         List<uint>? gone = null;
@@ -435,6 +506,20 @@ public sealed partial class PlayerBotEngine
         }
         if (mind.Mode != BotMode.Fight && mind.Mode != BotMode.Flee && TryStartFight(mind, now))
             return;
+        if (CheckGear(mind, now) || CheckMount(mind, now))
+            return;
+        if (mind.Mode is BotMode.Linger or BotMode.Travel)
+        {
+            if (ch.IsPoisoned && now >= mind.NextCureMs && TryCure(mind, now))
+            {
+                mind.NextActMs = now + 600;
+                return;
+            }
+            if (mind.Scene == null && TryMeditate(mind, now))
+                return;
+        }
+        if (mind.Mode == BotMode.Linger && mind.Scene == null && ActThief(mind, now))
+            return;
         if (mind.Mode is BotMode.Linger or BotMode.Travel && ActFollow(mind, now))
             return;
         switch (mind.Mode)
@@ -453,6 +538,12 @@ public sealed partial class PlayerBotEngine
                 break;
             case BotMode.Reclaim:
                 ActReclaim(mind, now);
+                break;
+            case BotMode.Loot:
+                ActLoot(mind, now);
+                break;
+            case BotMode.Shop:
+                ActShop(mind, now);
                 break;
         }
     }
@@ -557,8 +648,38 @@ public sealed partial class PlayerBotEngine
 
     /// <summary>Say a line of <paramref name="category"/> the way a player types it:
     /// through the client's speech handler (NPCs hear it, @Speech runs), or as a plain
-    /// overhead line when the bot has no client.</summary>
-    private void Speak(BotMind mind, string category, string? fallback = "small_talk")
+    /// overhead line when the bot has no client. Nobody within earshot, nothing is
+    /// said. The language is <paramref name="lang"/>, else the nearest listener's,
+    /// else the default. <c>{name}</c> is whoever the bot speaks to
+    /// (<paramref name="to"/>), <c>{me}</c> the bot. Returns whether a line was said.</summary>
+    private bool Speak(BotMind mind, string category, string? fallback = "small_talk", Character? to = null,
+        string? lang = null, IReadOnlyDictionary<string, string>? extra = null, bool force = false)
+    {
+        var ch = mind.Char;
+        // Talk nobody hears is skipped; a line that does something in the world (a
+        // call for the guards) is said anyway.
+        var listener = WatcherNear(ch.Position, HearRange);
+        if (listener == null && !force) return false;
+        lang ??= listener?.Language ?? Chat.Language;
+        var tokens = Tokens(mind, lang);
+        if (to != null) tokens["name"] = FirstName(to);
+        if (extra != null)
+            foreach (var (k, v) in extra) tokens[k] = v;
+        string? line = Chat.Pick(category, _rng, tokens, lang) ??
+                       (fallback != null ? Chat.Pick(fallback, _rng, tokens, lang) : null);
+        if (line == null) return false;
+        WindowLines++;
+        if (mind.Client != null)
+            mind.Client.HandleSpeech(0, ch.SpeechColor != 0 ? ch.SpeechColor : (ushort)0x03B2, 3, line);
+        else
+            Say?.Invoke(ch, line);
+        return true;
+    }
+
+    /// <summary>The tokens any line may use: where the bot is and is going, a price, a
+    /// count, its own name, who it fights or who stands by, and a word from each
+    /// <c>token_*</c> list (goods, materials, pets, "last night") in the language.</summary>
+    private Dictionary<string, string> Tokens(BotMind mind, string lang)
     {
         var ch = mind.Char;
         var tokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -567,23 +688,62 @@ public sealed partial class PlayerBotEngine
             ["dest"] = mind.Goal?.City is { Length: > 0 } g ? g : mind.Home,
             ["price"] = (_rng.Next(1, 40) * 50).ToString(),
             ["count"] = _rng.Next(2, 30).ToString(),
-            ["name"] = ch.Name,
+            ["me"] = FirstName(ch),
         };
         if (mind.Foe != null) tokens["other"] = mind.Foe.GetName();
         else
             foreach (var other in _world.GetCharsInRange(ch.Position, 8))
                 if (other != ch && other.IsPlayer && !other.IsDead)
                 {
-                    tokens["other"] = other.Name;
+                    tokens["other"] = BaseName(other);
                     break;
                 }
-        string? line = Chat.Pick(category, _rng, tokens) ?? (fallback != null ? Chat.Pick(fallback, _rng, tokens) : null);
-        if (line == null) return;
-        if (mind.Client != null)
-            mind.Client.HandleSpeech(0, ch.SpeechColor != 0 ? ch.SpeechColor : (ushort)0x03B2, 3, line);
-        else
-            Say?.Invoke(ch, line);
+        foreach (string list in TokenLists)
+            if (Chat.Pick("token_" + list, _rng, null, lang) is { } word)
+                tokens[list] = word;
+        if (DungeonName() is { } dungeon) tokens["dungeon"] = dungeon;
+        return tokens;
     }
 
-    private long NowMs() => Environment.TickCount64;
+    private static readonly string[] TokenLists = ["item", "when", "mat", "pet"];
+
+    /// <summary>A dungeon's name the way players say it: "destard", "orc cave".</summary>
+    private string? DungeonName()
+    {
+        _dungeonNames ??= Nav.Destinations
+            .Where(d => d.Type.Equals("DungeonEntrance", StringComparison.OrdinalIgnoreCase))
+            .Select(d => ShortPlaceName(d.Name))
+            .Distinct()
+            .ToArray();
+        return _dungeonNames.Length > 0 ? _dungeonNames[_rng.Next(_dungeonNames.Length)] : null;
+    }
+
+    private string[]? _dungeonNames;
+
+    internal static string ShortPlaceName(string name)
+    {
+        var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .TakeWhile(w => !(w.Length >= 2 && w[0] == 'L' && char.IsDigit(w[1])) &&
+                            !w.Equals("Entrance", StringComparison.OrdinalIgnoreCase) &&
+                            !w.Equals("Deep", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return string.Join(' ', words.Count > 0 ? words : [name]).ToLowerInvariant();
+    }
+
+    /// <summary>A character's name as people say it: a bot's without its prefix.</summary>
+    internal static string BaseName(Character ch) =>
+        ch.TryGetTag(NameTag, out string? own) && !string.IsNullOrEmpty(own) ? own : ch.Name ?? "";
+
+    internal static string FirstName(Character ch)
+    {
+        string name = BaseName(ch);
+        int sp = name.IndexOf(' ');
+        return sp > 0 ? name[..sp] : name;
+    }
+
+    /// <summary>The engine's clock: the time of the last tick, so what players say
+    /// between ticks is timed on the same clock the bots act on.</summary>
+    private long NowMs() => _nowMs != 0 ? _nowMs : Environment.TickCount64;
+
+    private long _nowMs;
 }

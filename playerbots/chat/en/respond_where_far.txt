@@ -1,0 +1,5 @@
+# respond_where_far.txt — directions to somewhere far. {target} {dir}.
+
+{target} is way {dir}, take the moongate
+far {dir}, use a gate
+{target}? long walk {dir}. recall or gate

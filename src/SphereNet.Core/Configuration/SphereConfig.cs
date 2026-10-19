@@ -808,12 +808,27 @@ public sealed class SphereConfig
     // PlayerBotReclaimRange tiles is walked back to; a farther one is handed back.
     public string PlayerBotRedRespawn { get; set; } = "Delucia";
     public int PlayerBotReclaimRange { get; set; } = 40;
+    // Where bots spend their time and how much they talk: PlayerBotGravity percent of
+    // town trips go to a place near a connected player, until PlayerBotCrowd bots stand
+    // around that player; a scene is played near each player every PlayerBotChatPace
+    // seconds on average (half to one and a half of it).
+    public int PlayerBotGravity { get; set; } = 40;
+    public int PlayerBotCrowd { get; set; } = 14;
+    public int PlayerBotChatPace { get; set; } = 30;
+    // Put before every bot's name as players see it; empty for none.
+    public string PlayerBotNamePrefix { get; set; } = "[Bot] ";
+    // Rogues: percent of fighter bots that are player killers, and of the others
+    // that are thieves (decided once per bot). 0 for none.
+    public int PlayerBotPkPercent { get; set; } = 5;
+    public int PlayerBotThiefPercent { get; set; } = 5;
 
     // Prestage A* searches accepted per tick (ini key: NpcPathPrestagePerTick).
     // Over-budget chasers take a short path defer and are rotated in on later
-    // ticks. Field-tuned to 2; raise only with measurements that support it.
+    // ticks. Was field-tuned to 2 when an unreachable 500-node search cost about
+    // 39 ms on the real map; with the per-tile ground index and the per-search tile
+    // columns it costs about 6 ms, so 8 stays under the old worst case (2 x 39 ms).
     // Clamped to >= 0.
-    public int NpcPathPrestagePerTick { get; set; } = 2;
+    public int NpcPathPrestagePerTick { get; set; } = 8;
 
     // World-loop tick interval in milliseconds (ini key: ServerTickMs).
     // 100 = 10 ticks/s (default), matching Source-X exactly: TICKS_PER_SEC=10 =>
@@ -1434,6 +1449,13 @@ public sealed class SphereConfig
         PlayerBotLanguage = (ini.GetValue(section, "PlayerBotLanguage") ?? PlayerBotLanguage).Trim().ToLowerInvariant();
         PlayerBotRedRespawn = (ini.GetValue(section, "PlayerBotRedRespawn") ?? PlayerBotRedRespawn).Trim();
         PlayerBotReclaimRange = Math.Max(0, ini.GetInt(section, "PlayerBotReclaimRange", PlayerBotReclaimRange));
+        PlayerBotGravity = Math.Clamp(ini.GetInt(section, "PlayerBotGravity", PlayerBotGravity), 0, 100);
+        PlayerBotCrowd = Math.Max(0, ini.GetInt(section, "PlayerBotCrowd", PlayerBotCrowd));
+        PlayerBotChatPace = Math.Max(4, ini.GetInt(section, "PlayerBotChatPace", PlayerBotChatPace));
+        PlayerBotPkPercent = Math.Clamp(ini.GetInt(section, "PlayerBotPkPercent", PlayerBotPkPercent), 0, 100);
+        PlayerBotThiefPercent = Math.Clamp(ini.GetInt(section, "PlayerBotThiefPercent", PlayerBotThiefPercent), 0, 100);
+        if (ini.GetValue(section, "PlayerBotNamePrefix") is { } prefix)
+            PlayerBotNamePrefix = prefix.Trim('"');
         NpcPathPrestagePerTick = Math.Max(0, ini.GetInt(section, "NpcPathPrestagePerTick", NpcPathPrestagePerTick));
         TickSleepMode = ini.GetInt(section, "TickSleepMode", TickSleepMode);
         AsyncReceive = ini.GetBool(section, "AsyncReceive", AsyncReceive);

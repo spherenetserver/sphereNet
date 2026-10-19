@@ -1,0 +1,62 @@
+# What a player's line asks for, read by the bots around. One key per line:
+#   <intent>: keywords        greet bye thanks howareyou where party res wts wtb question
+#   place.<Type>: keywords    a destination type (destinations.json "Type") a "where" asks about
+#   town.<City>: keywords     a town (destinations.json "City")
+#   dest.<Name>: keywords     one destination by name (destinations.json "Name")
+#   lang.<code>: words        words that tell a line's language (chat/<code>/)
+# Any language may be mixed on one line. A phrase joins its words with '+'. A keyword
+# of four letters or more also matches the start of a word ("banka" -> "bankaya").
+# Places are tried in file order: the first one named wins.
+
+res: res rez rezz resurrect diril dirilt
+where: where wheres nerde nerede neresi nereye nerdeydi how+do+i+get how+to+get nasıl+gidilir nasil+gidilir yolu+ne
+party: lfg lfm group party grup parti ava+gelen hunt+together
+wts: wts selling satıyorum satiyorum satılık satilik satarım
+wtb: wtb buying alırım alirim arıyorum ariyorum
+thanks: ty thx thanks thank tyvm sağol sagol sağolun eyv eyvallah teşekkür tesekkur tşk tsk
+bye: bye cya gtg bb goodbye görüşürüz gorusuruz hoşçakal hoscakal baybay
+howareyou: how+are+you how+r+u hru wassup nasılsın nasilsin naber nbr napıyon napiyon napıyosun naptın
+greet: hi hello hey hail greetings yo sup hiya sa selam slm merhaba selamlar mrb aleykum
+question: why what who how when neden niye kim nasıl nasil ne+zaman
+
+place.Bank: bank banka bankası banker
+place.Healer: healer şifacı sifaci
+place.Inn: inn tavern han meyhane otel
+place.Moongate: moongate gate ay+kapısı
+place.VendorSmith: blacksmith smith demirci
+place.Forge: forge ocak
+place.VendorTailor: tailor terzi
+place.VendorMage: mage+shop reg+shop reagent büyücü+dükkanı
+place.VendorAlchemist: alchemist simyacı simyaci potion+shop
+place.VendorProvisioner: provisioner bakkal
+place.VendorWeaponer: weaponsmith weapon+shop silahçı silahci
+place.VendorBowyer: bowyer fletcher okçu+dükkanı
+place.VendorCarpenter: carpenter marangoz
+place.Stables: stables stable ahır ahir
+place.Shrine: shrine tapınak tapinak
+place.Dock: docks dock iskele liman
+
+town.Britain: britain brit britanya
+town.Trinsic: trinsic
+town.Moonglow: moonglow
+town.Vesper: vesper
+town.Minoc: minoc
+town.Yew: yew
+town.Jhelom: jhelom
+town.Skara Brae: skara+brae skara
+town.Magincia: magincia
+town.Buccaneer's Den: buccaneer bucs bucca
+
+dest.Despise L1 Entrance: despise
+dest.Shame L1 Entrance: shame
+dest.Orc Cave L1 Entrance: orc+cave orc+mağarası
+dest.Destard L1 Entrance: destard
+dest.Ice L1 Entrance: ice+dungeon
+dest.Wrong L1 Entrance: wrong+dungeon
+dest.Covetous L1 Entrance: covetous
+dest.Fire L1 Entrance: fire+dungeon
+dest.Deceit L1 Entrance: deceit
+dest.Hythloth L1 Entrance: hythloth hyth
+
+lang.tr: abi kanka nerde var yok mı mi bir bu şu ne evet hayır tamam olur değil sen ben biz siz için gibi çok selam slm sa merhaba naber kardeş hocam
+lang.en: the is are you i me what where how yes no ok please pls thanks anyone want need have here there hello hi hey

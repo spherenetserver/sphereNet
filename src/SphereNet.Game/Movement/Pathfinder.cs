@@ -40,7 +40,25 @@ public sealed class Pathfinder
     /// 28x28 grid (MAX_NPC_PATH_STORAGE_SIZE) — so an unreachable goal in an
     /// enclosed space exhausts the box instead of the full node budget.
     /// </summary>
-    public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, int maxNodes = MaxNodes, int maxRadius = 0)
+    /// <param name="deadline">A <see cref="System.Diagnostics.Stopwatch"/> timestamp after
+    /// which the search gives up (checked every 32 opened nodes); 0 for none.</param>
+    public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, int maxNodes = MaxNodes, int maxRadius = 0, long deadline = 0)
+    {
+        // Each tile's contents are read once per search, however many of its
+        // neighbours ask about it (SourceXWalk tile columns).
+        SourceXWalk.BeginSearch();
+        try
+        {
+            return Search(start, goal, mapIndex, canFlags, self, maxNodes, maxRadius, deadline);
+        }
+        finally
+        {
+            SourceXWalk.EndSearch();
+        }
+    }
+
+    private List<Point3D>? Search(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags,
+        Objects.Characters.Character? self, int maxNodes, int maxRadius, long deadline)
     {
         if (maxNodes <= 0) maxNodes = MaxNodes;
         if (self != null)
@@ -82,6 +100,11 @@ public sealed class Pathfinder
                 continue;
 
             nodesExplored++;
+            if (deadline != 0 && (nodesExplored & 31) == 0 && System.Diagnostics.Stopwatch.GetTimestamp() > deadline)
+            {
+                TimedOut++;
+                return null;
+            }
 
             // Explore 8 neighbors
             for (int dx = -1; dx <= 1; dx++)
@@ -174,6 +197,9 @@ public sealed class Pathfinder
 
         return null;
     }
+
+    /// <summary>Searches given up at their deadline, since start.</summary>
+    public long TimedOut { get; private set; }
 
     private bool IsWalkable(Point3D pos, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, bool ignoreChars = false)
     {

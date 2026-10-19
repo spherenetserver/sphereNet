@@ -1,0 +1,11 @@
+# What a bot buys when it runs short, and where. One need per line:
+#   name  item-type  low  buy  place-type...
+# item-type is an ItemType name; low is how few is too few (counted in the pack);
+# buy is how many it asks for (fewer when its gold does not stretch); the place
+# types are destinations.json "Type" values where a vendor of it stands.
+# Who needs what: Bandage a bot with Healing, Reagent a caster, WeaponArrow a bow
+# user, WeaponBolt a crossbow user.
+bandage  Bandage      10  40  Healer VendorProvisioner
+reagent  Reagent      15  30  VendorMage VendorAlchemist
+arrow    WeaponArrow  30  100 VendorBowyer VendorProvisioner
+bolt     WeaponBolt   30  100 VendorBowyer VendorProvisioner

@@ -1,0 +1,8 @@
+# respond_bye.txt — a player said goodbye to the bot.
+
+cya
+bb
+take care
+later
+cya around
+safe travels

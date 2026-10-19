@@ -7830,6 +7830,12 @@ public partial class Character : ObjBase
         // via ITEM="), but an assignment never reached it: ObjBase answers COLOR, so
         // "COLOR=colors_hair" after an ITEM= tinted the CREATURE's body instead of the
         // hair it was written for - 937 lines of it in the live pack.
+        // An ITEM line that made nothing (a failed R chance, an unknown defname): the
+        // colour written for it is skipped, as Source-X skips the lines after it
+        // (ReadScriptReduced: m_UIDLastNewItem = GetUID(); continue), rather than
+        // dyeing the item before it or the creature's body.
+        if (_lastItemMissed && upperKey is "COLOR" or "HUE")
+            return true;
         if (_lastCreatedItem is { IsDeleted: false } tinted &&
             upperKey is "COLOR" or "HUE")
         {
@@ -8802,11 +8808,14 @@ public partial class Character : ObjBase
                 // argument after the defname is an amount expression or a one-in-#
                 // chance for the line to produce anything at all. A failed chance
                 // creates nothing.
+                _lastCreatedItem = null;
+                _lastItemMissed = true;
                 if (!Definitions.TemplateEngine.TryRollCreateHeaderArgs(parts[1..], out int amount))
                     return true;
 
                 SpawnAndEquipItem(name, amount,
                     newbie: key.Equals("ITEMNEWBIE", StringComparison.OrdinalIgnoreCase));
+                _lastItemMissed = _lastCreatedItem == null;
                 return true;
             }
             case "COLOR":
@@ -8815,6 +8824,7 @@ public partial class Character : ObjBase
                 // "match_*" reuses the last resolved hue — lets a
                 // facial_hair share colour with the hair ITEM that
                 // came right before it.
+                if (_lastItemMissed) return true; // the ITEM before it made nothing
                 ushort hue = ResolveColorArg(args.Trim(), _lastVerbHue);
                 if (hue == 0) return true;
                 if (_lastCreatedItem != null && !_lastCreatedItem.IsDeleted)
@@ -10525,7 +10535,11 @@ public partial class Character : ObjBase
     /// <summary>Drop the ITEM=-created item the following lines were being applied to.
     /// Called when a trigger run begins, which is the boundary upstream reads a script
     /// section within (CChar.cpp:1441).</summary>
-    public void ForgetLastCreatedItem() => _lastCreatedItem = null;
+    public void ForgetLastCreatedItem()
+    {
+        _lastCreatedItem = null;
+        _lastItemMissed = false;
+    }
 
     /// <summary>Set while a vendor restock reads this character's @NPCRestock block:
     /// NPC_Vendor_Restock calls ReadScriptReducedTrig with fVendor = true
@@ -10574,6 +10588,8 @@ public partial class Character : ObjBase
     }
 
     private Items.Item? _lastCreatedItem;
+    /// <summary>The last ITEM line created nothing; the COLOR written after it is skipped.</summary>
+    private bool _lastItemMissed;
     private ushort _lastVerbHue;
 
     /// <summary>Spawn an item by defname and put it on this NPC at
@@ -10662,6 +10678,7 @@ public partial class Character : ObjBase
         }
 
         _lastCreatedItem = item;
+        _lastItemMissed = false;
     }
 
     /// <summary>

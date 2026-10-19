@@ -1,5 +1,5 @@
 # friend_greet.txt — greeting a friend or guildmate BY NAME on sight.
-# {name} = the other bot's first name.
+# {name} = the first name of whoever is greeted (a player or another bot).
 
 yo {name}
 hey {name}

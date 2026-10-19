@@ -44,17 +44,32 @@ public static partial class Program
             RedRespawnRegion = _config.PlayerBotRedRespawn,
             ReclaimRange = _config.PlayerBotReclaimRange,
             DropClient = ch => _clientsByCharUid.Remove(ch.Uid),
+            Intents = BotIntents.Load(dataDir),
+            Scenes = BotSceneBook.Load(dataDir),
+            Gravity = _config.PlayerBotGravity,
+            CrowdCap = _config.PlayerBotCrowd,
+            ChatPaceSeconds = _config.PlayerBotChatPace,
+            NamePrefix = _config.PlayerBotNamePrefix,
+            PkPercent = _config.PlayerBotPkPercent,
+            ThiefPercent = _config.PlayerBotThiefPercent,
+            ResRobeName = SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.SpellResRobename),
         };
         engine.LoadArchetypes(dataDir);
+        engine.LoadDistribution(dataDir);
+        engine.LoadMounts(dataDir);
+        engine.LoadShopping(dataDir);
+        // Deaths become the news bots tell.
+        _deathEngine.OnDeath += engine.OnDeath;
         engine.BadSpotFile = Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "playerbots_badspots.txt");
         int badSpots = engine.LoadBadSpots();
         int adopted = engine.AdoptSaved();
         _playerBots = engine;
         _log.LogInformation(
             "Player bots: {Nodes} waypoints ({Reseated} re-seated, {Dropped} dropped), {Dests} destinations, " +
-            "{Cats} chat categories ({Lang}), {BadSpots} known bad spots, adopted {Adopted} from the save, target {Target}",
+            "{Cats} chat categories ({Lang}; languages {Langs}), {Scenes} scenes, {BadSpots} known bad spots, adopted {Adopted} from the save, target {Target}",
             nav.Waypoints.Count, nav.ReseatedNodes, nav.DroppedNodes, nav.Destinations.Count,
-            chat.CategoryCount, chat.Language, badSpots, adopted, engine.TargetCount);
+            chat.CategoryCount, chat.Language, string.Join(",", chat.Languages), engine.Scenes.Scenes.Count, badSpots, adopted,
+            engine.TargetCount);
         if (nav.Waypoints.Count == 0)
             _log.LogWarning("Player bots: no road network under {Dir}/nav - bots will stand where they spawn", dataDir);
     }
@@ -72,12 +87,18 @@ public static partial class Program
         if (bots.WindowTicks > 0)
             _log.LogInformation(
                 "[playerbots] online={Count} tick avg={Avg}us max={Max}us deferred={Deferred} steps={Steps} " +
-                "searches={Searches} (failed {Failed}, slowest {SlowSearch}us) doors={Doors} fights={Fights} deaths={Deaths} reclaims={Reclaims} handbacks={HandBacks} rescues={Rescues} badspots={BadSpots} slowest act {SlowAct}us ({SlowWhat}) route {Route}us step {Step}us spawn {Spawn}us moves {Moves} avg {MoveAvg}us max {MoveMax}us at {MoveWhere}",
+                "searches={Searches} (failed {Failed}, slowest {SlowSearch}us) doors={Doors} fights={Fights} deaths={Deaths} reclaims={Reclaims} handbacks={HandBacks} rescues={Rescues} badspots={BadSpots} slowest act {SlowAct}us ({SlowWhat}) route {Route}us step {Step}us spawn {Spawn}us moves {Moves} avg {MoveAvg}us max {MoveMax}us at {MoveWhere} " +
+                "watchers={Watchers} seen avg={SeenAvg} max={SeenMax} lines={Lines} replies={Replies} scenes={Scenes} moved={Moved} mounts={Mounts} regears={Regears} robes={Robes} stalldoors={StallDoors} spotswitches={SpotSwitches} stallsearches={StallSearches} " +
+                "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} badlinks={BadLinks} searchtimeouts={Timeouts}",
                 bots.Count, bots.WindowTotalUs / bots.WindowTicks, bots.WindowMaxUs, bots.WindowDeferred,
                 bots.WindowSteps, bots.WindowSearches, bots.WindowFailedSearches, bots.WindowMaxSearchUs, bots.WindowDoors,
                 bots.WindowFights, bots.WindowDeaths, bots.WindowReclaims, bots.WindowHandBacks, bots.WindowRescues, bots.BadSpots, bots.WindowSlowestActUs, bots.WindowSlowestAct,
                 bots.WindowMaxRouteUs, bots.WindowMaxStepUs, bots.WindowSpawnUs, bots.WindowMoves,
-                bots.WindowMoves > 0 ? bots.WindowMoveUs / bots.WindowMoves : 0, bots.WindowMaxMoveUs, bots.WindowMaxMoveWhere);
+                bots.WindowMoves > 0 ? bots.WindowMoveUs / bots.WindowMoves : 0, bots.WindowMaxMoveUs, bots.WindowMaxMoveWhere,
+                bots.Watching.Count, bots.WindowSeenSamples > 0 ? (bots.WindowSeenSum * 10 / bots.WindowSeenSamples) / 10.0 : 0,
+                bots.WindowSeenMax, bots.WindowLines, bots.WindowReplies, bots.WindowScenes, bots.WindowMovedHouse, bots.WindowMounts, bots.WindowRegears, bots.WindowRobesShed, bots.WindowStallDoors, bots.WindowSpotSwitches, bots.WindowStallSearches,
+                bots.WindowPurchases, bots.WindowMeditations, bots.WindowPkAttacks, bots.WindowThefts, bots.BadLinks,
+                bots.SearchTimeouts);
         bots.ResetWindow();
     }
 

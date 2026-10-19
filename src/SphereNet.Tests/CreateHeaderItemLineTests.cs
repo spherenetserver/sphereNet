@@ -84,6 +84,25 @@ public sealed class CreateHeaderItemLineTests : IDisposable
         return npc!.Backpack?.Contents.ToList() ?? [];
     }
 
+    /// <summary>A COLOR line written for an ITEM that made nothing (its R chance failed)
+    /// is skipped, as upstream skips the lines after it; it neither dyes the item made
+    /// before it nor the creature's body.</summary>
+    [Fact]
+    public void TheColourOfAnItemThatWasNotMadeIsSkipped()
+    {
+        // Two R2 lines: the first chance succeeds, the second fails.
+        var rolls = new Queue<int>([0, 1]);
+        TemplateEngine.CreateHeaderRollForTests = _ => rolls.Dequeue();
+        var items = SpawnAndCollect(
+            "ON=@Create",
+            "ITEM=i_hdr_gold,1,R2",
+            "COLOR=0123",
+            "ITEM=i_hdr_gold,1,R2",
+            "COLOR=0456");
+        var gold = Assert.Single(items);
+        Assert.Equal(0x0123, gold.Hue.Value);
+    }
+
     /// <summary>The 1,066-line case: an amount written as a range is a range.</summary>
     [Fact]
     public void AnAmountRangeIsRolled()

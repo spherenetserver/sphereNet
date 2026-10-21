@@ -187,6 +187,8 @@ public sealed class BotMind
     public string? PendingLanguage { get; set; }
     public Dictionary<string, string>? PendingTokens { get; set; }
     public Action? PendingAction { get; set; }
+    /// <summary>A line said first, joined to the reply: a hello, "like I said".</summary>
+    public string? PendingPrefix { get; set; }
 
     // Talking with players and other bots.
     /// <summary>The scene this bot is acting in, if any; it stays put meanwhile.</summary>
@@ -194,9 +196,27 @@ public sealed class BotMind
     /// <summary>Players this bot has said hello to (or decided not to) on sight, and when.</summary>
     public Dictionary<uint, long> Greeted { get; } = [];
     /// <summary>What a player is haggling with this bot about: the goods and the last price.</summary>
+    // The last lines this bot said, so the next pick is another one when it can be.
+    private readonly string[] _said = new string[6];
+    private int _saidNext;
+
+    public void NoteSaid(string line)
+    {
+        _said[_saidNext] = line;
+        _saidNext = (_saidNext + 1) % _said.Length;
+        LastLine = line;
+    }
+
+    public bool SaidLately(string line) => Array.IndexOf(_said, line) >= 0;
+
+    /// <summary>The last line this bot said.</summary>
+    public string? LastLine { get; private set; }
+
     public string? TalkTopic { get; set; }
     public string? TalkItem { get; set; }
     public long NextResMs { get; set; }
+    /// <summary>When the bot next heals a player who asks.</summary>
+    public long NextFavorMs { get; set; }
     public long NextMountCheckMs { get; set; }
     public int MountTries { get; set; }
 

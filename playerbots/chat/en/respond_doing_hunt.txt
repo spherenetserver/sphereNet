@@ -1,0 +1,6 @@
+# respond_doing_hunt.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+heading to {goal} to hunt
+{goal}, gonna hunt a bit
+going {goal}. wanna come?
+[vet] {goal} run, same as every day

@@ -1,0 +1,5 @@
+# respond_name_yes.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+ne lazım
+söyle
+tabi, ne

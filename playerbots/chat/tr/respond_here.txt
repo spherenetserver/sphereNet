@@ -1,0 +1,6 @@
+# respond_here.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+burası {here}
+{here}
+{here} burası
+{here}, niye?

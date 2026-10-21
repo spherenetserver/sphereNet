@@ -12,6 +12,10 @@ namespace SphereNet.Game.PlayerBots;
 /// Lines carry <c>{token}</c> placeholders; a line whose tokens the caller cannot fill
 /// is skipped rather than said half-written. Categories named <c>token_*</c> are word
 /// lists the tokens are filled from (<c>token_item</c>, <c>token_when</c>, ...).
+/// A line may open with tags in brackets, <c>[new] new here myself</c> or
+/// <c>[mage !hurt] ...</c>: it is said only by a bot that has every tag and none of the
+/// <c>!</c> ones (the engine names a bot's tags: its class, how seasoned, hurt, in town,
+/// riding...). A line without tags fits every bot.
 /// </summary>
 public sealed partial class BotChatBook
 {
@@ -104,17 +108,44 @@ public sealed partial class BotChatBook
     /// <paramref name="tokens"/>; null when the category is empty or no line could be
     /// filled within a few draws.</summary>
     public string? Pick(string category, Random rng, IReadOnlyDictionary<string, string>? tokens = null,
-        string? lang = null)
+        string? lang = null, Func<string, bool>? hasTag = null, Func<string, bool>? isStale = null)
     {
         var lines = Lines(category, lang);
         if (lines == null) return null;
-        for (int attempt = 0; attempt < 6; attempt++)
+        // Lines this bot may say, tags taken off; tried in a random order, a line it said
+        // a moment ago only when nothing else can be filled.
+        var fit = new List<string>(lines.Length);
+        foreach (string raw in lines)
+            if (Untag(raw, hasTag) is { } line) fit.Add(line);
+        string? stale = null;
+        for (int left = fit.Count; left > 0; left--)
         {
-            string line = lines[rng.Next(lines.Length)];
+            int i = rng.Next(left);
+            string line = fit[i];
+            fit[i] = fit[left - 1];
             string? filled = Fill(line, tokens);
-            if (filled != null) return filled;
+            if (filled == null) continue;
+            if (isStale == null || !isStale(filled)) return filled;
+            stale ??= filled;
         }
-        return null;
+        return stale;
+    }
+
+    /// <summary>A line without its leading <c>[tags]</c>, or null when a tag does not fit
+    /// (<paramref name="hasTag"/> null: every line fits).</summary>
+    internal static string? Untag(string line, Func<string, bool>? hasTag)
+    {
+        if (line.Length == 0 || line[0] != '[') return line;
+        int close = line.IndexOf(']');
+        if (close < 0) return line;
+        if (hasTag != null)
+            foreach (string tag in line[1..close].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                bool not = tag[0] == '!';
+                string name = not ? tag[1..] : tag;
+                if (name.Length > 0 && hasTag(name) == not) return null;
+            }
+        return line[(close + 1)..].TrimStart();
     }
 
     internal static string? Fill(string line, IReadOnlyDictionary<string, string>? tokens)
@@ -130,6 +161,6 @@ public sealed partial class BotChatBook
         return missing ? null : result;
     }
 
-    [GeneratedRegex(@"\{([a-zA-Z_]+)\}")]
+    [GeneratedRegex(@"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")]
     private static partial Regex TokenRegex();
 }

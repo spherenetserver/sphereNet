@@ -1,0 +1,5 @@
+# respond_doing_shop.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+shopping, need supplies
+buying stuff
+restocking

@@ -1,0 +1,6 @@
+# respond_repeat.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+like i said
+told ya
+again
+as i said

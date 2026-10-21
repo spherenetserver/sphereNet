@@ -798,7 +798,7 @@ public sealed partial class PlayerBotEngine
     /// else the default. <c>{name}</c> is whoever the bot speaks to
     /// (<paramref name="to"/>), <c>{me}</c> the bot. Returns whether a line was said.</summary>
     private bool Speak(BotMind mind, string category, string? fallback = "small_talk", Character? to = null,
-        string? lang = null, IReadOnlyDictionary<string, string>? extra = null, bool force = false)
+        string? lang = null, IReadOnlyDictionary<string, string>? extra = null, bool force = false, string? prefix = null)
     {
         var ch = mind.Char;
         // Talk nobody hears is skipped; a line that does something in the world (a
@@ -810,9 +810,17 @@ public sealed partial class PlayerBotEngine
         if (to != null) tokens["name"] = FirstName(to);
         if (extra != null)
             foreach (var (k, v) in extra) tokens[k] = v;
-        string? line = Chat.Pick(category, _rng, tokens, lang) ??
-                       (fallback != null ? Chat.Pick(fallback, _rng, tokens, lang) : null);
+        var tags = BotTags(mind);
+        Func<string, bool> stale = mind.SaidLately;
+        string? line = Chat.Pick(category, _rng, tokens, lang, tags.Contains, stale) ??
+                       (fallback != null ? Chat.Pick(fallback, _rng, tokens, lang, tags.Contains, stale) : null);
         if (line == null) return false;
+        mind.NoteSaid(line);
+        // A line said first ("hey", "like i said") joins the reply; one that asks
+        // something back would leave the reply hanging, so it is left out.
+        if (prefix != null && Chat.Pick(prefix, _rng, tokens, lang, tags.Contains, l => l.Contains('?')) is { } first &&
+            !first.Contains('?'))
+            line = first.TrimEnd('.', '!', ' ') + ", " + line;
         WindowLines++;
         if (mind.Client != null)
             mind.Client.HandleSpeech(0, ch.SpeechColor != 0 ? ch.SpeechColor : (ushort)0x03B2, 3, line);
@@ -851,6 +859,42 @@ public sealed partial class PlayerBotEngine
     }
 
     private static readonly string[] TokenLists = ["item", "when", "mat", "pet"];
+
+    /// <summary>What a line's <c>[tags]</c> may ask of the bot saying it: its class
+    /// (<c>mage</c>, <c>archer</c>, <c>warrior</c>, <c>fighter</c>, <c>crafter</c>), how
+    /// seasoned (<c>new</c>: no skill at 50, <c>vet</c>: one at 90), <c>hurt</c> (under
+    /// 60% hit points), <c>town</c> or <c>wild</c> (a guarded region or not),
+    /// <c>mounted</c>, <c>travel</c> or <c>linger</c>.</summary>
+    internal HashSet<string> BotTags(BotMind mind)
+    {
+        var ch = mind.Char;
+        var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (mind.IsCaster) tags.Add("mage");
+        else if (mind.IsArcher) tags.Add("archer");
+        else if (mind.IsFighter) tags.Add("warrior");
+        tags.Add(mind.IsFighter ? "fighter" : "crafter");
+        int best = BestSkills(ch, 1).Select(s => s.Value).FirstOrDefault();
+        if (best < 500) tags.Add("new");
+        if (best >= 900) tags.Add("vet");
+        if (ch.MaxHits > 0 && ch.Hits * 10 < ch.MaxHits * 6) tags.Add("hurt");
+        tags.Add(_world.FindRegion(ch.Position)?.IsGuarded == true ? "town" : "wild");
+        if (ch.IsMounted) tags.Add("mounted");
+        tags.Add(mind.Mode == BotMode.Travel ? "travel" : "linger");
+        return tags;
+    }
+
+    /// <summary>A character's highest skills, best first (tenths).</summary>
+    internal static List<(SkillType Skill, int Value)> BestSkills(Character ch, int count)
+    {
+        var all = new List<(SkillType, int)>();
+        foreach (SkillType s in Enum.GetValues<SkillType>())
+        {
+            if (s < 0 || s > SkillType.Throwing) continue;
+            int v = ch.GetSkill(s);
+            if (v > 0) all.Add((s, v));
+        }
+        return all.OrderByDescending(x => x.Item2).Take(count).ToList();
+    }
 
     /// <summary>A dungeon's name the way players say it: "destard", "orc cave".</summary>
     private string? DungeonName()

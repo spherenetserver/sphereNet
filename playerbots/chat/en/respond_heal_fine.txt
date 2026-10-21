@@ -1,0 +1,5 @@
+# respond_heal_fine.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ur at full hp lol
+u look fine to me
+nothing to heal

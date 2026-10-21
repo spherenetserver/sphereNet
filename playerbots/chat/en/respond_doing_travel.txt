@@ -1,0 +1,6 @@
+# respond_doing_travel.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+on my way to {goal}
+heading to {goal}
+{goal}, need something there
+going to {goal}

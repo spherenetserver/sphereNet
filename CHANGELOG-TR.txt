@@ -4,6 +4,33 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-22] - Oyuncu botlari: konusmayi takip eden sohbet, botun bildigi cevaplar
+------------------------------------------------------------------------
+YENI - Botlar bildiklerini soyler: ne yaptiklari ve nereye gittikleri (yolculugun hedefi,
+       av, banka, alisveris, ceset kosusu, birlikte yurudugu bot), oyuncunun nerede oldugu
+       (bolge ya da en yakin kasaba), ne olduklari (en iyi iki skill), haberler (botlarin
+       haberlerinden gercek bir olay), "heal me" (kitabinda buyu ve manasi olan buyucu
+       oyuncuya Greater Heal, Heal ya da Cure atar), "follow me" (savasci party daveti
+       ister) ve "bot musun". Eskiden yol sorusu disindaki her soru omuz silkmeyle
+       cevaplaniyordu.
+YENI - Sohbet konusunu tutar: bir "nerede"den sonra anilan yer ("peki han?", "banka?") oraya
+       yol sorar, "ne kadar uzak" / "orasi nerede" son konusulan yeri kullanir (botun
+       gittigini soyledigi hedef dahil), kisa bir evet ya da hayir botun kendi sordugu
+       soruya cevap sayilir (<kategori>_yes / _no, yoksa ack_yes / ack_no). Ayni soru 30 sn
+       icinde tekrar gelirse "dedim ya, ..." diye cevaplanir.
+YENI - Soruyla ayni satirdaki selam da cevaplanir; "not" kelimeleri party, follow ve heal
+       isteklerini hayira cevirir.
+YENI - Sohbet satirlari [etiket] ile baslayabilir (mage, archer, warrior, fighter, crafter,
+       new, vet, hurt, town, wild, mounted, travel, linger, degil icin !): tecrubeli bot
+       artik "ben de yeniyim" demez, mage "magery yok" demez. Bot, kategoride baska satir
+       varken son alti satirindan birini tekrar etmez.
+DUZELTME - Yol tarifi cevap veren bottan degil (10 kareye kadar uzakta) oyuncunun
+       durdugu yerden olculur.
+DUZELTME - Sohbet tokenlari rakam icerebilir ({skill1}); boyle bir token doldurulmadan
+       soyleniyordu.
+DUZELTME - Oyuncu botu yuruyus testleri aramalara genis sure verir: soguk JIT ilk aramayi
+       canli 5 ms sinirinin otesine tasiyip yolu "yol yok"a ceviriyordu.
+
 [2026-10-21] - Oyuncu botlari: act disi arama, engel turleri, portallar, vazgecme
 ------------------------------------------------------------------------
 DUZELTME - Bot karo aramalari neredeyse hic calisamiyordu: tick basina hak, bot gecisinin

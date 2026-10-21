@@ -1,0 +1,5 @@
+# respond_bot.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+yep, a bot. ask me the way if u need
+bot, yes. still here to help
+says so above my head lol

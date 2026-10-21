@@ -1,0 +1,6 @@
+# respond_doing_travel.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{goal} tarafına gidiyom
+{goal} yolundayım
+{goal}, orda işim var
+{goal} tarafına yürüyom

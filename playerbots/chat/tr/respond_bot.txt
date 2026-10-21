@@ -1,0 +1,5 @@
+# respond_bot.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+evet, botum. yol lazımsa sor
+bot evet, yine de yardım ederim
+kafamın üstünde yazıyo lol

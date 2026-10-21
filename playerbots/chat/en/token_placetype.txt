@@ -1,0 +1,21 @@
+# token_placetype.txt - a destination type (destinations.json) = the word for it, after the town name
+
+Bank=bank
+Healer=healer
+Inn=inn
+Moongate=moongate
+VendorSmith=smith
+Forge=forge
+VendorTailor=tailor
+VendorMage=mage shop
+VendorAlchemist=alchemist
+VendorProvisioner=provisioner
+VendorWeaponer=weapon shop
+VendorBowyer=bowyer
+VendorCarpenter=carpenter
+Stables=stables
+Shrine=shrine
+Dock=docks
+Graveyard=graveyard
+MiningSpot=mine
+LumberSpot=woods

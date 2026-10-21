@@ -1,0 +1,6 @@
+# respond_here.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+this is {here}
+{here}
+ur in {here}
+{here}, why?

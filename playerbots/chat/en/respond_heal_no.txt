@@ -1,0 +1,7 @@
+# respond_heal_no.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+[!mage] cant heal, no magery
+[!mage] try the healer
+[mage] no mana sorry
+[mage] in a sec, cant right now
+sorry, cant

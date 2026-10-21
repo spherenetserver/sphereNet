@@ -6,3 +6,6 @@ bomba gibi
 yorgunum biraz
 iyidir sen napıyon
 sıkıldım, sen?
+[hurt] can az, heal lazım lol
+[travel] iyi, yoldayım
+[vet] hep aynı, sen?

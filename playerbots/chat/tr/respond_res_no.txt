@@ -1,6 +1,8 @@
 # respond_res_no.txt — asked to resurrect someone and cannot.
 
 res atamam ben
-magery yok bende
+[!mage] magery yok bende
 healera git
-ben res atamıyorum
+[!mage] ben res atamıyorum
+[mage] manam yok şu an sry
+[mage] şimdi olmaz, healera git

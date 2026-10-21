@@ -1,0 +1,7 @@
+# respond_heal_no.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+[!mage] heal atamam, magery yok
+[!mage] healera git
+[mage] manam yok sry
+[mage] birazdan, şimdi olmaz
+sry, olmaz

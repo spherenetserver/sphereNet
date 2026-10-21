@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SphereNet.Core.Types;
+using SphereNet.Core.Enums;
 using SphereNet.Game.Movement;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
@@ -47,6 +48,19 @@ public sealed class PlayerBotChatTests
         "howareyou: how+are+you naber",
         "greet: hi hello selam",
         "question: why",
+        "bot: are+you+a+bot",
+        "heal: heal+me",
+        "follow: follow+me",
+        "doing: what+are+you+doing where+are+you+going napıyon",
+        "here: where+are+we burası+neresi",
+        "whoareyou: what+are+you",
+        "news: any+news",
+        "far: how+far",
+        "yes: yes yeah evet",
+        "no: no nope hayır",
+        "not: don+t not",
+        "more: what+about peki",
+        "place.Inn: inn",
         "place.Bank: bank banka",
         "place.Healer: healer",
         "town.Town: town kasaba",
@@ -126,7 +140,7 @@ public sealed class PlayerBotChatTests
         return rig;
     }
 
-    private static Character Bot(Rig rig, string name, Point3D at, bool stay = true)
+    private static Character Bot(Rig rig, string name, Point3D at, bool stay = true, Action<Character>? setup = null)
     {
         var ch = rig.World.CreateCharacter();
         ch.IsPlayer = true;
@@ -135,6 +149,7 @@ public sealed class PlayerBotChatTests
         ch.MaxStam = 60; ch.Stam = 60; ch.MaxHits = 60; ch.Hits = 60;
         ch.SetTag(PlayerBotEngine.MarkerTag, "1");
         ch.SetTag(PlayerBotEngine.HomeTag, "Town");
+        setup?.Invoke(ch);
         rig.World.PlaceCharacter(ch, at);
         rig.Engine.AdoptSaved();
         if (stay)
@@ -168,11 +183,135 @@ public sealed class PlayerBotChatTests
     [InlineData("selamlar", BotIntentKind.Greet, null)]
     [InlineData("why", BotIntentKind.Question, null)]
     [InlineData("nice weather", BotIntentKind.None, null)]
+    [InlineData("where are you going?", BotIntentKind.Doing, null)]
+    [InlineData("napıyon", BotIntentKind.Doing, null)]
+    [InlineData("burası neresi", BotIntentKind.Here, null)]
+    [InlineData("where are we", BotIntentKind.Here, null)]
+    [InlineData("what are you", BotIntentKind.WhoAreYou, null)]
+    [InlineData("any news?", BotIntentKind.News, null)]
+    [InlineData("heal me pls", BotIntentKind.Heal, null)]
+    [InlineData("where is the healer", BotIntentKind.Where, "Healer")]
+    [InlineData("are you a bot", BotIntentKind.Bot, null)]
+    [InlineData("bank?", BotIntentKind.Where, "Bank")]
+    [InlineData("what about the inn", BotIntentKind.Where, "Inn")]
+    [InlineData("i like the bank in this town a lot", BotIntentKind.None, null)]
+    [InlineData("yes", BotIntentKind.Yes, null)]
+    [InlineData("nope", BotIntentKind.No, null)]
+    [InlineData("i don't want a group", BotIntentKind.No, null)]
+    [InlineData("how far", BotIntentKind.Far, null)]
     public void LinesAreReadForWhatTheyAsk(string text, BotIntentKind kind, string? placeType)
     {
         var intent = BotIntents.Parse(IntentLines).Parse(text);
         Assert.Equal(kind, intent.Kind);
         Assert.Equal(placeType, intent.PlaceType);
+    }
+
+    [Fact]
+    public void AHelloOnTheSameLineIsKept()
+    {
+        var intents = BotIntents.Parse(IntentLines);
+        Assert.Equal(new BotIntent(BotIntentKind.Where, "Bank", "bank", AlsoGreets: true), intents.Parse("hi, where is the bank?"));
+        Assert.False(intents.Parse("hi").AlsoGreets);
+    }
+
+    [Fact]
+    public void TaggedLinesGoToTheBotsTheyFitAndASaidLineWaits()
+    {
+        var book = BotChatBook.FromLines("en", new Dictionary<string, string[]>
+        {
+            ["x"] = ["[mage] a mage line", "[!mage] not a mage", "[mage hurt] hurt mage"],
+            ["y"] = ["one", "two"],
+        });
+        var rng = new Random(3);
+        for (int i = 0; i < 20; i++)
+        {
+            Assert.Equal("not a mage", book.Pick("x", rng, hasTag: _ => false));
+            Assert.Equal("a mage line", book.Pick("x", rng, hasTag: t => t == "mage"));
+            Assert.Equal("two", book.Pick("y", rng, isStale: l => l == "one"));
+        }
+        // Nothing fresh left: a said line is still better than silence.
+        Assert.NotNull(book.Pick("y", rng, isStale: _ => true));
+        // Without tag questions every line fits, tags taken off.
+        Assert.Contains(book.Pick("x", rng), new[] { "a mage line", "not a mage", "hurt mage" });
+    }
+
+    [Fact]
+    public void AConversationKeepsItsPlaceAndAnsweredQuestionsMeanSomething()
+    {
+        var rig = MakeRig(new()
+        {
+            ["respond_where"] = ["{target} {dir} {dist}"],
+            ["respond_repeat"] = ["like i said"],
+            ["respond_greet"] = ["hey"],
+            ["respond_name"] = ["need something?"],
+            ["respond_name_yes"] = ["what do u need"],
+            ["ack_no"] = ["ok then"],
+            ["respond_chat"] = ["yeah"],
+            ["respond_doing_linger"] = ["hanging at {at}"],
+            ["token_placetype"] = ["Bank=bank"],
+            ["token_dir"] = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"],
+        });
+        var bot = Bot(rig, "Wanderer", new Point3D(100, 100, 0, 0));
+        var hero = Player(rig, "Hero", new Point3D(101, 100, 0, 0));
+        rig.Run(1000);
+
+        string Hear(string text)
+        {
+            int before = rig.Said.Count;
+            rig.Engine.OnHear(hero, text);
+            rig.Run(4000);
+            var said = rig.Said.Skip(before).ToList();
+            Assert.Single(said);
+            Assert.Equal(bot, said[0].Who);
+            return said[0].Line;
+        }
+
+        // A hello and a question on one line get both.
+        Assert.Equal("hey, bank east 20", Hear("hi wanderer, where is the bank?"));
+        // Another place named after it asks the way there; directions are from the player.
+        Assert.Equal("inn west 40", Hear("and the inn"));
+        // "How far?" asks about the place last talked of; at once again: "like i said".
+        Assert.Equal("like i said, inn west 40", Hear("how far?"));
+
+        // What the bot is doing comes from what it does.
+        Assert.Equal("hanging at Town bank", Hear("what are you doing"));
+
+        // A yes or a no answers the bot's own question.
+        Assert.Equal("need something?", Hear("wanderer"));
+        Assert.Equal("what do u need", Hear("yes"));
+        // With no question pending, a yes is just talk.
+        Assert.Equal("yeah", Hear("yes"));
+        Assert.Equal("need something?", Hear("wanderer"));
+        Assert.Equal("ok then", Hear("nope"));
+    }
+
+    [Fact]
+    public void ABotTellsWhatItIsAndWhetherItCanHeal()
+    {
+        var rig = MakeRig(new()
+        {
+            ["respond_whoami"] = ["[mage] mage {skill1}", "[warrior] warrior {skill1} {val1}, {skill2}"],
+            ["respond_heal_fine"] = ["ur fine"],
+            ["respond_heal_no"] = ["[!mage] no magery", "[mage] no mana"],
+        });
+        Bot(rig, "Wanderer", new Point3D(100, 100, 0, 0), setup: ch =>
+        {
+            ch.SetSkill(SkillType.Swordsmanship, 950);
+            ch.SetSkill(SkillType.Tactics, 800);
+        });
+        var hero = Player(rig, "Hero", new Point3D(101, 100, 0, 0));
+        hero.MaxHits = 100;
+        hero.Hits = 100;
+        rig.Run(1000);
+
+        rig.Engine.OnHear(hero, "wanderer what are you");
+        rig.Run(4000);
+        rig.Engine.OnHear(hero, "heal me");
+        rig.Run(4000);
+        hero.Hits = 40;
+        rig.Engine.OnHear(hero, "heal me");
+        rig.Run(4000);
+        Assert.Equal(["warrior swordsmanship 95, tactics", "ur fine", "no magery"], rig.Said.Select(s => s.Line));
     }
 
     [Fact]
@@ -522,6 +661,12 @@ public sealed class PlayerBotChatTests
                 "respond_party_yes", "respond_party_no", "respond_res_no", "respond_wtb_none", "respond_question",
                 "respond_name", "respond_what", "buy_notice", "trade_not_buying", "haggle_offer", "haggle_walkaway",
                 "res_offer", "guards_call", "red_alert", "token_when_now", "token_when_earlier",
+                "respond_repeat", "respond_doing_party", "respond_doing_shop", "respond_doing_reclaim",
+                "respond_doing_bank", "respond_doing_hunt", "respond_doing_company", "respond_doing_travel",
+                "respond_doing_linger", "respond_doing_idle", "respond_here", "respond_here_unknown",
+                "respond_whoami", "respond_news_none", "respond_heal_fine", "respond_heal_yes", "respond_heal_no",
+                "respond_follow_yes", "respond_follow_no", "respond_follow_already", "respond_bot", "ack_yes",
+                "ack_no", "token_placetype",
             ])
             .Distinct();
         foreach (string lang in new[] { "en", "tr" })
@@ -548,6 +693,16 @@ public sealed class PlayerBotChatTests
         Assert.Equal(BotIntentKind.Party, intents.Parse("lfg destard").Kind);
         Assert.Equal(BotIntentKind.Thanks, intents.Parse("sağol kanka").Kind);
         Assert.Equal(BotIntentKind.Greet, intents.Parse("sa").Kind);
+        Assert.Equal(BotIntentKind.Doing, intents.Parse("where are you going?").Kind);
+        Assert.Equal(BotIntentKind.Doing, intents.Parse("napıyon kanka").Kind);
+        Assert.Equal(BotIntentKind.Here, intents.Parse("burası neresi").Kind);
+        Assert.Equal(BotIntentKind.Heal, intents.Parse("heal me pls").Kind);
+        Assert.Equal((BotIntentKind.Where, "Healer"), Kind(intents.Parse("where is the healer?")));
+        Assert.Equal((BotIntentKind.Where, "Bank"), Kind(intents.Parse("banka?")));
+        Assert.Equal(BotIntentKind.News, intents.Parse("any news?").Kind);
+        Assert.Equal(BotIntentKind.Bot, intents.Parse("bot musun").Kind);
+        Assert.Equal(BotIntentKind.No, intents.Parse("i dont want to group").Kind);
+        Assert.True(intents.Parse("selam, banka nerede").AlsoGreets);
         Assert.Equal("tr", intents.DetectLanguage("bu ne abi"));
         Assert.Equal("en", intents.DetectLanguage("anyone want to hunt"));
 

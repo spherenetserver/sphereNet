@@ -1,0 +1,5 @@
+# respond_follow_already.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+already am lol
+right behind u
+im with u

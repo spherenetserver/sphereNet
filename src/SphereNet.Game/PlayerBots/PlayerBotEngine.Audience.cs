@@ -17,6 +17,17 @@ public sealed class BotWatcher
     public int Crowd { get; set; }
     public BotMind? Focus { get; set; }
     public long FocusUntilMs { get; set; }
+
+    // The conversation so far: what was last asked and about which place, and the
+    // question a bot last put to this player, so "and the healer?", "how far?" or a
+    // plain "yes" are read against it.
+    public BotIntentKind TopicKind { get; set; }
+    public string? TopicPlaceType { get; set; }
+    public string? TopicPlaceWord { get; set; }
+    public long TopicMs { get; set; }
+    public string? Asked { get; set; }
+    public BotMind? AskedBy { get; set; }
+    public long AskedMs { get; set; }
 }
 
 /// <summary>

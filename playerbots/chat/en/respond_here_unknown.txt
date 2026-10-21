@@ -1,0 +1,5 @@
+# respond_here_unknown.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+middle of nowhere lol
+no idea, somewhere in the wild
+dunno, lost myself

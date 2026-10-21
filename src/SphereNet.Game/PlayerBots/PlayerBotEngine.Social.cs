@@ -1,3 +1,4 @@
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 
@@ -7,10 +8,20 @@ namespace SphereNet.Game.PlayerBots;
 /// answering that player for a minute without being named again (the player's focus).
 /// A line nobody is named in can still be taken up by someone in the crowd: a hello,
 /// "where is the bank", "lfg", a trade shout, a ghost's plea. Answers are in the
-/// language the player wrote in and come a moment later, the way people type.</summary>
+/// language the player wrote in and come a moment later, the way people type.
+/// A conversation is followed: the place last asked about, and the question a bot last
+/// asked the player, give a short follow-up ("and the healer?", "how far?", "yes") its
+/// meaning. What a bot knows (where it is going, where this is, what it is, the news)
+/// it tells.</summary>
 public sealed partial class PlayerBotEngine
 {
     private const long FocusMs = 60_000;
+    /// <summary>How long a place asked about stays the topic of the conversation.</summary>
+    private const long TopicMs = 120_000;
+    /// <summary>How long a bot's question waits for its yes or no.</summary>
+    private const long AskedMs = 60_000;
+    /// <summary>The same question again within this is answered "like I said".</summary>
+    private const long RepeatMs = 30_000;
 
     /// <summary>A player said <paramref name="text"/> out loud. Only real players are
     /// answered, so two bots never talk themselves into a loop.</summary>
@@ -21,7 +32,7 @@ public sealed partial class PlayerBotEngine
         var w = WatcherOf(speaker, now);
         w.Language = Intents.DetectLanguage(text) ?? w.Language;
         string lang = w.Language ?? Chat.Language;
-        var intent = Intents.Parse(text);
+        var intent = InContext(w, Intents.Parse(text), text, now);
 
         // A ghost is only understood as a plea to be raised.
         if (speaker.IsDead)
@@ -61,10 +72,21 @@ public sealed partial class PlayerBotEngine
                 BotIntentKind.Question => 25,
                 BotIntentKind.Bye => 25,
                 BotIntentKind.Wts or BotIntentKind.Wtb => intent.At == 0 && intent.Rest != null ? 30 : 0,
+                BotIntentKind.Here => 50,
+                BotIntentKind.Heal => 50,
+                BotIntentKind.Bot => 40,
+                BotIntentKind.News => 30,
+                BotIntentKind.Follow => 30,
+                BotIntentKind.Doing => 20,
                 _ => 0,
             };
             if (near.Count == 0 || chance == 0 || _rng.Next(100) >= chance) return;
-            var pool = intent.Kind == BotIntentKind.Party ? near.Where(m => m.IsFighter).ToList() : near;
+            var pool = intent.Kind switch
+            {
+                BotIntentKind.Party or BotIntentKind.Follow => near.Where(m => m.IsFighter).ToList(),
+                BotIntentKind.Heal => near.Where(m => m.IsCaster).ToList(),
+                _ => near,
+            };
             if (pool.Count == 0) pool = near;
             target = pool[_rng.Next(pool.Count)];
         }
@@ -76,12 +98,45 @@ public sealed partial class PlayerBotEngine
         Answer(target, speaker, w, intent, text, named != null, now, lang);
     }
 
+    /// <summary>A line read against the conversation: a place named after a "where"
+    /// asks the way there too; "where?" or "how far?" with no place asks about the place
+    /// last talked of; a yes or a no means something only after a bot's question.</summary>
+    private BotIntent InContext(BotWatcher w, BotIntent intent, string text, long now)
+    {
+        bool topical = w.TopicPlaceType != null && now - w.TopicMs < TopicMs;
+        switch (intent.Kind)
+        {
+            case BotIntentKind.None when topical && w.TopicKind == BotIntentKind.Where && Intents.FindPlace(text) is { } place:
+                return intent with { Kind = BotIntentKind.Where, PlaceType = place.Type, PlaceWord = place.Word };
+            case BotIntentKind.Where when intent.PlaceType == null && topical:
+            case BotIntentKind.Far when topical:
+                return intent with { Kind = BotIntentKind.Where, PlaceType = w.TopicPlaceType, PlaceWord = w.TopicPlaceWord };
+            case BotIntentKind.Far:
+                return intent with { Kind = BotIntentKind.Question };
+            case BotIntentKind.Yes or BotIntentKind.No when w.Asked == null || now - w.AskedMs >= AskedMs:
+                return default;
+        }
+        return intent;
+    }
+
     private void Answer(BotMind m, Character player, BotWatcher w, BotIntent intent, string text, bool named,
         long now, string lang)
     {
         Dictionary<string, string>? tokens = null;
         string category;
         string? fallback = "respond_what";
+        string? prefix = null;
+        Action? action = null;
+        string? topicType = intent.PlaceType, topicWord = intent.PlaceWord;
+        // A question asked again at once: "like I said".
+        if (intent.Kind is not (BotIntentKind.None or BotIntentKind.Greet or BotIntentKind.Thanks or BotIntentKind.Bye
+                or BotIntentKind.Yes or BotIntentKind.No or BotIntentKind.Wts or BotIntentKind.Wtb) &&
+            intent.Kind == w.TopicKind && (intent.PlaceType == null || intent.PlaceType == w.TopicPlaceType) && now - w.TopicMs < RepeatMs)
+            prefix = "respond_repeat";
+        else if (intent.AlsoGreets)
+            prefix = Knows(m, player) && Chat.Has("friend_greet", lang) ? "friend_greet" : "respond_greet";
+        string? asked = w.AskedBy == m && w.Asked != null && now - w.AskedMs < AskedMs ? w.Asked : null;
+        w.Asked = null;
         switch (intent.Kind)
         {
             case BotIntentKind.Greet:
@@ -99,8 +154,47 @@ public sealed partial class PlayerBotEngine
                 category = "respond_howru";
                 break;
             case BotIntentKind.Where:
-                (category, tokens) = AnswerWhere(m, intent, text, lang);
+                (category, tokens) = AnswerWhere(player.Position, intent, lang);
                 fallback = "respond_question";
+                break;
+            case BotIntentKind.Doing:
+                (category, tokens, topicType, topicWord) = AnswerDoing(m, player, lang);
+                fallback = "respond_doing_idle";
+                break;
+            case BotIntentKind.Here:
+                string here = PlaceName(player.Position);
+                category = here.Length > 0 ? "respond_here" : "respond_here_unknown";
+                tokens = new Dictionary<string, string> { ["here"] = here };
+                fallback = "respond_question";
+                break;
+            case BotIntentKind.WhoAreYou:
+                category = "respond_whoami";
+                tokens = SkillTokens(m.Char);
+                fallback = "respond_question";
+                break;
+            case BotIntentKind.News:
+                (category, tokens) = AnswerNews(m, lang, now);
+                fallback = "respond_news_none";
+                break;
+            case BotIntentKind.Heal:
+                (category, action) = AnswerHeal(m, player, now);
+                break;
+            case BotIntentKind.Follow:
+                var party = Parties?.FindParty(m.Char.Uid);
+                category = party != null && party == Parties?.FindParty(player.Uid) ? "respond_follow_already"
+                    : m.IsFighter && party == null ? "respond_follow_yes" : "respond_follow_no";
+                break;
+            case BotIntentKind.Bot:
+                category = "respond_bot";
+                break;
+            case BotIntentKind.Yes or BotIntentKind.No:
+                string answer = intent.Kind == BotIntentKind.Yes ? "_yes" : "_no";
+                category = asked != null && Chat.Has(asked + answer, lang) ? asked + answer : "ack" + answer;
+                fallback = "respond_chat";
+                break;
+            case BotIntentKind.None when asked != null && Chat.Has(asked + "_reply", lang):
+                category = asked + "_reply";
+                fallback = "respond_chat";
                 break;
             case BotIntentKind.Party:
                 category = m.IsFighter && Parties?.FindParty(m.Char.Uid) == null ? "respond_party_yes" : "respond_party_no";
@@ -135,8 +229,137 @@ public sealed partial class PlayerBotEngine
                            (named ? "respond_name" : w.Focus == m ? "respond_chat" : "respond_what");
                 break;
         }
+        if (intent.Kind is not (BotIntentKind.None or BotIntentKind.Yes or BotIntentKind.No))
+        {
+            w.TopicKind = intent.Kind;
+            w.TopicMs = now;
+            // A place stays the topic until another one is named.
+            if (topicType != null)
+            {
+                w.TopicPlaceType = topicType;
+                w.TopicPlaceWord = topicWord;
+            }
+        }
         WindowReplies++;
-        QueueReply(m, category, now, to: player, lang: lang, fallback: fallback, tokens: tokens);
+        QueueReply(m, category, now, to: player, lang: lang, fallback: fallback, tokens: tokens, action: action,
+            prefix: prefix);
+    }
+
+    /// <summary>What the bot is doing, from what it is doing: walking somewhere (that
+    /// place becomes the topic, so "where is that?" is answered), hunting, shopping,
+    /// banking, on its way back to its corpse, keeping someone company, or standing
+    /// about somewhere.</summary>
+    private (string, Dictionary<string, string>?, string?, string?) AnswerDoing(BotMind m, Character player, string lang)
+    {
+        if (PartyLeader(m) == player) return ("respond_doing_party", null, null, null);
+        switch (m.Mode)
+        {
+            case BotMode.Shop: return ("respond_doing_shop", null, null, null);
+            case BotMode.Loot or BotMode.Reclaim: return ("respond_doing_reclaim", null, null, null);
+        }
+        if (m.BankStage > 0) return ("respond_doing_bank", null, null, null);
+        if (m.Mode == BotMode.Travel && m.Goal is { } goal)
+        {
+            string phrase = PlacePhrase(goal, lang);
+            var tokens = new Dictionary<string, string> { ["goal"] = phrase };
+            string category = goal.Type.StartsWith("Dungeon", StringComparison.OrdinalIgnoreCase) ? "respond_doing_hunt"
+                : m.Leader != null ? "respond_doing_company" : "respond_doing_travel";
+            if (m.Leader != null) tokens["other"] = BaseName(m.Leader.Char);
+            return (category, tokens, "dest:" + goal.Name, phrase);
+        }
+        if (m.At is { } at)
+            return ("respond_doing_linger", new Dictionary<string, string> { ["at"] = PlacePhrase(at, lang) }, null, null);
+        return ("respond_doing_idle", null, null, null);
+    }
+
+    /// <summary>A destination the way a player says it: a dungeon by its name, a town's
+    /// place by the town and the word for its kind (<c>token_placetype</c>:
+    /// <c>Bank=bank</c>), else its name.</summary>
+    private string PlacePhrase(BotDestination d, string lang)
+    {
+        if (d.Type.StartsWith("Dungeon", StringComparison.OrdinalIgnoreCase)) return ShortPlaceName(d.Name);
+        string? word = null;
+        for (int i = 0; Chat.Line("token_placetype", i, lang) is { } line; i++)
+        {
+            int eq = line.IndexOf('=');
+            if (eq > 0 && line[..eq].Trim().Equals(d.Type, StringComparison.OrdinalIgnoreCase))
+            {
+                word = line[(eq + 1)..].Trim();
+                break;
+            }
+        }
+        if (word == null) return d.Name;
+        return d.City.Length > 0 ? d.City + " " + word : word;
+    }
+
+    /// <summary>The bot's two best skills, for "what are you": <c>{skill1}</c>,
+    /// <c>{val1}</c> (whole points), <c>{skill2}</c>.</summary>
+    private static Dictionary<string, string> SkillTokens(Character ch)
+    {
+        var tokens = new Dictionary<string, string>();
+        var best = BestSkills(ch, 2);
+        if (best.Count > 0)
+        {
+            tokens["skill1"] = SkillWords(best[0].Skill);
+            tokens["val1"] = (best[0].Value / 10).ToString();
+        }
+        if (best.Count > 1) tokens["skill2"] = SkillWords(best[1].Skill);
+        return tokens;
+    }
+
+    /// <summary>"EvaluatingIntel" as "evaluating intel".</summary>
+    internal static string SkillWords(SkillType skill)
+    {
+        string name = skill.ToString();
+        var sb = new System.Text.StringBuilder(name.Length + 4);
+        for (int i = 0; i < name.Length; i++)
+        {
+            if (i > 0 && char.IsUpper(name[i])) sb.Append(' ');
+            sb.Append(char.ToLowerInvariant(name[i]));
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>The news, asked for: a story from the bots' news told the way a scene
+    /// tells it (the <c>_self</c> version by the bot it happened to); "nothing much"
+    /// when there is none.</summary>
+    private (string, Dictionary<string, string>?) AnswerNews(BotMind m, string lang, long now)
+    {
+        var news = Gossip.Pick(_rng, now, []);
+        if (news == null) return ("respond_news_none", null);
+        string category = "gossip_" + news.Kind;
+        if (news.ActorUid == m.Char.Uid.Value && Chat.Has(category + "_self", lang)) category += "_self";
+        var tokens = new Dictionary<string, string> { ["actor"] = news.Actor };
+        if (news.Other.Length > 0) tokens["other"] = news.Other;
+        if (news.Place.Length > 0) tokens["place"] = news.Place;
+        tokens["count"] = Math.Max(2, Gossip.PkCount(news.OtherUid)).ToString();
+        if (Chat.Pick(now - news.AtMs < 600_000 ? "token_when_now" : "token_when_earlier", _rng, null, lang) is { } when)
+            tokens["when"] = when;
+        return (category, tokens);
+    }
+
+    /// <summary>"Heal me": a caster with the spell in its book and the mana casts it on
+    /// the player through its client (Cure when they are poisoned), once every 20
+    /// seconds; a player not hurt is told so.</summary>
+    private (string, Action?) AnswerHeal(BotMind m, Character player, long now)
+    {
+        bool poisoned = player.IsPoisoned;
+        if (!poisoned && player.Hits >= player.MaxHits) return ("respond_heal_fine", null);
+        var ch = m.Char;
+        SpellType? spell = poisoned ? (HasSpell(ch, SpellType.Cure) ? SpellType.Cure : null)
+            : HasSpell(ch, SpellType.GreaterHeal) ? SpellType.GreaterHeal
+            : HasSpell(ch, SpellType.Heal) ? SpellType.Heal : null;
+        if (!m.IsCaster || spell == null || m.Client == null || ch.Mana < 11 || now < m.NextFavorMs ||
+            ch.TryGetCastingSpell(out _))
+            return ("respond_heal_no", null);
+        m.NextFavorMs = now + 20_000;
+        var client = m.Client;
+        var cast = spell.Value;
+        return ("respond_heal_yes", () =>
+        {
+            if (!player.IsDead && !player.IsDeleted && Within(player.Position, ch.Position, 10))
+                client.HandleCastSpell(cast, player.Uid.Value);
+        });
     }
 
     /// <summary>A player who offered goods to this bot names a price: the bot comes
@@ -178,10 +401,9 @@ public sealed partial class PlayerBotEngine
     /// <summary>Directions to what a player asked for, from where the bot stands:
     /// the nearest place of the type named, or the town or dungeon named; the compass
     /// point (<c>token_dir</c>, north first, clockwise) and the distance in steps.</summary>
-    private (string Category, Dictionary<string, string>? Tokens) AnswerWhere(BotMind m, BotIntent intent,
-        string text, string lang)
+    private (string Category, Dictionary<string, string>? Tokens) AnswerWhere(Point3D from, BotIntent intent,
+        string lang)
     {
-        var from = m.Char.Position;
         Point3D? to = null;
         string? word = intent.PlaceWord;
         string? type = intent.PlaceType;
@@ -221,8 +443,10 @@ public sealed partial class PlayerBotEngine
     }
 
     private void QueueReply(BotMind mind, string category, long now, Character? to = null, string? lang = null,
-        string? fallback = "respond_what", Dictionary<string, string>? tokens = null, Action? action = null)
+        string? fallback = "respond_what", Dictionary<string, string>? tokens = null, Action? action = null,
+        string? prefix = null)
     {
+        mind.PendingPrefix = prefix;
         mind.PendingCategory = category;
         mind.PendingFallback = fallback;
         mind.PendingTo = to;
@@ -243,10 +467,19 @@ public sealed partial class PlayerBotEngine
         mind.PendingAction = null;
         if (!mind.Char.IsDead)
         {
-            Speak(mind, category, fallback: mind.PendingFallback, to: mind.PendingTo, lang: mind.PendingLanguage,
-                extra: mind.PendingTokens);
+            if (Speak(mind, category, fallback: mind.PendingFallback, to: mind.PendingTo, lang: mind.PendingLanguage,
+                    extra: mind.PendingTokens, prefix: mind.PendingPrefix) &&
+                mind.PendingTo is { } player && _watchers.TryGetValue(player.Uid.Value, out var w) &&
+                mind.LastLine is { } said && said.TrimEnd().EndsWith('?'))
+            {
+                // The bot asked the player something: their yes or no is read against it.
+                w.Asked = category;
+                w.AskedBy = mind;
+                w.AskedMs = now;
+            }
             action?.Invoke();
         }
+        mind.PendingPrefix = null;
         mind.PendingTo = null;
         mind.PendingTokens = null;
     }

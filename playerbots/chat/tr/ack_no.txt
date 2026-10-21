@@ -1,0 +1,6 @@
+# ack_no.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+peki
+tamam o zaman
+sorun yok
+olsun

@@ -1,0 +1,5 @@
+# respond_greet_reply.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+iyi iyi
+güzel
+süper

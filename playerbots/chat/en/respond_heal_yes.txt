@@ -1,0 +1,6 @@
+# respond_heal_yes.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+hold still
+here
+got u
+healing

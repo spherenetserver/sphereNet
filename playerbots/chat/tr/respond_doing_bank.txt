@@ -1,0 +1,5 @@
+# respond_doing_bank.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+bankadayım
+bankaya altın atıyom
+kutuma bakıyom

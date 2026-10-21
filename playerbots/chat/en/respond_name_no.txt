@@ -1,0 +1,5 @@
+# respond_name_no.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ok lol
+alright then
+np

@@ -1,0 +1,5 @@
+# respond_greet_reply.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+nice
+good good
+cool

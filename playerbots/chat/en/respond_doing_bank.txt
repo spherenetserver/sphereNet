@@ -1,0 +1,5 @@
+# respond_doing_bank.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+banking
+dropping gold at the bank
+checking my box

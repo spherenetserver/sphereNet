@@ -1,0 +1,5 @@
+# respond_follow_yes.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+sure, inv me and ill tag along
+ok, send a party invite
+inv me, ill follow

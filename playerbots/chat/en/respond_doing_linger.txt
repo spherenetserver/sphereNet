@@ -1,0 +1,6 @@
+# respond_doing_linger.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+just hanging at {at}
+waiting around at {at}
+chilling at {at}
+nothing much, at {at}

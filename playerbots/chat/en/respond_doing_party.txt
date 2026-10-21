@@ -1,0 +1,5 @@
+# respond_doing_party.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+following u lol
+with u, boss
+where u go i go

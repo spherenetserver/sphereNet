@@ -1,0 +1,6 @@
+# respond_doing_hunt.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{goal} tarafına ava gidiyom
+{goal}, biraz avlanıcam
+{goal} gidiyom. gelcen mi?
+[vet] her günkü {goal} turu

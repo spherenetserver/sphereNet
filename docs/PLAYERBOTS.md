@@ -186,12 +186,23 @@ Spoken to, a bot answers in the language the player wrote in (Turkish letters, e
 `lang.*` words of `intents.txt`). A player who names a bot (its first name) keeps that bot
 for a minute: what they say next is answered by it without naming it again. A line that
 names nobody may still be taken up by someone near: a greeting, "where is ...", a call
-for a group, a trade shout at the start of the line, a question. What a line asks for:
+for a group, a trade shout at the start of the line, a question, "where are we", a call
+for a heal. Questions about the bot ("where are you going") are tried before a "where";
+"not" (`not:` words) turns a party, follow or heal ask into a no. What a line asks for:
 
 | Intent | Answer |
 |---|---|
 | greet | `respond_greet`, or `friend_greet` by name to a player it knows |
-| where + a place | directions from where the bot stands to the nearest place of that type, the town or the dungeon named: `respond_where` (`{target}` the word the player used, `{dir}` from `token_dir`, `{dist}` steps), `respond_where_far` past 400 tiles, `respond_where_here` within 4, `respond_where_unknown` |
+| where + a place, or a place named alone ("bank?", "what about the inn") | directions from where the player stands to the nearest place of that type, the town or the dungeon named: `respond_where` (`{target}` the word the player used, `{dir}` from `token_dir`, `{dist}` steps), `respond_where_far` past 400 tiles, `respond_where_here` within 4, `respond_where_unknown` |
+| how far / which way | the place last talked of, again |
+| what are you doing / where are you going | from what the bot does: `respond_doing_travel` / `_hunt` (a dungeon) / `_company` with `{goal}` (a town's place as the town and its `token_placetype` word, a dungeon by name; that place becomes the topic, so "where is that?" is answered), `_linger` with `{at}`, `_shop`, `_bank`, `_reclaim`, `_party` (it follows this player), `_idle` |
+| where are we | `respond_here` with `{here}` (the region, else the nearest town), `respond_here_unknown` |
+| what are you | `respond_whoami`: `{skill1}` `{val1}` `{skill2}`, its two best skills |
+| any news | a story from the news, told as a scene tells it; `respond_news_none` |
+| heal me | a caster with the spell and 11 mana: `respond_heal_yes` and a Greater Heal (Heal, or Cure for poison) through its client, once in 20 s; `respond_heal_fine` to a player not hurt; else `respond_heal_no` |
+| follow me | a fighter not in a party: `respond_follow_yes` (asks for an invitation, which it accepts); `respond_follow_already` in the player's party; else `respond_follow_no` |
+| are you a bot | `respond_bot` |
+| yes / no (a short line) | after a bot's own question (a line it said that ends in `?`, within a minute): `<category>_yes` / `<category>_no` of the line asked, else `ack_yes` / `ack_no`; anything else said to it then gets `<category>_reply` when there is one. Otherwise it is small talk |
 | party / lfg | a fighter not in a party: `respond_party_yes` (it accepts the invitation that follows); else `respond_party_no` |
 | res | `respond_res_no` from the living; a ghost asking near a caster is raised |
 | wts + goods | `buy_notice` or `trade_not_buying`; a price the player names next gets one lower offer (`haggle_offer`), the next one `haggle_walkaway`. A bot carries no gold for a deal, so it never says yes |
@@ -199,6 +210,17 @@ for a group, a trade shout at the start of the line, a question. What a line ask
 | thanks / bye / how are you | `respond_thanks` / `respond_bye` / `respond_howru` |
 | a question | `respond_question` |
 | anything else | `respond_name` when named, `respond_chat` to the player it is talking with |
+
+A hello on the same line as a question is answered too, in front of the answer ("hey,
+head east, 20 steps"). The same question again within 30 s gets `respond_repeat` in front
+("like i said, ..."). A place asked about stays the conversation's topic for two minutes.
+
+A line in any category may open with tags, `[mage] ...`, `[!mage] ...`, `[new vet]`: it
+is said only by a bot that has all the tags and none of the `!` ones. The tags are `mage`,
+`archer`, `warrior`, `fighter`, `crafter`, `new` (no skill at 50), `vet` (a skill at 90),
+`hurt` (under 60% hit points), `town` / `wild` (a guarded region or not), `mounted`,
+`travel` / `linger`. A bot does not say one of its last six lines again while another
+line of the category can be said.
 
 Replies come after a short typing delay. Only real players are answered, so two bots
 never talk themselves into a loop.

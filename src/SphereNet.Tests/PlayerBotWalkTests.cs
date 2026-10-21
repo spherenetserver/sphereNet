@@ -83,7 +83,14 @@ public sealed class PlayerBotWalkTests
         var engine = new PlayerBotEngine(world, new MovementEngine(world), resources: null, nav,
             BotChatBook.FromLines("en", new Dictionary<string, string[]>()),
             NullLogger.Instance, seed: 7)
-        { TargetCount = 50 };
+        {
+            TargetCount = 50,
+            // The searches here are judged by the way they find, not by the clock: a cold
+            // JIT can take a first search past the live 5 ms budget and turn a way into
+            // "no path".
+            SearchMs = 1000,
+            SearchBatchMs = 1000,
+        };
         if (clients)
             engine.CreateClient = ch =>
             {

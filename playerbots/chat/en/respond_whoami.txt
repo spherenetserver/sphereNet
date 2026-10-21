@@ -1,0 +1,9 @@
+# respond_whoami.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+[mage] mage. {skill1} {val1}, some {skill2}
+[warrior] warrior, {skill1} {val1}
+[archer] archer, {skill1} {val1}
+[crafter] crafter mostly, {skill1} {val1}
+[new] just started, {skill1} {val1} lol
+[vet] {skill1} {val1}, {skill2} too. been at it a while
+{skill1} {val1}, bit of {skill2}

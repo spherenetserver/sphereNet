@@ -1,0 +1,6 @@
+# ack_yes.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+cool
+ok
+nice
+alright

@@ -1,0 +1,9 @@
+# respond_whoami.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+[mage] mage. {skill1} {val1}, biraz da {skill2}
+[warrior] warrior, {skill1} {val1}
+[archer] okçu, {skill1} {val1}
+[crafter] zanaatkarım, {skill1} {val1}
+[new] yeni başladım, {skill1} {val1} lol
+[vet] {skill1} {val1}, {skill2} de var. eskiyim
+{skill1} {val1}, biraz {skill2}

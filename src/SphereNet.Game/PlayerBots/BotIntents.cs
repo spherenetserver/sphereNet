@@ -2,15 +2,36 @@ using System.Text;
 
 namespace SphereNet.Game.PlayerBots;
 
-public enum BotIntentKind { None, Greet, Bye, Thanks, HowAreYou, Where, Party, Res, Wts, Wtb, Question }
+public enum BotIntentKind
+{
+    None, Greet, Bye, Thanks, HowAreYou, Where, Party, Res, Wts, Wtb, Question,
+    /// <summary>What the bot is doing, where it is going.</summary>
+    Doing,
+    /// <summary>Where the speaker is: the region or town.</summary>
+    Here,
+    /// <summary>What the bot is: its class and best skills.</summary>
+    WhoAreYou,
+    /// <summary>Any news: the last real event the bots know of.</summary>
+    News,
+    Heal,
+    Follow,
+    /// <summary>"Are you a bot".</summary>
+    Bot,
+    /// <summary>A short yes or no, read against what the bot last asked.</summary>
+    Yes,
+    No,
+    /// <summary>How far, which way: the last "where" again.</summary>
+    Far,
+}
 
 /// <summary>What a player's line asks for. <see cref="PlaceType"/> is the destination
 /// type a "where" asks about (Bank, Healer...), <see cref="PlaceWord"/> the word the
 /// player used for it, echoed back in the answer; <see cref="Rest"/> what follows a
 /// WTS / WTB keyword (the goods) and <see cref="At"/> the word index of that keyword
-/// (0: the line opens with it, the way a trade shout does).</summary>
+/// (0: the line opens with it, the way a trade shout does). <see cref="AlsoGreets"/>:
+/// the line says hello as well ("hi, where is the bank").</summary>
 public readonly record struct BotIntent(BotIntentKind Kind, string? PlaceType = null, string? PlaceWord = null,
-    string? Rest = null, int At = -1);
+    string? Rest = null, int At = -1, bool AlsoGreets = false);
 
 /// <summary>
 /// Reads a player's line the way a bystander would: a few keywords per intent and per
@@ -54,6 +75,10 @@ public sealed class BotIntents
                 b._places.Add(("dest:" + key[5..], words));
             else if (key.StartsWith("lang.", StringComparison.OrdinalIgnoreCase))
                 b._langWords[key[5..]] = [.. words];
+            else if (key.Equals("not", StringComparison.OrdinalIgnoreCase))
+                b._intents[Not] = words;
+            else if (key.Equals("more", StringComparison.OrdinalIgnoreCase))
+                b._intents[More] = words;
             else if (Enum.TryParse(key, ignoreCase: true, out BotIntentKind kind))
                 b._intents[kind] = words;
         }
@@ -109,18 +134,42 @@ public sealed class BotIntents
         return null;
     }
 
+    /// <summary>What a line asks for. The more particular asks are tried first ("where
+    /// are you going" is a question about the bot, not about a place); a line that also
+    /// says hello is marked so (<see cref="BotIntent.AlsoGreets"/>); "not" turns an offer
+    /// taken up (party, follow, heal) into a no. A place named alone ("bank?", "what about
+    /// the healer") asks the way to it. A yes or a no counts only on a short line.</summary>
     public BotIntent Parse(string text)
     {
         var words = Words(text);
         if (words.Count == 0) return default;
         string normalized = string.Join(' ', words);
+        var intent = Read(text, words, normalized);
+        if (intent.Kind is BotIntentKind.Party or BotIntentKind.Follow or BotIntentKind.Heal &&
+            Has(Not, words, normalized, out _))
+            return new BotIntent(BotIntentKind.No);
+        if (intent.Kind is not (BotIntentKind.Greet or BotIntentKind.None) && Has(BotIntentKind.Greet, words, normalized, out _))
+            intent = intent with { AlsoGreets = true };
+        return intent;
+    }
 
+    // Keys read on their own, not as an intent of their own: "not" words and the words
+    // that carry a conversation on to another place ("what about").
+    private const BotIntentKind Not = (BotIntentKind)1000;
+    private const BotIntentKind More = (BotIntentKind)1001;
+
+    private BotIntent Read(string text, List<string> words, string normalized)
+    {
+        bool asks = text.TrimEnd().EndsWith('?');
         if (Has(BotIntentKind.Res, words, normalized, out _)) return new BotIntent(BotIntentKind.Res);
+        foreach (var kind in Particular)
+            if (Has(kind, words, normalized, out _)) return new BotIntent(kind);
         if (Has(BotIntentKind.Where, words, normalized, out _))
         {
             var place = FindPlace(text);
             return new BotIntent(BotIntentKind.Where, place?.Type, place?.Word);
         }
+        if (Has(BotIntentKind.Far, words, normalized, out _)) return new BotIntent(BotIntentKind.Far);
         if (Has(BotIntentKind.Party, words, normalized, out _)) return new BotIntent(BotIntentKind.Party);
         if (Has(BotIntentKind.Wts, words, normalized, out int wts))
             return new BotIntent(BotIntentKind.Wts, Rest: Remainder(words, wts), At: wts);
@@ -129,11 +178,26 @@ public sealed class BotIntents
         if (Has(BotIntentKind.Thanks, words, normalized, out _)) return new BotIntent(BotIntentKind.Thanks);
         if (Has(BotIntentKind.Bye, words, normalized, out _)) return new BotIntent(BotIntentKind.Bye);
         if (Has(BotIntentKind.HowAreYou, words, normalized, out _)) return new BotIntent(BotIntentKind.HowAreYou);
+        if ((asks || words.Count <= 3 || Has(More, words, normalized, out _)) && FindPlace(text) is { } named)
+            return new BotIntent(BotIntentKind.Where, named.Type, named.Word);
         if (Has(BotIntentKind.Greet, words, normalized, out _)) return new BotIntent(BotIntentKind.Greet);
-        if (text.TrimEnd().EndsWith('?') || Has(BotIntentKind.Question, words, normalized, out _))
+        if (!asks && words.Count <= 3)
+        {
+            if (Has(BotIntentKind.No, words, normalized, out _)) return new BotIntent(BotIntentKind.No);
+            if (Has(BotIntentKind.Yes, words, normalized, out _)) return new BotIntent(BotIntentKind.Yes);
+        }
+        if (asks || Has(BotIntentKind.Question, words, normalized, out _))
             return new BotIntent(BotIntentKind.Question);
         return default;
     }
+
+    /// <summary>Questions about the bot itself and asks for its help, tried before a
+    /// "where" (a "where are you going" asks what the bot is doing).</summary>
+    private static readonly BotIntentKind[] Particular =
+    [
+        BotIntentKind.Bot, BotIntentKind.Heal, BotIntentKind.Follow, BotIntentKind.Doing,
+        BotIntentKind.Here, BotIntentKind.WhoAreYou, BotIntentKind.News,
+    ];
 
     /// <summary>The goods after a WTS/WTB keyword: up to three words, no prices.</summary>
     private static string? Remainder(List<string> words, int at)

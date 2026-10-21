@@ -1,0 +1,21 @@
+# token_placetype.txt - a destination type (destinations.json) = the word for it, after the town name
+
+Bank=bankası
+Healer=healerı
+Inn=hanı
+Moongate=moongate
+VendorSmith=demircisi
+Forge=ocağı
+VendorTailor=terzisi
+VendorMage=büyücü dükkanı
+VendorAlchemist=simyacısı
+VendorProvisioner=bakkalı
+VendorWeaponer=silahçısı
+VendorBowyer=okçusu
+VendorCarpenter=marangozu
+Stables=ahırı
+Shrine=tapınağı
+Dock=limanı
+Graveyard=mezarlığı
+MiningSpot=madeni
+LumberSpot=ormanı

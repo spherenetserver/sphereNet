@@ -1,0 +1,5 @@
+# respond_doing_idle.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+nothing much
+just looking around
+killing time

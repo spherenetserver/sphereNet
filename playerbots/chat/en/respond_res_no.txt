@@ -1,6 +1,8 @@
 # respond_res_no.txt — asked to resurrect someone and cannot.
 
-cant res, no magery
-not a mage sorry
+[!mage] cant res, no magery
+[!mage] not a mage sorry
 try the healer
 no res here
+[mage] no mana for that, sorry
+[mage] not now, try the healer

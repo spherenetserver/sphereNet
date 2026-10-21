@@ -1,0 +1,5 @@
+# respond_name_yes.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+what do u need
+go on
+sure, what is it

@@ -1,0 +1,5 @@
+# respond_doing_shop.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+alışveriş, malzeme lazım
+bişeyler alıyom
+stok yeniliyom

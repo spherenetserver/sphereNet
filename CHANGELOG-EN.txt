@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-22] - Player bots: conversations that follow, answers from what a bot knows
+------------------------------------------------------------------------
+NEW - Bots answer what they know: what they are doing and where they are going (the trip's
+      destination, a hunt, banking, shopping, a corpse run, the company kept), where the
+      player is (region or nearest town), what they are (two best skills), the news (a
+      real story from the bots' news), "heal me" (a caster with the spell in its book and
+      the mana casts Greater Heal, Heal or Cure on the player), "follow me" (a fighter
+      asks for a party invitation) and "are you a bot". Before, every question but the
+      way somewhere got a shrug.
+NEW - A conversation keeps its place: a place named after a "where" ("and the inn?", "bank?")
+      asks the way there, "how far" / "where is that" use the place last talked of (also
+      the destination a bot just said it walks to), and a short yes or no answers the
+      question a bot itself asked (<category>_yes / _no, else ack_yes / ack_no). The same
+      question again within 30 s is answered "like i said, ...".
+NEW - A hello on the same line as a question is answered together with it; "not" turns a
+      party, follow or heal ask into a no.
+NEW - Chat lines may open with [tags] (mage, archer, warrior, fighter, crafter, new, vet,
+      hurt, town, wild, mounted, travel, linger, ! for not): a veteran no longer says "new
+      here myself", a mage no longer says it has no magery. A bot does not repeat one of
+      its last six lines while the category has another.
+FIX - Directions are measured from where the player stands, not from the bot answering
+      (up to 10 tiles away).
+FIX - Chat tokens may hold digits ({skill1}); such a token was said unfilled.
+FIX - Player bot walk tests give searches a wide time budget: a cold JIT took the first
+      search past the live 5 ms and turned the way into "no path".
+
 [2026-10-21] - Player bots: searches off the act, obstacle kinds, portals, give-ups
 ------------------------------------------------------------------------
 FIX - Bot tile searches could hardly ever run: the per-tick allowance was one search with a

@@ -1,0 +1,4 @@
+# respond_doing_company.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+going to {goal} with {other}
+{other} and me, off to {goal}

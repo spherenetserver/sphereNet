@@ -133,9 +133,10 @@ public sealed partial class PlayerBotEngine
             return;
         }
 
-        if (mind.IsCaster && sight && now >= mind.NextCastMs && ch.Mana >= 20 && dist <= 10 && !ch.TryGetCastingSpell(out _))
+        if (mind.IsCaster && sight && now >= mind.NextCastMs && ch.Mana >= 20 && dist <= 10 && !ch.TryGetCastingSpell(out _) &&
+            PickAttackSpell(ch) is { } attack)
         {
-            client.HandleCastSpell(PickAttackSpell(ch), foe.Uid.Value);
+            client.HandleCastSpell(attack, foe.Uid.Value);
             mind.NextCastMs = now + _rng.Next(3000, 4500);
             mind.NextActMs = now + 500;
             return;
@@ -239,7 +240,7 @@ public sealed partial class PlayerBotEngine
     {
         var ch = mind.Char;
         var client = mind.Client!;
-        if (mind.IsCaster && ch.Mana >= 11 && !ch.TryGetCastingSpell(out _))
+        if (mind.IsCaster && ch.Mana >= 11 && !ch.TryGetCastingSpell(out _) && HasSpell(ch, SpellType.GreaterHeal))
         {
             client.HandleCastSpell(SpellType.GreaterHeal, ch.Uid.Value);
             mind.NextHealMs = now + 4000;
@@ -305,7 +306,7 @@ public sealed partial class PlayerBotEngine
         var client = mind.Client;
         mind.NextCureMs = now + 5000;
         if (client == null) return false;
-        if (mind.IsCaster && ch.Mana >= 6 && !ch.TryGetCastingSpell(out _))
+        if (mind.IsCaster && ch.Mana >= 6 && !ch.TryGetCastingSpell(out _) && HasSpell(ch, SpellType.Cure))
         {
             client.HandleCastSpell(SpellType.Cure, ch.Uid.Value);
             return true;
@@ -334,15 +335,30 @@ public sealed partial class PlayerBotEngine
 
     public long WindowMeditations { get; private set; }
 
-    private SpellType PickAttackSpell(Character ch)
+    /// <summary>A spell the bot can cast: in its book (when books are required), as a
+    /// player can only cast what its book holds. Saved bots from an older kit can lack
+    /// the higher circles.</summary>
+    internal static bool HasSpell(Character ch, SpellType spell) =>
+        !Character.SpellbookRequiredEnabled ||
+        (ch.FindSpellbook((int)spell) is { } book && book.ContainsSpell((int)spell));
+
+    /// <summary>An attack spell from its book, the stronger ones more often with the
+    /// magery for them; none when its book holds no attack spell.</summary>
+    private SpellType? PickAttackSpell(Character ch)
     {
         int magery = ch.GetSkill(SkillType.Magery);
         int roll = _rng.Next(100);
-        if (magery >= 800 && roll < 45) return SpellType.EnergyBolt;
-        if (magery >= 600 && roll < 75) return SpellType.Lightning;
-        if (magery >= 300 && roll < 90) return SpellType.Fireball;
-        return SpellType.MagicArrow;
+        if (magery >= 800 && roll < 45 && HasSpell(ch, SpellType.EnergyBolt)) return SpellType.EnergyBolt;
+        if (magery >= 600 && roll < 75 && HasSpell(ch, SpellType.Lightning)) return SpellType.Lightning;
+        if (magery >= 300 && roll < 90 && HasSpell(ch, SpellType.Fireball)) return SpellType.Fireball;
+        if (HasSpell(ch, SpellType.MagicArrow)) return SpellType.MagicArrow;
+        foreach (var s in AttackSpells)
+            if (HasSpell(ch, s)) return s;
+        return null;
     }
+
+    private static readonly SpellType[] AttackSpells =
+        [SpellType.Fireball, SpellType.Lightning, SpellType.Harm, SpellType.EnergyBolt, SpellType.MindBlast];
 
     private Item? FindInPack(Character ch, Func<Item, bool> match)
     {

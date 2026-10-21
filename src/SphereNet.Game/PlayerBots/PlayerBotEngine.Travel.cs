@@ -26,6 +26,9 @@ public sealed partial class PlayerBotEngine
             mind.NextActMs = now + 1000;
             return;
         }
+        // Errands at a stop: the rune home marked, the purse squared with the bank.
+        if (mind.BankStage == 0 && TryMarkHomeRune(mind, now)) return;
+        if (ActBank(mind, now)) return;
         bool watched = IsWatched(mind.Char.Position);
         if (now >= mind.LingerUntilMs)
         {
@@ -41,6 +44,9 @@ public sealed partial class PlayerBotEngine
             }
             MaybeMoveHouse(mind, now);
             mind.Haunting = false;
+            // Far from home with no road back: a caster recalls on its rune.
+            if (KnowsTravel(mind) && !HomeOnThisRoad(mind) && TryRecallHome(mind, now, "no road home"))
+                return;
             mind.Goal = PickShopping(mind, now) ?? PickDestination(mind, spawnable: false);
             if (mind.Goal == null) { mind.NextActMs = now + 30_000; return; }
             mind.Char.SetTag(GoalTag, mind.Goal.Name);
@@ -48,6 +54,7 @@ public sealed partial class PlayerBotEngine
             mind.Route = null;
             mind.NextActMs = now + 200;
             mind.Note(now, $"off to {mind.Goal.Name}{(mind.Haunting ? " (to wait about it)" : "")}");
+            MaybeTakeCompany(mind, mind.Goal, now);
             return;
         }
 
@@ -57,6 +64,23 @@ public sealed partial class PlayerBotEngine
             WanderNear(mind, mind.LingerAnchor, 3, run: false);
         mind.NextActMs = now + (watched ? _rng.Next(3000, 8000) : _rng.Next(4000, 12_000));
     }
+
+    /// <summary>Whether a place in the bot's home town hangs off the road it is on.</summary>
+    private bool HomeOnThisRoad(BotMind mind)
+    {
+        int here = Nav.FindNearest(mind.Char.Position, 64);
+        if (here < 0) return false;
+        int component = Nav.Waypoints[here].Component;
+        foreach (var d in Nav.Destinations)
+            if (d.City.Equals(mind.Home, StringComparison.OrdinalIgnoreCase) && Nav.ComponentOf(d) == component)
+                return true;
+        return false;
+    }
+
+    /// <summary>Percent chance per step that a bot walking where a player sees it stops
+    /// a moment to look about.</summary>
+    public int PausePerMille { get; set; } = 20;
+    public long WindowPauses { get; private set; }
 
     private static bool IsLingerPlace(BotDestination d) =>
         d.Type.Equals("Bank", StringComparison.OrdinalIgnoreCase) ||
@@ -269,6 +293,12 @@ public sealed partial class PlayerBotEngine
             }
         }
 
+        // Travelling with another: keep pace with it.
+        if (mind.Leader != null && PaceWithLeader(mind, target, now))
+        {
+            mind.LegProgressMs = now;
+            return;
+        }
         bool run = mind.Running && ch.Stam > ch.MaxStam / 3;
         long st0 = Stopwatch.GetTimestamp();
         _stepCorridor = !finalLeg && mind.Leg > 0 ? (route[mind.Leg - 1], route[mind.Leg]) : null;
@@ -279,6 +309,13 @@ public sealed partial class PlayerBotEngine
         long stepUs = (Stopwatch.GetTimestamp() - st0) * 1_000_000 / Stopwatch.Frequency;
         if (stepUs > WindowMaxStepUs) WindowMaxStepUs = stepUs;
         mind.NextActMs = now + StepDelay(mind, steppedLeg, run, now);
+        // Where a player sees it, a walker now and then stops a moment to look about.
+        if (steppedLeg && !run && !finalLeg && mind.Leader == null && _rng.Next(1000) < PausePerMille &&
+            IsWatched(ch.Position))
+        {
+            mind.NextActMs += _rng.Next(1000, 3000);
+            WindowPauses++;
+        }
     }
 
     /// <summary>No ground made on a leg for a minute (or the leg ran far over its
@@ -450,6 +487,13 @@ public sealed partial class PlayerBotEngine
     private void StrandedRescue(BotMind mind, long now, int node)
     {
         var ch = mind.Char;
+        // A caster with a rune home goes there the way a player would.
+        if (TryRecallHome(mind, now, "no road from here"))
+        {
+            mind.NoRouteCount = 0;
+            mind.NoRouteSinceMs = 0;
+            return;
+        }
         Point3D? spot = node >= 0 ? Nav.Waypoints[node].Pos : HomeSpot(mind);
         StrandedRescues++;
         WindowStrandedRescues++;

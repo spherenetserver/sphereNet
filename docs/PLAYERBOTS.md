@@ -250,7 +250,8 @@ bot looks at why (the walk path's refusal reason):
   the side; a crowd that stays put for three seconds gets a tile search routed round
   the people. It does not start walking walls because of a person.
 - **A wall, a fence, water** (`terrain`, `house`, ...): a shut, unlocked door ahead is
-  opened with a double click; a way another bot already found along the same road link
+  opened (a door item with a double click, a door that is part of the map with the
+  open-door macro, facing it, as the client's auto-open does); a way another bot already found along the same road link
   is followed (below); otherwise a tile search is asked for, and meanwhile the bot keeps
   the obstacle on one hand and walks its edge (Bug2) until it is nearer the target than
   where it met it and the way ahead is open.
@@ -273,7 +274,8 @@ new one.
 **Corridors.** A path found along a road link (node to node) is kept, starting at the
 tile the search started from. The next bot stopped on that link joins it where it stands
 and walks it with no search of its own. A kept path whose step is refused for good is
-forgotten.
+forgotten. Kept paths are written to `playerbots_corridors.txt` beside the world save
+every five minutes when they changed, by node name, and read back at start.
 
 The stopping spot of a trip is stepped on; one tile short does when someone else stands
 on it, and three short once the last steps have stalled for four seconds. At eight
@@ -299,6 +301,27 @@ wall. When the first leg makes no ground for 12 seconds the bot walks to the nea
 unlocked door within 8 tiles and opens it, then tries the next-nearest start nodes.
 Learned spots and links are kept in `playerbots_badspots.txt` in the world save directory
 and read back at start; deleting the file lets bots try every spot again.
+
+### Errands
+
+- **Bank.** A bot at a bank opens its box from the banker's context menu (Open Bankbox)
+  and moves gold by hand: carrying more than 1500 it puts the surplus in (keeping 300-600),
+  carrying less than 200 it takes up to 500 out. Once every ten minutes at most.
+- **A rune home.** A caster with Magery 50 or more whose book holds Mark and Recall marks a
+  blank rune at its home town's bank with the Mark spell through its client (mana, reagents
+  and skill as for anyone; the blank rune is the one thing it is given). Later it recalls on it to get home from where no
+  road leads home, when it is stranded off the roads, or when it is on a map with no
+  roads, before any lift. The rune is `PLAYERBOT.RUNE`.
+- **Company.** A bot setting off on an ordinary trip asks an idle bot of the same home
+  standing within 6 tiles along, 15 times in a hundred (`travel_together` line). The
+  companion goes to the same place, waits when it gets ahead, runs when it falls more
+  than four tiles behind, and goes its own way once the leader arrives.
+- **A look about.** Walking where a player sees it, a bot stops for one to three
+  seconds now and then (two steps in a thousand).
+
+Bots cast only spells their spellbook holds. A saved bot whose book is short of what its
+archetype's kit gives (the kit's `ADDCIRCLE` lines once reached nothing) gets the kit's
+spells when it is adopted, read from a stand-in made by the same `@Create`.
 
 ### Other walks
 
@@ -332,7 +355,8 @@ was only passing over) ends the trip where it landed; that tile is stepped round
 three minutes unless the trip is to that very portal.
 
 A stair between dungeon levels that the data names but the world does not have is
-portalless and never chosen; a dungeon mouth or a moongate with no portal is visited as
+portalless and never chosen, unless its far side is on the same piece of road: then it is
+a ramp or passage that is walked through, and an ordinary place; a dungeon mouth or a moongate with no portal is visited as
 an ordinary place (walked into, or waited about: a world without gate items still has its
 moongate squares). The server log lists them at start. A teleporter, gate or telepad that leads to a map the road network does not cover
 is never stepped on, and a bot found on such a map is taken home.
@@ -371,6 +395,8 @@ The end of the line is about getting stuck:
 | `portals`, `portalmisses` | portal crossings made; portal places written off after their tiles did not carry the bot |
 | `noroute`, `stranded`, `maprescues` | trips that found no road; bots lifted back onto the roads; bots taken home from a map with no roads |
 | `unreachable`, `giveups`, `faults` | foes given up as out of reach; other walks given up; acts that threw |
+| `staticdoors` | map (static) doors opened |
+| `deposits`, `withdrawals`, `marks`, `recalls`, `companions`, `pauses` | bank moves; runes marked; recalls home; bots taken along; stops to look about |
 | `stalled [...]` | the most bots stalled at once (no ground for 10 s), by mode, e.g. `Travel:3 Fight:1` |
 | `refusals [...]` | why steps were refused, most first, e.g. `terrain:812 character_on_tile:95` |
 
@@ -389,7 +415,7 @@ spot keeps catching bots.
 | Command | Shows |
 |---|---|
 | `PLAYERBOTS STALLS [n]` | the `n` (20) bots stalled longest right now: uid, name, position, mode, seconds, where it is going, the last refusal, whether it walks a wall, its tile path and its search state |
-| `PLAYERBOTS TRACE <uid\|name>` | one bot's last 32 decisions with their age (trip chosen, search asked and found, path dropped and why, portal crossed, rescue, walk given up, refused step kinds) |
+| `PLAYERBOTS TRACE <uid\|name>` | one bot's last 32 decisions with their age (trip chosen, search asked and found, path dropped and why, portal crossed, rescue, walk given up, refused step kinds, and the system messages its client was told) |
 | `PLAYERBOTS NAVCHECK` | every portal-type place and whether the world has a portal there |
 | `PLAYERBOTS NAVCHECK LINKS [LEARN]` | also a tile search along every road link and from every stopping spot to its node, with an online bot as the walker; `LEARN` leaves failures out of routes and writes them to the bad-spot file. Runs on the main loop: it takes a while on a full road network |
 

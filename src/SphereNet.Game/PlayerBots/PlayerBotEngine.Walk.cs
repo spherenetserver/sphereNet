@@ -367,7 +367,9 @@ public sealed partial class PlayerBotEngine
         return false;
     }
 
-    /// <summary>Open a shut, unlocked door standing on <paramref name="tile"/>.</summary>
+    /// <summary>Open a shut, unlocked door standing on <paramref name="tile"/>: a door
+    /// item by a double click, a door that is part of the map (a static) by the open-door
+    /// macro, facing it, as a player opens one.</summary>
     private bool TryOpenDoorOn(BotMind mind, Point3D tile)
     {
         var ch = mind.Char;
@@ -379,8 +381,22 @@ public sealed partial class PlayerBotEngine
             WindowDoors++;
             return true;
         }
+        if (DoorHelper.FindNearestStaticDoor(_world.MapData, ch.MapIndex, tile.X, tile.Y, 0,
+                out short sx, out short sy, out sbyte sz, out _, out _) &&
+            sx == tile.X && sy == tile.Y && Math.Abs(sz - ch.Z) < 20 &&
+            !_world.IsMapStaticDoorOpen(ch.MapIndex, sx, sy, sz))
+        {
+            ch.Direction = ch.Position.GetDirectionTo(tile);
+            mind.Client!.OpenDoor(1);
+            if (!_world.IsMapStaticDoorOpen(ch.MapIndex, sx, sy, sz)) return false;
+            WindowDoors++;
+            WindowStaticDoors++;
+            return true;
+        }
         return false;
     }
+
+    public long WindowStaticDoors { get; private set; }
 
     /// <summary>A bot lingering right by a door steps away from it, so it does not
     /// stand in the doorway others need.</summary>

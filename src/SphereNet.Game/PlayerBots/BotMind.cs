@@ -252,6 +252,21 @@ public sealed class BotMind
         return false;
     }
 
+    // Errands: banking, the rune home, company on the road.
+    public int BankStage { get; set; }
+    public long NextBankMs { get; set; }
+    public long BankUntilMs { get; set; }
+    public long BankDeposit { get; set; }
+    public long BankWithdraw { get; set; }
+    public Character? Banker { get; set; }
+    public long NextMarkMs { get; set; }
+    /// <summary>When to look whether the last Mark took; 0 when none is pending.</summary>
+    public long MarkCheckMs { get; set; }
+    public long NextRecallMs { get; set; }
+    public long RecallSinceMs { get; set; }
+    /// <summary>The bot this one travels with, keeping pace, until it arrives.</summary>
+    public BotMind? Leader { get; set; }
+
     /// <summary>Acts that threw, in a row.</summary>
     public int ActFaults { get; set; }
 
@@ -338,6 +353,7 @@ public sealed class BotMind
         GateTries = 0;
         PortalTrip = false;
         Haunting = false;
+        Leader = null;
         At = at;
         Goal = null;
         Route = null;

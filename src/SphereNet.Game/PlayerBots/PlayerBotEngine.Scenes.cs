@@ -234,7 +234,7 @@ public sealed partial class PlayerBotEngine
 
     private static bool CanRaise(BotMind m, long now) =>
         m.IsCaster && now >= m.NextResMs && m.Char.Mana >= 50 && m.Char.GetSkill(SkillType.Magery) >= 700 &&
-        !m.Char.TryGetCastingSpell(out _);
+        !m.Char.TryGetCastingSpell(out _) && HasSpell(m.Char, SpellType.Resurrection);
 
     private void Raise(BotMind m, Character ghost, string? lang, long now)
     {

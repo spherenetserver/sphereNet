@@ -67,6 +67,9 @@ public sealed class BotDestination
     /// <summary>A portal-type place with no portal in this world (the source data and
     /// the script pack disagree): stepping there does nothing.</summary>
     public bool Portalless { get; set; }
+    /// <summary>A portalless stair whose far side is on the same piece of road: a ramp
+    /// or a passage walked through, not a teleporter. Visited as an ordinary place.</summary>
+    public bool WalkedThrough { get; set; }
 
     /// <summary>The arrival spot <paramref name="pos"/> stands on (within 2 tiles), or -1.</summary>
     public int ArrivalAt(Point3D pos)

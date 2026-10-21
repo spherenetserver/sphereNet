@@ -822,10 +822,15 @@ public sealed partial class GameClient
         var fmt = SpeechPrefix.Parse(ResolveMessage(text), hue);
         if (fmt.Drop)
             return;
+        ServerDrivenSysMessage?.Invoke(fmt.Text);
         _netState.Send(new PacketSpeechUnicodeOut(
             0xFFFFFFFF, 0xFFFF, 6, fmt.Hue, fmt.Font, PacketSpeechUnicodeOut.SystemLanguage, "System", fmt.Text
         ));
     }
+
+    /// <summary>For a client the server plays (a player bot): the system messages it is
+    /// told, which no one reads otherwise - the bot keeps them in its decision trace.</summary>
+    public Action<string>? ServerDrivenSysMessage { get; set; }
 
     /// <summary>Send speech from an NPC to this client (overhead text above the NPC).
     /// Hue: Source-X Speak defaults to HUE_TEXT_DEF 0x03B2 (light gray,

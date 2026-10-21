@@ -451,11 +451,237 @@ public sealed class PlayerBotWalkTests
         engine.AddMount("c_horse_brown_dk");
         engine.AdoptSaved();
 
-        Run(engine, 1_000_000, 400, () => horse.IsDeleted);
+        Run(engine, 1_000_000, 2000, () => horse.IsDeleted);
 
         Assert.True(horse.IsDeleted, Trace(engine, bot));
         Assert.False(bot.TryGetTag(PlayerBotEngine.MountTag, out _));
         Assert.True(engine.WindowGiveUps >= 1);
+    }
+
+    [Fact]
+    public void AStairWhoseFarSideIsOnTheSameRoadIsAPlaceNotADeadPortal()
+    {
+        var world = World();
+        const string bank = """{ "Name": "Town Bank", """;
+        const string rampJson = """
+            { "Name": "Ramp Down", "X": 112, "Y": 100, "Z": 0, "Type": "DungeonDescend", "City": "",
+              "NearestWaypoint": "B", "TargetX": 118, "TargetY": 100, "TargetZ": 0 },
+
+            """;
+        var nav = Nav(world, CaveRoads, CavePlaces.Replace(bank, rampJson + bank));
+        var engine = Engine(world, nav);
+        engine.ResolvePortals();
+
+        var ramp = nav.FindDestination("Ramp Down")!;
+        Assert.True(ramp.Portalless);
+        Assert.True(ramp.WalkedThrough);
+        Assert.False(nav.FindDestination("Ghost Stair")!.WalkedThrough);
+        Assert.DoesNotContain(engine.NavCheck(links: false, learn: false), l => l.Contains("Ramp Down"));
+    }
+
+    [Fact]
+    public void AShutDoorThatIsPartOfTheMapIsOpenedLikeAPlayersMacroOpensIt()
+    {
+        var world = World();
+        const ushort DoorTile = 0x0675;
+        world.MapData!.SetSyntheticItemTile(DoorTile, new SphereNet.MapData.Tiles.ItemTileData
+        {
+            Flags = SphereNet.MapData.Tiles.TileFlag.Impassable | SphereNet.MapData.Tiles.TileFlag.Door,
+            Height = 20,
+        });
+        TestHarness.SeedItemDefs(DoorTile);
+        // A long wall with a map door in it at y=100: the door is the way.
+        Wall(world, 105, 40, 105, 99);
+        Wall(world, 105, 101, 105, 160);
+        world.MapData.AddSyntheticStatic(0, 105, 100, DoorTile, 0);
+        var bot = Bot(world, new Point3D(100, 100, 0, 0), goal: "Far Inn");
+        var engine = Engine(world, Nav(world), clients: true);
+        engine.AdoptSaved();
+
+        Run(engine, 1_000_000, 3000, () => bot.X == 111 && bot.Y == 100);
+
+        Assert.True(bot.X == 111 && bot.Y == 100, $"bot at {bot.Position}{Environment.NewLine}{Trace(engine, bot)}");
+        Assert.True(engine.WindowStaticDoors >= 1, Trace(engine, bot));
+        Assert.Equal(0, engine.StuckRescues);
+    }
+
+    private const string BankPlaces = """
+        { "Destinations": [
+          { "Name": "Far Inn", "X": 111, "Y": 100, "Z": 0, "Type": "Inn", "City": "Town", "NearestWaypoint": "E" },
+          { "Name": "Town Bank", "X": 100, "Y": 102, "Z": 0, "Type": "Bank", "City": "Town", "NearestWaypoint": "W",
+            "Arrivals": [ { "X": 100, "Y": 103, "Z": 0, "Waypoints": [ "W" ] } ] }
+        ] }
+        """;
+
+    private static Item Gold(GameWorld world, Item container, ushort amount)
+    {
+        var gold = world.CreateItem();
+        gold.BaseId = 0x0EED;
+        gold.ItemType = ItemType.Gold;
+        gold.Amount = amount;
+        Assert.True(container.TryAddItem(gold));
+        return gold;
+    }
+
+    private static Item Pack(GameWorld world, Character ch)
+    {
+        var pack = world.CreateItem();
+        pack.BaseId = 0x0E75;
+        pack.ItemType = ItemType.Container;
+        ch.Backpack = pack;
+        ch.Equip(pack, Layer.Pack);
+        return pack;
+    }
+
+    [Fact]
+    public void ABotAtTheBankPutsItsSurplusGoldInThroughTheBankersMenu()
+    {
+        var world = World();
+        var nav = Nav(world, RoadJson, BankPlaces);
+        var bot = Bot(world, new Point3D(100, 103, 0, 0), goal: null);
+        bot.Str = 200;
+        var pack = Pack(world, bot);
+        Gold(world, pack, 3000);
+        var banker = Npc(world, new Point3D(101, 104, 0, 0), "the banker");
+        banker.NpcBrain = NpcBrainType.Banker;
+        var engine = Engine(world, nav, clients: true);
+        engine.AdoptSaved();
+        var mind = engine.MindOf(bot)!;
+        long now = 1_000_000;
+        mind.BeginLinger(nav.FindDestination("Town Bank"), now, new Random(1), short_: false);
+
+        Run(engine, now, 200, () => engine.WindowDeposits > 0);
+
+        var box = bot.GetEquippedItem(Layer.BankBox);
+        Assert.True(box != null, Trace(engine, bot));
+        long banked = box!.Contents.Where(i => i.ItemType == ItemType.Gold).Sum(i => (long)i.Amount);
+        long carried = pack.Contents.Where(i => i.ItemType == ItemType.Gold).Sum(i => (long)i.Amount);
+        Assert.True(banked >= 2400 && carried is >= 300 and <= 600, $"banked {banked}, carried {carried}{Environment.NewLine}{Trace(engine, bot)}");
+        Assert.Equal(3000, banked + carried);
+    }
+
+    [Fact]
+    public void ACasterWithARuneHomeRecallsWhenThereIsNoRoad()
+    {
+        var world = World();
+        var nav = Nav(world, RoadJson, BankPlaces);
+        var bot = Bot(world, new Point3D(400, 400, 0, 0), goal: "Far Inn", arch: "mage");
+        bot.SetSkill(SkillType.Magery, 1000);
+        bot.Int = 100; bot.MaxMana = 100; bot.Mana = 100;
+        var pack = Pack(world, bot);
+        var rune = world.CreateItem();
+        rune.BaseId = 0x1F14;
+        rune.ItemType = ItemType.Rune;
+        rune.SetRuneMark(new Point3D(100, 103, 0, 0));
+        rune.More1 = 10;
+        Assert.True(pack.TryAddItem(rune));
+        bot.SetTag(PlayerBotEngine.RuneTag, rune.Uid.Value.ToString());
+
+        Character.SpellbookRequiredEnabled = false;
+        var registry = new SphereNet.Game.Magic.SpellRegistry();
+        registry.Register(new SphereNet.Game.Magic.SpellDef
+        {
+            Id = SpellType.Recall, Name = "Recall", Flags = SpellFlag.TargItem,
+            CastTimeBase = 1, EffectBase = 0, EffectScale = 0,
+        });
+        var spells = new SphereNet.Game.Magic.SpellEngine(world, registry);
+        var engine = Engine(world, nav);
+        engine.CreateClient = ch =>
+        {
+            var c = new SphereNet.Game.Clients.GameClient(
+                new SphereNet.Network.State.NetState(NullLogger.Instance), world,
+                new SphereNet.Game.Accounts.AccountManager(NullLoggerFactory.Instance), NullLogger.Instance);
+            c.SetEngines(movement: new MovementEngine(world), spellEngine: spells);
+            c.AttachServerDriven(ch);
+            return c;
+        };
+        engine.AdoptSaved();
+
+        // The cast timer runs on the real clock: let a little real time pass per tick.
+        long now = 1_000_000;
+        for (int i = 0; i < 300 && bot.X >= 200; i++)
+        {
+            now = Run(engine, now, 1);
+            Thread.Sleep(10);
+        }
+
+        Assert.True(bot.Position.GetDistanceTo(new Point3D(100, 103, 0, 0)) <= 1, $"bot at {bot.Position}{Environment.NewLine}{Trace(engine, bot)}");
+        Assert.True(engine.WindowRecalls >= 1);
+        Assert.Equal(0, engine.StrandedRescues);
+    }
+
+    [Fact]
+    public void ABotSettingOffTakesAnIdleBotAlongAndTheyArriveTogether()
+    {
+        var world = World();
+        var nav = Nav(world, RoadJson, BankPlaces);
+        var lead = Bot(world, new Point3D(100, 103, 0, 0), goal: null);
+        var mate = Bot(world, new Point3D(101, 103, 0, 0), goal: null);
+        mate.Name = "Mate";
+        var engine = Engine(world, nav, clients: true);
+        engine.CompanyPercent = 100;
+        engine.AdoptSaved();
+        long now = 1_000_000;
+        var bank = nav.FindDestination("Town Bank");
+        var lm = engine.MindOf(lead)!;
+        var mm = engine.MindOf(mate)!;
+        lm.BeginLinger(bank, now, new Random(1), short_: true);
+        lm.LingerUntilMs = now;
+        mm.BeginLinger(bank, now, new Random(1), short_: false);
+
+        now = Run(engine, now, 30, () => engine.WindowCompanions > 0);
+        Assert.Equal(1, engine.WindowCompanions);
+        Assert.Same(lm, mm.Leader);
+        Assert.Same(lm.Goal, mm.Goal);
+        int widest = 0;
+        Run(engine, now, 1500, () =>
+        {
+            widest = Math.Max(widest, lead.Position.GetDistanceTo(mate.Position));
+            return lm.Mode == BotMode.Linger && mm.Mode == BotMode.Linger;
+        });
+        Assert.Equal(BotMode.Linger, mm.Mode);
+        Assert.True(widest <= 8, $"they drifted {widest} tiles apart");
+        Assert.True(lead.Position.GetDistanceTo(mate.Position) <= 3, $"{lead.Position} vs {mate.Position}");
+    }
+
+    [Fact]
+    public void KeptWaysSurviveARestartThroughTheirFile()
+    {
+        var world = World();
+        Wall(world, 106, 92, 106, 108);
+        Wall(world, 98, 92, 106, 92);
+        Wall(world, 98, 108, 106, 108);
+        string roads = """
+            { "Waypoints": [
+              { "Name": "W", "X": 102, "Y": 100, "Z": 0, "Connects": [ "E" ] },
+              { "Name": "E", "X": 112, "Y": 100, "Z": 0 }
+            ] }
+            """;
+        string places = """
+            { "Destinations": [
+              { "Name": "Far Inn", "X": 113, "Y": 100, "Z": 0, "Type": "Inn", "City": "Town", "NearestWaypoint": "E" }
+            ] }
+            """;
+        string file = Path.Combine(Path.GetTempPath(), $"sphnet_corridors_{Guid.NewGuid():N}.txt");
+        try
+        {
+            var bot = Bot(world, new Point3D(102, 100, 0, 0), goal: "Far Inn");
+            var engine = Engine(world, Nav(world, roads, places));
+            engine.CorridorFile = file;
+            engine.AdoptSaved();
+            long now = Run(engine, 1_000_000, 3000, () => bot.X == 113);
+            Assert.True(engine.CorridorCount > 0);
+            engine.SaveCorridorsIfDue(now, force: true);
+
+            var again = Engine(world, Nav(world, roads, places));
+            again.CorridorFile = file;
+            Assert.Equal(engine.CorridorCount, again.LoadCorridors());
+            Assert.Equal(engine.CorridorCount, again.CorridorCount);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
     }
 
     [Fact]
@@ -482,8 +708,10 @@ public sealed class PlayerBotWalkTests
 public sealed class PlayerBotNavDataTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     // Measured 2026-10-21 against Scripts-X map0 teleporters (moongates excluded: they
-    // are world items, placed by worldgen, not script data).
-    private const int MaxPortalless = 27;
+    // are world items, placed by worldgen, not script data; stairs whose far side is on
+    // the same road are walked through and do not count). The 14 left are passages
+    // between dungeons the pack does not have.
+    private const int MaxPortalless = 14;
 
     [Fact]
     public void ShippedPortalPlacesHaveTheirTeleportersInTheScriptPack()
@@ -513,7 +741,8 @@ public sealed class PlayerBotNavDataTests(Xunit.Abstractions.ITestOutputHelper o
         Assert.Equal(3, destard.PortalTiles!.Count);
         Assert.All(destard.PortalTiles, t => Assert.Equal(2635, t.Y));
         var missing = graph.Destinations
-            .Where(d => d.IsPortalType && d.Portalless && !d.Type.Equals("Moongate", StringComparison.OrdinalIgnoreCase))
+            .Where(d => d.IsPortalType && d.Portalless && !d.WalkedThrough &&
+                        !d.Type.Equals("Moongate", StringComparison.OrdinalIgnoreCase))
             .Select(d => d.Name).ToList();
         Assert.True(missing.Count <= MaxPortalless,
             $"{missing.Count} portal places without a teleporter (pinned {MaxPortalless}): {string.Join(", ", missing)}");

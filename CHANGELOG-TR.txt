@@ -73,6 +73,38 @@ YENI - Botlar izlenirken daha canli bekler (3-8 sn'de bir adim, uc yerine bir uz
        Cok oyuncu varken bot dogma araligi 1 sn'ye cikar; fazla botlardan gorulmeyen bostakiler
        kapatilir.
 
+[2026-10-21] - Oyuncu botlari: islerini gorme, harita kapilari, yuruyerek gecilen merdivenler, kayitli yollar
+------------------------------------------------------------------------
+DUZELTME - Atama olarak yazilan ADDCIRCLE (paketlerin yazdigi gibi bir yaratigin @Create'inde
+       ITEM=i_spellbook sonrasi ADDCIRCLE=1) hicbir yere ulasmiyordu: Item.TrySetProperty
+       ADDSPELL'i taniyordu, ADDCIRCLE'i yalnizca fiil olarak; boyle doldurulan her kitap bos
+       kaliyordu. Source-X satiri r_Verb ile okur (IC_ADDCIRCLE); atama artik ayni halka
+       doldurmayi calistirir. Kitabi arketip kitinin verdiginden eksik kayitli oyuncu botlari
+       benimsendiginde kitin buyulerini alir.
+DUZELTME - Botlar yalnizca kitaplarinda olan buyuleri atar (saldiri buyuleri, Greater Heal,
+       Cure, Resurrection, Mark, Recall); eski kitli bot "kitabinda yok" diye basarisiz olan
+       buyulere act harcamaz.
+DUZELTME - Yol verisinin teleporter'siz andigi on iki merdivenin (Hythloth, Khaldun, Fire,
+       Wrong rampalari) karsi tarafi ayni yol parcasinda: bunlar yuruyerek gecilen
+       gecitlerdir, olu portal degil; yeniden ziyaret edilir. Teleporter aramasi Z'yi iki
+       yone 48'e kadar tarar (Terathan Keep teleporter'i Z 0'da, veri 40 der). Paketin
+       sahip olmadigi 14 zindanlar arasi gecit secilmemeye devam eder.
+DUZELTME - Haritanin parcasi olan (statik) kapali kapi botlari durduruyordu: artik istemcinin
+       kapi-ac makrosuyla, ona donerek acilir ve bot karo aramasi onu gecit sayar
+       (PathOptions.OpenDoors).
+YENI - Banka: bankadaki bot kutusunu banker'in baglam menusunden acar ve altini elle tasir
+       (1500 ustu fazla yatirilir, 200 altina dusunce 500'e kadar cekilir).
+YENI - Rune: buyucu bot ev bankasinda bos rune'u istemcisinden Mark ile isaretler; eve yol
+       olmayan yerden, yolsuz kaldiginda ya da yolsuz haritadayken kaldirilmadan once
+       onunla Recall atar.
+YENI - Arkadaslik: yola cikan bot bazen yanindaki bos botu yanina alir; arkadasi hizini
+       tutar, hedefte ayrilir. Izlenen yuruyen bot arada bir durup etrafa bakar.
+YENI - Saklanan yol baglantisi yollari kaydin yanindaki playerbots_corridors.txt'ye
+       degistiginde bes dakikada bir yazilir ve acilista okunur.
+YENI - Botun istemcisine soylenen sistem mesajlari ("You lack reagents for this spell")
+       karar izine yazilir (PLAYERBOTS TRACE); 30 sn'lik satir tutan ve tutmayan Mark'lari
+       sayar.
+
 [2026-10-19] - Bin istemcide sunucu kapasitesi
 ------------------------------------------------------------------------
 DUZELTME - Character.PrivLevel her okunusta hesabi cozuyordu; ACCOUNT tag'i olmayan bir karakter

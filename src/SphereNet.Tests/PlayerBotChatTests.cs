@@ -379,6 +379,17 @@ public sealed class PlayerBotChatTests
         mage.SetTag(PlayerBotEngine.ArchetypeTag, "c_playerbot_mage_m");
         mage.SetSkill(SphereNet.Core.Enums.SkillType.Magery, 900);
         mage.Int = 100; mage.MaxMana = 100; mage.Mana = 100;
+        // A caster casts what its book holds: a full book, filled the way kits do it.
+        var pack = rig.World.CreateItem();
+        pack.BaseId = 0x0E75;
+        pack.ItemType = SphereNet.Core.Enums.ItemType.Container;
+        mage.Backpack = pack;
+        mage.Equip(pack, SphereNet.Core.Enums.Layer.Pack);
+        var book = rig.World.CreateItem();
+        book.BaseId = 0x0EFA;
+        book.ItemType = SphereNet.Core.Enums.ItemType.Spellbook;
+        Assert.True(book.TrySetProperty("ADDCIRCLE", "8,1"));
+        Assert.True(pack.TryAddItem(book));
         rig.Engine.Release(mage);
         rig.Engine.AdoptSaved();
         rig.Engine.MindOf(mage)!.LingerUntilMs = long.MaxValue;

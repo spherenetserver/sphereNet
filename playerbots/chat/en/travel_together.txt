@@ -1,0 +1,7 @@
+# travel_together.txt - Said by a bot setting off when it takes another bot standing by
+# along. {name} is the one it asks, {dest} where they go. Lines starting with # are comments.
+
+{name}, coming to {dest}?
+heading to {dest}, {name}. you coming?
+walk with me to {dest}, {name}
+{name}, lets go, {dest}

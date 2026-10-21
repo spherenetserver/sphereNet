@@ -35,7 +35,7 @@ public sealed partial class PlayerBotEngine
     public void ResolvePortals()
     {
         _portalsResolved = true;
-        int found = 0, missing = 0;
+        int found = 0, missing = 0, walked = 0;
         var missingNames = new List<string>();
         foreach (var d in Nav.Destinations)
         {
@@ -78,7 +78,15 @@ public sealed partial class PlayerBotEngine
             }
             d.PortalTiles = tiles;
             d.Portalless = tiles.Count == 0;
-            if (d.Portalless)
+            // No portal, but the far side is on this same piece of road: a ramp or a
+            // passage the road walks through.
+            if (d.Portalless && d.Target is { } far)
+            {
+                int node = Nav.FindNearest(far, 8, null, zBand: 127);
+                d.WalkedThrough = node >= 0 && Nav.Waypoints[node].Component == Nav.ComponentOf(d);
+            }
+            if (d.WalkedThrough) walked++;
+            else if (d.Portalless)
             {
                 missing++;
                 if (missingNames.Count < 40) missingNames.Add(d.Name);
@@ -87,10 +95,10 @@ public sealed partial class PlayerBotEngine
         }
         PortalPlaces = found;
         PortallessPlaces = missing;
-        if (found + missing > 0)
+        if (found + missing + walked > 0)
             _logger.LogInformation(
-                "[playerbots] portals: {Found} places with a portal in this world, {Missing} without ({Names})",
-                found, missing, string.Join(", ", missingNames));
+                "[playerbots] portals: {Found} places with a portal in this world, {Walked} walked through, {Missing} without ({Names})",
+                found, walked, missing, string.Join(", ", missingNames));
     }
 
     /// <summary>The map teleporter at a tile, whatever floor height the data recorded
@@ -106,14 +114,15 @@ public sealed partial class PlayerBotEngine
         return null;
     }
 
-    private static readonly int[] TeleportZProbe = [0, -8, 8, -16, 16, -24, 24, -32, 32];
+    // The data's heights can be a floor off (a teleporter at Z 0 recorded at Z 40).
+    private static readonly int[] TeleportZProbe = [0, -8, 8, -16, 16, -24, 24, -32, 32, -40, 40, -48, 48];
 
     /// <summary>A place a trip is never chosen for: a stair between dungeon levels that
     /// this world does not have (stepping there leads nowhere). A dungeon mouth or a
     /// moongate with no portal is still a place: walked into, or waited about (a world
     /// without gate items still has its moongate squares).</summary>
     internal static bool IsDeadPortal(BotDestination d) =>
-        d.Portalless &&
+        d.Portalless && !d.WalkedThrough &&
         (d.Type.Equals("DungeonDescend", StringComparison.OrdinalIgnoreCase) ||
          d.Type.Equals("DungeonAscend", StringComparison.OrdinalIgnoreCase));
 

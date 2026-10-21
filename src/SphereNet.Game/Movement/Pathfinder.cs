@@ -242,7 +242,11 @@ public sealed class Pathfinder
             if (item.TryGetTag("DOOR_OPEN", out string? open) && open == "1") continue;
             return true;
         }
-        return false;
+        // A door that is part of the map (a static), shut.
+        return World.DoorHelper.FindNearestStaticDoor(_world.MapData, map, x, y, 0,
+                   out short sx, out short sy, out sbyte sz, out _, out _) &&
+               sx == x && sy == y && Math.Abs(sz - z) < 20 &&
+               !_world.IsMapStaticDoorOpen(map, sx, sy, sz);
     }
 
     private bool IsWalkable(Point3D pos, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, bool ignoreChars = false, PathOptions options = PathOptions.None)

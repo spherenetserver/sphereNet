@@ -239,11 +239,86 @@ public sealed partial class PlayerBotEngine
     {
         if (_corridors.Count >= MaxCorridors) _corridors.Clear();
         _corridors[key] = path;
+        _corridorsDirty = true;
     }
 
     private void ForgetCorridor((int From, int To)? key)
     {
-        if (key is { } k) _corridors.Remove(k);
+        if (key is { } k && _corridors.Remove(k)) _corridorsDirty = true;
+    }
+
+    /// <summary>Where the kept ways are written (beside the world save), so a restart
+    /// does not have to find them again. Null keeps them in memory only.</summary>
+    public string? CorridorFile { get; set; }
+    private bool _corridorsDirty;
+    private long _nextCorridorSaveMs;
+    private const long CorridorSaveEveryMs = 300_000;
+
+    /// <summary>Read the kept ways: one per line, "from|to|x,y,z;x,y,z;..." by node name.
+    /// A line whose nodes are gone or whose path does not end at its node is skipped.</summary>
+    public int LoadCorridors()
+    {
+        if (CorridorFile == null || !File.Exists(CorridorFile)) return 0;
+        int n = 0;
+        foreach (string line in File.ReadLines(CorridorFile))
+        {
+            var parts = line.Split('|');
+            if (parts.Length != 3) continue;
+            int from = Nav.FindWaypoint(parts[0]), to = Nav.FindWaypoint(parts[1]);
+            if (from < 0 || to < 0) continue;
+            byte map = Nav.Waypoints[to].Pos.Map;
+            var path = new List<Point3D>();
+            foreach (string t in parts[2].Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var c = t.Split(',');
+                if (c.Length != 3 || !short.TryParse(c[0], out short x) || !short.TryParse(c[1], out short y) ||
+                    !sbyte.TryParse(c[2], out sbyte z))
+                {
+                    path = null;
+                    break;
+                }
+                path.Add(new Point3D(x, y, z, map));
+            }
+            if (path is not { Count: > 0 } || Chebyshev(path[^1], Nav.Waypoints[to].Pos) > 1) continue;
+            _corridors[(from, to)] = path;
+            n++;
+        }
+        return n;
+    }
+
+    /// <summary>Write the kept ways when they changed, every five minutes (or now, with
+    /// <paramref name="force"/>). The text is built here; the file is written off the
+    /// main thread.</summary>
+    public void SaveCorridorsIfDue(long now, bool force = false)
+    {
+        if (CorridorFile == null || (!force && (!_corridorsDirty || now < _nextCorridorSaveMs))) return;
+        _nextCorridorSaveMs = now + CorridorSaveEveryMs;
+        _corridorsDirty = false;
+        var sb = new System.Text.StringBuilder();
+        foreach (var ((from, to), path) in _corridors)
+        {
+            sb.Append(Nav.Waypoints[from].Name).Append('|').Append(Nav.Waypoints[to].Name).Append('|');
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (i > 0) sb.Append(';');
+                sb.Append(path[i].X).Append(',').Append(path[i].Y).Append(',').Append(path[i].Z);
+            }
+            sb.AppendLine();
+        }
+        string text = sb.ToString(), file = CorridorFile;
+        void Write()
+        {
+            try
+            {
+                string tmp = file + ".tmp";
+                File.WriteAllText(tmp, text);
+                File.Move(tmp, file, overwrite: true);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        if (force) Write();
+        else Task.Run(Write);
     }
 
     /// <summary>The kept way along the road link being walked, joined where the bot

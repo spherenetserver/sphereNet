@@ -164,8 +164,8 @@ public sealed partial class PlayerBotEngine
         if (!_portalsResolved) ResolvePortals();
         var lines = new List<string>();
         var portals = Nav.Destinations.Where(d => d.IsPortalType).ToList();
-        lines.Add($"portal places: {portals.Count}, with a portal in this world: {portals.Count(d => !d.Portalless)}, without: {portals.Count(d => d.Portalless)}");
-        foreach (var d in portals.Where(d => d.Portalless))
+        lines.Add($"portal places: {portals.Count}, with a portal in this world: {portals.Count(d => !d.Portalless)}, walked through: {portals.Count(d => d.WalkedThrough)}, without: {portals.Count(d => d.Portalless && !d.WalkedThrough)}");
+        foreach (var d in portals.Where(d => d.Portalless && !d.WalkedThrough))
             lines.Add($"  no portal: {d.Name} ({d.Type}) at {d.Pos}{(IsDeadPortal(d) ? " - never chosen" : " - visited as a place")}");
         if (!links) return lines;
 

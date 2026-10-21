@@ -1,0 +1,7 @@
+# travel_together.txt — yola çıkan bot yanındaki botu yanına alırken söyler. {name} çağırdığı,
+# {dest} gidecekleri yer. # ile başlayanlar yorum.
+
+{name}, {dest} gidiyorum geliyor musun?
+{dest} tarafına gidiyorum {name}, gel
+{name} hadi {dest}
+benimle {dest} gelsene {name}

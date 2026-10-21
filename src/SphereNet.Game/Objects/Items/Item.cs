@@ -2168,6 +2168,35 @@ public class Item : ObjBase
             _ => 0
         });
 
+    /// <summary>Source-X IC_ADDCIRCLE (CItem.cpp:3213): ADDCIRCLE &lt;circle&gt;[,&lt;andLower&gt;]
+    /// writes the eight spells of that circle into the book - and every circle below it
+    /// when the second argument is not zero. Only a spellbook answers it; upstream logs
+    /// and refuses on anything else.</summary>
+    private bool AddSpellbookCircle(string args)
+    {
+        if (EffectiveType != ItemType.Spellbook)
+            return false;
+
+        string[] circleArgs = args.Split([' ', ',', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        if (circleArgs.Length == 0 ||
+            !SphereNet.Core.Types.ScriptNumber.TryParseToken(circleArgs[0], out long topCircle))
+            return false;
+        bool andLower = circleArgs.Length > 1 &&
+            SphereNet.Core.Types.ScriptNumber.TryParseToken(circleArgs[1], out long lower) && lower != 0;
+
+        for (long circle = topCircle; circle > 0; --circle)
+        {
+            // Spell n sits at bit n-1 (AddSpellbookSpell, CItem.cpp:4485). Writing
+            // spell n at bit n dropped Clumsy (bit 0) from every book filled
+            // this way and never reached the 64th spell.
+            for (int i = 1; i < 9; ++i)
+                TryLearnSpell((int)(((circle - 1) * 8) + i));
+            if (!andLower)
+                break;
+        }
+        return true;
+    }
+
     /// <summary>Source-X IsSpellInBook: read the school-relative mask.</summary>
     internal bool ContainsSpell(int spellId)
     {
@@ -3226,6 +3255,11 @@ public class Item : ObjBase
             case "ADDSPELL":
                 AddSpellbookSpell(value);
                 return true;
+            // The same for a whole circle: "ADDCIRCLE=1" after an ITEM=i_spellbook.
+            // Upstream reads such a line through r_Verb (IC_ADDCIRCLE); answered only
+            // as a verb here, the assignment reached nothing and the book stayed empty.
+            case "ADDCIRCLE":
+                return AddSpellbookCircle(value);
 
             // "DAM=10,15" is base 10 with a spread of 5; one value means no spread
             // (CObjBase.cpp:1857-1863). Writing either stamps THIS item, leaving every
@@ -4666,29 +4700,7 @@ public class Item : ObjBase
             // below it when the second argument is not zero. Only a spellbook answers
             // it; upstream logs and refuses on anything else.
             case "ADDCIRCLE":
-            {
-                if (EffectiveType != ItemType.Spellbook)
-                    return false;
-
-                string[] circleArgs = args.Split([' ', ',', '	'], StringSplitOptions.RemoveEmptyEntries);
-                if (circleArgs.Length == 0 ||
-                    !SphereNet.Core.Types.ScriptNumber.TryParseToken(circleArgs[0], out long topCircle))
-                    return false;
-                bool andLower = circleArgs.Length > 1 &&
-                    SphereNet.Core.Types.ScriptNumber.TryParseToken(circleArgs[1], out long lower) && lower != 0;
-
-                for (long circle = topCircle; circle > 0; --circle)
-                {
-                    // Spell n sits at bit n-1 (AddSpellbookSpell, CItem.cpp:4485). Writing
-                    // spell n at bit n dropped Clumsy (bit 0) from every book filled
-                    // this way and never reached the 64th spell.
-                    for (int i = 1; i < 9; ++i)
-                        TryLearnSpell((int)(((circle - 1) * 8) + i));
-                    if (!andLower)
-                        break;
-                }
-                return true;
-            }
+                return AddSpellbookCircle(args);
 
             case "REMOVESPELL":
                 // The same spell numbering ADDSPELL takes: spell n at bit n-1.

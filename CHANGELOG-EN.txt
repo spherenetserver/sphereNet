@@ -74,6 +74,38 @@ NEW - Bots linger livelier while watched (a step every 3-8 s, one stay extension
       plans. Spawn spacing widens to 1 s with many players on; surplus bots released are the
       unseen idle ones.
 
+[2026-10-21] - Player bots: errands, map doors, walked-through stairs, kept ways on disk
+------------------------------------------------------------------------
+FIX - ADDCIRCLE written as an assignment (ADDCIRCLE=1 after ITEM=i_spellbook in a
+      creature's @Create, as packs write it) reached nothing: Item.TrySetProperty knew
+      ADDSPELL but ADDCIRCLE only as a verb, so every book filled that way stayed empty.
+      Source-X reads the line through r_Verb (IC_ADDCIRCLE); the assignment now runs the
+      same circle fill. Saved player bots whose book is short of their archetype kit's
+      get the kit's spells when adopted.
+FIX - Bots cast only spells their spellbook holds (attack spells, Greater Heal, Cure,
+      Resurrection, Mark, Recall); a bot with an older kit no longer spends its acts on
+      casts that fail with "not in your spellbook".
+FIX - Twelve stairs the road data names without a teleporter (Hythloth, Khaldun, Fire,
+      Wrong ramps) have their far side on the same piece of road: they are passages walked
+      through, not dead portals, and are visited again. The teleporter lookup probes up
+      to 48 Z either way (the Terathan Keep teleporter is at Z 0, the data says 40). 14
+      passages between dungeons that the pack does not have stay unchosen.
+FIX - A shut door that is part of the map (a static) stopped bots: they now open it with
+      the client's open-door macro, facing it, and a bot tile search counts it as a way
+      through (PathOptions.OpenDoors).
+NEW - Banking: a bot at a bank opens its box from the banker's context menu and moves gold
+      by hand (surplus over 1500 in, up to 500 out when under 200).
+NEW - Runes: a caster marks a blank rune at its home bank with Mark through its client and
+      recalls home on it from where no road leads home, when stranded, or from a map with
+      no roads, before any lift.
+NEW - Company: a bot setting off sometimes takes an idle bot standing by along; the
+      companion keeps pace and parts at the destination. Watched walkers stop now and then
+      to look about.
+NEW - Kept road-link paths are written to playerbots_corridors.txt beside the save every
+      five minutes when changed and read back at start.
+NEW - System messages told to a bot's client ("You lack reagents for this spell") go into
+      its decision trace (PLAYERBOTS TRACE); the 30 s line counts marks taken and failed.
+
 [2026-10-19] - Server throughput with a thousand clients
 ------------------------------------------------------------------------
 FIX - Character.PrivLevel resolved the account on every read, and for a character with no

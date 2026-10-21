@@ -197,6 +197,8 @@ public sealed partial class PlayerBotEngine
         WindowSearchBacklog = 0;
         WindowMobileWaits = WindowSideSteps = WindowDoorwaySteps = WindowNoRoute = WindowStrandedRescues = WindowMapRescues = 0;
         WindowPortalCrossings = WindowPortalMisses = WindowUnreachableFoes = WindowGiveUps = WindowActFaults = 0;
+        WindowDeposits = WindowWithdrawals = WindowMarks = WindowRecalls = WindowCompanions = WindowPauses = WindowStaticDoors = 0;
+        WindowMarksTaken = WindowMarksFailed = 0;
         ResetDiagnosticsWindow();
         WindowPurchases = WindowMeditations = WindowPkAttacks = WindowThefts = 0;
         WindowSeenMax = 0;
@@ -256,9 +258,58 @@ public sealed partial class PlayerBotEngine
             BringOnline(ch);
             if (ch.TryGetTag(GoalTag, out string? goal) && Nav.FindDestination(goal ?? "") is { } dest)
                 _minds[ch.Uid.Value].Goal = dest;
+            RepairKitBook(ch);
             adopted++;
         }
+        if (BooksRepaired > 0)
+            _logger.LogInformation("[playerbots] {Count} saved bots had spellbooks short of what their kit gives; filled", BooksRepaired);
         return adopted;
+    }
+
+    /// <summary>Saved bots whose spellbook holds fewer spells than their archetype's kit
+    /// gives (a kit's ADDCIRCLE lines once reached nothing): the book gets the kit's
+    /// spells. The kit's book is read once per archetype from a stand-in made by the same
+    /// @Create, then deleted.</summary>
+    private void RepairKitBook(Character ch)
+    {
+        if (RunCreateScript == null || !ch.TryGetTag(ArchetypeTag, out string? arch) || string.IsNullOrEmpty(arch)) return;
+        var book = FindBook(ch);
+        if (book == null) return;
+        if (!_kitBooks.TryGetValue(arch, out var kit))
+        {
+            kit = (0, 0);
+            int defIndex = ResolveCharDef(arch);
+            if (defIndex >= 0)
+            {
+                var standIn = CreateFromDef(defIndex);
+                try
+                {
+                    if (FindBook(standIn) is { } kitBook) kit = (kitBook.More1, kitBook.More2);
+                }
+                finally
+                {
+                    _world.DeleteObject(standIn);
+                }
+            }
+            _kitBooks[arch] = kit;
+        }
+        if ((book.More1 | kit.More1) == book.More1 && (book.More2 | kit.More2) == book.More2) return;
+        book.More1 |= kit.More1;
+        book.More2 |= kit.More2;
+        BooksRepaired++;
+    }
+
+    private readonly Dictionary<string, (uint More1, uint More2)> _kitBooks = new(StringComparer.OrdinalIgnoreCase);
+    public int BooksRepaired { get; private set; }
+
+    private Item? FindBook(Character ch)
+    {
+        foreach (var layer in new[] { Layer.OneHanded, Layer.TwoHanded })
+            if (ch.GetEquippedItem(layer) is { ItemType: ItemType.Spellbook } held) return held;
+        if (ch.Backpack == null) return null;
+        foreach (var item in _world.GetContainerContents(ch.Backpack.Uid))
+            if (!item.IsDeleted && item.ItemType == ItemType.Spellbook) return item;
+        return null;
     }
 
     /// <summary>Spawn one bot at a random town destination. Returns null when no
@@ -353,6 +404,9 @@ public sealed partial class PlayerBotEngine
         _world.AddOnlinePlayer(ch);
         _world.PlaceCharacter(ch, ch.Position);
         var mind = new BotMind(ch, _rng) { Client = CreateClient?.Invoke(ch) };
+        // What it is told ("you have no reagents", "that is too far away") goes in its trace.
+        if (mind.Client != null)
+            mind.Client.ServerDrivenSysMessage = text => mind.Note(NowMs(), "told: " + text);
         if (_minds.Remove(ch.Uid.Value, out var previous)) _order.Remove(previous);
         mind.Note(NowMs(), $"online at {ch.Position}");
         _minds[ch.Uid.Value] = mind;
@@ -378,6 +432,8 @@ public sealed partial class PlayerBotEngine
         mind.InviteFrom = null;
         mind.PendingTo = null;
         mind.PendingAction = null;
+        mind.Banker = null;
+        mind.Leader = null;
         if (mind.Client != null) DropClient?.Invoke(ch);
         ch.IsOnline = false;
         ch.IsPlayerBot = false;
@@ -426,6 +482,7 @@ public sealed partial class PlayerBotEngine
         RefreshAudience(now);
         TickScenes(now);
         SampleStalls(now);
+        SaveCorridorsIfDue(now);
         List<uint>? gone = null;
         // Decisions share a time budget per tick; bots due once it is spent wait for
         // the next tick (100 ms later, which nobody sees), and the next tick starts
@@ -469,6 +526,13 @@ public sealed partial class PlayerBotEngine
                     mind.Note(now, $"carried from {mind.LastPos} to {ch.Position}");
                     if (mind.Mode == BotMode.Travel && !ch.IsDead)
                         mind.BeginLinger(null, now, _rng, short_: true);
+                    // Its own recall: it is home, at the place it marked.
+                    if (now - mind.RecallSinceMs < 15_000 && !ch.IsDead)
+                    {
+                        mind.RecallSinceMs = 0;
+                        mind.BeginLinger(NearestPlace(ch.Position, 8), now, _rng, short_: true);
+                        mind.Note(now, "recalled home");
+                    }
                     mind.ResetLeg(now);
                 }
                 long a0 = Stopwatch.GetTimestamp();
@@ -560,6 +624,7 @@ public sealed partial class PlayerBotEngine
     private void MapRescue(BotMind mind, long now)
     {
         var ch = mind.Char;
+        if (TryRecallHome(mind, now, "a map with no roads")) return;
         var spot = HomeSpot(mind);
         WindowMapRescues++;
         _logger.LogInformation("[playerbots] {Name} on map {Map} with no roads; taken home to {Spot}", ch.Name,

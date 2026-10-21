@@ -63,13 +63,15 @@ public static partial class Program
         _deathEngine.OnDeath += engine.OnDeath;
         engine.BadSpotFile = Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "playerbots_badspots.txt");
         int badSpots = engine.LoadBadSpots();
+        engine.CorridorFile = Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "playerbots_corridors.txt");
+        int corridors = engine.LoadCorridors();
         int adopted = engine.AdoptSaved();
         _playerBots = engine;
         _log.LogInformation(
             "Player bots: {Nodes} waypoints ({Reseated} re-seated, {Dropped} dropped), {Dests} destinations, " +
-            "{Cats} chat categories ({Lang}; languages {Langs}), {Scenes} scenes, {BadSpots} known bad spots, adopted {Adopted} from the save, target {Target}",
+            "{Cats} chat categories ({Lang}; languages {Langs}), {Scenes} scenes, {BadSpots} known bad spots, {Corridors} kept ways, adopted {Adopted} from the save, target {Target}",
             nav.Waypoints.Count, nav.ReseatedNodes, nav.DroppedNodes, nav.Destinations.Count,
-            chat.CategoryCount, chat.Language, string.Join(",", chat.Languages), engine.Scenes.Scenes.Count, badSpots, adopted,
+            chat.CategoryCount, chat.Language, string.Join(",", chat.Languages), engine.Scenes.Scenes.Count, badSpots, corridors, adopted,
             engine.TargetCount);
         if (nav.Waypoints.Count == 0)
             _log.LogWarning("Player bots: no road network under {Dir}/nav - bots will stand where they spawn", dataDir);
@@ -93,7 +95,7 @@ public static partial class Program
                 "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} badlinks={BadLinks} searchtimeouts={Timeouts} " +
                 "searchq={Queued} denied={Denied} dropped={Dropped} notrun={NotRun} backlog={Backlog} corridors={Corridors} corridoruses={CorridorUses} cornersplits={CornerSplits} " +
                 "waits={Waits} sidesteps={SideSteps} doorway={Doorway} portals={Portals} portalmisses={PortalMisses} noroute={NoRoute} stranded={Stranded} maprescues={MapRescues} " +
-                "unreachable={Unreachable} giveups={GiveUps} faults={Faults} stalled [{Stalled}] refusals [{Refusals}]",
+                "unreachable={Unreachable} giveups={GiveUps} faults={Faults} staticdoors={StaticDoors} deposits={Deposits} withdrawals={Withdrawals} marks={Marks} (taken {MarksTaken}, failed {MarksFailed}) recalls={Recalls} companions={Companions} pauses={Pauses} stalled [{Stalled}] refusals [{Refusals}]",
                 bots.Count, bots.WindowTotalUs / bots.WindowTicks, bots.WindowMaxUs, bots.WindowDeferred,
                 bots.WindowSteps, bots.WindowSearches, bots.WindowFailedSearches, bots.WindowMaxSearchUs, bots.WindowDoors,
                 bots.WindowFights, bots.WindowDeaths, bots.WindowReclaims, bots.WindowHandBacks, bots.WindowRescues, bots.BadSpots, bots.WindowSlowestActUs, bots.WindowSlowestAct,
@@ -107,7 +109,9 @@ public static partial class Program
                 bots.CorridorCount, bots.WindowCorridorUses, bots.WindowCornerSplits,
                 bots.WindowMobileWaits, bots.WindowSideSteps, bots.WindowDoorwaySteps, bots.WindowPortalCrossings,
                 bots.WindowPortalMisses, bots.WindowNoRoute, bots.WindowStrandedRescues, bots.WindowMapRescues,
-                bots.WindowUnreachableFoes, bots.WindowGiveUps, bots.WindowActFaults, bots.StallReport(), bots.RefusalReport());
+                bots.WindowUnreachableFoes, bots.WindowGiveUps, bots.WindowActFaults, bots.WindowStaticDoors,
+                bots.WindowDeposits, bots.WindowWithdrawals, bots.WindowMarks, bots.WindowMarksTaken, bots.WindowMarksFailed, bots.WindowRecalls, bots.WindowCompanions,
+                bots.WindowPauses, bots.StallReport(), bots.RefusalReport());
         bots.ResetWindow();
     }
 

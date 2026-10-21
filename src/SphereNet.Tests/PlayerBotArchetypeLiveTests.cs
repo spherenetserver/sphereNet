@@ -104,6 +104,40 @@ public sealed class PlayerBotArchetypeLiveTests(ITestOutputHelper outp)
         }
     }
 
+    /// <summary>The mage kit's ADDCIRCLE 1..8 lines, after its ITEM=i_spellbook, fill the
+    /// book: every one of the 64 spells is in it (a bot can only cast what its book holds).</summary>
+    [Theory]
+    [InlineData("c_playerbot_mage_m")]
+    [InlineData("c_playerbot_mage_f")]
+    public void AMagesBookHoldsEveryCircle(string archetype)
+    {
+        string? pack = Pack();
+        if (Gate.Missing(outp, "external script pack", pack == null)) return;
+        var (world, dispatcher, resources) = Load(pack!);
+        try
+        {
+            var rid = resources.ResolveDefName(archetype);
+            var ch = world.CreateCharacter();
+            ch.CharDefIndex = rid.Index;
+            ch.BaseId = 0x190; ch.BodyId = 0x190;
+            world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+            dispatcher.FireNpcLoadScript(ch, restock: true);
+            var book = Enum.GetValues<Layer>().Select(ch.GetEquippedItem).OfType<Item>()
+                .Concat(world.GetContainerContents(ch.Backpack?.Uid ?? Serial.Invalid))
+                .FirstOrDefault(it => it.ItemType == ItemType.Spellbook);
+            Assert.NotNull(book);
+            var missing = Enumerable.Range(1, 64).Where(s => !book!.ContainsSpell(s)).ToList();
+            Assert.True(missing.Count == 0,
+                $"MORE1={book!.More1:X8} MORE2={book.More2:X8}; missing spells {string.Join(",", missing)}");
+        }
+        finally
+        {
+            ObjBase.ResolveWorld = null;
+            Item.ResolveWorld = null;
+            Item.ResolveDefName = null;
+        }
+    }
+
     /// <summary>Every item an archetype names is an ITEMDEF of the pack: one that is not
     /// is skipped without a word when the bot is made.</summary>
     [Fact]

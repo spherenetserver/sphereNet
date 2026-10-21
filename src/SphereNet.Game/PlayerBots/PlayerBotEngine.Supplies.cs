@@ -100,8 +100,15 @@ public sealed partial class PlayerBotEngine
         int dist = ch.Position.GetDistanceTo(corpse.Position);
         if (dist > 1)
         {
-            bool walked = StepToward(mind, corpse.Position, run: false);
-            mind.NextActMs = now + (walked ? MovementEngine.GetMoveDelay(ch.IsMounted, false) : 400);
+            bool walked = StepToward(mind, corpse.Position, run: false, searchWithin: 20);
+            if (mind.NoGainMs("loot", corpse.Position, dist, now) > 15_000)
+            {
+                WindowGiveUps++;
+                mind.Note(now, $"cannot get to the body at {corpse.Position}");
+                EndLoot(mind, now);
+                return;
+            }
+            mind.NextActMs = now + StepDelay(mind, walked, false, now);
             return;
         }
         if (!mind.LootOpened)
@@ -247,8 +254,16 @@ public sealed partial class PlayerBotEngine
         }
         if (ch.Position.GetDistanceTo(vendor.Position) > 2)
         {
-            bool walked = StepToward(mind, vendor.Position, run: false);
-            mind.NextActMs = now + (walked ? MovementEngine.GetMoveDelay(ch.IsMounted, false) : 400);
+            bool walked = StepToward(mind, vendor.Position, run: false, searchWithin: 20);
+            if (mind.NoGainMs("shop", vendor.Position, ch.Position.GetDistanceTo(vendor.Position), now) > 20_000)
+            {
+                // Behind a counter it cannot come round: no purchase this time.
+                WindowGiveUps++;
+                mind.Note(now, $"cannot get to {vendor.GetName()} at {vendor.Position}");
+                EndShopping(mind, now);
+                return;
+            }
+            mind.NextActMs = now + StepDelay(mind, walked, false, now);
             return;
         }
         if (!mind.ShopListOpen)

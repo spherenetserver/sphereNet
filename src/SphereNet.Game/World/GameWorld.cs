@@ -2011,7 +2011,7 @@ public sealed class GameWorld
     /// allocation under load. Reads sector lists by index, matching the
     /// parallel-compute-phase safety contract of <c>Sector.GetObjectsInRange</c>.</summary>
     public bool IsPathTileBlockedByObject(Point3D pos, CanFlags canFlags, Character? self,
-        bool ignoreChars = false)
+        bool ignoreChars = false, bool passClosedDoors = false, bool strictChars = false)
     {
         var (minSx, maxSx, minSy, maxSy) = GetSectorRange(pos, 0);
         for (int sx = minSx; sx <= maxSx; sx++)
@@ -2037,6 +2037,10 @@ public sealed class GameWorld
                         // the ones it could not push block the route.
                         if (ch == self || (ch.IsDead && !ch.IsPlayer)) continue;
                         if (!AI.NpcAI.SharesHeightWith(ch, pos.Z)) continue;
+                        // A route round a crowd: anybody living and seen in the way counts.
+                        if (strictChars && !ch.IsDead && !ch.IsStatFlag(StatFlag.Ridden) &&
+                            !ch.IsStatFlag(StatFlag.Insubstantial))
+                            return true;
                         if (Movement.WalkCheck.CanMoveOver(self, ch)) continue;
                         return true;
                     }
@@ -2055,8 +2059,9 @@ public sealed class GameWorld
             {
                 if (item.IsDeleted || !item.IsOnGround || pos.GetDistanceTo(item.Position) > 0) continue;
                 bool passWalls = (canFlags & CanFlags.C_PassWalls) != 0;
-                bool passDoor = ((canFlags & CanFlags.C_Ghost) != 0 || self?.IsDead == true) &&
-                    (item.ItemType is ItemType.Door or ItemType.DoorLocked or ItemType.DoorOpen);
+                bool passDoor = (((canFlags & CanFlags.C_Ghost) != 0 || self?.IsDead == true) &&
+                    (item.ItemType is ItemType.Door or ItemType.DoorLocked or ItemType.DoorOpen)) ||
+                    (passClosedDoors && item.ItemType == ItemType.Door);
                 if (!passWalls && !passDoor && item.IsStaticBlock && AI.NpcAI.BlocksAtHeight(item, pos.Z)) return true;
                 if ((canFlags & CanFlags.C_FireImmune) == 0 && item.TryGetTag("FIELD_DAMAGE", out _))
                     return true;

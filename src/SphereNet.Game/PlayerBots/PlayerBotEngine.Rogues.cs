@@ -124,8 +124,15 @@ public sealed partial class PlayerBotEngine
         }
         if (ch.Position.GetDistanceTo(mark.Position) > 1)
         {
-            bool walked = StepToward(mind, mark.Position, run: false);
-            mind.NextActMs = now + (walked ? MovementEngine.GetMoveDelay(ch.IsMounted, false) : 400);
+            bool walked = StepToward(mind, mark.Position, run: false, searchWithin: 14);
+            if (mind.NoGainMs("mark", mark.Position, ch.Position.GetDistanceTo(mark.Position), now) > 10_000)
+            {
+                WindowGiveUps++;
+                mind.Note(now, $"cannot get to {mark.GetName()}; lets the mark go");
+                EndTheft(mind, now);
+                return true;
+            }
+            mind.NextActMs = now + StepDelay(mind, walked, false, now);
             return true;
         }
         var pack = mark.Backpack;

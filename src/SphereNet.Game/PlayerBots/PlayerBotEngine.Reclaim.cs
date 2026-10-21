@@ -90,7 +90,16 @@ public sealed partial class PlayerBotEngine
         if (dist > 2)
         {
             bool walked = StepToward(mind, corpse.Position, run: true);
-            mind.NextActMs = now + (walked ? Movement.MovementEngine.GetMoveDelay(ch.IsMounted, true) : 400);
+            // A body it cannot get to (behind a wall, across water): what is left on
+            // it is handed back rather than lost.
+            if (mind.NoGainMs("corpse", corpse.Position, dist, now) > 60_000)
+            {
+                WindowGiveUps++;
+                mind.Note(now, $"cannot get to its body at {corpse.Position}");
+                FinishReclaim(mind, now, gotAll: false);
+                return;
+            }
+            mind.NextActMs = now + StepDelay(mind, walked, true, now);
             return;
         }
 
@@ -189,6 +198,10 @@ public sealed partial class PlayerBotEngine
             gotAll ? "done" : "gave up", mind.Char.Position);
         if (gotAll) WindowReclaims++;
         if (gotAll && _rng.Next(100) < 50) Speak(mind, "death_reclaim", fallback: null);
+        // Given up with things still on the body: handed back, not left to rot.
+        if (!gotAll && mind.CorpseUid.IsValid && _world.FindItem(mind.CorpseUid) is { } left &&
+            IsOwnCorpse(left, mind.Char) && left.Contents.Any(i => !i.IsDeleted && !i.TryGetTag("CORPSE_HAIR", out _)))
+            HandBack(mind, left);
         mind.CorpseUid = Serial.Invalid;
         mind.Char.RemoveTag(CorpseTag);
         mind.ReclaimSkipped.Clear();

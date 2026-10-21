@@ -52,6 +52,7 @@ public static partial class Program
             NamePrefix = _config.PlayerBotNamePrefix,
             PkPercent = _config.PlayerBotPkPercent,
             ThiefPercent = _config.PlayerBotThiefPercent,
+            SearchesPerTick = _config.PlayerBotPathSearchesPerTick,
             ResRobeName = SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.SpellResRobename),
         };
         engine.LoadArchetypes(dataDir);
@@ -89,7 +90,10 @@ public static partial class Program
                 "[playerbots] online={Count} tick avg={Avg}us max={Max}us deferred={Deferred} steps={Steps} " +
                 "searches={Searches} (failed {Failed}, slowest {SlowSearch}us) doors={Doors} fights={Fights} deaths={Deaths} reclaims={Reclaims} handbacks={HandBacks} rescues={Rescues} badspots={BadSpots} slowest act {SlowAct}us ({SlowWhat}) route {Route}us step {Step}us spawn {Spawn}us moves {Moves} avg {MoveAvg}us max {MoveMax}us at {MoveWhere} " +
                 "watchers={Watchers} seen avg={SeenAvg} max={SeenMax} lines={Lines} replies={Replies} scenes={Scenes} moved={Moved} mounts={Mounts} regears={Regears} robes={Robes} stalldoors={StallDoors} spotswitches={SpotSwitches} stallsearches={StallSearches} " +
-                "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} badlinks={BadLinks} searchtimeouts={Timeouts}",
+                "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} badlinks={BadLinks} searchtimeouts={Timeouts} " +
+                "searchq={Queued} denied={Denied} dropped={Dropped} notrun={NotRun} backlog={Backlog} corridors={Corridors} corridoruses={CorridorUses} cornersplits={CornerSplits} " +
+                "waits={Waits} sidesteps={SideSteps} doorway={Doorway} portals={Portals} portalmisses={PortalMisses} noroute={NoRoute} stranded={Stranded} maprescues={MapRescues} " +
+                "unreachable={Unreachable} giveups={GiveUps} faults={Faults} stalled [{Stalled}] refusals [{Refusals}]",
                 bots.Count, bots.WindowTotalUs / bots.WindowTicks, bots.WindowMaxUs, bots.WindowDeferred,
                 bots.WindowSteps, bots.WindowSearches, bots.WindowFailedSearches, bots.WindowMaxSearchUs, bots.WindowDoors,
                 bots.WindowFights, bots.WindowDeaths, bots.WindowReclaims, bots.WindowHandBacks, bots.WindowRescues, bots.BadSpots, bots.WindowSlowestActUs, bots.WindowSlowestAct,
@@ -98,7 +102,12 @@ public static partial class Program
                 bots.Watching.Count, bots.WindowSeenSamples > 0 ? (bots.WindowSeenSum * 10 / bots.WindowSeenSamples) / 10.0 : 0,
                 bots.WindowSeenMax, bots.WindowLines, bots.WindowReplies, bots.WindowScenes, bots.WindowMovedHouse, bots.WindowMounts, bots.WindowRegears, bots.WindowRobesShed, bots.WindowStallDoors, bots.WindowSpotSwitches, bots.WindowStallSearches,
                 bots.WindowPurchases, bots.WindowMeditations, bots.WindowPkAttacks, bots.WindowThefts, bots.BadLinks,
-                bots.SearchTimeouts);
+                bots.SearchTimeouts,
+                bots.WindowSearchQueued, bots.WindowSearchDenied, bots.WindowSearchDropped, bots.WindowSearchesNotRun, bots.WindowSearchBacklog,
+                bots.CorridorCount, bots.WindowCorridorUses, bots.WindowCornerSplits,
+                bots.WindowMobileWaits, bots.WindowSideSteps, bots.WindowDoorwaySteps, bots.WindowPortalCrossings,
+                bots.WindowPortalMisses, bots.WindowNoRoute, bots.WindowStrandedRescues, bots.WindowMapRescues,
+                bots.WindowUnreachableFoes, bots.WindowGiveUps, bots.WindowActFaults, bots.StallReport(), bots.RefusalReport());
         bots.ResetWindow();
     }
 
@@ -112,6 +121,56 @@ public static partial class Program
         client.AttachServerDriven(bot);
         _clientsByCharUid[bot.Uid] = client;
         return client;
+    }
+
+    /// <summary>Console PLAYERBOTS: STALLS [n] lists the bots stalled longest, TRACE
+    /// &lt;uid|name&gt; one bot's last decisions, NAVCHECK [LINKS [LEARN]] the road data
+    /// against the running world. Runs on the main loop (it reads bot state).</summary>
+    private static void HandlePlayerBotsCommand(string args, Action<string> output)
+    {
+        var bots = _playerBots;
+        if (bots == null)
+        {
+            output("Player bots are off (PlayerBots=0).");
+            return;
+        }
+        var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string sub = parts.Length > 0 ? parts[0].ToUpperInvariant() : "";
+        IReadOnlyList<string> lines;
+        switch (sub)
+        {
+            case "STALLS":
+                lines = bots.ListStalls(parts.Length > 1 && int.TryParse(parts[1], out int n) ? n : 20);
+                break;
+            case "TRACE" when parts.Length > 1:
+                lines = bots.TraceOf(string.Join(' ', parts.Skip(1)));
+                break;
+            case "NAVCHECK":
+            {
+                bool links = parts.Any(p => p.Equals("LINKS", StringComparison.OrdinalIgnoreCase));
+                bool learn = parts.Any(p => p.Equals("LEARN", StringComparison.OrdinalIgnoreCase));
+                lines = bots.NavCheck(links, learn);
+                // The full list goes to a file beside the bad-spot file; the console
+                // gets the head of it.
+                if (bots.BadSpotFile is { } badSpots)
+                {
+                    string report = Path.Combine(Path.GetDirectoryName(badSpots) ?? ".", "playerbots_navcheck.txt");
+                    try
+                    {
+                        File.WriteAllLines(report, lines);
+                        output($"Full report: {report}");
+                    }
+                    catch (IOException ex) { output($"Could not write {report}: {ex.Message}"); }
+                }
+                lines = lines.Take(40).ToList();
+                break;
+            }
+            default:
+                output("PLAYERBOTS STALLS [n] | PLAYERBOTS TRACE <uid|name> | PLAYERBOTS NAVCHECK [LINKS [LEARN]]");
+                output($"online {bots.Count}, portals {bots.PortalPlaces} (+{bots.PortallessPlaces} without), corridors {bots.CorridorCount}, rescues {bots.StuckRescues}, stranded {bots.StrandedRescues}");
+                return;
+        }
+        foreach (string line in lines) output(line);
     }
 
     private static void PlayerBotSay(Character bot, string line)

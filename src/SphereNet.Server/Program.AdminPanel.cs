@@ -185,6 +185,7 @@ public static partial class Program
             // which is the thread that records into the window).
             _consoleProcessor.OnPerfRequested += HandlePerfCommand;
             _consoleProcessor.OnScenarioRequested += HandleScenarioCommand;
+            _consoleProcessor.OnPlayerBotsRequested += HandlePlayerBotsCommand;
             _consoleProcessor.Profiler = _triggerRunner?.Profiler;
             // Global RESPAWN/RESTOCK — run on the main loop (they mutate world state).
             _consoleProcessor.OnRespawnRequested += RequestRespawnOnMainLoop;
@@ -696,7 +697,8 @@ public static partial class Program
                 (int)ch.PrivLevel,
                 "bot",
                 0,
-                IsBot: true));
+                IsBot: true,
+                BotActivity: _playerBots?.ActivityOf(ch) ?? ""));
         }
         return list;
     }

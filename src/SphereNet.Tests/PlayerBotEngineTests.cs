@@ -677,8 +677,9 @@ public sealed class PlayerBotEngineTests : IDisposable
             now += 100;
             widest = Math.Max(widest, Math.Abs(bot.Y - 100));
         }
-        Assert.Equal(new Point3D(111, 100, 0, 0), bot.Position);
-        Assert.Equal(0, engine.StuckRescues);
+        string trace = string.Join(Environment.NewLine, engine.TraceOf(bot.Uid.Value.ToString()));
+        Assert.True(new Point3D(111, 100, 0, 0) == bot.Position, $"bot at {bot.Position}{Environment.NewLine}{trace}");
+        Assert.True(engine.StuckRescues == 0, $"rescued {engine.StuckRescues}{Environment.NewLine}{trace}");
         Assert.True(widest >= 7, $"never went round the wall's end (widest {widest})");
     }
 

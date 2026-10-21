@@ -255,6 +255,13 @@ Percent of the other bots that are thieves, decided once per bot. A thief works 
 - **Type:** integer (0-100)
 - **Default:** `5`
 
+### PLAYERBOTPATHSEARCHESPERTICK
+
+Tile path searches run per tick for player bots, all bots together. A bot that walks into a wall or a crowd asks for one; the requests of one tick run together in the next tick's parallel phase (beside the creature path searches) and the paths are handed back before the bots act; one search may take 5 ms and the batch 6 ms of the phase. A search that failed waits 3, 10, then 20 seconds before the same bot may ask again. `0` leaves bots walking walls by hand (no searches).
+
+- **Type:** integer (0-256)
+- **Default:** `16`
+
 ### MULTICOREDETERMINISMDEBUG
 
 Determinism check mode: a SHA-256 hash of the world is computed and logged at the end of each tick (first 2000 ticks).

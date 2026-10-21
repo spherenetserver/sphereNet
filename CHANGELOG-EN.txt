@@ -4,6 +4,76 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-21] - Player bots: searches off the act, obstacle kinds, portals, give-ups
+------------------------------------------------------------------------
+FIX - Bot tile searches could hardly ever run: the per-tick allowance was one search with a
+      3 ms deadline counted from the start of the bot pass, so once spawning, the audience
+      pass and earlier bots had spent it no bot further down the list got one, and a bot
+      walked a wall's edge until the one-minute rescue lifted it. Requests are now gathered
+      at the end of a tick and run together (PlayerBotPathSearchesPerTick, 16) in the next
+      tick's parallel phase beside the creature path prestage, under the same read-only
+      rules (5 ms a search, 6 ms the batch); the paths are handed back before the bots act.
+      A failed search backs off 3, 10, then 20 s per bot. Pathfinder checks a search
+      deadline every 8 opened nodes instead of 32 (a 32-node stride overran a few-ms
+      deadline by up to 40 ms on busy tiles). Pathfinder.FindPath takes PathOptions: OpenDoors (a shut, unlocked
+      door is a way through) and AvoidChars (anybody standing on a tile blocks it); creature
+      searches are unchanged.
+FIX - A refused step was always taken for a wall: a bot stopped by somebody in a doorway
+      started walking round the building. The refusal reason now decides: somebody on the
+      tile is waited for (three short waits), then stepped round, then searched round with
+      AvoidChars; out of stamina or frozen waits; only a static refusal starts the edge walk
+      and asks for a search. A refused diagonal path step round a corner (the search's
+      pathfinding step allows it, the walk step does not) is taken as two straight steps.
+FIX - A bot's own step that carried it off (a dungeon entrance teleporter) went unnoticed:
+      the position check ran before the act and LastPos was taken after it, so the bot kept
+      walking toward the entrance tile from inside the dungeon until the rescue lifted it
+      back out. The step now flags the carry and the trip is ended after the act.
+FIX - Portal trips (dungeon entrances, stairs, moongates) ended short of the portal tile (the
+      last leg accepted one tile short when the tile was taken and three short after a
+      4 s stall) and the arrival only lingered, so bots stood at dungeon mouths without
+      entering. Portal tiles are looked up in the running world ([TELEPORTERS], gate and
+      telepad items within three tiles, filtered by the data's TargetX/Y); the last leg
+      steps onto a tile, swaps a taken tile for a free one of the same portal, retries the
+      other tiles, and the crossing ends the trip on the far side with the dungeon run
+      started there. Tiles next to the landing are stepped round for three minutes. Stairs
+      the world does not have are never chosen (a moongate or dungeon mouth without one is
+      still visited as a place); teleporters to a map the road
+      network does not cover are never stepped on, and a bot on such a map is taken home.
+FIX - A fighter picked monsters it could not see (behind a fence or a wall) and chased them
+      until the 180 s fight cap, then picked the same one again. Prey needs line of sight;
+      a foe the bot never stands in reach of for 20 s is given up and left alone for five
+      minutes, and one attacking from out of reach is run from. A lingering bot that is
+      struck acts on it at once.
+FIX - Walks other than trips had no stall limit: walking back to its own horse and a thief
+      walking to its mark could hold a bot for ever, a corpse run ground for 15 minutes and
+      then left the gear on the body. Each walk gives up when it makes no ground (horse 15 s,
+      mark 10 s, kill's body 15 s, vendor 20 s, own corpse 60 s with the gear handed back,
+      party leader 30 s); a bot on a trip no longer turns back for its horse; a stale fight
+      target that made mounting refuse is cleared.
+FIX - A bot with no road node within 64 tiles (a roof, a bridge, a gate's landing) chose a
+      trip, found no route and lingered, forever. It now walks back to the nearest node
+      within 128 tiles on any nearby floor, and is lifted onto the road after three failures
+      or five minutes (onto its home bank after five). Node lookups compare the map.
+FIX - The leg's one-minute rescue clock restarted on every tile gained, so an edge walk that
+      inched closer could hold it off indefinitely; only a real gain (any while walking
+      straight, three tiles while walking a wall) restarts it, and a leg is capped at 90 s
+      plus 0.8 s per tile. Arrival on the target tile no longer needs the recorded Z. A
+      rescue within three tiles of the target now teaches the spot or link when a wall,
+      not a person, stopped the bot.
+NEW - Road-link corridors: a path found along a link is kept and the next bot stopped on
+      that link joins it without a search of its own; a refused kept path is forgotten.
+NEW - Console PLAYERBOTS STALLS / TRACE / NAVCHECK [LINKS [LEARN]]: the bots stalled longest
+      with their last refusal and path state, one bot's last 32 decisions, and the road data
+      checked against the running world (portals, and a search along every link and spot).
+      The 30 s [playerbots] line adds search, corridor, wait, portal, stranded, give-up and
+      fault counters, stalled bots by mode and step refusal reasons. The panel's Players
+      page shows what each bot is doing (PlayerInfo.BotActivity).
+NEW - Bots linger livelier while watched (a step every 3-8 s, one stay extension instead of
+      three), step out of doorways, meditate only at a stop, say a "blocked" line now and
+      then when kept waiting, and an act that throws three times in a row resets the bot's
+      plans. Spawn spacing widens to 1 s with many players on; surplus bots released are the
+      unseen idle ones.
+
 [2026-10-19] - Server throughput with a thousand clients
 ------------------------------------------------------------------------
 FIX - Character.PrivLevel resolved the account on every read, and for a character with no

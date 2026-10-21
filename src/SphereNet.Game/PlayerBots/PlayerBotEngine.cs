@@ -72,22 +72,9 @@ public sealed partial class PlayerBotEngine
     public int ChatPaceSeconds { get; set; } = 30;
     public int TargetCount { get; set; }
 
-    /// <summary>Tile path searches allowed per tick across every bot, and the time
-    /// they may take together. A bot walks straight at its next waypoint and only
-    /// searches when that is blocked, so most ticks search nothing.</summary>
-    // One search per tick on the terrain-only rule (see StepToward).
-    public int PathSearchesPerTick { get; set; } = 1;
-    public double PathSearchBudgetMs { get; set; } = 3.0;
-    public int PathSearchMaxNodes { get; set; } = 300;
     /// <summary>Stalled legs sent to open a door near by, and last legs moved to
     /// another stopping spot.</summary>
     public long WindowStallDoors { get; private set; }
-    /// <summary>A stalled leg this near its end gets a tile search of at most this
-    /// many nodes and milliseconds.</summary>
-    public int StallSearchRange { get; set; } = 40;
-    public int StallSearchMaxNodes { get; set; } = 800;
-    public double StallSearchMs { get; set; } = 4.0;
-    public long WindowStallSearches { get; private set; }
     /// <summary>Tile searches given up at their deadline, since start.</summary>
     public long SearchTimeouts => _pathfinder.TimedOut;
     public long WindowSpotSwitches { get; private set; }
@@ -206,6 +193,11 @@ public sealed partial class PlayerBotEngine
     public void ResetWindow()
     {
         WindowLines = WindowReplies = WindowScenes = WindowSeenSum = WindowSeenSamples = WindowMovedHouse = WindowMounts = WindowRegears = WindowRobesShed = WindowStallDoors = WindowSpotSwitches = WindowStallSearches = 0;
+        WindowSearchQueued = WindowSearchDenied = WindowSearchDropped = WindowCorridorUses = WindowCornerSplits = WindowSearchesNotRun = 0;
+        WindowSearchBacklog = 0;
+        WindowMobileWaits = WindowSideSteps = WindowDoorwaySteps = WindowNoRoute = WindowStrandedRescues = WindowMapRescues = 0;
+        WindowPortalCrossings = WindowPortalMisses = WindowUnreachableFoes = WindowGiveUps = WindowActFaults = 0;
+        ResetDiagnosticsWindow();
         WindowPurchases = WindowMeditations = WindowPkAttacks = WindowThefts = 0;
         WindowSeenMax = 0;
         WindowTicks = WindowTotalUs = WindowMaxUs = WindowSearches = WindowSteps = WindowFights = 0;
@@ -215,9 +207,6 @@ public sealed partial class PlayerBotEngine
         WindowMaxMoveWhere = "";
         WindowSlowestAct = "";
     }
-
-    private int _searchesLeft;
-    private long _searchDeadline;
 
     public PlayerBotEngine(GameWorld world, MovementEngine movement, ResourceHolder? resources,
         BotNavGraph nav, BotChatBook chat, ILogger logger, int seed = 0)
@@ -365,6 +354,7 @@ public sealed partial class PlayerBotEngine
         _world.PlaceCharacter(ch, ch.Position);
         var mind = new BotMind(ch, _rng) { Client = CreateClient?.Invoke(ch) };
         if (_minds.Remove(ch.Uid.Value, out var previous)) _order.Remove(previous);
+        mind.Note(NowMs(), $"online at {ch.Position}");
         _minds[ch.Uid.Value] = mind;
         _order.Add(mind);
         OnAppeared?.Invoke(ch);
@@ -376,7 +366,18 @@ public sealed partial class PlayerBotEngine
     {
         if (!_minds.Remove(ch.Uid.Value, out var mind)) return;
         _order.Remove(mind);
+        _wantSearch.Remove(mind);
         if (mind.Scene != null) EndScene(mind.Scene);
+        // Let go of every other character and item it was holding on to.
+        mind.Foe = null;
+        mind.Mark = null;
+        mind.ShopVendor = null;
+        mind.LootCorpse = null;
+        mind.DoorTarget = null;
+        mind.DoorScan = null;
+        mind.InviteFrom = null;
+        mind.PendingTo = null;
+        mind.PendingAction = null;
         if (mind.Client != null) DropClient?.Invoke(ch);
         ch.IsOnline = false;
         ch.IsPlayerBot = false;
@@ -388,8 +389,9 @@ public sealed partial class PlayerBotEngine
     {
         if (now < _nextPopulationCheckMs) return;
         // One new bot at a time: its @Create runs the pack's script, which is the
-        // costliest thing a bot ever does. Arrivals are spread out like logins are.
-        _nextPopulationCheckMs = now + 400;
+        // costliest thing a bot ever does. Arrivals are spread out like logins are,
+        // further apart while many players are on.
+        _nextPopulationCheckMs = now + (_watching.Count > 20 ? 1000 : 400);
         int missing = TargetCount - _minds.Count;
         if (missing > 0)
         {
@@ -400,7 +402,11 @@ public sealed partial class PlayerBotEngine
         }
         if (missing < 0)
         {
-            foreach (var mind in _minds.Values.Take(Math.Min(-missing, 5)).ToList())
+            // Those nobody sees go first, idle ones before busy ones.
+            foreach (var mind in _order
+                         .OrderBy(m => IsWatched(m.Char.Position) ? 1 : 0)
+                         .ThenBy(m => m.Mode == BotMode.Linger && m.Scene == null ? 0 : 1)
+                         .Take(Math.Min(-missing, 5)).ToList())
                 Release(mind.Char);
         }
     }
@@ -413,11 +419,13 @@ public sealed partial class PlayerBotEngine
     {
         long t0 = Stopwatch.GetTimestamp();
         _nowMs = now;
+        if (!_portalsResolved) ResolvePortals();
+        // Last tick's searches, run since (in the host's parallel phase, or here).
+        ApplySearches(now);
         KeepPopulation(now);
         RefreshAudience(now);
         TickScenes(now);
-        _searchesLeft = PathSearchesPerTick;
-        _searchDeadline = t0 + (long)(PathSearchBudgetMs * Stopwatch.Frequency / 1000.0);
+        SampleStalls(now);
         List<uint>? gone = null;
         // Decisions share a time budget per tick; bots due once it is spent wait for
         // the next tick (100 ms later, which nobody sees), and the next tick starts
@@ -444,24 +452,40 @@ public sealed partial class PlayerBotEngine
                 mind.Client?.TickClientState();
                 if (mind.PendingCategory != null)
                     SayPending(mind, now);
+                // Struck while idling: it turns on the attacker now, not at its next act.
+                if (now < mind.NextActMs && mind.Mode == BotMode.Linger && now >= mind.NextScanMs &&
+                    !ch.IsDead && ch.Attackers.Count > 0)
+                    mind.NextActMs = now;
                 if (now < mind.NextActMs) continue;
                 if (budgetSpent)
                 {
                     WindowDeferred++;
                     continue;
                 }
-                // Moved far without walking there: a gate, a teleporter or a
-                // script carried it. Plan again from wherever it is now.
+                // Moved far without walking there: a script or staff carried it.
+                // Plan again from wherever it is now.
                 if (mind.LastPos.Map != ch.Position.Map || mind.LastPos.GetDistanceTo(ch.Position) > 12)
                 {
+                    mind.Note(now, $"carried from {mind.LastPos} to {ch.Position}");
                     if (mind.Mode == BotMode.Travel && !ch.IsDead)
                         mind.BeginLinger(null, now, _rng, short_: true);
                     mind.ResetLeg(now);
                 }
                 long a0 = Stopwatch.GetTimestamp();
                 BotMode before = mind.Mode;
-                Act(mind, now);
+                // On a map the roads do not cover (a gate took it there): home.
+                if (!ch.IsDead && Nav.Waypoints.Count > 0 && !Nav.HasMap(ch.MapIndex))
+                    MapRescue(mind, now);
+                else
+                    Act(mind, now);
+                // Its own step carried it off (a teleporter, a gate).
+                if (mind.Carried)
+                {
+                    mind.Carried = false;
+                    OnCarried(mind, now);
+                }
                 mind.LastPos = ch.Position;
+                mind.ActFaults = 0;
                 last = Stopwatch.GetTimestamp();
                 long actUs = (last - a0) * 1_000_000 / Stopwatch.Frequency;
                 if (actUs > WindowSlowestActUs)
@@ -477,18 +501,73 @@ public sealed partial class PlayerBotEngine
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[playerbots] {Name} act failed", ch.Name);
+                WindowActFaults++;
+                mind.Carried = false;
+                mind.LastPos = ch.Position;
+                if (++mind.ActFaults >= 3)
+                {
+                    // The same act keeps throwing: whatever it was doing is dropped.
+                    _logger.LogWarning(ex, "[playerbots] {Name} act failed {Count} times in a row; its plans are reset", ch.Name, mind.ActFaults);
+                    mind.Note(now, $"act failed {mind.ActFaults} times; plans reset ({ex.GetType().Name})");
+                    ResetMind(mind, now);
+                }
+                else
+                {
+                    _logger.LogWarning(ex, "[playerbots] {Name} act failed", ch.Name);
+                    mind.Note(now, $"act failed ({ex.GetType().Name}: {ex.Message})");
+                }
                 mind.NextActMs = now + 5000;
             }
         }
         if (gone != null)
             foreach (uint uid in gone)
-                if (_minds.Remove(uid, out var dead)) _order.Remove(dead);
+                if (_minds.Remove(uid, out var dead))
+                {
+                    _order.Remove(dead);
+                    _wantSearch.Remove(dead);
+                }
+        // This tick's search requests, for the next parallel phase.
+        CollectSearches();
 
         long us = (Stopwatch.GetTimestamp() - t0) * 1_000_000 / Stopwatch.Frequency;
         WindowTicks++;
         WindowTotalUs += us;
         if (us > WindowMaxUs) WindowMaxUs = us;
+    }
+
+    /// <summary>Drop every plan the bot had and start over idle where it stands.</summary>
+    private void ResetMind(BotMind mind, long now)
+    {
+        mind.ActFaults = 0;
+        if (mind.Scene != null) EndScene(mind.Scene);
+        mind.EndFightState();
+        mind.Mark = null;
+        mind.ShopVendor = null;
+        mind.ShoppingFor = null;
+        mind.LootCorpse = null;
+        mind.DoorTarget = null;
+        mind.FollowSide = 0;
+        if (!mind.Char.IsDead)
+            mind.BeginLinger(null, now, _rng, short_: true);
+        mind.ResetLeg(now);
+    }
+
+    public long WindowMapRescues { get; private set; }
+    public long WindowActFaults { get; private set; }
+
+    /// <summary>A bot on a map with no roads (a gate or a teleporter took it there):
+    /// it is taken home, as a stuck bot is.</summary>
+    private void MapRescue(BotMind mind, long now)
+    {
+        var ch = mind.Char;
+        var spot = HomeSpot(mind);
+        WindowMapRescues++;
+        _logger.LogInformation("[playerbots] {Name} on map {Map} with no roads; taken home to {Spot}", ch.Name,
+            ch.MapIndex, spot?.ToString() ?? "nowhere");
+        mind.Note(now, $"on map {ch.MapIndex} with no roads; taken home");
+        if (spot is { } where) Teleport(ch, where);
+        ResetMind(mind, now);
+        mind.NextActMs = now + 1000;
     }
 
     private void Act(BotMind mind, long now)
@@ -515,7 +594,8 @@ public sealed partial class PlayerBotEngine
                 mind.NextActMs = now + 600;
                 return;
             }
-            if (mind.Scene == null && TryMeditate(mind, now))
+            // Meditation is a rest at a stop, not a halt on the road.
+            if (mind.Mode == BotMode.Linger && mind.Scene == null && TryMeditate(mind, now))
                 return;
         }
         if (mind.Mode == BotMode.Linger && mind.Scene == null && ActThief(mind, now))

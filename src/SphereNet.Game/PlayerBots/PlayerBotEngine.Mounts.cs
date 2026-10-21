@@ -64,20 +64,42 @@ public sealed partial class PlayerBotEngine
             mind.Scene != null || !IsRider(mind))
             return false;
 
+        // A fight that is over leaves no target behind: mounting refuses a rider
+        // with one (Horse_Mount), and the bot would click its horse for ever.
+        if (ch.FightTarget.IsValid)
+            ch.FightTarget = Serial.Invalid;
+
         if (OwnMount(mind) is { } horse)
         {
             int d = ch.Position.GetDistanceTo(horse.Position);
             if (d <= 1)
             {
                 mind.Client.HandleDoubleClick(horse.Uid.Value);
-                if (ch.IsMounted) mind.ResetLeg(now);
-                return true;
+                if (ch.IsMounted)
+                {
+                    mind.MountTries = 0;
+                    mind.ResetLeg(now);
+                    return true;
+                }
+                // Refused (a low ceiling, a script): a few tries, then it is left.
+                if (++mind.MountTries < 3) return true;
+                AbandonMount(mind, horse, now, "would not be mounted");
+                return false;
             }
+            // Walking back to it is for a bot at leisure; one on its way somewhere
+            // goes on and finds it, or another, when it stops.
+            if (d <= 20 && mind.Mode != BotMode.Linger)
+                return false;
             if (d <= 20)
             {
-                bool stepped = StepToward(mind, horse.Position, run: true);
+                bool stepped = StepToward(mind, horse.Position, run: true, searchWithin: 24);
+                if (mind.NoGainMs("mount", horse.Position, ch.Position.GetDistanceTo(horse.Position), now) > 15_000)
+                {
+                    AbandonMount(mind, horse, now, "cannot be reached");
+                    return false;
+                }
                 mind.NextMountCheckMs = now + 300;
-                mind.NextActMs = now + (stepped ? MovementEngine.GetMoveDelay(false, true) : 400);
+                mind.NextActMs = now + StepDelay(mind, stepped, true, now);
                 return true;
             }
             // Too far to go back for: it is left to its fate.
@@ -87,6 +109,18 @@ public sealed partial class PlayerBotEngine
 
         if (_world.FindRegion(ch.Position)?.IsGuarded != true) return false;
         return GiveMount(mind, now);
+    }
+
+    /// <summary>Leave its creature (out of reach, or it will not be ridden) and try for
+    /// another in a minute.</summary>
+    private void AbandonMount(BotMind mind, Character horse, long now, string why)
+    {
+        WindowGiveUps++;
+        mind.Note(now, $"leaves its mount at {horse.Position}: {why}");
+        _world.DeleteObject(horse);
+        mind.Char.RemoveTag(MountTag);
+        mind.MountTries = 0;
+        mind.NextMountCheckMs = now + 60_000;
     }
 
     /// <summary>The creature this bot owns and rode, standing about unridden.</summary>

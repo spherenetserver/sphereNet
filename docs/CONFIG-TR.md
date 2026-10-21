@@ -254,6 +254,13 @@ Diğer botların hırsız olanlarının yüzdesi; her bot için bir kez belirlen
 - **Tür:** integer (0-100)
 - **Varsayılan:** `5`
 
+### PLAYERBOTPATHSEARCHESPERTICK
+
+Oyuncu botları için tick başına çalışan karo yol araması sayısı, tüm botlar toplamı. Duvara ya da kalabalığa takılan bot bir arama ister; bir tick'in istekleri sonraki tick'in paralel fazında (yaratık yol aramalarının yanında) birlikte koşar ve yollar botlar karar vermeden önce teslim edilir; tek arama 5 ms, toplu iş fazın 6 ms'sini kullanabilir. Başarısız arama, aynı botun yeniden isteyebilmesi için 3, 10, sonra 20 saniye bekler. `0` aramayı kapatır (botlar duvarı elle dolanır).
+
+- **Tür:** integer (0-256)
+- **Varsayılan:** `16`
+
 ### MULTICOREDETERMINISMDEBUG
 
 Determinizm doğrulama modu: her tick sonunda dünyanın SHA-256 hash'i hesaplanıp loglanır (ilk 2000 tick).

@@ -103,6 +103,8 @@ export interface PlayerInfo {
   sessionSeconds: number
   /** A player bot the server plays: no connection (ip empty, clientVersion "bot"). */
   isBot?: boolean
+  /** For a bot: what it is doing, and how long it has been stalled if it is. */
+  botActivity?: string
 }
 
 export type PlayerActionName =

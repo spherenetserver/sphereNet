@@ -3,6 +3,21 @@ using SphereNet.Core.Types;
 
 namespace SphereNet.Game.Movement;
 
+/// <summary>How a tile search treats what stands in the way. The defaults are the
+/// creature rules (CPathFinder); the options are for a walker that acts like a
+/// player.</summary>
+[Flags]
+public enum PathOptions
+{
+    None = 0,
+    /// <summary>A closed door that is not locked is a way through (the walker opens
+    /// it on reaching it), at a small extra cost.</summary>
+    OpenDoors = 1,
+    /// <summary>Anybody standing on a tile blocks it, even someone the walker could
+    /// push past: the route goes round a crowd instead of into it.</summary>
+    AvoidChars = 2,
+}
+
 /// <summary>
 /// A* pathfinding for NPC movement. Grid-based 3D pathfinding.
 /// Maps to NPC_AI_PATH logic in Source-X.
@@ -41,15 +56,17 @@ public sealed class Pathfinder
     /// enclosed space exhausts the box instead of the full node budget.
     /// </summary>
     /// <param name="deadline">A <see cref="System.Diagnostics.Stopwatch"/> timestamp after
-    /// which the search gives up (checked every 32 opened nodes); 0 for none.</param>
-    public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, int maxNodes = MaxNodes, int maxRadius = 0, long deadline = 0)
+    /// which the search gives up (checked every 8 opened nodes: one node can cost eight
+    /// walk checks on a busy tile, so a coarser check overran a few-millisecond deadline
+    /// by tens of milliseconds); 0 for none.</param>
+    public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, int maxNodes = MaxNodes, int maxRadius = 0, long deadline = 0, PathOptions options = PathOptions.None)
     {
         // Each tile's contents are read once per search, however many of its
         // neighbours ask about it (SourceXWalk tile columns).
         SourceXWalk.BeginSearch();
         try
         {
-            return Search(start, goal, mapIndex, canFlags, self, maxNodes, maxRadius, deadline);
+            return Search(start, goal, mapIndex, canFlags, self, maxNodes, maxRadius, deadline, options);
         }
         finally
         {
@@ -58,7 +75,7 @@ public sealed class Pathfinder
     }
 
     private List<Point3D>? Search(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags,
-        Objects.Characters.Character? self, int maxNodes, int maxRadius, long deadline)
+        Objects.Characters.Character? self, int maxNodes, int maxRadius, long deadline, PathOptions options)
     {
         if (maxNodes <= 0) maxNodes = MaxNodes;
         if (self != null)
@@ -71,7 +88,7 @@ public sealed class Pathfinder
             return [goal];
 
         if (start.GetDistanceTo(goal) <= 1 && Math.Abs(start.Z - goal.Z) <= MaxClimb)
-            return IsWalkable(goal, canFlags, self, ignoreChars: true) ? [goal] : null;
+            return IsWalkable(goal, canFlags, self, ignoreChars: true, options) ? [goal] : null;
 
         var openSet = _tlOpenSet ??= new PriorityQueue<PathNode, int>();
         var closedSet = _tlClosedSet ??= new HashSet<long>();
@@ -100,7 +117,7 @@ public sealed class Pathfinder
                 continue;
 
             nodesExplored++;
-            if (deadline != 0 && (nodesExplored & 31) == 0 && System.Diagnostics.Stopwatch.GetTimestamp() > deadline)
+            if (deadline != 0 && (nodesExplored & 7) == 0 && System.Diagnostics.Stopwatch.GetTimestamp() > deadline)
             {
                 TimedOut++;
                 return null;
@@ -140,6 +157,7 @@ public sealed class Pathfinder
                     // the route Z is only a heuristic; the ACTUAL landing Z of
                     // every executed step resolves through WalkCheck.
                     sbyte nz;
+                    int extraCost = 0;
                     if (self != null && _world.MapData != null)
                     {
                         // A creature's route follows the walk rule itself - CPathFinder
@@ -149,7 +167,15 @@ public sealed class Pathfinder
                         var stepDir = DirectionOf(dx, dy);
                         if (!_world.Standing.CheckPathStep(self, mapIndex, current.X, current.Y,
                                 current.Z, stepDir, out int stepZ))
-                            continue;
+                        {
+                            // A shut, unlocked door is a way through for a walker
+                            // that opens doors: it stands on the same floor.
+                            if ((options & PathOptions.OpenDoors) == 0 ||
+                                !HasClosedDoor(mapIndex, nx, ny, current.Z))
+                                continue;
+                            stepZ = current.Z;
+                            extraCost = DoorCost;
+                        }
                         nz = (sbyte)stepZ;
                     }
                     else
@@ -172,10 +198,10 @@ public sealed class Pathfinder
                     // full node budget. The walker stops adjacent anyway (the
                     // final step is re-validated against live occupancy).
                     bool isGoalTile = nx == goal.X && ny == goal.Y;
-                    if (!IsWalkable(neighborPos, canFlags, self, ignoreChars: isGoalTile))
+                    if (!IsWalkable(neighborPos, canFlags, self, ignoreChars: isGoalTile, options))
                         continue;
 
-                    int moveCost = (dx != 0 && dy != 0) ? 14 : 10; // diagonal vs cardinal
+                    int moveCost = ((dx != 0 && dy != 0) ? 14 : 10) + extraCost; // diagonal vs cardinal
                     int newG = current.G + moveCost;
                     int h = Heuristic(neighborPos, goal);
 
@@ -201,12 +227,32 @@ public sealed class Pathfinder
     /// <summary>Searches given up at their deadline, since start.</summary>
     public long TimedOut { get; private set; }
 
-    private bool IsWalkable(Point3D pos, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, bool ignoreChars = false)
+    private const int DoorCost = 20;
+
+    /// <summary>A closed door that is not locked on the tile, within reach of
+    /// <paramref name="z"/> (the rule the walker's own door opening uses).</summary>
+    private bool HasClosedDoor(byte map, short x, short y, sbyte z)
+    {
+        foreach (var item in _world.GroundItemsOnTile(map, x, y))
+        {
+            if (item.IsDeleted || !item.IsOnGround || item.X != x || item.Y != y || Math.Abs(item.Z - z) > 15)
+                continue;
+            if (item.ItemType is ItemType.DoorLocked or ItemType.PortLocked or ItemType.DoorOpen) continue;
+            if (!World.DoorHelper.IsDoorItem(item, _world.MapData)) continue;
+            if (item.TryGetTag("DOOR_OPEN", out string? open) && open == "1") continue;
+            return true;
+        }
+        return false;
+    }
+
+    private bool IsWalkable(Point3D pos, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, bool ignoreChars = false, PathOptions options = PathOptions.None)
     {
         // Single-tile char/item blocker check, done allocation-free in GameWorld
         // (A* calls this per explored neighbour; the old range-query iterators
         // were the dominant pathfinding allocation).
-        if (_world.IsPathTileBlockedByObject(pos, canFlags, self, ignoreChars))
+        if (_world.IsPathTileBlockedByObject(pos, canFlags, self, ignoreChars,
+                passClosedDoors: (options & PathOptions.OpenDoors) != 0,
+                strictChars: (options & PathOptions.AvoidChars) != 0))
             return false;
 
         var mapData = _world.MapData;

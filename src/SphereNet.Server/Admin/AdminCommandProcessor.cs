@@ -48,6 +48,8 @@ public sealed class AdminCommandProcessor
 
     /// <summary>SCENARIO [name [bots [minutes]] | STOP]: the bot scenarios.</summary>
     public event Action<string, Action<string>>? OnScenarioRequested;
+    /// <summary>PLAYERBOTS STALLS / TRACE / NAVCHECK (server console, main loop).</summary>
+    public event Action<string, Action<string>>? OnPlayerBotsRequested;
 
     /// <summary>The script profiler the P / P# / E commands read (Source-X console).</summary>
     public SphereNet.Scripting.Execution.ScriptProfiler? Profiler { get; set; }
@@ -110,6 +112,9 @@ public sealed class AdminCommandProcessor
                 output("  PERF MARK|REPORT|STOP      - Load-test measurement window");
                 output("  P / P#                     - Script profiler report (P# also to profiler_dump.txt)");
                 output("  SCENARIO [name [bots [min]]] - Bot scenarios (no name = list/status); SCENARIO STOP");
+                output("  PLAYERBOTS STALLS [n]      - Player bots stalled longest right now");
+                output("  PLAYERBOTS TRACE <uid|name> - One player bot's last decisions");
+                output("  PLAYERBOTS NAVCHECK [LINKS [LEARN]] - Bot road data against the running world");
                 output("  E                          - Clear the script profiler");
                 output("  CALCCRYPT <ver>[,type][,enc] - Login keys for a client version");
                 output("  BLOCKIP <ip>               - Block an IP address");
@@ -296,6 +301,13 @@ public sealed class AdminCommandProcessor
                     output("SCENARIO is only available on the server console.");
                 else
                     OnScenarioRequested(args, output);
+                break;
+
+            case "PLAYERBOTS":
+                if (OnPlayerBotsRequested == null)
+                    output("PLAYERBOTS is only available on the server console.");
+                else
+                    OnPlayerBotsRequested(args, output);
                 break;
 
             case "PERF":

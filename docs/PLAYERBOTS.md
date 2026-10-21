@@ -103,8 +103,9 @@ used when no listener has shown theirs; a category missing in a language falls b
 
 Each bot has a mode, acted on when its next action time comes:
 
-- **Linger** at a destination: a few words now and then, a step or two about. Banks
-  hold a bot longest.
+- **Linger** at a destination: a few words now and then, a step or two about (more often,
+  every 3-8 s, while a player watches). Banks hold a bot longest. A caster low on mana
+  meditates at a stop, never halfway along a road.
 - **Travel**: a route over the road graph (A* on nodes) from the nearest node to the
   destination's, then node to node and onto a stopping spot. Destinations are chosen on
   the piece of road the bot stands on; most stay in the home town. A fighter sometimes
@@ -115,7 +116,12 @@ Each bot has a mode, acted on when its next action time comes:
   criminal or a murderer, the bot also calls the guards. A monster a player is already
   fighting is left to that player; a fighter outside a guarded region
   also picks fights with monsters up to its nerve (a per-bot multiple of its own hit
-  points). Melee closes in, archers and casters keep their distance, casters cast.
+  points) that it can see: a monster behind a fence or a wall is no prey. Melee closes
+  in, archers and casters keep their distance, casters cast. A foe the bot never stands
+  in reach of (and in sight of, for a bow or a spell) for 20 seconds - one in a pen,
+  across water, up on a ledge - is given up and left alone for five minutes; if it is
+  the one attacking, the bot runs from it instead. A bot idling at a stop that is
+  struck acts on it at once rather than at its next idle act.
   Below a per-bot hit-point threshold it heals (Greater Heal, bandage, heal potion) or
   runs - for the nearest road node that takes it away from the threat, not straight at
   whatever wall is behind it. Poisoned, it cures (Cure, else a cure potion); a caster
@@ -215,8 +221,9 @@ and place fill the tokens, and `{when}` comes from `token_when_now` (under ten m
   a tailor's shop sees one customer.
 - `PlayerBotGravity` percent of town trips go to a place within 30 tiles of a connected
   player, unless `PlayerBotCrowd` bots already stand around that player.
-- A bot at a bank, healer, inn or moongate stays up to three times longer while a
-  player can see it, and a fighter in sight of a player goes hunting less often.
+- A bot at a bank, healer, inn or moongate stays once more (one to two and a half
+  minutes) while a player can see it, and a fighter in sight of a player goes hunting
+  less often.
 
 ### Riding and gear
 
@@ -234,67 +241,138 @@ go to the bot.
 
 ### Walking
 
-A step goes straight at the target, or 45 degrees either side. Against an obstacle the
-bot keeps it on one hand and walks its edge (Bug2) until it is nearer the target than
-where it met it and the way ahead is open; a long way round with no gain switches hands.
-A shut, unlocked door in the way is opened with a double click. A tile search
-(`Pathfinder`) is used only to close in during a fight, within a few tiles, because a
-search costs a walk check per neighbour of every node it opens.
+A step goes straight at the target, or 45 degrees either side. When that is refused the
+bot looks at why (the walk path's refusal reason):
+
+- **Somebody on the tile** (`character_on_tile`: a player or bot it cannot push past
+  without full stamina, a guard in a gateway): it waits a moment, three times, the way a
+  player waits for someone to pass (now and then saying a `blocked` line), then steps to
+  the side; a crowd that stays put for three seconds gets a tile search routed round
+  the people. It does not start walking walls because of a person.
+- **A wall, a fence, water** (`terrain`, `house`, ...): a shut, unlocked door ahead is
+  opened with a double click; a way another bot already found along the same road link
+  is followed (below); otherwise a tile search is asked for, and meanwhile the bot keeps
+  the obstacle on one hand and walks its edge (Bug2) until it is nearer the target than
+  where it met it and the way ahead is open.
+- **Out of breath or held fast** (`stamina`, paralysis, a freezing cast): it waits.
+
+**Tile searches** (`Pathfinder`, with the bot itself as the walker, so the search climbs
+and drops exactly as its steps will) do not run in the bot's act. Requests are gathered
+at the end of a tick; up to `PlayerBotPathSearchesPerTick` (16) of them run together in
+the next tick's parallel phase, beside the creature path searches and under the same
+read-only rules, and the paths are handed to their bots before they act. A search has at
+most 2000 nodes (fewer for a short way) and 5 ms, and the whole batch 6 ms of the phase
+(a search that has not started by then waits for its bot to ask again). For a bot a shut, unlocked door is a
+way through (it is opened on reaching it) and, when the search was asked for because of
+people, anybody standing on a tile blocks it. A failed search waits 3, 10, then 20
+seconds before the same bot may ask again. A path is followed tile by tile: somebody on
+it is waited for, a shut door on it opened, a diagonal round a corner that the step
+refuses is taken as two straight steps, and anything else drops the path and asks for a
+new one.
+
+**Corridors.** A path found along a road link (node to node) is kept, starting at the
+tile the search started from. The next bot stopped on that link joins it where it stands
+and walks it with no search of its own. A kept path whose step is refused for good is
+forgotten.
 
 The stopping spot of a trip is stepped on; one tile short does when someone else stands
-on it, and three short once the last steps have stalled for four seconds. A leg that makes
-no ground for five seconds within 40 tiles of its end gets a tile search (`Pathfinder`,
-at most 800 nodes and 4 ms, sharing the per-tick search budget), and a second one at 25
-seconds; at eight seconds the bot also goes to open the nearest unlocked shut door
-within 8 tiles (once per leg), and a last leg still stalled after twenty seconds tries
-another stopping spot of the same place.
+on it, and three short once the last steps have stalled for four seconds. At eight
+seconds without ground the bot goes to open the nearest unlocked shut door within 8
+tiles (once per leg), and a last leg still stalled after twenty seconds tries another
+stopping spot of the same place.
 
-A rescue more than three tiles from the leg's target teaches the way: twice on the same
-stopping spot and the spot is not used again; twice on the same road link and the link is
-left out of every route (`link|from|to` in the bad-spot file). A place with no usable
-stopping spot left is not chosen at all. A bot rescued right by its target (a doorway
-full of others) teaches nothing.
+A leg's progress clock restarts only on a real gain: any gain while walking straight, or
+three tiles while walking a wall. A leg that makes none for a minute, or takes far longer
+than its length allows (90 seconds plus 0.8 s per tile), lifts the bot onto the leg's
+target (a rescue). A rescue more than three tiles from the leg's target teaches the way:
+twice on the same stopping spot and the spot is not used again; twice on the same road
+link and the link is left out of every route (`link|from|to` in the bad-spot file). A
+place with no usable stopping spot left is not chosen at all. A bot rescued within three
+tiles of its target teaches something only when a wall stopped it: one held up by people
+(a doorway full of others) teaches nothing. A bot lingering right by a door steps
+away from it, so it does not stand in the doorway others need.
 
 Shops and banks are entered and left by their door: a route starts at the road node the
 bot's stopping spot is linked to (`Arrivals[].Waypoints` in the data) and ends at the
 node linked to the spot it is heading for, not at whichever node is nearest through a
-wall. When the first leg makes no ground for 20 seconds the bot walks to the nearest
-unlocked door within 8 tiles and opens it, then tries the next-nearest start nodes. A
-leg that makes no ground for a minute lifts the bot onto the leg's target (a rescue); a
-second rescue on the way out of or into the same stopping spot marks it as unreachable
-(`badspots` in the telemetry), so a shop that is locked in this world costs two rescues,
-not one per visit. Learned spots are kept in `playerbots_badspots.txt` in the world save
-directory (one `destination|spot` per line) and read back at start; deleting the file
-lets bots try every spot again.
+wall. When the first leg makes no ground for 12 seconds the bot walks to the nearest
+unlocked door within 8 tiles and opens it, then tries the next-nearest start nodes.
+Learned spots and links are kept in `playerbots_badspots.txt` in the world save directory
+and read back at start; deleting the file lets bots try every spot again.
 
-Every accepted step is broadcast to the players who can see the bot as a 0x77 move
-(direction, `| 0x80` when running, hue, mobile flags, notoriety), exactly what the walk
-handler sends after a player's step. The step goes through `MovementEngine` directly,
-whose move hook only tells viewers about enter and leave range; without the 0x77 a
-watching player saw the bot stand still and then jump when they moved themselves. A
-step that lands anywhere but the next tile (a teleporter) sends no 0x77, as for a player.
+### Other walks
 
-A bot carried far without walking (a gate, a teleporter, a script) plans again from
-where it landed. A tile whose step carried it off is remembered as a portal for three
-minutes and stepped round, unless the trip is to that very portal (a dungeon entrance,
-a moongate, stairs), so a route that merely passes over a teleporter does not bounce the
-bot back and forth.
+Every walk that is not a trip gives up when it makes no ground, rather than holding the
+bot for ever: its own horse (15 s, then the horse is left and another got in a minute;
+a horse that will not be mounted, three tries; a bot on a trip does not turn back for its
+horse), a thief's mark (10 s), the body of a kill (15 s), a vendor behind a counter (20 s),
+its own corpse (60 s, then what is left on it is handed back, as for a corpse too far to
+walk to), a party leader it never gets within reach of (30 s, then it goes its own way
+for 30 s). Each walk keeps its own clock, so two walks taking turns do not reset each
+other.
+
+### Portals
+
+A dungeon's way in, the stairs between its levels and a moongate all carry a walker on
+the moment it steps onto the tile, and only then. At the first tick the engine looks up
+each portal-type destination's tiles in the running world: map teleporters
+(`[TELEPORTERS]`) within three tiles of its stopping spots, and gates and telepads that
+lead somewhere; when the data names where the portal goes (`TargetX/Y`), only tiles that
+go there count. A trip to a portal ends on its tile: the last leg is never stopped short
+of, a tile somebody stands on is swapped for a free one of the same portal, and a bot
+still on this side at the end steps onto the other tiles (or off and back onto the only
+one) before the spot is written off. A rescue on a portal's last leg sets the bot down
+beside the tile, not on it (a teleporter only answers a step).
+
+The crossing is noticed the moment the step carries the bot: the trip ends there, the
+place it landed at becomes where it is, a dungeon run starts once it is inside, and the
+portals within two tiles of the landing (the way back is usually one tile away) are
+stepped round for three minutes. Any other step that carries the bot off (a teleporter it
+was only passing over) ends the trip where it landed; that tile is stepped round for
+three minutes unless the trip is to that very portal.
+
+A stair between dungeon levels that the data names but the world does not have is
+portalless and never chosen; a dungeon mouth or a moongate with no portal is visited as
+an ordinary place (walked into, or waited about: a world without gate items still has its
+moongate squares). The server log lists them at start. A teleporter, gate or telepad that leads to a map the road network does not cover
+is never stepped on, and a bot found on such a map is taken home.
+
+### Off the roads
+
+A trip needs a road node within 64 tiles on the bot's floor. A bot further out (on a
+roof, a bridge, somewhere a gate put it) first walks back to the nearest node within 128
+tiles on any nearby floor. A third trip that finds no road, or five minutes of them, lifts
+it onto that node; a fifth, onto its home town's bank.
 
 ## Telemetry
 
 Every 30 seconds the server log carries one line:
 
 ```
-[playerbots] online=1000 tick avg=7682us max=26916us deferred=15584 steps=... searches=0 (failed 0, slowest 0us) doors=... fights=60 deaths=2 reclaims=0 handbacks=1 rescues=95 badspots=12 slowest act ...us (Travel->Travel) route ...us step ...us spawn ...us moves 127434 avg 62us max ...us at ...
+[playerbots] online=1000 tick avg=7682us max=26916us deferred=15584 steps=... searches=... (failed ..., slowest ...us) doors=... fights=60 deaths=2 reclaims=0 handbacks=1 rescues=... badspots=12 slowest act ...us (Travel->Travel) route ...us step ...us spawn ...us moves 127434 avg 62us max ...us at ...
 ```
 
-The end of the line counts the talk and the rest: `watchers` (connected players),
+The middle of the line counts the talk and the rest: `watchers` (connected players),
 `seen avg/max` (bots within sight of a player, sampled each second), `lines`, `replies`
 (answers to players), `scenes`, `moved` (bots that moved house), `mounts` (creatures
 given), `regears`, `robes` (resurrection robes taken off), `stalldoors` (stalled legs sent
-to a door), `spotswitches` (last legs moved to another stopping spot), `stallsearches`,
-`purchases`, `meditations`, `pkattacks`, `thefts`, `badlinks` and `searchtimeouts`
-(searches given up at their deadline since start).
+to a door), `spotswitches` (last legs moved to another stopping spot), `stallsearches`
+(searches asked for on trips), `purchases`, `meditations`, `pkattacks`, `thefts`,
+`badlinks` and `searchtimeouts` (searches given up at their deadline since start).
+
+The end of the line is about getting stuck:
+
+| Field | Meaning |
+|---|---|
+| `searches`, `failed`, `slowest` | searches run, found nothing, the slowest one |
+| `searchq`, `denied`, `dropped`, `backlog` | searches asked for; asks refused by a bot's backoff; results that came too late to use; most requests waiting at once |
+| `corridors`, `corridoruses`, `cornersplits` | kept road-link paths; times a bot joined one; diagonal path steps taken as two straight ones |
+| `waits`, `sidesteps`, `doorway` | waits for somebody in the way; steps aside round them; steps out of a doorway |
+| `portals`, `portalmisses` | portal crossings made; portal places written off after their tiles did not carry the bot |
+| `noroute`, `stranded`, `maprescues` | trips that found no road; bots lifted back onto the roads; bots taken home from a map with no roads |
+| `unreachable`, `giveups`, `faults` | foes given up as out of reach; other walks given up; acts that threw |
+| `stalled [...]` | the most bots stalled at once (no ground for 10 s), by mode, e.g. `Travel:3 Fight:1` |
+| `refusals [...]` | why steps were refused, most first, e.g. `terrain:812 character_on_tile:95` |
 
 `tick` is the whole bot pass per server tick. Bot decisions share a budget of 12 ms
 per tick; `deferred` counts the decisions that waited for the next tick (100 ms
@@ -302,8 +380,22 @@ later) because it was spent, and the next tick resumes where the last one stoppe
 `moves` and their `avg` are the walk-path steps the bots took (one in sixteen is
 timed), `rescues` the legs that had to be lifted, `slowest act` the single most
 expensive decision of the window and `spawn` the costliest new bot (its CHARDEF
-`@Create`). The first fifteen rescues of a window are logged with position, target
-and destination, which is where to look when a spot keeps catching bots.
+`@Create`). The first fifteen rescues of a window are logged with position, target,
+destination, the last refusal and the bot's last decisions, which is where to look when a
+spot keeps catching bots.
+
+### Console
+
+| Command | Shows |
+|---|---|
+| `PLAYERBOTS STALLS [n]` | the `n` (20) bots stalled longest right now: uid, name, position, mode, seconds, where it is going, the last refusal, whether it walks a wall, its tile path and its search state |
+| `PLAYERBOTS TRACE <uid\|name>` | one bot's last 32 decisions with their age (trip chosen, search asked and found, path dropped and why, portal crossed, rescue, walk given up, refused step kinds) |
+| `PLAYERBOTS NAVCHECK` | every portal-type place and whether the world has a portal there |
+| `PLAYERBOTS NAVCHECK LINKS [LEARN]` | also a tile search along every road link and from every stopping spot to its node, with an online bot as the walker; `LEARN` leaves failures out of routes and writes them to the bad-spot file. Runs on the main loop: it takes a while on a full road network |
+
+NAVCHECK writes its full report to `playerbots_navcheck.txt` beside the bad-spot file.
+The web panel's Players page shows, for a bot, what it is doing in the version column
+(`Travel -> Britain Bank`, with `(stalled 14s)` when it has made no ground for 10 s).
 
 ## Scale
 

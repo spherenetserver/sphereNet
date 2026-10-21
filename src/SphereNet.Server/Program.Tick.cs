@@ -1131,6 +1131,11 @@ public static partial class Program
                     decisionList.Add(decision.Value);
             }
         }
+        // The player bots' tile searches gathered last tick run here, beside the
+        // creature prestage and under the same read-only rules; the bots take the paths
+        // when they act (PlayerBotEngine.RunSearches / ApplySearches).
+        if (_playerBots is { PendingSearches: > 0 } bots)
+            bots.RunSearches(new ParallelOptions { MaxDegreeOfParallelism = workerCount, CancellationToken = cts.Token });
         _telemetryNpcBuildUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1);
         // Boundary: decisions are built but none applied; the serial small-batch build
         // above does not check the token per NPC, so this is where it is honoured.

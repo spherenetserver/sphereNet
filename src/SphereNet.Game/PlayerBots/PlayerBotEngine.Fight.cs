@@ -9,11 +9,19 @@ namespace SphereNet.Game.PlayerBots;
 
 /// <summary>Fighting. A bot defends itself against anything that attacks it; a
 /// fighter out of a guarded town also picks fights with monsters it rates itself
-/// against. Every blow, spell and bandage goes through the bot's client, so the
-/// combat rules a connected player meets (swing timing, crime and notoriety, spell
-/// fizzles, reagents, bandage delay) apply unchanged.</summary>
+/// against - ones it can see (a monster behind a fence or a wall is no prey). Every
+/// blow, spell and bandage goes through the bot's client, so the combat rules a
+/// connected player meets (swing timing, crime and notoriety, spell fizzles, reagents,
+/// bandage delay) apply unchanged. A foe the bot cannot get at - it never stands in
+/// reach of it for <see cref="FoeGiveUpMs"/> - is given up and left alone for
+/// <see cref="FoeAvoidMs"/>; one that keeps striking from out of reach is run from.</summary>
 public sealed partial class PlayerBotEngine
 {
+    /// <summary>Time a bot keeps at a foe it cannot reach.</summary>
+    public int FoeGiveUpMs { get; set; } = 20_000;
+    /// <summary>How long a foe given up is left alone.</summary>
+    public int FoeAvoidMs { get; set; } = 300_000;
+
     private bool TryStartFight(BotMind mind, long now)
     {
         if (mind.Client == null || now < mind.NextScanMs) return false;
@@ -28,20 +36,26 @@ public sealed partial class PlayerBotEngine
             if (c == ch || c.IsDeleted || c.IsDead || c.MapIndex != ch.MapIndex) continue;
             if (c.IsInvisible || c.IsStatFlag(StatFlag.Hidden)) continue;
             int d = ch.Position.GetDistanceTo(c.Position);
+            // A foe found out of reach earlier is left alone, unless it is right here.
+            bool avoided = mind.Avoids(c, now);
             // Anything set on this bot is fought back: a monster, a player or another
             // bot. A player is a threat once in war mode against it, as a player would
             // read the attack; striking back at an aggressor is not a crime.
             if (c.FightTarget == ch.Uid && (!c.IsPlayer || c.IsInWarMode))
             {
+                if (avoided && d > 1) continue;
                 if (d < threatDist) { threat = c; threatDist = d; }
                 continue;
             }
-            if (guarded || !mind.IsFighter || c.IsPlayer || c.OwnerSerial.IsValid) continue;
+            if (avoided || guarded || !mind.IsFighter || c.IsPlayer || c.OwnerSerial.IsValid) continue;
             if (c.NpcBrain is not (NpcBrainType.Monster or NpcBrainType.Berserk or NpcBrainType.Dragon)) continue;
             // A monster a player is already fighting is that player's: no kill stealing.
             if (c.FightTarget.IsValid && _world.FindChar(c.FightTarget) is { HasClient: true }) continue;
-            if (d > 8 || c.MaxHits > ch.MaxHits * mind.Nerve) continue;
-            if (d < preyDist) { prey = c; preyDist = d; }
+            if (d > 8 || d >= preyDist || c.MaxHits > ch.MaxHits * mind.Nerve) continue;
+            // Prey is what it can see: a monster behind a fence is not.
+            if (!_world.CanSeeLOS(ch.Position, c.Position)) continue;
+            prey = c;
+            preyDist = d;
         }
         var victim = threat == null ? PickVictim(mind, now, guarded) : null;
         var foe = threat ?? victim ?? (prey != null && _rng.Next(100) < 70 ? prey : null);
@@ -61,7 +75,9 @@ public sealed partial class PlayerBotEngine
         mind.Mode = BotMode.Fight;
         mind.Foe = foe;
         mind.FightStartedMs = now;
+        mind.FightInReachMs = now;
         mind.TilePath = null;
+        mind.Note(now, $"fights {foe.GetName()} at {foe.Position}");
         WindowFights++;
         mind.Client!.HandleAttack(foe.Uid.Value);
         if (_rng.Next(100) < 30) Speak(mind, "combat_engage", fallback: null);
@@ -106,7 +122,18 @@ public sealed partial class PlayerBotEngine
         }
 
         int dist = ch.Position.GetDistanceTo(foe.Position);
-        if (mind.IsCaster && now >= mind.NextCastMs && ch.Mana >= 20 && dist <= 10 && !ch.TryGetCastingSpell(out _))
+        // Keep the range the weapon wants: blades close in, bows and casters hang back.
+        int want = mind.IsArcher ? 6 : mind.IsCaster ? 5 : Math.Max(1, CombatHelper.GetWeaponRange(EquippedWeapon(ch)).Max);
+        bool sight = dist <= 1 || (dist <= 12 && _world.CanSeeLOS(ch.Position, foe.Position));
+        if (dist <= want && sight)
+            mind.FightInReachMs = now;
+        else if (now - mind.FightInReachMs > FoeGiveUpMs)
+        {
+            GiveUpFoe(mind, foe, now);
+            return;
+        }
+
+        if (mind.IsCaster && sight && now >= mind.NextCastMs && ch.Mana >= 20 && dist <= 10 && !ch.TryGetCastingSpell(out _))
         {
             client.HandleCastSpell(PickAttackSpell(ch), foe.Uid.Value);
             mind.NextCastMs = now + _rng.Next(3000, 4500);
@@ -114,14 +141,42 @@ public sealed partial class PlayerBotEngine
             return;
         }
 
-        // Keep the range the weapon wants: blades close in, bows and casters hang back.
-        int want = mind.IsArcher ? 6 : mind.IsCaster ? 5 : Math.Max(1, CombatHelper.GetWeaponRange(EquippedWeapon(ch)).Max);
         bool stepped = false;
-        if (dist > want)
-            stepped = StepToward(mind, foe.Position, run: dist > want + 2, searchWithin: 10);
+        bool run = dist > want + 2;
+        if (dist > want || !sight)
+            stepped = StepToward(mind, foe.Position, run, searchWithin: 14);
         else if ((mind.IsArcher || mind.IsCaster) && dist < 3)
+        {
+            run = true;
             stepped = StepToward(mind, Away(ch.Position, foe.Position, 4), run: true);
-        mind.NextActMs = now + (stepped ? MovementEngine.GetMoveDelay(ch.IsMounted, dist > want + 2) : 350);
+        }
+        mind.NextActMs = now + (stepped ? MovementEngine.GetMoveDelay(ch.IsMounted, run) : Math.Min(StepDelay(mind, false, run, now), 350));
+    }
+
+    /// <summary>A foe the bot has not stood in reach of for a while: behind a fence,
+    /// over water, up on a ledge. It is left alone for a time; if it is the one doing
+    /// the attacking, the bot gets out of its way.</summary>
+    private void GiveUpFoe(BotMind mind, Character foe, long now)
+    {
+        var ch = mind.Char;
+        mind.AvoidFoes[foe.Uid.Value] = now + FoeAvoidMs;
+        if (mind.AvoidFoes.Count > 32)
+            foreach (uint old in mind.AvoidFoes.Where(kv => kv.Value < now).Select(kv => kv.Key).ToList())
+                mind.AvoidFoes.Remove(old);
+        WindowUnreachableFoes++;
+        mind.Note(now, $"cannot get at {foe.GetName()} at {foe.Position}; leaves it alone");
+        if (foe.FightTarget == ch.Uid)
+        {
+            mind.Client?.HandleWarMode(false);
+            mind.Mode = BotMode.Flee;
+            mind.FleeFrom = foe.Position;
+            mind.FleeUntilMs = now + _rng.Next(8_000, 14_000);
+            mind.FleeTarget = null;
+            mind.TilePath = null;
+            mind.NextActMs = now + 100;
+            return;
+        }
+        EndFight(mind, now, won: false);
     }
 
     private void EndFight(BotMind mind, long now, bool won)
@@ -146,7 +201,7 @@ public sealed partial class PlayerBotEngine
         if (now >= mind.FleeUntilMs || clear)
         {
             int hp = ch.MaxHits > 0 ? ch.Hits * 100 / ch.MaxHits : 100;
-            if (!clear && foe != null && hp >= mind.FleeAt + 15)
+            if (!clear && foe != null && hp >= mind.FleeAt + 15 && !mind.Avoids(foe, now))
             {
                 Engage(mind, foe, now);
                 return;
@@ -171,10 +226,10 @@ public sealed partial class PlayerBotEngine
         // Run for the road, away from the threat, rather than straight into a wall.
         if (mind.FleeTarget == null || now - mind.FleeTargetMs > 3000)
         {
-            mind.FleeTarget = FleePoint(ch.Position, from);
+            mind.FleeTarget = FleePoint(ch.Position, from) ?? WideFleePoint(ch.Position, from);
             mind.FleeTargetMs = now;
         }
-        bool stepped = StepToward(mind, mind.FleeTarget ?? Away(ch.Position, from, 8), run: true);
+        bool stepped = StepToward(mind, mind.FleeTarget ?? Away(ch.Position, from, 8), run: true, searchWithin: 30);
         mind.NextActMs = now + (stepped ? MovementEngine.GetMoveDelay(ch.IsMounted, true) : 300);
     }
 
@@ -231,6 +286,16 @@ public sealed partial class PlayerBotEngine
             if (score > bestScore) { bestScore = score; best = p; }
         }
         return best;
+    }
+
+    /// <summary>No road node near: the nearest one within 60 tiles on any nearby floor,
+    /// if running there gains anything.</summary>
+    private Point3D? WideFleePoint(Point3D here, Point3D threat)
+    {
+        int node = Nav.FindNearest(here, 60, null, zBand: 40);
+        if (node < 0) return null;
+        var p = Nav.Waypoints[node].Pos;
+        return p.GetDistanceTo(threat) > here.GetDistanceTo(threat) ? p : null;
     }
 
     /// <summary>Poisoned: Cure for a caster with the mana, else a cure potion.</summary>

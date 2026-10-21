@@ -1,0 +1,11 @@
+# blocked.txt - Said now and then by a bot kept waiting by someone standing in its way
+# (a doorway, a crowd at the bank). Short and mild. Lines starting with # are comments.
+
+excuse me
+pardon
+coming through
+mind if i squeeze by?
+sorry, need to get past
+oi, doorway
+make way please
+scuse me

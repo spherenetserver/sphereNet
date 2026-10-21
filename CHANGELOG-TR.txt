@@ -4,6 +4,75 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-21] - Oyuncu botlari: act disi arama, engel turleri, portallar, vazgecme
+------------------------------------------------------------------------
+DUZELTME - Bot karo aramalari neredeyse hic calisamiyordu: tick basina hak, bot gecisinin
+       basindan sayilan 3 ms son tarihli tek aramaydi; dogma, izleyici gecisi ve onceki
+       botlar bunu harcayinca listede asagidaki hicbir bot arama alamiyor, bir dakikalik
+       kurtarma kaldirana kadar duvar kenari yuruyordu. Istekler artik tick sonunda toplanip
+       sonraki tick'in paralel fazinda yaratik yol on-aramasinin yaninda, ayni salt-okuma
+       kurallariyla birlikte kosar (PlayerBotPathSearchesPerTick, 16; arama basina 5 ms, toplu
+       is 6 ms); yollar botlar karar vermeden once teslim edilir. Basarisiz arama bot basina
+       3, 10, sonra 20 sn bekler. Pathfinder arama son tarihini 32 yerine 8 acilan dugumde bir
+       denetler (32'lik adim yogun karolarda birkac ms'lik son tarihi 40 ms'ye kadar asiyordu).
+       Pathfinder.FindPath PathOptions alir: OpenDoors (kapali, kilitsiz kapi gecit sayilir)
+       ve AvoidChars (karoda duran herkes engeldir); yaratik aramalari degismedi.
+DUZELTME - Reddedilen adim hep duvar saniliyordu: kapi aginda duran biri yuzunden bot binanin
+       etrafini dolanmaya basliyordu. Artik red nedeni belirler: karodaki biri beklenir (uc
+       kisa bekleme), sonra yanindan gecilir, sonra AvoidChars ile aranir; stamina bitmesi ya
+       da donma beklenir; kenar yuruyusu ve arama yalnizca statik redde baslar. Kosede
+       reddedilen capraz yol adimi (aramanin yol adimi izin verir, yurume adimi vermez) iki
+       duz adimla atilir.
+DUZELTME - Botun kendi adiminin onu tasimasi (zindan girisi teleporter'i) fark edilmiyordu:
+       konum denetimi act'ten once, LastPos act'ten sonra aliniyordu; bot zindanin icinden
+       giris karosuna yurumeye devam ediyor, kurtarma onu disari geri kaldiriyordu. Adim artik
+       tasinmayi isaretler, yolculuk act'ten sonra sonlanir.
+DUZELTME - Portal yolculuklari (zindan girisi, merdiven, moongate) portal karosuna varmadan
+       bitiyordu (kare doluysa bir, 4 sn takilinca uc kare kisa varis sayiliyordu) ve varis
+       yalnizca bekliyordu; botlar zindan agzinda durup iceri girmiyordu. Portal karolari
+       calisan dunyadan bulunur ([TELEPORTERS], uc kare icindeki gate ve telepad item'lari,
+       verinin TargetX/Y'siyle suzulur); son bacak karoya basar, dolu karoyu ayni portalin bos
+       karosuyla degistirir, diger karolari dener; gecis yolculugu karsi tarafta bitirir ve
+       zindan turunu orada baslatir. Inis noktasinin yanindaki karolardan uc dakika kacinilir.
+       Dunyada olmayan merdivenler hic secilmez (portalsiz moongate ve zindan agzi yine yer
+       olarak ziyaret edilir); yol aginin kapsamadigi haritaya
+       giden teleporter'lara basilmaz, boyle bir haritadaki bot eve goturulur.
+DUZELTME - Savasci bot goremedigi canavarlari (cit ya da duvar arkasinda) seciyor, 180 sn
+       savas sinirina kadar kovaliyor, sonra ayni canavari yeniden seciyordu. Av icin gorus
+       hatti gerekir; 20 sn boyunca menziline giremedigi dusman birakilir ve bes dakika
+       rahat birakilir, menzil disindan saldiran dusmandan kacilir. Beklerken vurulan bot
+       hemen tepki verir.
+DUZELTME - Yolculuk disi yuruyuslerin takilma siniri yoktu: kendi atina yuruyus ve hirsizin
+       hedefine yuruyusu botu sonsuza dek tutabiliyor, ceset kosusu 15 dakika surtunup
+       esyayi cesette birakiyordu. Her yuruyus ilerleme olmayinca vazgecer (at 15 sn, hedef
+       10 sn, oldurulenin cesedi 15 sn, satici 20 sn, kendi cesedi 60 sn ve esya geri verilir,
+       parti lideri 30 sn); yolculuktaki bot atina geri donmez; binmeyi reddettiren eski
+       savas hedefi temizlenir.
+DUZELTME - 64 kare icinde yol dugumu olmayan bot (cati, kopru, gate inisi) yolculuk seciyor,
+       rota bulamiyor ve bekliyordu, sonsuza dek. Artik 128 kare icindeki, yakin katlardaki
+       en yakin dugume yuruyerek doner; uc basarisizlik ya da bes dakika sonra yola kaldirilir
+       (bes basarisizlikta ev bankasina). Dugum aramalari haritayi karsilastirir.
+DUZELTME - Bacagin bir dakikalik kurtarma saati kazanilan her karede yeniden basliyordu;
+       yaklasan bir kenar yuruyusu onu suresiz erteleyebiliyordu. Artik yalnizca gercek
+       kazanc (duz yururken her kazanc, duvar yururken uc kare) saati yeniden baslatir ve
+       bacak 90 sn arti kare basina 0.8 sn ile sinirlidir. Hedef karoya varis kayitli Z'yi
+       gerektirmez. Hedefe uc kareden yakin kurtarma, botu bir kisi degil bir duvar
+       durdurduysa artik durak ya da baglantiyi ogretir.
+YENI - Yol baglantisi koridorlari: bir baglanti boyunca bulunan yol saklanir, ayni baglantida
+       takilan sonraki bot kendi aramasini yapmadan ona katilir; reddedilen saklanmis yol
+       unutulur.
+YENI - Konsol PLAYERBOTS STALLS / TRACE / NAVCHECK [LINKS [LEARN]]: en uzun takili botlar son
+       red ve yol durumlariyla, bir botun son 32 karari, ve yol verisinin calisan dunyaya
+       karsi denetimi (portallar; istenirse her baglanti ve durak icin arama). 30 sn'lik
+       [playerbots] satirina arama, koridor, bekleme, portal, yolsuz kalma, vazgecme ve hata
+       sayaclari, moda gore takili botlar ve adim red nedenleri eklendi. Panelin Players
+       sayfasi her botun ne yaptigini gosterir (PlayerInfo.BotActivity).
+YENI - Botlar izlenirken daha canli bekler (3-8 sn'de bir adim, uc yerine bir uzatma), kapi
+       agzindan cekilir, yalnizca durakta meditasyon yapar, bekletildiginde arada bir
+       "blocked" satiri soyler; ust uste uc kez hata veren act botun planlarini sifirlar.
+       Cok oyuncu varken bot dogma araligi 1 sn'ye cikar; fazla botlardan gorulmeyen bostakiler
+       kapatilir.
+
 [2026-10-19] - Bin istemcide sunucu kapasitesi
 ------------------------------------------------------------------------
 DUZELTME - Character.PrivLevel her okunusta hesabi cozuyordu; ACCOUNT tag'i olmayan bir karakter

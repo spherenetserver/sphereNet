@@ -49,6 +49,25 @@ public sealed class BotDestination
         return -1;
     }
 
+    /// <summary>Where the destination's portal sends a walker, as the data records it
+    /// (TargetX/Y/Z), or null. Used to tell the right teleporter from a neighbour's.</summary>
+    public Point3D? Target { get; init; }
+
+    /// <summary>A place passed through rather than visited: a dungeon's way in, a
+    /// stair down or up, a moongate. It is entered by stepping onto its portal tile.</summary>
+    public bool IsPortalType =>
+        Type.Equals("DungeonEntrance", StringComparison.OrdinalIgnoreCase) ||
+        Type.Equals("DungeonDescend", StringComparison.OrdinalIgnoreCase) ||
+        Type.Equals("DungeonAscend", StringComparison.OrdinalIgnoreCase) ||
+        Type.Equals("Moongate", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The tiles that carry a walker on (map teleporters, a gate or telepad
+    /// item) found about the place in the running world; null until looked up.</summary>
+    public List<Point3D>? PortalTiles { get; set; }
+    /// <summary>A portal-type place with no portal in this world (the source data and
+    /// the script pack disagree): stepping there does nothing.</summary>
+    public bool Portalless { get; set; }
+
     /// <summary>The arrival spot <paramref name="pos"/> stands on (within 2 tiles), or -1.</summary>
     public int ArrivalAt(Point3D pos)
     {
@@ -144,6 +163,10 @@ public sealed class BotNavGraph
             if (!_byName.TryGetValue(nearest, out int wpIndex)) continue;
             var raw = new Point3D((short)e.GetProperty("X").GetInt32(), (short)e.GetProperty("Y").GetInt32(),
                 (sbyte)Math.Clamp(e.GetProperty("Z").GetInt32(), -128, 127), 0);
+            Point3D? target = null;
+            if (e.TryGetProperty("TargetX", out var tx) && e.TryGetProperty("TargetY", out var ty))
+                target = new Point3D((short)tx.GetInt32(), (short)ty.GetInt32(),
+                    (sbyte)Math.Clamp(e.TryGetProperty("TargetZ", out var tz) ? tz.GetInt32() : 0, -128, 127), 0);
             var dest = new BotDestination
             {
                 Name = name,
@@ -151,6 +174,7 @@ public sealed class BotNavGraph
                 City = e.TryGetProperty("City", out var c) ? c.GetString() ?? "" : "",
                 Pos = TrySeatNear(map, raw, out var seated) ? seated : raw,
                 NearestWaypoint = wpIndex,
+                Target = target,
             };
             if (e.TryGetProperty("Arrivals", out var arrivals))
                 foreach (var a in arrivals.EnumerateArray())
@@ -193,6 +217,40 @@ public sealed class BotNavGraph
         ComponentCount = next;
     }
 
+    /// <summary>The maps the road network is on. A bot anywhere else has no road.</summary>
+    public bool HasMap(byte map)
+    {
+        if (_waypoints.Count == 0) return false;
+        if (_maps == null)
+        {
+            var set = new HashSet<byte>();
+            foreach (var w in _waypoints) set.Add(w.Pos.Map);
+            _maps = set;
+        }
+        return _maps.Contains(map);
+    }
+
+    private HashSet<byte>? _maps;
+
+    /// <summary>How many destinations hang off each road piece (kept: the count is
+    /// asked at every spawn).</summary>
+    public int DestinationsOn(int component)
+    {
+        if (_destCounts == null)
+        {
+            var counts = new Dictionary<int, int>();
+            foreach (var d in _destinations)
+            {
+                int c = ComponentOf(d);
+                counts[c] = counts.GetValueOrDefault(c) + 1;
+            }
+            _destCounts = counts;
+        }
+        return _destCounts.GetValueOrDefault(component);
+    }
+
+    private Dictionary<int, int>? _destCounts;
+
     /// <summary>The road-network piece a destination hangs off.</summary>
     public int ComponentOf(BotDestination d) =>
         d.NearestWaypoint >= 0 ? _waypoints[d.NearestWaypoint].Component : -1;
@@ -202,13 +260,14 @@ public sealed class BotNavGraph
     public BotDestination? FindDestination(string name) =>
         _destinations.FirstOrDefault(d => d.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>The closest node within <paramref name="maxDist"/> tiles that is on
-    /// the same floor band (|dz| &lt;= 16), or -1.</summary>
+    /// <summary>The closest node within <paramref name="maxDist"/> tiles on the same
+    /// map and floor band (|dz| &lt;= 16), or -1.</summary>
     public int FindNearest(Point3D p, int maxDist) => FindNearest(p, maxDist, null);
 
     /// <summary>As <see cref="FindNearest(Point3D, int)"/>, skipping the nodes in
-    /// <paramref name="exclude"/>.</summary>
-    public int FindNearest(Point3D p, int maxDist, ICollection<int>? exclude)
+    /// <paramref name="exclude"/>; <paramref name="zBand"/> widens the floor band (a bot
+    /// that climbed onto a roof or a bridge is still near the road below it).</summary>
+    public int FindNearest(Point3D p, int maxDist, ICollection<int>? exclude, int zBand = 16)
     {
         int best = -1, bestDist = int.MaxValue;
         int r = maxDist / CellSize + 1;
@@ -221,7 +280,7 @@ public sealed class BotNavGraph
             {
                 if (exclude != null && exclude.Contains(i)) continue;
                 var w = _waypoints[i].Pos;
-                if (Math.Abs(w.Z - p.Z) > 16) continue;
+                if (w.Map != p.Map || Math.Abs(w.Z - p.Z) > zBand) continue;
                 int d = Math.Max(Math.Abs(w.X - p.X), Math.Abs(w.Y - p.Y));
                 if (d <= maxDist && d < bestDist) { bestDist = d; best = i; }
             }
@@ -242,7 +301,7 @@ public sealed class BotNavGraph
             foreach (int i in list)
             {
                 var w = _waypoints[i].Pos;
-                if (Math.Abs(w.Z - p.Z) > 16) continue;
+                if (w.Map != p.Map || Math.Abs(w.Z - p.Z) > 16) continue;
                 if (Math.Max(Math.Abs(w.X - p.X), Math.Abs(w.Y - p.Y)) <= maxDist) yield return i;
             }
         }

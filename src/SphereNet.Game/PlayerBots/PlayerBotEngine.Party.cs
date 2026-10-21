@@ -37,6 +37,7 @@ public sealed partial class PlayerBotEngine
             if (Parties?.FindParty(ch.Uid) != null)
             {
                 mind.LeaderSeenMs = now;
+                mind.FollowCloseMs = now;
                 if (_rng.Next(100) < 70) Speak(mind, "party_join", fallback: null);
             }
             return;
@@ -83,20 +84,33 @@ public sealed partial class PlayerBotEngine
             return false;
         }
 
+        // Kept out of reach of the leader for a while: its own plans for a time.
+        if (now < mind.FollowPausedUntilMs) return false;
+
         // The leader's fight is the party's fight.
         if (leader!.FightTarget.IsValid && _world.FindChar(leader.FightTarget) is { IsDead: false, IsDeleted: false } foe &&
-            foe != ch && !foe.IsPlayer && mind.Client != null)
+            foe != ch && !foe.IsPlayer && mind.Client != null && !mind.Avoids(foe, now))
         {
             Engage(mind, foe, now);
             return true;
         }
 
         int dist = ch.Position.GetDistanceTo(leader.Position);
+        if (mind.FollowCloseMs == 0 || dist <= FollowRange + 2) mind.FollowCloseMs = now;
+        else if (now - mind.FollowCloseMs > 30_000)
+        {
+            // Half a minute and it never got near: the leader is where it cannot follow.
+            mind.FollowPausedUntilMs = now + 30_000;
+            mind.FollowCloseMs = now + 30_000;
+            WindowGiveUps++;
+            mind.Note(now, $"cannot keep up with {leader.GetName()} at {leader.Position}; goes its own way a while");
+            return false;
+        }
         if (dist > FollowRange)
         {
             bool run = dist > FollowRange + 3;
-            bool stepped = StepToward(mind, leader.Position, run);
-            mind.NextActMs = now + (stepped ? MovementEngine.GetMoveDelay(ch.IsMounted, run) : 300);
+            bool stepped = StepToward(mind, leader.Position, run, searchWithin: 40);
+            mind.NextActMs = now + StepDelay(mind, stepped, run, now);
         }
         else
             mind.NextActMs = now + 400;

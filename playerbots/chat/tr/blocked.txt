@@ -1,0 +1,10 @@
+# blocked.txt — yolunu biri kapatıp bekletilen bot arada bir bunu söyler (kapı ağzı,
+# bankadaki kalabalık). Kısa ve kibar. # ile başlayanlar yorum.
+
+pardon
+afedersin
+bi geçebilir miyim
+yol verir misin
+kapının önünden çekilsene
+müsaade
+izninle

@@ -183,7 +183,10 @@ public record PlayerInfo(
     string ClientVersion = "",
     int SessionSeconds = 0,
     // A server-driven player bot: no connection (Ip empty, ClientVersion "bot").
-    bool IsBot = false
+    bool IsBot = false,
+    // For a bot: what it is doing ("Travel -> Britain Bank", "stalled 14s" when it
+    // has made no ground for a while). Empty for a player.
+    string BotActivity = ""
 );
 
 /// <summary>A character's paperdoll data. <see cref="PaperdollText"/> is the exact

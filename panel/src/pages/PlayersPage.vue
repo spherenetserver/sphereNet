@@ -62,7 +62,7 @@
             <td>{{ mapName(p.mapId) }}</td>
             <td class="mono">{{ p.x }}, {{ p.y }}</td>
             <td class="mono text-muted">{{ p.ip }}</td>
-            <td class="mono text-muted">{{ p.clientVersion || '—' }}</td>
+            <td class="mono text-muted" :title="p.isBot ? p.botActivity : undefined">{{ p.isBot && p.botActivity ? p.botActivity : (p.clientVersion || '—') }}</td>
             <td class="text-muted">{{ fmtSession(p.sessionSeconds) }}</td>
             <td class="actions">
               <button class="icon-btn" :title="t('players.openPaperdoll')" @click="paperdollSerial = p.serial">

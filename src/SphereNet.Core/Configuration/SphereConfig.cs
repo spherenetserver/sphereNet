@@ -821,6 +821,9 @@ public sealed class SphereConfig
     // that are thieves (decided once per bot). 0 for none.
     public int PlayerBotPkPercent { get; set; } = 5;
     public int PlayerBotThiefPercent { get; set; } = 5;
+    // Tile path searches for bots run per tick, together, in the tick's parallel
+    // phase (a bot walking into a wall asks for one). 0 leaves bots to walk walls.
+    public int PlayerBotPathSearchesPerTick { get; set; } = 16;
 
     // Prestage A* searches accepted per tick (ini key: NpcPathPrestagePerTick).
     // Over-budget chasers take a short path defer and are rotated in on later
@@ -1454,6 +1457,7 @@ public sealed class SphereConfig
         PlayerBotChatPace = Math.Max(4, ini.GetInt(section, "PlayerBotChatPace", PlayerBotChatPace));
         PlayerBotPkPercent = Math.Clamp(ini.GetInt(section, "PlayerBotPkPercent", PlayerBotPkPercent), 0, 100);
         PlayerBotThiefPercent = Math.Clamp(ini.GetInt(section, "PlayerBotThiefPercent", PlayerBotThiefPercent), 0, 100);
+        PlayerBotPathSearchesPerTick = Math.Clamp(ini.GetInt(section, "PlayerBotPathSearchesPerTick", PlayerBotPathSearchesPerTick), 0, 256);
         if (ini.GetValue(section, "PlayerBotNamePrefix") is { } prefix)
             PlayerBotNamePrefix = prefix.Trim('"');
         NpcPathPrestagePerTick = Math.Max(0, ini.GetInt(section, "NpcPathPrestagePerTick", NpcPathPrestagePerTick));

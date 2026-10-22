@@ -1,0 +1,6 @@
+# party_leave.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+tamam ciktim, gorusuruz
+partiden cikiyorum, kolay gelsin
+peki, kendine iyi bak
+tamam, iyi avlar

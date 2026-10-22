@@ -1,0 +1,6 @@
+# trade_done.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+pleasure
+ty, gl
+nice doing business
+enjoy

@@ -1659,6 +1659,9 @@ public sealed class TradeManager
         _containerIndex.Remove(trade.PartnerContainer.Uid.Value);
     }
 
+    /// <summary>How many trades are open.</summary>
+    public int Count => _activeTrades.Count;
+
     public SecureTrade? FindTradeFor(Character ch) =>
         _activeTrades.Values.FirstOrDefault(t =>
             !t.IsCompleted && (t.Initiator == ch || t.Partner == ch));

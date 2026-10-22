@@ -41,6 +41,7 @@ public static partial class Program
             OnAppeared = ch => MarkNearbyClientsRefresh(ch.Position),
             CreateClient = CreatePlayerBotClient,
             Parties = _partyManager,
+            Trades = _tradeManager,
             RedRespawnRegion = _config.PlayerBotRedRespawn,
             ReclaimRange = _config.PlayerBotReclaimRange,
             DropClient = ch => _clientsByCharUid.Remove(ch.Uid),
@@ -52,6 +53,10 @@ public static partial class Program
             NamePrefix = _config.PlayerBotNamePrefix,
             PkPercent = _config.PlayerBotPkPercent,
             ThiefPercent = _config.PlayerBotThiefPercent,
+            PkRespawnSec = _config.PlayerBotPkRespawnSec,
+            PkSpareSkill = _config.PlayerBotPkSpareSkill,
+            PkSpareMinutes = _config.PlayerBotPkSpareMinutes,
+            UnseenLiftWaitMs = _config.PlayerBotUnseenLiftSec * 1000L,
             SearchesPerTick = _config.PlayerBotPathSearchesPerTick,
             ResRobeName = SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.SpellResRobename),
         };
@@ -61,6 +66,7 @@ public static partial class Program
         engine.LoadShopping(dataDir);
         // Deaths become the news bots tell.
         _deathEngine.OnDeath += engine.OnDeath;
+        SphereNet.Game.Party.PartyManager.OnPartyMessage = engine.OnPartyChat;
         engine.BadSpotFile = Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "playerbots_badspots.txt");
         int badSpots = engine.LoadBadSpots();
         engine.CorridorFile = Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "playerbots_corridors.txt");
@@ -92,7 +98,7 @@ public static partial class Program
                 "[playerbots] online={Count} tick avg={Avg}us max={Max}us deferred={Deferred} steps={Steps} " +
                 "searches={Searches} (failed {Failed}, slowest {SlowSearch}us) doors={Doors} fights={Fights} deaths={Deaths} reclaims={Reclaims} handbacks={HandBacks} rescues={Rescues} badspots={BadSpots} slowest act {SlowAct}us ({SlowWhat}) route {Route}us step {Step}us spawn {Spawn}us moves {Moves} avg {MoveAvg}us max {MoveMax}us at {MoveWhere} " +
                 "watchers={Watchers} seen avg={SeenAvg} max={SeenMax} lines={Lines} replies={Replies} scenes={Scenes} moved={Moved} mounts={Mounts} regears={Regears} robes={Robes} stalldoors={StallDoors} spotswitches={SpotSwitches} stallsearches={StallSearches} " +
-                "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} badlinks={BadLinks} searchtimeouts={Timeouts} " +
+                "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} tends={Tends} orders={Orders} trades={Trades} liftwaits={LiftWaits} badlinks={BadLinks} searchtimeouts={Timeouts} " +
                 "searchq={Queued} denied={Denied} dropped={Dropped} notrun={NotRun} backlog={Backlog} corridors={Corridors} corridoruses={CorridorUses} cornersplits={CornerSplits} " +
                 "waits={Waits} sidesteps={SideSteps} doorway={Doorway} portals={Portals} portalmisses={PortalMisses} noroute={NoRoute} stranded={Stranded} maprescues={MapRescues} " +
                 "unreachable={Unreachable} giveups={GiveUps} faults={Faults} staticdoors={StaticDoors} deposits={Deposits} withdrawals={Withdrawals} marks={Marks} (taken {MarksTaken}, failed {MarksFailed}) recalls={Recalls} companions={Companions} pauses={Pauses} stalled [{Stalled}] refusals [{Refusals}]",
@@ -103,7 +109,7 @@ public static partial class Program
                 bots.WindowMoves > 0 ? bots.WindowMoveUs / bots.WindowMoves : 0, bots.WindowMaxMoveUs, bots.WindowMaxMoveWhere,
                 bots.Watching.Count, bots.WindowSeenSamples > 0 ? (bots.WindowSeenSum * 10 / bots.WindowSeenSamples) / 10.0 : 0,
                 bots.WindowSeenMax, bots.WindowLines, bots.WindowReplies, bots.WindowScenes, bots.WindowMovedHouse, bots.WindowMounts, bots.WindowRegears, bots.WindowRobesShed, bots.WindowStallDoors, bots.WindowSpotSwitches, bots.WindowStallSearches,
-                bots.WindowPurchases, bots.WindowMeditations, bots.WindowPkAttacks, bots.WindowThefts, bots.BadLinks,
+                bots.WindowPurchases, bots.WindowMeditations, bots.WindowPkAttacks, bots.WindowThefts, bots.WindowPartyTends, bots.WindowPartyOrders, bots.WindowTrades, bots.WindowLiftWaits, bots.BadLinks,
                 bots.SearchTimeouts,
                 bots.WindowSearchQueued, bots.WindowSearchDenied, bots.WindowSearchDropped, bots.WindowSearchesNotRun, bots.WindowSearchBacklog,
                 bots.CorridorCount, bots.WindowCorridorUses, bots.WindowCornerSplits,

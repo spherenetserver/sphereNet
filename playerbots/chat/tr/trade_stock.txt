@@ -1,0 +1,5 @@
+# trade_stock.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{items} var
+{items}. istersen takas ac
+{items} satiyorum

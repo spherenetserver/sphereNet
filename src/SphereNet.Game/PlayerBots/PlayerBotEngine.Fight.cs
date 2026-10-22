@@ -196,6 +196,8 @@ public sealed partial class PlayerBotEngine
         mind.Mode = mind.ResumeMode;
         mind.ResetLeg(now);
         mind.NextActMs = now + _rng.Next(800, 2500);
+        // A player killer moves on from where it killed, after the body.
+        if (won && IsPk(mind)) mind.LingerUntilMs = 0;
         // The body of what it killed: supplies off a monster, anything off a victim.
         if (won && foe != null && !mind.Char.IsDead)
             StartLoot(mind, foe, now);

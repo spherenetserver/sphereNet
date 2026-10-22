@@ -222,6 +222,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.ResolveClientLastEventTick = null;
         SphereNet.Game.Objects.Characters.Character.SendKrToolbarStatus = null;
         SphereNet.Game.Party.PartyDef.FunctionExists = null;
+        SphereNet.Game.Party.PartyManager.OnPartyMessage = null;
         SphereNet.Game.Definitions.CharDefHelper.AfterApplyDefName = null;
         SphereNet.Game.Objects.Characters.Character.ResolvePartyManager = null;
         SphereNet.Game.Objects.Characters.Character.ResolvePartyFinder = null;

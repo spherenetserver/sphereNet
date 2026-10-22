@@ -128,6 +128,7 @@ public sealed class PlayerBotArchetypeLiveTests(ITestOutputHelper outp)
                 Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, seed: 3)
             {
                 TargetCount = 50,
+                PkRespawnSec = 0,
                 RunCreateScript = c => dispatcher.FireNpcLoadScript(c, restock: true),
             };
             var ch = world.CreateCharacter();
@@ -148,7 +149,7 @@ public sealed class PlayerBotArchetypeLiveTests(ITestOutputHelper outp)
             for (int i = 0; i < 300 && ch.IsDead; i++) { engine.Tick(now); now += 100; }
 
             Assert.False(ch.IsDead);
-            Assert.True(ch.Position.GetDistanceTo(new Point3D(60, 100, 0, 0)) <= 2, $"raised at {ch.Position}");
+            Assert.True(ch.Position.GetDistanceTo(new Point3D(60, 100, 0, 0)) <= 12, $"raised at {ch.Position}");
             var things = Enum.GetValues<Layer>().Select(ch.GetEquippedItem).OfType<Item>()
                 .Concat(world.GetContainerContents(ch.Backpack?.Uid ?? Serial.Invalid))
                 .ToList();

@@ -274,6 +274,7 @@ public sealed partial class PlayerBotEngine
     {
         if (_minds.Count == 0) return;
         long now = NowMs();
+        if (killer != null) NotePkKill(victim, killer, now);
         string place = PlaceName(victim.Position);
         if (victim.IsPlayer && killer != null && killer.IsPlayer && killer != victim)
             Gossip.Add(new BotGossipEvent("pk", BaseName(victim), victim.Uid.Value, BaseName(killer), killer.Uid.Value, place, now));

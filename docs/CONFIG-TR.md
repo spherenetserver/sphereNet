@@ -242,10 +242,38 @@ Oyuncuların gördüğü her bot adının önüne eklenir; sondaki boşluğu kor
 
 ### PLAYERBOTPKPERCENT
 
-Savaşçı botların oyuncu katili (PK) olanlarının yüzdesi; her bot için bir kez belirlenir (`PLAYERBOT.ROLE`). PK botuna bir bölge verilir (`PLAYERBOT.HAUNT`: hiçbir guarded bölgenin içinde olmayan bir zindan girişi, moongate, tapınak ya da landmark) ve 40 kare çevresindeki yol düğümlerinde dolaşır; guarded bölgeye hiç adım atmaz, birinin içinde bulunursa bölgesine taşınır. 14 kare içinde gördüğü, guard alanı dışında duran her mavi (innocent) oyuncuya ya da bota saldırır ve cesedi loot eder. Ölünce birkaç saniye içinde bölgesinde arketipinin yeni kitiyle dirilir; öldüğünde üstündekiler cesette kalır. Suç, murderer sayısı ve guard'lar normal kurallarla işler. `0` kapatır.
+Savaşçı botların oyuncu katili (PK) olanlarının yüzdesi; her bot için bir kez belirlenir (`PLAYERBOT.ROLE`). PK botuna bir bölge verilir (`PLAYERBOT.HAUNT`: hiçbir guarded bölgenin içinde olmayan bir zindan girişi, moongate, tapınak ya da landmark) ve 40 kare çevresindeki yol düğümlerinde dolaşır; guarded bölgeye hiç adım atmaz, birinin içinde bulunursa bölgesine taşınır. 14 kare içinde gördüğü, guard alanı dışında duran her mavi (innocent) oyuncuya ya da bota saldırır ve cesedi loot eder. Ölünce görünmeyen bir hayalet olarak bekler (bkz. PLAYERBOTPKRESPAWNSEC) ve bölgesinin dağınık bir noktasında arketipinin yeni kitiyle dirilir; öldüğünde üstündekiler cesette kalır. Bölgeler paylaştırılır, PK'lar tek bir bölgeye yığılmaz. Suç, murderer sayısı ve guard'lar normal kurallarla işler. `0` kapatır.
 
 - **Tür:** integer (0-100)
 - **Varsayılan:** `5`
+
+### PLAYERBOTPKRESPAWNSEC
+
+Ölen PK botunun dirilmeden önce beklediği saniye (bunun bir-iki katı, rastgele). Bu sürede war mode kapalı bir hayalettir, bölgesinin görünmeyen bir noktasına taşınır; bölgenin başka bir noktasında dirilir, böylece birlikte ölen PK'lar birlikte dönmez. `0` hemen diriltir.
+
+- **Tür:** integer (saniye, 0-86400)
+- **Varsayılan:** `180`
+
+### PLAYERBOTPKSPARESKILL
+
+PK botu skill toplamı (puan) bunun altında olana dokunmaz: yeni karakterler avlanmaz. `0` kimseyi esirgemez.
+
+- **Tür:** integer (puan)
+- **Varsayılan:** `300`
+
+### PLAYERBOTPKSPAREMINUTES
+
+Bir PK botunun öldürdüğü oyuncuya ya da bota bu kadar dakika hiçbir PK botu dokunmaz; dirilen kurban cesedinin başında yeniden öldürülmez. `0` kapatır.
+
+- **Tür:** integer (dakika)
+- **Varsayılan:** `10`
+
+### PLAYERBOTUNSEENLIFTSEC
+
+Botun dertten kurtarılma taşıması - duvara takılma, durduğu yerden yol olmaması, yolsuz bir harita, bölgesi dışındaki PK botu - 18 kare içindeki bir oyuncu botun durduğu ya da çıkacağı yeri görüyorsa bu kadar saniye bekler; süre dolunca yine de yapılır. Yeni botlar da sekiz denemede bulunursa kimsenin görmediği bir noktada girer, fazla botlar yalnız kimsenin görmediği yerde çıkar. `0` hemen taşır.
+
+- **Tür:** integer (saniye, 0-3600)
+- **Varsayılan:** `90`
 
 ### PLAYERBOTTHIEFPERCENT
 

@@ -697,6 +697,11 @@ public sealed class PlayerBotChatTests
         Assert.Equal(BotIntentKind.Doing, intents.Parse("napıyon kanka").Kind);
         Assert.Equal(BotIntentKind.Here, intents.Parse("burası neresi").Kind);
         Assert.Equal(BotIntentKind.Heal, intents.Parse("heal me pls").Kind);
+        Assert.Equal(BotIntentKind.Stay, intents.Parse("wait here").Kind);
+        Assert.Equal(BotIntentKind.Stay, intents.Parse("burada bekle").Kind);
+        Assert.Equal(BotIntentKind.Follow, intents.Parse("yanıma gel").Kind);
+        Assert.Equal(BotIntentKind.Status, intents.Parse("durumun ne").Kind);
+        Assert.Equal(BotIntentKind.LeaveParty, intents.Parse("leave party").Kind);
         Assert.Equal((BotIntentKind.Where, "Healer"), Kind(intents.Parse("where is the healer?")));
         Assert.Equal((BotIntentKind.Where, "Bank"), Kind(intents.Parse("banka?")));
         Assert.Equal(BotIntentKind.News, intents.Parse("any news?").Kind);

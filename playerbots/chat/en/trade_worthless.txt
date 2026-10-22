@@ -1,0 +1,5 @@
+# trade_worthless.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+dont want the {item}
+no use for {item}, take it out
+nah not the {item}

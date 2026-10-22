@@ -1,0 +1,5 @@
+# trade_too_dear.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+worth about {price} but i dont have that on me
+cant afford {price} rn, sorry
+too rich for me

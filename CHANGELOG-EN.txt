@@ -4,6 +4,44 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-22] - Player bots: party companions, secure trades, PK balance, out-of-sight lifts
+------------------------------------------------------------------------
+FIX - Taking an item out of a secure trade window now clears both accept flags, as Source-X
+      CItemContainer::OnRemoveObj calls Trade_Status(false). Before, an offer could be
+      emptied after the other side had accepted it and the trade then completed.
+FIX - A player bot killed through ProcessDeathWithEffects (GM .kill and the other callers)
+      now runs its client's death sequence: the ghost body and the 0x78/0xAF to observers.
+      The client was looked up only among network clients, so the bot stayed a living body
+      to everyone else.
+FIX - A bot on a piece of road with no town place on it (a dungeon mouth out in the wild)
+      no longer waits there for good: the second stay that ends with nowhere to go takes it
+      home (recall on its rune, else a lift). A bot staying where it was set down now steps
+      about like any other.
+NEW - Party: a party bot heals the members within 10 tiles and in sight (Greater Heal or
+      Heal, Cure for poison, a bandage from within two tiles, Resurrection for a ghost),
+      turns on whatever attacks its leader, and takes orders said aloud or in party chat:
+      stay, follow, leave the party, status (hit points and mana). Party chat reaches the
+      bots (PartyManager.OnPartyMessage) and is answered in party chat.
+NEW - Trade: bots trade through the secure trade window via their clients. An item dropped
+      on a bot is bought at 60 percent of its make value (VALUE at its quality) with up to
+      half the gold it carries; "wtb x" to a bot carrying x gets its price (130 percent) and
+      the bot opens the trade with it; "what are you selling" lists three pieces. The bot
+      accepts only while it gets at least what it gives, looks again at every change,
+      gives change, refuses what is worth nothing, and closes a trade idle 90 seconds or
+      interrupted by a fight. Bots also take items worth 20 or more off monster bodies.
+CHANGE - A killed player killer bot waits PlayerBotPkRespawnSec (default 180, one to two
+      times it) as an unseen ghost and is raised at a scattered spot of its haunt; haunts
+      are shared out among player killers. Before, it came back at a roam point within
+      seconds, all killed together at one place.
+NEW - PlayerBotPkSpareSkill (default 300): player killer bots leave alone anyone with a
+      skill total under it. PlayerBotPkSpareMinutes (default 10): anyone a player killer
+      bot killed is left alone by all of them for that long.
+NEW - PlayerBotUnseenLiftSec (default 90): a bot lift (stuck, stranded, a map with no roads,
+      a player killer back to its haunt) waits while a player within 18 tiles sees the bot
+      or the spot it would appear at. New bots log in at an unseen spot when one is found,
+      and surplus bots log out only unseen.
+NEW - Telemetry: tends, orders, trades, liftwaits.
+
 [2026-10-22] - Player bots: player killers keep to a haunt, attack the blue, come back armed
 ------------------------------------------------------------------------
 CHANGE - A player killer bot is given a haunt (PLAYERBOT.HAUNT: a dungeon mouth, moongate,

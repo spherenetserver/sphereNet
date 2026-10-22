@@ -4,6 +4,44 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-22] - Oyuncu botlari: party arkadasi, guvenli takas, PK dengesi, gorunmeden tasima
+------------------------------------------------------------------------
+DUZELTME - Guvenli takas penceresinden esya alinmasi artik iki tarafin onayini da siler;
+       Source-X CItemContainer::OnRemoveObj Trade_Status(false) cagirir. Eskiden karsi
+       taraf onayladiktan sonra teklif bosaltilip takas tamamlanabiliyordu.
+DUZELTME - ProcessDeathWithEffects ile olen oyuncu botu (GM .kill ve diger cagiranlar) artik
+       istemcisinin olum adimini calistirir: hayalet govde ve gozlemcilere 0x78/0xAF.
+       Istemci yalniz ag istemcileri arasinda araniyordu; bot herkese canli govde
+       olarak gorunuyordu.
+DUZELTME - Uzerinde hicbir kasaba yeri olmayan bir yol parcasindaki bot (kirdaki bir zindan
+       girisi) artik orada sonsuza kadar beklemez: gidecek yer bulunamayan ikinci
+       bekleyiste eve doner (rune'una recall, yoksa tasima). Birakildigi yerde bekleyen
+       bot da artik digerleri gibi bir iki adim dolasir.
+YENI - Party: party botu 10 kare icindeki ve gordugu uyeleri iyilestirir (Greater Heal ya
+       da Heal, zehre Cure, iki kare icinden bandaj, hayalete Resurrection), liderine
+       saldirana doner ve yuksek sesle ya da party sohbetinden emir alir: bekle, gel,
+       partiden cik, durum (can ve mana). Party sohbeti botlara ulasir
+       (PartyManager.OnPartyMessage) ve party sohbetinden cevaplanir.
+YENI - Takas: botlar istemcileri uzerinden guvenli takas penceresiyle ticaret yapar. Bota
+       birakilan esya make degerinin (kalitesindeki VALUE) yuzde 60'ina, tasidigi altinin
+       en cok yarisiyla alinir; x tasiyan bota "wtb x" fiyatini (yuzde 130) getirir ve bot
+       takasi esyayla acar; "ne satiyorsun" uc parca sayar. Bot yalniz verdigi kadarini
+       aldikca kabul eder, her degisiklikte yeniden bakar, para ustu verir, degersizi
+       reddeder, 90 saniye bos kalan ya da dovusle kesilen takasi kapatir. Botlar canavar
+       cesetlerinden 20 ve uzeri degerli esyalari da alir.
+DEGISIKLIK - Olen PK botu gorunmeyen bir hayalet olarak PlayerBotPkRespawnSec (varsayilan
+       180, bunun bir-iki kati) bekler ve bolgesinin dagitik bir noktasinda dirilir;
+       bolgeler PK'lar arasinda paylastirilir. Eskiden saniyeler icinde bir dolasma
+       noktasinda donuyordu, birlikte olenler ayni yerde.
+YENI - PlayerBotPkSpareSkill (varsayilan 300): PK botlari skill toplami bunun altinda
+       olana dokunmaz. PlayerBotPkSpareMinutes (varsayilan 10): bir PK botunun oldurdugune
+       bu sure boyunca hicbiri dokunmaz.
+YENI - PlayerBotUnseenLiftSec (varsayilan 90): bot tasimasi (takilma, yolsuz kalma, yolsuz
+       harita, bolgesine donen PK) 18 kare icindeki bir oyuncu botu ya da cikacagi yeri
+       gorurken bekler. Yeni botlar bulunursa gorunmeyen bir noktada girer, fazla botlar
+       yalniz gorunmeden cikar.
+YENI - Telemetri: tends, orders, trades, liftwaits.
+
 [2026-10-22] - Oyuncu botlari: PK botlari bolgesinde kalir, maviye saldirir, itemli doner
 ------------------------------------------------------------------------
 DEGISIKLIK - PK botuna bir bolge verilir (PLAYERBOT.HAUNT: hicbir guarded bolgenin icinde

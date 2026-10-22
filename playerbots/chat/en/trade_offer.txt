@@ -1,0 +1,6 @@
+# trade_offer.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+i can give {price}gp for that
+{price} gold, take it or leave it
+ill pay {price}
+{price}gp, fair?

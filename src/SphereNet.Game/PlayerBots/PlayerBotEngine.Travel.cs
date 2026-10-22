@@ -50,7 +50,23 @@ public sealed partial class PlayerBotEngine
             if (KnowsTravel(mind) && !HomeOnThisRoad(mind) && TryRecallHome(mind, now, "no road home"))
                 return;
             mind.Goal = PickShopping(mind, now) ?? PickDestination(mind, spawnable: false);
-            if (mind.Goal == null) { mind.NextActMs = now + 30_000; return; }
+            if (mind.Goal == null)
+            {
+                // Nowhere to go from this piece of road (a dungeon mouth or a stretch of
+                // wild road with no town on it): asked again it would stand here for
+                // good, so the second time it goes home.
+                if (++mind.NoGoalCount >= 2)
+                {
+                    mind.NoGoalCount = 0;
+                    WindowGiveUps++;
+                    mind.Note(now, $"nowhere to go from {mind.Char.Position}");
+                    StrandedRescue(mind, now, -1);
+                    return;
+                }
+                mind.NextActMs = now + 30_000;
+                return;
+            }
+            mind.NoGoalCount = 0;
             mind.Char.SetTag(GoalTag, mind.Goal.Name);
             mind.Mode = BotMode.Travel;
             mind.Route = null;
@@ -62,7 +78,7 @@ public sealed partial class PlayerBotEngine
 
         // Idle life: a step or two about, livelier where a player is watching. What is
         // said is up to the scenes played for the players around (see Direct).
-        if (mind.At != null && !StepOffDoorway(mind) && _rng.Next(100) < (watched ? 60 : 25))
+        if (!StepOffDoorway(mind) && _rng.Next(100) < (watched ? 60 : 25))
             WanderNear(mind, mind.LingerAnchor, 3, run: false);
         mind.NextActMs = now + (watched ? _rng.Next(3000, 8000) : _rng.Next(4000, 12_000));
     }
@@ -327,6 +343,7 @@ public sealed partial class PlayerBotEngine
     {
         var ch = mind.Char;
         var route = mind.Route!;
+        if (LiftSeen(mind, target, now)) return;
         StuckRescues++;
         WindowRescues++;
         // Learn the spot: the way out of where it stood, or into where it was
@@ -497,6 +514,7 @@ public sealed partial class PlayerBotEngine
             return;
         }
         Point3D? spot = node >= 0 ? Nav.Waypoints[node].Pos : HomeSpot(mind);
+        if (spot is { } to && LiftSeen(mind, to, now)) return;
         StrandedRescues++;
         WindowStrandedRescues++;
         mind.NoRouteCount = node >= 0 ? mind.NoRouteCount : 0;

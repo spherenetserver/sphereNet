@@ -1,0 +1,5 @@
+# trade_too_dear.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{price} eder ama ustumde o kadar yok
+{price} veremem su an, kusura bakma
+bana pahali

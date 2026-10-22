@@ -243,10 +243,38 @@ Put before every bot's name as players see it; quote it to keep a trailing space
 
 ### PLAYERBOTPKPERCENT
 
-Percent of fighter bots that are player killers, decided once per bot (`PLAYERBOT.ROLE`). A player killer is given a haunt (`PLAYERBOT.HAUNT`: a dungeon mouth, moongate, shrine or landmark outside every guarded region) and roams the road nodes within 40 tiles of it; it never steps into a guarded region, and one found in one is set down at its haunt. It attacks every blue (innocent) player or bot it sees within 14 tiles that stands outside the guards' reach, and goes through the body. Killed, it is raised at its haunt within seconds with a new kit of its archetype; what it died with stays on its corpse. Crime, murder counts and guards follow the normal rules. `0` for none.
+Percent of fighter bots that are player killers, decided once per bot (`PLAYERBOT.ROLE`). A player killer is given a haunt (`PLAYERBOT.HAUNT`: a dungeon mouth, moongate, shrine or landmark outside every guarded region) and roams the road nodes within 40 tiles of it; it never steps into a guarded region, and one found in one is set down at its haunt. It attacks every blue (innocent) player or bot it sees within 14 tiles that stands outside the guards' reach, and goes through the body. Killed, it waits as an unseen ghost (see PLAYERBOTPKRESPAWNSEC) and is raised at a scattered spot of its haunt with a new kit of its archetype; what it died with stays on its corpse. Haunts are shared out so no one haunt gathers them all. Crime, murder counts and guards follow the normal rules. `0` for none.
 
 - **Type:** integer (0-100)
 - **Default:** `5`
+
+### PLAYERBOTPKRESPAWNSEC
+
+Seconds before a killed player killer bot is raised (one to two times this, at random). Meanwhile it is a ghost out of war mode, moved to an unseen spot of its haunt; it is raised at another spot of the haunt, so player killers killed together do not come back together. `0` raises it at once.
+
+- **Type:** integer (seconds, 0-86400)
+- **Default:** `180`
+
+### PLAYERBOTPKSPARESKILL
+
+A player killer bot leaves alone anyone whose skill total, in points, is under this: new characters are not hunted. `0` spares nobody.
+
+- **Type:** integer (points)
+- **Default:** `300`
+
+### PLAYERBOTPKSPAREMINUTES
+
+Minutes a player or bot killed by a player killer bot is left alone by every player killer bot, so a raised victim is not killed again at its corpse. `0` turns it off.
+
+- **Type:** integer (minutes)
+- **Default:** `10`
+
+### PLAYERBOTUNSEENLIFTSEC
+
+Seconds a bot's lift out of trouble - stuck against a wall, no road from where it stands, on a map with no roads, a player killer outside its haunt - waits while a player within 18 tiles can see where the bot stands or where it would appear; after that it goes ahead anyway. New bots likewise log in at a spot nobody sees when one of eight tries finds one, and surplus bots log out only where nobody sees them. `0` lifts at once.
+
+- **Type:** integer (seconds, 0-3600)
+- **Default:** `90`
 
 ### PLAYERBOTTHIEFPERCENT
 

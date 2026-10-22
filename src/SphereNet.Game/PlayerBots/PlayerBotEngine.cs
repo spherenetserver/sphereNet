@@ -201,6 +201,7 @@ public sealed partial class PlayerBotEngine
         WindowMarksTaken = WindowMarksFailed = 0;
         ResetDiagnosticsWindow();
         WindowPurchases = WindowMeditations = WindowPkAttacks = WindowThefts = 0;
+        WindowPartyTends = WindowPartyOrders = WindowTrades = WindowLiftWaits = 0;
         WindowSeenMax = 0;
         WindowTicks = WindowTotalUs = WindowMaxUs = WindowSearches = WindowSteps = WindowFights = 0;
         WindowMaxSearchUs = WindowFailedSearches = WindowDoors = WindowRescues = 0;
@@ -316,8 +317,18 @@ public sealed partial class PlayerBotEngine
     /// archetype resolves to a CHARDEF or there is nowhere to stand.</summary>
     public Character? SpawnOne()
     {
-        var start = PickDestination(null, spawnable: true);
-        if (start == null) return null;
+        // Somewhere no player is looking, as a login happens off screen; failing that,
+        // where the last try fell.
+        BotDestination? start = null;
+        Point3D pos = default;
+        for (int i = 0; i < 8; i++)
+        {
+            start = PickDestination(null, spawnable: true);
+            if (start == null) return null;
+            int spot = start.PickArrival(_rng);
+            pos = spot >= 0 ? start.Arrivals[spot] : start.Pos;
+            if (!IsWatched(pos, UnseenRange)) break;
+        }
         string? defName = PickArchetype();
         if (defName == null) return null;
         int defIndex = ResolveCharDef(defName);
@@ -325,10 +336,8 @@ public sealed partial class PlayerBotEngine
 
         var ch = CreateFromDef(defIndex);
         ch.SetTag(MarkerTag, "1");
-        ch.SetTag(HomeTag, start.City);
+        ch.SetTag(HomeTag, start!.City);
         ch.SetTag(ArchetypeTag, defName);
-        int startSpot = start.PickArrival(_rng);
-        var pos = startSpot >= 0 ? start.Arrivals[startSpot] : start.Pos;
         if (!_world.PlaceCharacter(ch, pos))
         {
             _world.DeleteObject(ch);
@@ -458,10 +467,10 @@ public sealed partial class PlayerBotEngine
         }
         if (missing < 0)
         {
-            // Those nobody sees go first, idle ones before busy ones.
+            // Only those nobody sees log out, idle ones before busy ones.
             foreach (var mind in _order
-                         .OrderBy(m => IsWatched(m.Char.Position) ? 1 : 0)
-                         .ThenBy(m => m.Mode == BotMode.Linger && m.Scene == null ? 0 : 1)
+                         .Where(m => !IsWatched(m.Char.Position, UnseenRange))
+                         .OrderBy(m => m.Mode == BotMode.Linger && m.Scene == null ? 0 : 1)
                          .Take(Math.Min(-missing, 5)).ToList())
                 Release(mind.Char);
         }
@@ -478,8 +487,9 @@ public sealed partial class PlayerBotEngine
         if (!_portalsResolved) ResolvePortals();
         // Last tick's searches, run since (in the host's parallel phase, or here).
         ApplySearches(now);
-        KeepPopulation(now);
+        // Who is looking first: arrivals and departures happen out of their sight.
         RefreshAudience(now);
+        KeepPopulation(now);
         TickScenes(now);
         SampleStalls(now);
         SaveCorridorsIfDue(now);
@@ -512,6 +522,10 @@ public sealed partial class PlayerBotEngine
                 // Struck while idling: it turns on the attacker now, not at its next act.
                 if (now < mind.NextActMs && mind.Mode == BotMode.Linger && now >= mind.NextScanMs &&
                     !ch.IsDead && ch.Attackers.Count > 0)
+                    mind.NextActMs = now;
+                // A trade window opened on it: it looks at it now, as a player would.
+                if (now < mind.NextActMs && mind.Trade == null && Trades is { Count: > 0 } trades &&
+                    mind.Client != null && trades.FindTradeFor(ch) != null)
                     mind.NextActMs = now;
                 if (now < mind.NextActMs) continue;
                 if (budgetSpent)
@@ -630,7 +644,11 @@ public sealed partial class PlayerBotEngine
         _logger.LogInformation("[playerbots] {Name} on map {Map} with no roads; taken home to {Spot}", ch.Name,
             ch.MapIndex, spot?.ToString() ?? "nowhere");
         mind.Note(now, $"on map {ch.MapIndex} with no roads; taken home");
-        if (spot is { } where) Teleport(ch, where);
+        if (spot is { } where)
+        {
+            if (LiftSeen(mind, where, now)) return;
+            Teleport(ch, where);
+        }
         ResetMind(mind, now);
         mind.NextActMs = now + 1000;
     }
@@ -650,6 +668,8 @@ public sealed partial class PlayerBotEngine
         }
         if (mind.Mode != BotMode.Fight && mind.Mode != BotMode.Flee && TryStartFight(mind, now))
             return;
+        if (ActTrade(mind, now))
+            return;
         if (CheckGear(mind, now) || CheckMount(mind, now))
             return;
         if (mind.Mode is BotMode.Linger or BotMode.Travel)
@@ -665,6 +685,11 @@ public sealed partial class PlayerBotEngine
         }
         if (mind.Mode == BotMode.Linger && mind.Scene == null && ActThief(mind, now))
             return;
+        if (mind.Mode is BotMode.Linger or BotMode.Travel or BotMode.Fight && TryTendParty(mind, now))
+        {
+            mind.NextActMs = now + 600;
+            return;
+        }
         if (mind.Mode is BotMode.Linger or BotMode.Travel && ActFollow(mind, now))
             return;
         // A player killer takes no trips: back to roaming its haunt.
@@ -806,13 +831,14 @@ public sealed partial class PlayerBotEngine
     /// else the default. <c>{name}</c> is whoever the bot speaks to
     /// (<paramref name="to"/>), <c>{me}</c> the bot. Returns whether a line was said.</summary>
     private bool Speak(BotMind mind, string category, string? fallback = "small_talk", Character? to = null,
-        string? lang = null, IReadOnlyDictionary<string, string>? extra = null, bool force = false, string? prefix = null)
+        string? lang = null, IReadOnlyDictionary<string, string>? extra = null, bool force = false, string? prefix = null,
+        bool party = false)
     {
         var ch = mind.Char;
         // Talk nobody hears is skipped; a line that does something in the world (a
-        // call for the guards) is said anyway.
+        // call for the guards) is said anyway, and party chat reaches the party anywhere.
         var listener = WatcherNear(ch.Position, HearRange);
-        if (listener == null && !force) return false;
+        if (listener == null && !force && !party) return false;
         lang ??= listener?.Language ?? Chat.Language;
         var tokens = Tokens(mind, lang);
         if (to != null) tokens["name"] = FirstName(to);
@@ -830,7 +856,16 @@ public sealed partial class PlayerBotEngine
             !first.Contains('?'))
             line = first.TrimEnd('.', '!', ' ') + ", " + line;
         WindowLines++;
-        if (mind.Client != null)
+        if (party && mind.Client != null)
+        {
+            // Through the party chat sub-command (0xBF 0x06, 4), as a client sends it.
+            var text = System.Text.Encoding.BigEndianUnicode.GetBytes(line);
+            var data = new byte[1 + text.Length + 2];
+            data[0] = 4;
+            text.CopyTo(data, 1);
+            mind.Client.HandleExtendedCommand(0x06, data);
+        }
+        else if (mind.Client != null)
             mind.Client.HandleSpeech(0, ch.SpeechColor != 0 ? ch.SpeechColor : (ushort)0x03B2, 3, line);
         else
             Say?.Invoke(ch, line);

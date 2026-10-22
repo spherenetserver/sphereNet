@@ -548,6 +548,39 @@ public sealed partial class PlayerBotEngine
         return -1;
     }
 
+    /// <summary>How far a player sees a bot vanish or appear.</summary>
+    private const int UnseenRange = 18;
+    /// <summary>A lift (stuck, stranded, map, a player killer back to its haunt) waits
+    /// up to this long while a player can see where the bot stands or where it would
+    /// appear; then it goes ahead anyway. 0 lifts at once.</summary>
+    public long UnseenLiftWaitMs { get; set; }
+    public long WindowLiftWaits { get; private set; }
+
+    /// <summary>True while a lift of the bot to <paramref name="to"/> should wait for
+    /// nobody to be looking; the bot tries again at a later act.</summary>
+    private bool LiftSeen(BotMind mind, Point3D to, long now)
+    {
+        if (UnseenLiftWaitMs <= 0 ||
+            (!IsWatched(mind.Char.Position, UnseenRange) && !IsWatched(to, UnseenRange)))
+        {
+            mind.LiftWaitSinceMs = 0;
+            return false;
+        }
+        if (mind.LiftWaitSinceMs == 0)
+        {
+            mind.LiftWaitSinceMs = now;
+            WindowLiftWaits++;
+            mind.Note(now, $"a lift to {to} waits: a player is looking");
+        }
+        if (now - mind.LiftWaitSinceMs >= UnseenLiftWaitMs)
+        {
+            mind.LiftWaitSinceMs = 0;
+            return false;
+        }
+        mind.NextActMs = now + _rng.Next(2000, 4000);
+        return true;
+    }
+
     private void Teleport(Character ch, Point3D pos)
     {
         if (_world.MoveCharacter(ch, pos))

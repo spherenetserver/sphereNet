@@ -3658,6 +3658,7 @@ public sealed class ClientWorldFeaturesHandler
                             break;
                         SendToChar?.Invoke(targetUid,
                             new PacketPartyMessage(_character.Uid.Value, pmMsg, isPrivate: true));
+                        PartyManager.OnPartyMessage?.Invoke(_character, pmMsg, targetUid);
                         SysMessage(ServerMessages.GetFormatted("party_msg", $"{pmTargetUid:X}", pmMsg));
                     }
                 }
@@ -3674,6 +3675,7 @@ public sealed class ClientWorldFeaturesHandler
                         var chatPacket = new PacketPartyMessage(_character.Uid.Value, msg);
                         foreach (var memberUid in party.Members)
                             SendToChar?.Invoke(memberUid, chatPacket);
+                        PartyManager.OnPartyMessage?.Invoke(_character, msg, Serial.Invalid);
                     }
                 }
                 break;

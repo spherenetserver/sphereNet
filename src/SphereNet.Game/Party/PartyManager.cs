@@ -154,6 +154,11 @@ public sealed class PartyDef
 /// </summary>
 public sealed partial class PartyManager
 {
+    /// <summary>A party message a player sent: the speaker, the text, and the member it
+    /// was told to privately (Serial.Invalid for the whole party). Server-driven members
+    /// (player bots) read it here; their clients have no socket to receive it on.</summary>
+    public static Action<Objects.Characters.Character, string, Core.Types.Serial>? OnPartyMessage { get; set; }
+
     private readonly List<PartyDef> _parties = [];
 
     /// <summary>Every active party — used by the periodic party stats push

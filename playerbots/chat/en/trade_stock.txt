@@ -1,0 +1,5 @@
+# trade_stock.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+got {items}
+{items}. trade me if you want one
+selling {items}

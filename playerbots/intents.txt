@@ -1,6 +1,7 @@
 # What a player's line asks for, read by the bots around. One key per line:
 #   <intent>: keywords        greet bye thanks howareyou where party res wts wtb question
 #                             doing here whoareyou news heal follow bot far yes no
+#                             stay leaveparty status (orders to a party's bots) selling
 #   not: / more: words        "not" turns party/follow/heal into a no; "more" ("what about")
 #                             makes a place named alone ask the way there
 #   place.<Type>: keywords    a destination type (destinations.json "Type") a "where" asks about
@@ -14,7 +15,11 @@
 res: res rez rezz resurrect diril dirilt
 bot: are+you+a+bot are+u+a+bot r+u+a+bot r+u+bot are+you+bot you+a+bot u+a+bot ur+a+bot bot+musun bot+musunuz botmusun bot+mısın sen+bot+mu
 heal: heal+me heal+pls heal+plz heal+please pls+heal plz+heal cure+me need+a+heal need+heal heal+at can+bas iyileştir iyilestir şifa+ver sifa+ver
-follow: follow+me come+with+me come+with+us join+me takip+et beni+takip benimle+gel bizimle+gel peşimden+gel pesimden+gel
+selling: what+are+you+selling what+r+u+selling what+u+selling what+do+you+sell what+do+you+have+for+sale what+you+got+for+sale anything+for+sale ne+satıyorsun ne+satiyorsun ne+satıyon ne+satiyon satılık+ne+var satilik+ne+var neler+satıyorsun neler+satiyorsun
+stay: stay stay+here wait+here wait+for+me hold+here hold+up hold+position bekle burada+bekle beni+bekle burada+kal dur+burada orada+kal
+leaveparty: leave+party leave+the+party leave+group disband partiden+çık partiden+cik partyden+çık partyden+cik gruptan+çık gruptan+cik dağılın dagilin
+status: status your+hp ur+hp how+much+hp hp+mana hp+and+mana how+much+mana durum durumun ne+durumdasın ne+durumdasin canın+ne canin+ne can+mana
+follow: come+here follow+me come+with+me come+with+us join+me takip+et beni+takip benimle+gel bizimle+gel peşimden+gel pesimden+gel buraya+gel yanıma+gel yanima+gel gel+buraya takip+edin
 doing: what+are+you+doing what+r+u+doing what+you+doing what+u+doing wyd where+are+you+going where+r+u+going where+you+going where+u+going where+are+you+headed where+u+headed ne+yapıyorsun ne+yapıyon ne+yapıyosun napıyorsun napıyosun napıyon napiyon napiyorsun nereye+gidiyorsun nereye+gidiyon nereye+gidiyosun nereye+böyle
 here: where+are+we where+am+i where+is+this what+is+this+place what+place+is+this what+town which+town what+city neredeyiz nerdeyiz burası+neresi burasi+neresi neresi+burası neresi+burasi hangi+şehir hangi+sehir hangi+kasaba
 whoareyou: who+are+you who+r+u what+are+you what+class whats+your+class what+is+your+class your+skills ur+skills what+skills kimsin nesin classın+ne class+ne skillerin skill+ne

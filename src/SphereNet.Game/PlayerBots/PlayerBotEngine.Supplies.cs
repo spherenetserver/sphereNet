@@ -122,7 +122,10 @@ public sealed partial class PlayerBotEngine
         foreach (var item in corpse.Contents)
         {
             if (item.IsDeleted || mind.LootSkipped.Contains(item.Uid.Value)) continue;
-            if (IsSupply(item) || (mind.LootAll && IsWeaponType(item.ItemType)))
+            // Gold and supplies, a victim's weapons, and - from a monster too - what
+            // is worth selling on.
+            if (IsSupply(item) || (mind.LootAll && IsWeaponType(item.ItemType)) ||
+                (Trades != null && IsStock(item) && ValueOf(item) >= LootWorth))
             {
                 next = item;
                 break;

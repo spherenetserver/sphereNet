@@ -1,0 +1,7 @@
+# party_follow.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+coming
+on my way
+right behind you
+omw
+following

@@ -141,9 +141,17 @@ Each bot has a mode, acted on when its next action time comes:
   at its haunt. It attacks the nearest blue player or bot (innocent to it, NOTO_GOOD) it
   can see within 14 tiles that stands outside the guards' reach (never staff, another
   player killer or a party member) and goes through the body (weapons too). It runs no
-  bank, rune, recall, shopping or party errands. Killed, it is a ghost for five to twelve
-  seconds and is then raised at a roam point of its haunt with its archetype's kit
-  (as a bare bot gears up); what it died with stays on the corpse for its killer. `PlayerBotThiefPercent` of the rest are thieves, given Stealing,
+  bank, rune, recall, shopping or party errands. Haunts are shared out: a new player
+  killer takes the haunt fewest others hold. It leaves alone anyone whose skill total
+  is under `PlayerBotPkSpareSkill` points (new characters) and, for
+  `PlayerBotPkSpareMinutes`, anyone a player killer has just killed; after a kill it
+  moves on to another roam point. Killed, it is a ghost for five to twelve seconds, then
+  turns out of war mode (the living no longer see it), is moved to an unseen spot of its
+  haunt and waits there `PlayerBotPkRespawnSec` (one to two times it); it is raised at
+  another spot of the haunt (a roam point and two to eight tiles aside, out of the
+  guards' reach, off any teleporter, unseen if it can be) with its archetype's kit (as a
+  bare bot gears up), so player killers killed together come back apart. What it died
+  with stays on the corpse for its killer. `PlayerBotThiefPercent` of the rest are thieves, given Stealing,
   Snooping and Hiding: in a guarded town every few minutes one steps up to someone,
   opens their pack, steals gold or something light with the skill's target cursor, hides
   and walks off. Murder counts, the criminal flag, the guards and the murderer's
@@ -162,8 +170,37 @@ Each bot has a mode, acted on when its next action time comes:
   is not handed back.
 - **Party**: a player's party invitation is accepted after a moment, through the same
   accept sub-command a client sends. In a party led by a player the bot keeps within three
-  tiles of the leader, joins the fight the leader picks, and leaves the party when the
-  leader has been out of reach for two minutes.
+  tiles of the leader, joins the fight the leader picks (a player only when that is no
+  crime: one not blue to the bot), turns on whatever attacks the leader, and leaves the
+  party when the leader has been out of reach for two minutes. Every second and a half
+  it looks over the members within 10 tiles and in sight: a ghost is raised (a caster
+  with Resurrection), a poisoned member cured, the worst wounded under 70% healed -
+  Greater Heal or Heal from a caster, else a bandage from a bot with Healing 50 standing
+  within two tiles - all through its client. Orders said aloud or in party chat by a
+  party member (`stay`, `follow`, `leaveparty`, `status`, `heal` in `intents.txt`) go to
+  the bot named in the line, else to every bot of the party: wait here (ten minutes, still
+  standing up for the leader), follow again, leave the party, tell hit points and mana
+  (`party_stay`, `party_follow`, `party_leave`, `party_status`). Party chat reaches the
+  bots through `PartyManager.OnPartyMessage`; anything else said there is answered in
+  party chat (0xBF 0x06 sub-command 4, as a client sends it) by the bot named, the one
+  told privately, or one of them.
+- **Trade**: a bot trades through the secure trade window, its side moved by its
+  client (pickup and drop) and agreed with the window's accept. It values goods by their
+  make value (the definition's VALUE at the item's quality) times the amount; it buys at
+  60% of that and sells at 130%, and spends at most half the gold in its pack. An item
+  dropped on it opens a trade: it puts in what the item is worth to it and agrees after
+  a moment; it refuses (`trade_worthless`) something worth nothing and says when it
+  cannot afford it (`trade_too_dear`). Selling, it says its price (`trade_price`), agrees
+  once the gold in the other window (and any virtual gold offered) covers it, and puts in
+  change for gold over the price. Every change to either window is looked at again, and
+  the window clears both check marks on any change, an item taken out included. "wtb x"
+  to a bot carrying such a thing gets its price (`trade_wtb_have`); it walks over and
+  opens the trade with the piece in it. "What are you selling" (`selling`) gets three
+  pieces with prices (`trade_stock`). Its stock is what its pack holds that is worth
+  something, apart from gold, supplies, spellbooks, bags, runes, keys and blessed things;
+  from a monster's body it also takes anything worth 20 or more. A trade nobody changes
+  for 90 seconds, or a fight, closes the window. A "wts" from a player is answered with
+  "show me in a trade" (`trade_show`) by a bot with 100 gold to spend.
 
 ### Names
 
@@ -392,12 +429,24 @@ an ordinary place (walked into, or waited about: a world without gate items stil
 moongate squares). The server log lists them at start. A teleporter, gate or telepad that leads to a map the road network does not cover
 is never stepped on, and a bot found on such a map is taken home.
 
+### Out of sight
+
+A lift - a stuck bot set down on its leg's target, a stranded one on a road node or at
+home, a bot on a map with no roads, a player killer outside its haunt - waits while a
+player within 18 tiles can see where the bot stands or where it would appear, for up to
+`PlayerBotUnseenLiftSec` (90 s), then goes ahead anyway (`liftwaits` in the telemetry). A
+new bot logs in at a spot no player sees when one of eight picks finds one, and a bot
+over `PlayerBotCount` logs out only where nobody sees it.
+
 ### Off the roads
 
 A trip needs a road node within 64 tiles on the bot's floor. A bot further out (on a
 roof, a bridge, somewhere a gate put it) first walks back to the nearest node within 128
 tiles on any nearby floor. A third trip that finds no road, or five minutes of them, lifts
-it onto that node; a fifth, onto its home town's bank.
+it onto that node; a fifth, onto its home town's bank. A bot whose piece of road leads to
+no town place at all (a dungeon mouth out in the wild) goes home - a recall on its rune,
+else a lift - the second time a stay ends with nowhere to go, rather than wait there for
+good. A bot staying where it was set down wanders a step or two like any other.
 
 ## Telemetry
 
@@ -413,6 +462,8 @@ The middle of the line counts the talk and the rest: `watchers` (connected playe
 given), `regears`, `robes` (resurrection robes taken off), `stalldoors` (stalled legs sent
 to a door), `spotswitches` (last legs moved to another stopping spot), `stallsearches`
 (searches asked for on trips), `purchases`, `meditations`, `pkattacks`, `thefts`,
+`tends` (party members healed, cured or raised), `orders` (party orders taken), `trades`
+(trades completed), `liftwaits` (lifts held while a player looked),
 `badlinks` and `searchtimeouts` (searches given up at their deadline since start).
 
 The end of the line is about getting stuck:

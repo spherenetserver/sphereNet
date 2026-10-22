@@ -1,0 +1,6 @@
+# party_leave.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ok, im out. cya
+leaving party, gl
+alright, take care
+k, gl out there

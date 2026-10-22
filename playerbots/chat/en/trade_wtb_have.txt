@@ -1,0 +1,5 @@
+# trade_wtb_have.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+i got {item}, {price}gp. sec
+have {item}, {price} gold, coming over
+{item} for {price}? ill open a trade

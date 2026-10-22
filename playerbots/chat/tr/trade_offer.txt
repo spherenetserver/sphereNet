@@ -1,0 +1,6 @@
+# trade_offer.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+buna {price} gold veririm
+{price} gold, ister al ister alma
+{price} odeyebilirim
+{price}gp, olur mu?

@@ -3840,14 +3840,19 @@ public static partial class Program
             }
         }
 
-        foreach (var c in _clients.Values)
-        {
-            if (c.Character == victim)
+        // The victim's own client runs the ghost turn (body, 0x78 to observers, 0xAF).
+        // A player bot's client is filed only by character, never in _clients.
+        if (_clientsByCharUid.TryGetValue(victim.Uid, out var victimClient))
+            victimClient.OnCharacterDeath();
+        else
+            foreach (var c in _clients.Values)
             {
-                c.OnCharacterDeath();
-                break;
+                if (c.Character == victim)
+                {
+                    c.OnCharacterDeath();
+                    break;
+                }
             }
-        }
     }
 
     /// <summary>Build spell/item/char/skill definitions from the loaded scripts.

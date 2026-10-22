@@ -33,6 +33,7 @@ public sealed partial class PlayerBotEngine
         w.Language = Intents.DetectLanguage(text) ?? w.Language;
         string lang = w.Language ?? Chat.Language;
         var intent = InContext(w, Intents.Parse(text), text, now);
+        if (TryPartyCommand(speaker, intent, text, viaParty: false, now, lang)) return;
 
         // A ghost is only understood as a plea to be raised.
         if (speaker.IsDead)
@@ -120,7 +121,7 @@ public sealed partial class PlayerBotEngine
     }
 
     private void Answer(BotMind m, Character player, BotWatcher w, BotIntent intent, string text, bool named,
-        long now, string lang)
+        long now, string lang, bool party = false)
     {
         Dictionary<string, string>? tokens = null;
         string category;
@@ -180,9 +181,9 @@ public sealed partial class PlayerBotEngine
                 (category, action) = AnswerHeal(m, player, now);
                 break;
             case BotIntentKind.Follow:
-                var party = Parties?.FindParty(m.Char.Uid);
-                category = party != null && party == Parties?.FindParty(player.Uid) ? "respond_follow_already"
-                    : m.IsFighter && party == null ? "respond_follow_yes" : "respond_follow_no";
+                var botParty = Parties?.FindParty(m.Char.Uid);
+                category = botParty != null && botParty == Parties?.FindParty(player.Uid) ? "respond_follow_already"
+                    : m.IsFighter && botParty == null ? "respond_follow_yes" : "respond_follow_no";
                 break;
             case BotIntentKind.Bot:
                 category = "respond_bot";
@@ -206,7 +207,13 @@ public sealed partial class PlayerBotEngine
             case BotIntentKind.Wts when intent.Rest != null:
                 tokens = new Dictionary<string, string> { ["item"] = intent.Rest };
                 m.TalkItem = intent.Rest;
-                if (_rng.Next(100) < 50)
+                if (Trades != null && m.Client != null && !IsPk(m) && PackGold(m.Char) / 2 >= 100)
+                {
+                    // It has the gold for a real deal: show it in a trade window.
+                    category = "trade_show";
+                    m.TalkTopic = null;
+                }
+                else if (_rng.Next(100) < 50)
                 {
                     category = "buy_notice";
                     m.TalkTopic = "wts";
@@ -218,8 +225,11 @@ public sealed partial class PlayerBotEngine
                 }
                 break;
             case BotIntentKind.Wtb:
-                category = "respond_wtb_none";
-                if (intent.Rest != null) tokens = new Dictionary<string, string> { ["item"] = intent.Rest };
+                category = AnswerWtb(m, player, intent.Rest, now, ref tokens) ?? "respond_wtb_none";
+                if (tokens == null && intent.Rest != null) tokens = new Dictionary<string, string> { ["item"] = intent.Rest };
+                break;
+            case BotIntentKind.Selling:
+                (category, tokens) = AnswerStock(m);
                 break;
             case BotIntentKind.Question:
                 category = "respond_question";
@@ -242,7 +252,7 @@ public sealed partial class PlayerBotEngine
         }
         WindowReplies++;
         QueueReply(m, category, now, to: player, lang: lang, fallback: fallback, tokens: tokens, action: action,
-            prefix: prefix);
+            prefix: prefix, party: party);
     }
 
     /// <summary>What the bot is doing, from what it is doing: walking somewhere (that
@@ -444,9 +454,10 @@ public sealed partial class PlayerBotEngine
 
     private void QueueReply(BotMind mind, string category, long now, Character? to = null, string? lang = null,
         string? fallback = "respond_what", Dictionary<string, string>? tokens = null, Action? action = null,
-        string? prefix = null)
+        string? prefix = null, bool party = false)
     {
         mind.PendingPrefix = prefix;
+        mind.PendingParty = party;
         mind.PendingCategory = category;
         mind.PendingFallback = fallback;
         mind.PendingTo = to;
@@ -468,7 +479,7 @@ public sealed partial class PlayerBotEngine
         if (!mind.Char.IsDead)
         {
             if (Speak(mind, category, fallback: mind.PendingFallback, to: mind.PendingTo, lang: mind.PendingLanguage,
-                    extra: mind.PendingTokens, prefix: mind.PendingPrefix) &&
+                    extra: mind.PendingTokens, prefix: mind.PendingPrefix, party: mind.PendingParty) &&
                 mind.PendingTo is { } player && _watchers.TryGetValue(player.Uid.Value, out var w) &&
                 mind.LastLine is { } said && said.TrimEnd().EndsWith('?'))
             {
@@ -480,6 +491,7 @@ public sealed partial class PlayerBotEngine
             action?.Invoke();
         }
         mind.PendingPrefix = null;
+        mind.PendingParty = false;
         mind.PendingTo = null;
         mind.PendingTokens = null;
     }

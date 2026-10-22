@@ -1,0 +1,5 @@
+# party_status.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+can {hp}/{maxhp}, mana {mana}/{maxmana}
+{hp}/{maxhp} can, {mana}/{maxmana} mana
+canim {hp}, manam {mana}

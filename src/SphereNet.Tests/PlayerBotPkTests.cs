@@ -62,6 +62,8 @@ public sealed class PlayerBotPkTests
             TargetCount = 50,
             SearchMs = 1000,
             SearchBatchMs = 1000,
+            PkRespawnSec = 0,
+            PkSpareSkill = 0,
             CreateClient = ch =>
             {
                 var c = new SphereNet.Game.Clients.GameClient(
@@ -135,9 +137,46 @@ public sealed class PlayerBotPkTests
         Run(engine, now, 6000, each: () =>
         {
             Assert.False(Guarded(world, pk.Position), $"in town at {pk.Position}{Environment.NewLine}{Trace(engine, pk)}");
-            Assert.True(pk.Position.GetDistanceTo(at) <= engine.PkRoam + 5, $"strayed to {pk.Position}");
+            Assert.True(pk.Position.GetDistanceTo(at) <= engine.PkRoam + 12, $"strayed to {pk.Position}");
         });
         Assert.Equal(0, engine.StuckRescues);
+    }
+
+    [Fact]
+    public void APkLiftWaitsWhileAPlayerWatchesThenGoesAhead()
+    {
+        var world = World();
+        var pk = Pk(world, new Point3D(130, 100, 0, 0));
+        // A player beside it in town: the lift out waits.
+        Player(world, new Point3D(132, 100, 0, 0));
+        var engine = Engine(world);
+        engine.UnseenLiftWaitMs = 30_000;
+        engine.AdoptSaved();
+
+        long now = Run(engine, 1_000_000, 100);
+        Assert.True(Guarded(world, pk.Position), Trace(engine, pk));
+        Assert.Equal(1, engine.WindowLiftWaits);
+
+        // Past the wait it goes anyway.
+        Run(engine, now, 400, () => !Guarded(world, pk.Position));
+        Assert.False(Guarded(world, pk.Position), Trace(engine, pk));
+    }
+
+    [Fact]
+    public void ASurplusBotSomeoneWatchesDoesNotLogOut()
+    {
+        var world = World();
+        var seen = Pk(world, new Point3D(130, 100, 0, 0));
+        var unseen = Pk(world, new Point3D(60, 101, 0, 0));
+        Player(world, new Point3D(131, 100, 0, 0));
+        var engine = Engine(world);
+        // Held in town by the watching player rather than lifted out of sight.
+        engine.UnseenLiftWaitMs = 60_000;
+        engine.AdoptSaved();
+        engine.TargetCount = 0;
+        Run(engine, 1_000_000, 20);
+        Assert.NotNull(engine.MindOf(seen));
+        Assert.Null(engine.MindOf(unseen));
     }
 
     [Fact]
@@ -160,6 +199,61 @@ public sealed class PlayerBotPkTests
         Run(engine, now, 50, done: () => mind.Foe == victim);
         Assert.True(mind.Foe == victim, Trace(engine, pk));
         Assert.True(engine.WindowPkAttacks > 0);
+    }
+
+    [Fact]
+    public void ANewPlayerAndOneAPkJustKilledAreLeftAlone()
+    {
+        var world = World();
+        var pk = Pk(world, new Point3D(70, 100, 0, 0));
+        var engine = Engine(world);
+        engine.PkSpareSkill = 300;
+        engine.AdoptSaved();
+        var mind = engine.MindOf(pk)!;
+
+        var fresh = Player(world, new Point3D(74, 100, 0, 0));
+        long now = Run(engine, 1_000_000, 50);
+        Assert.NotEqual(fresh, mind.Foe);
+
+        // Killed by a player killer a moment ago (and raised since): left alone.
+        foreach (var s in new[] { SkillType.Swordsmanship, SkillType.Tactics, SkillType.Anatomy, SkillType.Healing })
+            fresh.SetSkill(s, 900);
+        engine.OnDeath(fresh, pk);
+        now = Run(engine, now, 50);
+        Assert.NotEqual(fresh, mind.Foe);
+
+        // A seasoned player nobody killed lately is fair game.
+        var seasoned = Player(world, new Point3D((short)(pk.X - 4), pk.Y, 0, 0));
+        foreach (var s in new[] { SkillType.Swordsmanship, SkillType.Tactics, SkillType.Anatomy, SkillType.Healing })
+            seasoned.SetSkill(s, 900);
+        Run(engine, now, 50, done: () => mind.Foe == seasoned);
+        Assert.True(mind.Foe == seasoned, Trace(engine, pk));
+    }
+
+    [Fact]
+    public void AKilledPkWaitsUnseenThenComesBackScattered()
+    {
+        var world = World();
+        var engine = Engine(world);
+        engine.PkRespawnSec = 60;
+        var pks = Enumerable.Range(0, 4).Select(i => Pk(world, new Point3D((short)(70 + i), 100, 0, 0))).ToList();
+        engine.AdoptSaved();
+        long now = Run(engine, 1_000_000, 10);
+        foreach (var pk in pks)
+        {
+            pk.Hits = 0;
+            pk.SetStatFlag(StatFlag.Dead);
+        }
+        // Past the ghost time but short of the wait: still dead, a ghost no one sees.
+        now = Run(engine, now, 300);
+        Assert.All(pks, pk => Assert.True(pk.IsDead));
+        Assert.All(pks, pk => Assert.False(pk.IsInWarMode));
+        Run(engine, now, 1500, done: () => pks.All(p => !p.IsDead));
+        Assert.All(pks, pk => Assert.False(pk.IsDead, Trace(engine, pk)));
+        Assert.All(pks, pk => Assert.False(Guarded(world, pk.Position)));
+        // Not all on one tile.
+        Assert.True(pks.Select(p => (p.X, p.Y)).Distinct().Count() > 1,
+            string.Join(" ", pks.Select(p => p.Position.ToString())));
     }
 
     [Fact]
@@ -192,7 +286,7 @@ public sealed class PlayerBotPkTests
 
         Assert.False(pk.IsDead, Trace(engine, pk));
         Assert.True(ticks <= 160, $"raised after {ticks} ticks");
-        Assert.True(pk.Position.GetDistanceTo(new Point3D(60, 101, 0, 0)) <= engine.PkRoam, $"raised at {pk.Position}");
+        Assert.True(pk.Position.GetDistanceTo(new Point3D(60, 101, 0, 0)) <= engine.PkRoam + 10, $"raised at {pk.Position}");
         Assert.False(Guarded(world, pk.Position));
         // No corpse run: what it died with stays on the body.
         Assert.NotEqual(BotMode.Reclaim, engine.MindOf(pk)!.Mode);

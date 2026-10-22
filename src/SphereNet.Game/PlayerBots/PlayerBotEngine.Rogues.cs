@@ -30,6 +30,16 @@ public sealed partial class PlayerBotEngine
     public int PkRoam { get; set; } = 40;
     /// <summary>How far a player killer sees a victim.</summary>
     public int PkSight { get; set; } = 14;
+    /// <summary>Seconds a killed player killer waits, as an unseen ghost, before it is
+    /// raised (one to two times this).</summary>
+    public int PkRespawnSec { get; set; } = 180;
+    /// <summary>A skill total (points) under which a player killer leaves one alone.</summary>
+    public int PkSpareSkill { get; set; } = 300;
+    /// <summary>Minutes one killed by a player killer is left alone by all of them.</summary>
+    public int PkSpareMinutes { get; set; } = 10;
+
+    // Who a player killer killed lately, and until when they are left alone.
+    private readonly Dictionary<uint, long> _pkSpared = [];
 
     /// <summary>The kinds of place a player killer haunts: where people pass, out of town.</summary>
     private static readonly string[] PkHauntTypes =
@@ -94,6 +104,12 @@ public sealed partial class PlayerBotEngine
         if (pool.Count == 0) return null;
         var here = pool.Where(d => d.Pos.Map == ch.MapIndex).ToList();
         if (here.Count > 0) pool = here;
+        // The haunt fewest of them keep, so they spread over the land.
+        var held = new Dictionary<BotDestination, int>();
+        foreach (var m in _order)
+            if (m.Haunt != null) held[m.Haunt] = held.GetValueOrDefault(m.Haunt) + 1;
+        int least = pool.Min(d => held.GetValueOrDefault(d));
+        pool = pool.Where(d => held.GetValueOrDefault(d) == least).ToList();
         mind.Haunt = pool[_rng.Next(pool.Count)];
         ch.SetTag(HauntTag, mind.Haunt.Name);
         return mind.Haunt;
@@ -121,6 +137,49 @@ public sealed partial class PlayerBotEngine
     {
         var points = RoamPoints(haunt);
         return points.Count > 0 ? points[_rng.Next(points.Count)] : null;
+    }
+
+    /// <summary>Where a player killer is set down or raised: a roam point of its haunt
+    /// with two to eight tiles' scatter, on standable ground at about the same height,
+    /// out of the guards' reach and off a teleporter - and out of every player's sight
+    /// when such a spot is found - so they do not all come back on one tile.</summary>
+    private Point3D? ScatterSpot(BotDestination haunt)
+    {
+        Point3D? seen = null;
+        for (int i = 0; i < 12; i++)
+        {
+            if (RoamPoint(haunt) is not { } at) return null;
+            int dx = _rng.Next(2, 9) * (_rng.Next(2) == 0 ? -1 : 1);
+            int dy = _rng.Next(-8, 9);
+            if (_rng.Next(2) == 0) (dx, dy) = (dy, dx);
+            var raw = new Point3D((short)(at.X + dx), (short)(at.Y + dy), at.Z, at.Map);
+            if (!BotNavGraph.TrySeatNear(_world.MapData, raw, out var spot) || Math.Abs(spot.Z - at.Z) > 15 ||
+                IsGuardedAt(spot) || FindTeleport(spot) != null)
+                continue;
+            if (!IsWatched(spot)) return spot;
+            seen ??= spot;
+        }
+        return seen ?? RoamPoint(haunt);
+    }
+
+    /// <summary>A character's skill total, in tenths.</summary>
+    private static int SkillTotal(Character c)
+    {
+        int total = 0;
+        foreach (SkillType s in Enum.GetValues<SkillType>())
+            if (s >= 0 && s <= SkillType.Throwing) total += c.GetSkill(s);
+        return total;
+    }
+
+    /// <summary>A player killer bot killed someone: all of them leave the victim alone
+    /// for <see cref="PkSpareMinutes"/>, so the resurrected are not camped.</summary>
+    private void NotePkKill(Character victim, Character killer, long now)
+    {
+        if (PkSpareMinutes <= 0 || !_minds.TryGetValue(killer.Uid.Value, out var m) || !IsPk(m)) return;
+        _pkSpared[victim.Uid.Value] = now + PkSpareMinutes * 60_000L;
+        if (_pkSpared.Count > 256)
+            foreach (uint old in _pkSpared.Where(kv => kv.Value < now).Select(kv => kv.Key).ToList())
+                _pkSpared.Remove(old);
     }
 
     /// <summary>A player killer's linger: roam from road node to road node about its
@@ -168,7 +227,8 @@ public sealed partial class PlayerBotEngine
     private void LiftToHaunt(BotMind mind, BotDestination haunt, long now, string why)
     {
         var ch = mind.Char;
-        var spot = RoamPoint(haunt);
+        var spot = ScatterSpot(haunt);
+        if (spot is { } to && LiftSeen(mind, to, now)) return;
         WindowPkLifts++;
         _logger.LogInformation("[playerbots] {Name} (pk) {Why}; set down at {Haunt} {Spot}", ch.Name, why, haunt.Name,
             spot?.ToString() ?? "nowhere");
@@ -179,13 +239,28 @@ public sealed partial class PlayerBotEngine
         mind.NextActMs = now + 1000;
     }
 
-    /// <summary>A dead player killer is raised at its haunt with a new kit of its
-    /// archetype; the corpse keeps what it died with. False for any other bot.</summary>
+    /// <summary>A dead player killer, its ghost time over, is carried to its haunt as a
+    /// ghost out of war mode (which the living do not see) and waits there
+    /// <see cref="PkRespawnSec"/> (one to two times it); then it is raised on a scattered
+    /// spot with a new kit of its archetype. The corpse keeps what it died with. False
+    /// for any other bot.</summary>
     private bool RaiseAtHaunt(BotMind mind, long now)
     {
         if (HauntOf(mind) is not { } haunt) return false;
         var ch = mind.Char;
-        if (RoamPoint(haunt) is { } spot) Teleport(ch, spot);
+        if (mind.PkRaiseAtMs == 0)
+        {
+            mind.PkRaiseAtMs = now + (long)(PkRespawnSec * 1000L * (1 + _rng.NextDouble()));
+            if (ScatterSpot(haunt) is { } wait) Teleport(ch, wait);
+            mind.Note(now, $"waits at {haunt.Name} to be raised");
+        }
+        if (now < mind.PkRaiseAtMs)
+        {
+            mind.NextActMs = Math.Min(mind.PkRaiseAtMs, now + 5000);
+            return true;
+        }
+        mind.PkRaiseAtMs = 0;
+        if (ScatterSpot(haunt) is { } spot) Teleport(ch, spot);
         if (mind.Client != null) mind.Client.OnResurrect();
         else ch.Resurrect();
         if (ch.IsDead)
@@ -210,7 +285,8 @@ public sealed partial class PlayerBotEngine
     /// <summary>A player killer out of a guarded region sets on the nearest blue player
     /// or bot it can see (innocent to it, Source-X NOTO_GOOD), standing out of the
     /// guards' reach too: not a staff member, not another player killer, not in its
-    /// party, not one it gave up on.</summary>
+    /// party, not one it gave up on, not a new player (<see cref="PkSpareSkill"/>), not
+    /// one a player killer killed lately (<see cref="PkSpareMinutes"/>).</summary>
     private Character? PickVictim(BotMind mind, long now, bool guarded)
     {
         if (guarded || now < mind.NextRogueMs || !IsPk(mind) || mind.Client == null) return null;
@@ -226,7 +302,10 @@ public sealed partial class PlayerBotEngine
             if (_minds.TryGetValue(c.Uid.Value, out var other) && IsPk(other)) continue;
             int d = ch.Position.GetDistanceTo(c.Position);
             if (d >= bestDist || mind.Avoids(c, now) || IsGuardedAt(c.Position)) continue;
+            if (_pkSpared.TryGetValue(c.Uid.Value, out long spared) && now < spared) continue;
             if (Clients.GameClient.ComputeNotoriety(_world, ch, c) != NotoGood) continue;
+            // A new player is not worth the hunt.
+            if (PkSpareSkill > 0 && SkillTotal(c) < PkSpareSkill * 10) continue;
             if (!_world.CanSeeLOS(ch.Position, c.Position)) continue;
             best = c;
             bestDist = d;

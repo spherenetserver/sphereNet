@@ -177,6 +177,30 @@ public sealed class BotMind
     public long LeaderSeenMs { get; set; }
     public long FollowCloseMs { get; set; }
     public long FollowPausedUntilMs { get; set; }
+    /// <summary>Told to wait by its party: stays at <see cref="HoldAt"/> until then.</summary>
+    public long HoldUntilMs { get; set; }
+    public Point3D HoldAt { get; set; }
+    /// <summary>Since when a lift has been waiting for nobody to look (0: none).</summary>
+    public long LiftWaitSinceMs { get; set; }
+    /// <summary>Stays in a row that ended with nowhere to go.</summary>
+    public int NoGoalCount { get; set; }
+    /// <summary>When it next looks over its party for wounds.</summary>
+    public long NextTendMs { get; set; }
+
+    // A secure trade window open with a player.
+    /// <summary>The trade it is in, to tell a completed one from a closed one.</summary>
+    public SphereNet.Game.Trade.SecureTrade? Trade { get; set; }
+    /// <summary>What both windows held when it last looked; a change is a new offer.</summary>
+    public string? TradeKey { get; set; }
+    /// <summary>When the windows last changed (an idle trade is closed).</summary>
+    public long TradeChangedMs { get; set; }
+    /// <summary>It agrees no sooner than this after a change, as a person reads first.</summary>
+    public long TradeAcceptAtMs { get; set; }
+    /// <summary>A player who asked for something it carries: it goes over and opens
+    /// a trade with the piece in it.</summary>
+    public Character? SellTo { get; set; }
+    public Objects.Items.Item? SellItem { get; set; }
+    public long SellUntilMs { get; set; }
 
     // A reply waiting out its typing delay: what to say, to whom, in which language,
     // with which tokens, and what to do once it is said (cast a resurrection, say).
@@ -189,6 +213,8 @@ public sealed class BotMind
     public Action? PendingAction { get; set; }
     /// <summary>A line said first, joined to the reply: a hello, "like I said".</summary>
     public string? PendingPrefix { get; set; }
+    /// <summary>The reply goes to party chat, not out loud.</summary>
+    public bool PendingParty { get; set; }
 
     // Talking with players and other bots.
     /// <summary>The scene this bot is acting in, if any; it stays put meanwhile.</summary>
@@ -289,6 +315,8 @@ public sealed class BotMind
     /// <summary>A player killer's haunt, and the road node it is walking to about it.</summary>
     public BotDestination? Haunt { get; set; }
     public Point3D? PatrolTo { get; set; }
+    /// <summary>When a dead player killer waiting at its haunt is raised; 0 when none.</summary>
+    public long PkRaiseAtMs { get; set; }
 
     /// <summary>The bot this one travels with, keeping pace, until it arrives.</summary>
     public BotMind? Leader { get; set; }

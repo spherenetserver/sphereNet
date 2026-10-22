@@ -22,6 +22,14 @@ public enum BotIntentKind
     No,
     /// <summary>How far, which way: the last "where" again.</summary>
     Far,
+    /// <summary>To a party bot: wait here.</summary>
+    Stay,
+    /// <summary>To a party bot: leave the party.</summary>
+    LeaveParty,
+    /// <summary>To a party bot: how are your hit points and mana.</summary>
+    Status,
+    /// <summary>What do you have for sale.</summary>
+    Selling,
 }
 
 /// <summary>What a player's line asks for. <see cref="PlaceType"/> is the destination
@@ -195,7 +203,8 @@ public sealed class BotIntents
     /// "where" (a "where are you going" asks what the bot is doing).</summary>
     private static readonly BotIntentKind[] Particular =
     [
-        BotIntentKind.Bot, BotIntentKind.Heal, BotIntentKind.Follow, BotIntentKind.Doing,
+        BotIntentKind.Bot, BotIntentKind.Selling, BotIntentKind.LeaveParty, BotIntentKind.Status, BotIntentKind.Stay,
+        BotIntentKind.Heal, BotIntentKind.Follow, BotIntentKind.Doing,
         BotIntentKind.Here, BotIntentKind.WhoAreYou, BotIntentKind.News,
     ];
 

@@ -1,0 +1,5 @@
+# trade_stock_none.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+nothing for sale atm
+got nothing worth selling
+nah im empty

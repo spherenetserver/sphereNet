@@ -1,0 +1,5 @@
+# trade_stock_none.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+su an satacak bir sey yok
+satacak bir seyim yok
+yok bende bir sey

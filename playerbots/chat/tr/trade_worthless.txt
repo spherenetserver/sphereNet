@@ -1,0 +1,5 @@
+# trade_worthless.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{item} istemiyorum
+{item} isime yaramaz, cikar onu
+yok {item} olmaz

@@ -1,0 +1,5 @@
+# trade_price.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+{price}gp for that
+put in {price} gold
+its {price}, gold in the window pls

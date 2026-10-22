@@ -202,6 +202,19 @@ public sealed class ClientInventoryHandler
     }
 
     private void SendTradeUpdateToBoth(SecureTrade trade) => _client.SendTradeUpdateToBoth(trade);
+
+    /// <summary>Something taken out of a trade window clears both check marks, as
+    /// Source-X CItemContainer::OnRemoveObj calls Trade_Status(false) - else an offer
+    /// could be emptied after the other side agreed to it.</summary>
+    private void WithdrawTradeAccept(Item? container)
+    {
+        if (container?.ItemType != Core.Enums.ItemType.EqTradeWindow ||
+            _tradeManager?.FindByContainer(container.Uid.Value) is not { } trade)
+            return;
+        if (!trade.InitiatorAccepted && !trade.PartnerAccepted) return;
+        trade.ResetAcceptance();
+        SendTradeUpdateToBoth(trade);
+    }
     private Action<Character, Item, Item>? SendTradeItemToPartner => _client.SendTradeItemToPartner;
     private SpellEngine? _spellEngine => _client.Spells;
     private bool CanSendStatusFor(Character ch) => _client.CanSendStatusFor(ch);
@@ -953,7 +966,10 @@ public sealed class ClientInventoryHandler
             }
 
             if (sourceContainer != null)
+            {
                 sourceContainer.RemoveItem(item);
+                WithdrawTradeAccept(sourceContainer);
+            }
             else
                 _world.GetSector(sourcePos)?.RemoveItem(item);
 
@@ -994,6 +1010,7 @@ public sealed class ClientInventoryHandler
         {
             var container = _world.FindItem(item.ContainedIn);
             container?.RemoveItem(item);
+            WithdrawTradeAccept(container);
         }
         else
         {

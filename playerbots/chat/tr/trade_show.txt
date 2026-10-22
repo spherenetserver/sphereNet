@@ -1,0 +1,6 @@
+# trade_show.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+bana at, teklif yapayim
+takas ac bakayim {item}
+trade ac bakalim
+takas penceresinde goster

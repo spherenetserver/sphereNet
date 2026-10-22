@@ -53,6 +53,7 @@ public sealed class PlayerBotRogueSupplyTests
             BotChatBook.FromLines("en", new Dictionary<string, string[]>()), NullLogger.Instance, seed: 5)
         {
             TargetCount = 1000,
+            PkSpareSkill = 0,
         };
         engine.CreateClient = ch =>
         {

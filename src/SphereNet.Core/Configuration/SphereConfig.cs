@@ -821,6 +821,17 @@ public sealed class SphereConfig
     // that are thieves (decided once per bot). 0 for none.
     public int PlayerBotPkPercent { get; set; } = 5;
     public int PlayerBotThiefPercent { get; set; } = 5;
+    // A killed player killer bot is raised at its haunt after this many seconds (one
+    // to two times it, at random); players it is not worth hunting: a skill total
+    // under PlayerBotPkSpareSkill points, or killed by a player killer bot within
+    // PlayerBotPkSpareMinutes.
+    public int PlayerBotPkRespawnSec { get; set; } = 180;
+    public int PlayerBotPkSpareSkill { get; set; } = 300;
+    public int PlayerBotPkSpareMinutes { get; set; } = 10;
+    // A bot lifted out of trouble (stuck, stranded, a map with no roads, a player
+    // killer off its haunt) waits up to this many seconds for no player to see it go
+    // or arrive. 0 lifts at once.
+    public int PlayerBotUnseenLiftSec { get; set; } = 90;
     // Tile path searches for bots run per tick, together, in the tick's parallel
     // phase (a bot walking into a wall asks for one). 0 leaves bots to walk walls.
     public int PlayerBotPathSearchesPerTick { get; set; } = 16;
@@ -1457,6 +1468,10 @@ public sealed class SphereConfig
         PlayerBotChatPace = Math.Max(4, ini.GetInt(section, "PlayerBotChatPace", PlayerBotChatPace));
         PlayerBotPkPercent = Math.Clamp(ini.GetInt(section, "PlayerBotPkPercent", PlayerBotPkPercent), 0, 100);
         PlayerBotThiefPercent = Math.Clamp(ini.GetInt(section, "PlayerBotThiefPercent", PlayerBotThiefPercent), 0, 100);
+        PlayerBotPkRespawnSec = Math.Clamp(ini.GetInt(section, "PlayerBotPkRespawnSec", PlayerBotPkRespawnSec), 0, 86_400);
+        PlayerBotPkSpareSkill = Math.Clamp(ini.GetInt(section, "PlayerBotPkSpareSkill", PlayerBotPkSpareSkill), 0, 10_000);
+        PlayerBotPkSpareMinutes = Math.Clamp(ini.GetInt(section, "PlayerBotPkSpareMinutes", PlayerBotPkSpareMinutes), 0, 1440);
+        PlayerBotUnseenLiftSec = Math.Clamp(ini.GetInt(section, "PlayerBotUnseenLiftSec", PlayerBotUnseenLiftSec), 0, 3600);
         PlayerBotPathSearchesPerTick = Math.Clamp(ini.GetInt(section, "PlayerBotPathSearchesPerTick", PlayerBotPathSearchesPerTick), 0, 256);
         if (ini.GetValue(section, "PlayerBotNamePrefix") is { } prefix)
             PlayerBotNamePrefix = prefix.Trim('"');

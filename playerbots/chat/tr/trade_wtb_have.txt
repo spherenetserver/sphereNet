@@ -1,0 +1,5 @@
+# trade_wtb_have.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+bende {item} var, {price}gp. geliyorum
+{item} var, {price} gold, geliyorum
+{item} {price}? takas aciyorum

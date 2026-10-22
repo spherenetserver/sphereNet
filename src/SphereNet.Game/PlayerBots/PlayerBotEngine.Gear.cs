@@ -40,6 +40,16 @@ public sealed partial class PlayerBotEngine
         if (ShedResRobe(ch)) return true;
         if (mind.Mode != BotMode.Linger || mind.Scene != null || !IsBare(ch)) return false;
         if (_world.FindRegion(ch.Position)?.IsGuarded != true) return false;
+        if (!ArmFromKit(ch)) return false;
+        Speak(mind, "gear_up", fallback: null);
+        return true;
+    }
+
+    /// <summary>The kit of the bot's archetype on whatever it does not wear: its
+    /// @Create is run on a stand-in, what that wears and the supplies in its pack (not
+    /// the gold) go to the bot, the robe goes, the stand-in is deleted.</summary>
+    private bool ArmFromKit(Objects.Characters.Character ch)
+    {
         if (!ch.TryGetTag(ArchetypeTag, out string? arch) || arch == null) return false;
         int defIndex = ResolveCharDef(arch);
         if (defIndex < 0) return false;
@@ -70,7 +80,6 @@ public sealed partial class PlayerBotEngine
         }
         WindowRegears++;
         OnAppeared?.Invoke(ch);
-        Speak(mind, "gear_up", fallback: null);
         return true;
     }
 

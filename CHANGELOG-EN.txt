@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-22] - Player bots: player killers keep to a haunt, attack the blue, come back armed
+------------------------------------------------------------------------
+CHANGE - A player killer bot is given a haunt (PLAYERBOT.HAUNT: a dungeon mouth, moongate,
+      shrine or landmark outside every guarded region) and stays there, roaming the road
+      nodes within 40 tiles; it takes no trips and runs no bank, rune, recall, shopping or
+      party errands. Before, a quarter of its trips went to towns.
+CHANGE - It attacks every blue (NOTO_GOOD to it) player or bot it can see within 14 tiles
+      that stands outside the guards' reach, looking every second or two. Before, it set
+      on a lone target it rated itself against, at 60 percent, with one to three minutes
+      between attempts.
+NEW - A player killer never steps into a guarded region (refusal guard_zone), gives up a
+      victim that reaches one, and is set down at its haunt when found in one or far off.
+NEW - Killed, a player killer is raised at its haunt after five to twelve seconds with a
+      new kit of its archetype; what it died with stays on the corpse. Before, it was
+      raised at the PlayerBotRedRespawn region and walked back for its body.
+
 [2026-10-22] - Player bots: conversations that follow, answers from what a bot knows
 ------------------------------------------------------------------------
 NEW - Bots answer what they know: what they are doing and where they are going (the trip's

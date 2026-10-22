@@ -55,6 +55,7 @@ public sealed partial class PlayerBotEngine
     /// <summary>One act of banking at a bank; false when there is nothing to do.</summary>
     private bool ActBank(BotMind mind, long now)
     {
+        if (IsPk(mind)) return false;
         var ch = mind.Char;
         var client = mind.Client;
         if (client == null || mind.At == null || mind.Scene != null ||
@@ -198,6 +199,7 @@ public sealed partial class PlayerBotEngine
     /// <summary>At its home town's bank, a caster with no marked rune marks one there.</summary>
     private bool TryMarkHomeRune(BotMind mind, long now)
     {
+        if (IsPk(mind)) return false;
         var ch = mind.Char;
         if (mind.MarkCheckMs != 0 && now >= mind.MarkCheckMs)
         {
@@ -252,6 +254,8 @@ public sealed partial class PlayerBotEngine
     /// <summary>A caster with a marked rune recalls home. False when it cannot.</summary>
     private bool TryRecallHome(BotMind mind, long now, string why)
     {
+        // A rune goes to a town bank; a player killer has no business there.
+        if (IsPk(mind)) return false;
         var ch = mind.Char;
         if (mind.Client == null || !KnowsTravel(mind) || now < mind.NextRecallMs || ch.Mana < 11 ||
             ch.IsDead || ch.TryGetCastingSpell(out _))

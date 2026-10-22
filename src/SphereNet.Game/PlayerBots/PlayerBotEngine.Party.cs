@@ -22,7 +22,8 @@ public sealed partial class PlayerBotEngine
     private void CheckInvites(BotMind mind, long now)
     {
         var ch = mind.Char;
-        if (mind.Client == null || Parties?.FindParty(ch.Uid) != null) return;
+        // A player killer follows nobody into town.
+        if (mind.Client == null || Parties?.FindParty(ch.Uid) != null || IsPk(mind)) return;
         if (mind.InviteFrom != null)
         {
             if (now < mind.InviteAnswerMs) return;

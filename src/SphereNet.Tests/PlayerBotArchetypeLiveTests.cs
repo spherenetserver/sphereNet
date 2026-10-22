@@ -104,6 +104,67 @@ public sealed class PlayerBotArchetypeLiveTests(ITestOutputHelper outp)
         }
     }
 
+    /// <summary>A player killer killed with nothing left on it is raised at its haunt
+    /// with its archetype's kit: a weapon and clothes again, the corpse keeping the rest.</summary>
+    [Fact]
+    public void ADeadPkIsRaisedAtItsHauntArmed()
+    {
+        string? pack = Pack();
+        if (Gate.Missing(outp, "external script pack", pack == null)) return;
+        var (world, dispatcher, resources) = Load(pack!);
+        try
+        {
+            var nav = new SphereNet.Game.PlayerBots.BotNavGraph();
+            nav.LoadWaypoints("""
+                { "Waypoints": [ { "Name": "H", "X": 60, "Y": 100, "Z": 0, "Connects": [ ] } ] }
+                """, null);
+            nav.LoadDestinations("""
+                { "Destinations": [ { "Name": "Haunt Mouth", "X": 60, "Y": 101, "Z": 0, "Type": "DungeonEntrance",
+                  "City": "", "NearestWaypoint": "H" } ] }
+                """, null);
+            var engine = new SphereNet.Game.PlayerBots.PlayerBotEngine(world,
+                new SphereNet.Game.Movement.MovementEngine(world), resources, nav,
+                SphereNet.Game.PlayerBots.BotChatBook.FromLines("en", new Dictionary<string, string[]>()),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, seed: 3)
+            {
+                TargetCount = 50,
+                RunCreateScript = c => dispatcher.FireNpcLoadScript(c, restock: true),
+            };
+            var ch = world.CreateCharacter();
+            ch.IsPlayer = true;
+            ch.Name = "Slayer";
+            ch.BaseId = 0x190; ch.BodyId = 0x190;
+            ch.MaxHits = 80;
+            ch.SetSkill(SkillType.Swordsmanship, 800);
+            ch.SetTag(SphereNet.Game.PlayerBots.PlayerBotEngine.MarkerTag, "1");
+            ch.SetTag(SphereNet.Game.PlayerBots.PlayerBotEngine.RoleTag, "pk");
+            ch.SetTag(SphereNet.Game.PlayerBots.PlayerBotEngine.ArchetypeTag, "c_playerbot_warrior_m");
+            world.PlaceCharacter(ch, new Point3D(90, 100, 0, 0));
+            engine.AdoptSaved();
+            ch.Hits = 0;
+            ch.SetStatFlag(StatFlag.Dead);
+
+            long now = 1_000_000;
+            for (int i = 0; i < 300 && ch.IsDead; i++) { engine.Tick(now); now += 100; }
+
+            Assert.False(ch.IsDead);
+            Assert.True(ch.Position.GetDistanceTo(new Point3D(60, 100, 0, 0)) <= 2, $"raised at {ch.Position}");
+            var things = Enum.GetValues<Layer>().Select(ch.GetEquippedItem).OfType<Item>()
+                .Concat(world.GetContainerContents(ch.Backpack?.Uid ?? Serial.Invalid))
+                .ToList();
+            Assert.Contains(things, it => it.ItemType is ItemType.WeaponSword or ItemType.WeaponMaceSharp or
+                ItemType.WeaponMaceSmith or ItemType.WeaponMaceStaff or ItemType.WeaponMaceCrook or
+                ItemType.WeaponAxe or ItemType.WeaponFence);
+            Assert.Equal(1, engine.WindowPkRespawns);
+        }
+        finally
+        {
+            ObjBase.ResolveWorld = null;
+            Item.ResolveWorld = null;
+            Item.ResolveDefName = null;
+        }
+    }
+
     /// <summary>The mage kit's ADDCIRCLE 1..8 lines, after its ITEM=i_spellbook, fill the
     /// book: every one of the 64 spells is in it (a bot can only cast what its book holds).</summary>
     [Theory]

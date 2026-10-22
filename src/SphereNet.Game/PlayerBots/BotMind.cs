@@ -284,6 +284,12 @@ public sealed class BotMind
     public long MarkCheckMs { get; set; }
     public long NextRecallMs { get; set; }
     public long RecallSinceMs { get; set; }
+    /// <summary>PLAYERBOT.ROLE as read once: pk, thief or -.</summary>
+    public string? Role { get; set; }
+    /// <summary>A player killer's haunt, and the road node it is walking to about it.</summary>
+    public BotDestination? Haunt { get; set; }
+    public Point3D? PatrolTo { get; set; }
+
     /// <summary>The bot this one travels with, keeping pace, until it arrives.</summary>
     public BotMind? Leader { get; set; }
 

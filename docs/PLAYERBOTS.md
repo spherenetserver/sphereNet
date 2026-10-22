@@ -60,6 +60,7 @@ are tags; the save format is unchanged:
 | `PLAYERBOT.MOUNT` | the creature it owns and rides |
 | `PLAYERBOT.KNOWN` | players it has talked with (up to 24 serials), greeted by name |
 | `PLAYERBOT.ROLE` | `pk`, `thief` or `-` (decided once) |
+| `PLAYERBOT.HAUNT` | a player killer's haunt (a destination name) |
 
 After the world loads, `PlayerBotEngine.AdoptSaved` brings every `PLAYERBOT` character
 back online where it stood, and a bot that had a goal sets off for it again. The
@@ -131,19 +132,27 @@ Each bot has a mode, acted on when its next action time comes:
   what it fights with (bandages for a healer, reagents for a caster, arrows or bolts for
   the bow it holds; `shopping.txt`) walks to the nearest place that sells it, opens the
   vendor's buy list and buys what its gold allows. No gold is made out of nothing.
-- **Rogues**: `PlayerBotPkPercent` of the fighters are player killers. They keep out of
-  guarded towns, wait about dungeon mouths, moongates, shrines and landmarks, and set on
-  a lone player or bot that is not much tougher than they are (never staff, another
-  rogue or a party member), with a minute or more between attempts; a kill is looted
-  (weapons too). `PlayerBotThiefPercent` of the rest are thieves, given Stealing,
+- **Rogues**: `PlayerBotPkPercent` of the fighters are player killers. Each is given a
+  haunt (`PLAYERBOT.HAUNT`): a dungeon mouth, moongate, shrine, landmark, adventure area
+  or graveyard outside every guarded region. It takes no trips: it roams the road nodes
+  within 40 tiles of the haunt, stands a while, and looks about every second or two. It
+  never steps into a guarded region (the step is refused, `guard_zone`), gives up a
+  victim that reaches one, and one found in one or more than 120 tiles off is set down
+  at its haunt. It attacks the nearest blue player or bot (innocent to it, NOTO_GOOD) it
+  can see within 14 tiles that stands outside the guards' reach (never staff, another
+  player killer or a party member) and goes through the body (weapons too). It runs no
+  bank, rune, recall, shopping or party errands. Killed, it is a ghost for five to twelve
+  seconds and is then raised at a roam point of its haunt with its archetype's kit
+  (as a bare bot gears up); what it died with stays on the corpse for its killer. `PlayerBotThiefPercent` of the rest are thieves, given Stealing,
   Snooping and Hiding: in a guarded town every few minutes one steps up to someone,
   opens their pack, steals gold or something light with the skill's target cursor, hides
   and walks off. Murder counts, the criminal flag, the guards and the murderer's
   resurrection town all follow the normal rules.
 - **Death**: half a minute to a minute as a ghost walking about the body in war mode - a
   manifested ghost, which the living can see - then the bot is carried off the way a
-  stuck bot is and raised there: a murderer at the anchor of the `PlayerBotRedRespawn`
-  region (Delucia by default), anyone else at the nearest town healer. A corpse within
+  stuck bot is and raised there: a player killer at its haunt (above), any other murderer
+  at the anchor of the `PlayerBotRedRespawn` region (Delucia by default), anyone else at
+  the nearest town healer. A corpse within
   `PlayerBotReclaimRange` tiles (40) is walked back to: the bot opens it (only an opened
   container can be reached into) and takes its things off one at a time through its client -
   picked up, worn on the layer they came off (`EQUIPLAYER`) or dropped into the pack - as T2A

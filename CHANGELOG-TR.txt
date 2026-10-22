@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-22] - Oyuncu botlari: PK botlari bolgesinde kalir, maviye saldirir, itemli doner
+------------------------------------------------------------------------
+DEGISIKLIK - PK botuna bir bolge verilir (PLAYERBOT.HAUNT: hicbir guarded bolgenin icinde
+       olmayan bir zindan girisi, moongate, tapinak ya da landmark) ve orada kalir, 40 kare
+       cevresindeki yol dugumlerinde dolasir; yolculuga cikmaz, banka, rune, recall,
+       alisveris ve party islerine girmez. Eskiden yolculuklarinin dortte biri kasabalaraydi.
+DEGISIKLIK - 14 kare icinde gordugu, guard alani disinda duran her mavi (kendisine gore
+       NOTO_GOOD) oyuncuya ya da bota saldirir; bir iki saniyede bir etrafa bakar. Eskiden
+       gucunun yettigi yalniz bir hedefe yuzde 60 ihtimalle, denemeler arasinda bir uc
+       dakika bekleyerek saldiriyordu.
+YENI - PK botu guarded bolgeye hic adim atmaz (red nedeni guard_zone), oraya kacan kurbani
+       birakir; bir guarded bolgede ya da uzakta bulunursa bolgesine tasinir.
+YENI - Olen PK botu bes on iki saniye sonra bolgesinde arketipinin yeni kitiyle dirilir;
+       oldugunde ustundekiler cesette kalir. Eskiden PlayerBotRedRespawn bolgesinde
+       diriliyor ve cesedine geri yuruyordu.
+
 [2026-10-22] - Oyuncu botlari: konusmayi takip eden sohbet, botun bildigi cevaplar
 ------------------------------------------------------------------------
 YENI - Botlar bildiklerini soyler: ne yaptiklari ve nereye gittikleri (yolculugun hedefi,

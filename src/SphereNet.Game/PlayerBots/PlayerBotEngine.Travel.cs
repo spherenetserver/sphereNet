@@ -26,6 +26,8 @@ public sealed partial class PlayerBotEngine
             mind.NextActMs = now + 1000;
             return;
         }
+        // A player killer keeps to its haunt.
+        if (ActPkLinger(mind, now)) return;
         // Errands at a stop: the rune home marked, the purse squared with the bank.
         if (mind.BankStage == 0 && TryMarkHomeRune(mind, now)) return;
         if (ActBank(mind, now)) return;
@@ -511,6 +513,8 @@ public sealed partial class PlayerBotEngine
     /// <summary>A stopping spot in the bot's home town, its bank first.</summary>
     private Point3D? HomeSpot(BotMind mind)
     {
+        // A player killer's home is its haunt, out of town.
+        if (HauntOf(mind) is { } haunt) return RoamPoint(haunt);
         string home = mind.Home;
         BotDestination? best = null;
         foreach (var d in Nav.Destinations)
@@ -601,12 +605,6 @@ public sealed partial class PlayerBotEngine
             {
                 var mouths = list0.Where(d => d.Type.Equals("DungeonEntrance", StringComparison.OrdinalIgnoreCase)).ToList();
                 if (mouths.Count > 0) return mouths[_rng.Next(mouths.Count)];
-            }
-            // A player killer keeps to where people pass, out of town.
-            if (PickPkHaunt(mind, list0) is { } haunt)
-            {
-                mind.Haunting = true;
-                return haunt;
             }
             // Town life: toward the players, else most trips stay in the home town.
             pool = list0.Where(d => d.City.Length > 0);

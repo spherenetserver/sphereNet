@@ -201,7 +201,7 @@ Chat language folder under `chat/` (`en`, `tr`). A category the chosen language 
 
 ### PLAYERBOTREDRESPAWN
 
-Region (AREADEF `NAME` or defname) whose anchor point a dead murderer bot is raised at. Any other dead bot is raised at the nearest town healer.
+Region (AREADEF `NAME` or defname) whose anchor point a dead murderer bot is raised at. A player killer bot is raised at its own haunt instead (see PLAYERBOTPKPERCENT); any other dead bot is raised at the nearest town healer.
 
 - **Type:** string
 - **Default:** `Delucia`
@@ -243,7 +243,7 @@ Put before every bot's name as players see it; quote it to keep a trailing space
 
 ### PLAYERBOTPKPERCENT
 
-Percent of fighter bots that are player killers, decided once per bot (`PLAYERBOT.ROLE`). A player killer keeps out of guarded towns, waits about dungeon mouths, moongates and the roads, and sets on a lone player or bot it rates itself against, then goes through the body. Crime, murder counts, guards and the murderer's resurrection town follow the normal rules. `0` for none.
+Percent of fighter bots that are player killers, decided once per bot (`PLAYERBOT.ROLE`). A player killer is given a haunt (`PLAYERBOT.HAUNT`: a dungeon mouth, moongate, shrine or landmark outside every guarded region) and roams the road nodes within 40 tiles of it; it never steps into a guarded region, and one found in one is set down at its haunt. It attacks every blue (innocent) player or bot it sees within 14 tiles that stands outside the guards' reach, and goes through the body. Killed, it is raised at its haunt within seconds with a new kit of its archetype; what it died with stays on its corpse. Crime, murder counts and guards follow the normal rules. `0` for none.
 
 - **Type:** integer (0-100)
 - **Default:** `5`

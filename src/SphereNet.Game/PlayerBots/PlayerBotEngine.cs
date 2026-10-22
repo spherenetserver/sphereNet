@@ -667,6 +667,12 @@ public sealed partial class PlayerBotEngine
             return;
         if (mind.Mode is BotMode.Linger or BotMode.Travel && ActFollow(mind, now))
             return;
+        // A player killer takes no trips: back to roaming its haunt.
+        if (mind.Mode == BotMode.Travel && HauntOf(mind) is { } haunt)
+        {
+            mind.BeginLinger(haunt, now, _rng, short_: true);
+            mind.LingerUntilMs = 0;
+        }
         switch (mind.Mode)
         {
             case BotMode.Linger:
@@ -722,8 +728,9 @@ public sealed partial class PlayerBotEngine
                 mind.CorpseUid.IsValid ? mind.CorpseUid.ToString() : "not found");
             if (_rng.Next(100) < 50) Speak(mind, "ghost");
             // Half a minute to a minute as a ghost about the body, in war mode so the
-            // living see it (a manifested ghost), then off to be raised.
-            mind.GhostUntilMs = now + _rng.Next(30_000, 60_000);
+            // living see it (a manifested ghost), then off to be raised. A player
+            // killer is back at its haunt within seconds.
+            mind.GhostUntilMs = now + (HauntOf(mind) != null ? _rng.Next(5_000, 12_000) : _rng.Next(30_000, 60_000));
             mind.LingerAnchor = ch.Position;
             mind.NextActMs = now + _rng.Next(1_000, 2_000);
             return;
@@ -738,6 +745,7 @@ public sealed partial class PlayerBotEngine
             return;
         }
         if (ch.IsInWarMode) mind.Client?.HandleWarMode(false);
+        if (RaiseAtHaunt(mind, now)) return;
 
         // Carried off like a stuck bot: a murderer to its own town, anyone else to
         // the nearest town's healer, and raised there.

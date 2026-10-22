@@ -449,6 +449,10 @@ public sealed partial class PlayerBotEngine
             return Refused(mind, "portal_avoid");
         if (LeadsOffTheRoads(tx, ty, from))
             return Refused(mind, "off_road_map");
+        // A player killer does not cross into a guarded region; one that stands in one
+        // (just adopted) may walk out.
+        if (IsPk(mind) && IsGuardedAt(new Point3D((short)tx, (short)ty, from.Z, from.Map)) && !IsGuardedAt(from))
+            return Refused(mind, "guard_zone");
         // One step in sixteen is timed for the telemetry; the clock read is not free.
         bool timed = (++WindowMoves & 15) == 0;
         long m0 = timed ? Stopwatch.GetTimestamp() : 0;

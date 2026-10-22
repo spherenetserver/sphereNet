@@ -96,6 +96,13 @@ public sealed partial class PlayerBotEngine
             return;
         }
 
+        // A player killer does not follow its victim into the guards' reach.
+        if (foe.IsPlayer && IsPk(mind) && IsGuardedAt(foe.Position))
+        {
+            GiveUpFoe(mind, foe, now);
+            return;
+        }
+
         int hp = ch.MaxHits > 0 ? ch.Hits * 100 / ch.MaxHits : 100;
         if (hp < mind.FleeAt)
         {

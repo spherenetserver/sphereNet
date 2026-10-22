@@ -674,6 +674,10 @@ public sealed class PlayerBotWalkTests
         {
             var bot = Bot(world, new Point3D(102, 100, 0, 0), goal: "Far Inn");
             var engine = Engine(world, Nav(world, roads, places));
+            // The way is kept only from a search that finishes: under a loaded test run a
+            // second's deadline can cut it short and the bot edge-walks round instead.
+            engine.SearchMs = 60_000;
+            engine.SearchBatchMs = 60_000;
             engine.CorridorFile = file;
             engine.AdoptSaved();
             long now = Run(engine, 1_000_000, 3000, () => bot.X == 113);

@@ -1,0 +1,5 @@
+# companion_not_yet.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+lets get to know each other first
+maybe later, we just met
+[shy] i dont know u well yet

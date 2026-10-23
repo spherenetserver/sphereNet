@@ -1,0 +1,6 @@
+# companion_yes.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+olur, gidelim
+çok isterim. önden buyur
+tamam, seninleyim
+[kind] tabi ki! hadi

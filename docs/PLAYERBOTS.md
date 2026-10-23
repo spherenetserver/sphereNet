@@ -61,6 +61,14 @@ are tags; the save format is unchanged:
 | `PLAYERBOT.KNOWN` | players it has talked with (up to 24 serials), greeted by name |
 | `PLAYERBOT.ROLE` | `pk`, `thief` or `-` (decided once) |
 | `PLAYERBOT.HAUNT` | a player killer's haunt (a destination name) |
+| `PLAYERBOT.TRAIT` | its nature: `kind`, `shy`, `chatty` or `stingy` (decided once) |
+| `PLAYERBOT.BONDS` | how fond it is of players: `uid:score:minute` each (the unix minute last met), up to 24 |
+| `PLAYERBOT.MEMORY` | things shared with players: `uid\|kind\|place\|minute`, `;`-joined, the last 12 |
+| `PLAYERBOT.COMPANION` | the player it goes about with |
+| `PLAYERBOT.HELD` | things it holds for players: `item:player` pairs |
+
+A bot from an older build may carry `PLAYERBOT.RUNE` (the one rune it was given); it is
+no longer read: its runes are whatever its pack holds.
 
 After the world loads, `PlayerBotEngine.AdoptSaved` brings every `PLAYERBOT` character
 back online where it stood, and a bot that had a goal sets off for it again. The
@@ -82,6 +90,7 @@ count logs the surplus out; they stay in the save as logged-out players. With
 | `places.txt` | destination type weights |
 | `mounts.txt` | share of riders and the creatures they ride |
 | `shopping.txt` | what a bot buys when it runs short (item type, too-few count, how many) and the place types that sell it |
+| `bonds.txt` | how a bot grows fond of a player: the levels, the points for talk, favours, hunts, trades, presents, being raised or attacked, how a bond fades, and the weights of the bots' natures |
 | `archetypes.txt` | archetype CHARDEF defnames with weights |
 | `scripts/*.scp` | the archetype CHARDEFs; loaded with the script pack when `PlayerBots=1` |
 
@@ -131,7 +140,9 @@ Each bot has a mode, acted on when its next action time comes:
   arrows and bolts are taken off a monster's corpse through the client. A bot short of
   what it fights with (bandages for a healer, reagents for a caster, arrows or bolts for
   the bow it holds; `shopping.txt`) walks to the nearest place that sells it, opens the
-  vendor's buy list and buys what its gold allows. No gold is made out of nothing.
+  vendor's buy list and buys what its gold allows. No gold is made out of nothing. A shop
+  where nobody turns out to sell the thing is not walked to for it again for half an hour
+  (by any bot).
 - **Rogues**: `PlayerBotPkPercent` of the fighters are player killers. Each is given a
   haunt (`PLAYERBOT.HAUNT`): a dungeon mouth, moongate, shrine, landmark, adventure area
   or graveyard outside every guarded region. It takes no trips: it roams the road nodes
@@ -202,6 +213,84 @@ Each bot has a mode, acted on when its next action time comes:
   for 90 seconds, or a fight, closes the window. A "wts" from a player is answered with
   "show me in a trade" (`trade_show`) by a bot with 100 gold to spend.
 
+### Friends and favours
+
+A player can ask a bot for help in so many words and follow it through in conversation;
+nothing here has a menu. A favour takes as many lines as it needs: the bot asks back
+what it does not know ("where to? i have britain, trinsic"), the player's next line is
+read as the answer ("trinsic"), "never mind" (`cancel`) or a plain no drops it, and the
+bot says why when it cannot. A player has one favour in hand at a time, a bot works on
+one at a time; asking another bot drops the first. While it waits for an answer, a rune
+or money the bot stays by the player; it gives up after a minute and a half (three
+minutes once under way). Every spell is the bot's own cast through its client - mana,
+reagents, skill, fizzles, the regions' anti-magic - and the bot checks what it can
+first: the spell in its book, the magery, the region's gate-in and gate-out rules, the
+reagents (the spell engine's own cast test). Short of mana it says so once and
+meditates. A failed cast is tried twice more.
+
+| Asked | What happens |
+|---|---|
+| `gate` ("britain'e gate açar mısın", "open a gate to trinsic") | a caster with Gate Travel in its book and Magery 60 opens one on its rune of that place. No place named: it lists its runes and asks. No rune for it: it asks for the player's - a marked rune put in a trade window is taken, the gate opened on it, and the rune traded back. The gate opens on the bot's tile; it steps off it, keeps off it, and stays until the player has gone through (a companion goes through after them; "you too" (`follow`) sends any bot through). |
+| `mark` ("rün işaretler misin") | the player's blank rune, put in a trade, is marked right by the player and traded back. |
+| `buff` ("bless ver", "night sight pls", a spell named on a short line) | Bless, Protection, Magic Reflect, Night Sight, Strength, Agility or Cunning on the player (`buff.<Spell>` words in `intents.txt`); the first of them in its book when none is named. Once in ten seconds. |
+| `guide` ("beni bankaya götür") | the bot leads the player to the nearest place of that kind to them (a town's bank for a town, the place for a place named) on its road: it walks in front, waits while they lag more than five tiles behind, gives up when they have been more than 30 tiles off for 45 seconds. Over 400 tiles away, a caster with a rune there offers a gate instead (a yes opens it). |
+| `appraise` ("bu ne eder") | things put in a trade window are priced at their make value, never bought; the window is closed a few seconds later. |
+| `carry` ("bunu taşır mısın") | a companion only: what the player puts in a trade is held for them (`PLAYERBOT.HELD`), never sold, used or counted as stock, as long as the bot can carry the weight. Its death leaves it on its corpse, like anything else it carries. |
+| `giveback` ("eşyalarımı ver") | the bot walks over, opens a trade with what it holds for the player and agrees; a refused trade is offered again a little later. |
+| `gift` ("hediye") | the next trade is a present: taken for nothing, remembered, worth a bond point per `gift_per` of its value. |
+| `can` ("ne yapabilirsin") | what this bot can do now, from its skills, book and runes (`token_ability` words), with the places of its runes. |
+| `protect` ("beni koru") | a companion strikes first at a monster coming at the player. |
+
+**Money.** A gate or a mark costs the reagents' worth (each reagent's make value times
+the amount the spell takes) - asked of a stranger, and of an acquaintance unless the bot
+is kind; a stingy bot asks double. It is paid in a trade window; a friend or a companion
+pays nothing. Heals, cures, buffs, walks and prices are free.
+
+**Who it will not help.** A player killer helps nobody. A bot will not cast on a
+criminal or a murderer (the spell would make it one) and does nothing for a player it
+holds a grudge against (a negative bond). A bot going about with one player does no
+walking favours for another.
+
+**Bonds.** A bot grows fond of a player (`bonds.txt`): a line said to it, a favour done,
+a fight won beside the player, a fair trade, a present, being raised from the dead by
+them; striking it costs much more. A bond fades a point a day after three days unseen.
+At `acquaintance` it greets the player by name, at `friend` it says so once, does
+favours for free, offers help unasked and goes about with the player when asked. Each
+bot has a nature (`PLAYERBOT.TRAIT`, picked once): a kind one warms fast and does an
+acquaintance's favours free, a shy one warms slowly and offers less, a chatty one warms
+a little faster, a stingy one asks double. A line may be tagged for a nature (`[kind]`),
+and for how well the bot knows the one it speaks to (`[friend]`, `[acquaintance]`,
+`[stranger]`). "Let's be friends" (`friend`) is answered by how far along they are; "do
+you remember me" (`remember`) by something they shared (`memory_<kind>`: `met`, `hunt`,
+`raised`, `gate`, `gift`, `guide`, with `{place}` and `{when}` from `token_ago_*`), which
+a friend also brings up now and then when it greets them.
+
+A bot that is raised where it fell (not carried to a healer) thanks whoever raised it
+(`thanks_raised`) and walks back to its body.
+
+**Companions.** A friend asked to come along (`companion`, or `follow` from a friend
+outside a party) becomes the player's companion (`PLAYERBOT.COMPANION`; one per player).
+It leaves its own errands and keeps within three tiles of the player; fights what the
+player fights (a player only when that is no crime) and what sets on them; heals, cures
+and raises them as a party's bots do; waits when told (`stay`, ten minutes) and follows
+again on `follow`; tells its hit points and mana (`status`); and a line the player says to
+nobody in particular - a question or an ask - is its to answer. When the player logs out
+it waits four minutes where they parted, then goes about its own life; when they are
+back, or have gone somewhere it was not, it comes to them: through a gate standing near
+it that leads near them, on a rune of its own near them (Recall), or by road to the place
+nearest them, and says it is back (`companion_back`) once it is beside them. With the
+player dead it raises them when it can (resting for the mana), stays by the ghost and
+strikes at a criminal at the body (a looter of an innocent's corpse is one). "You can go"
+(`dismiss`) ends it; a companion who attacks the bot is one no more.
+
+**Help unasked.** Once a second the bots near each player look out for them; a friend
+(or a kind acquaintance) may offer a heal to one under half their hit points or a cure to
+one poisoned (`offer_heal`, `offer_cure`: a question; a yes casts it), point out a
+murderer about (`warn_red`, with `{dir}`), or ask one who has stood about in a town for
+two minutes without a word whether they need anything (`offer_help`; a yes is answered
+with what it can do). One offer per player in 45 seconds, one per bot a minute. A yes or
+a no goes to the bot that asked.
+
 ### Names
 
 Players see every bot's name with `PlayerBotNamePrefix` in front (`[Bot] ` by default;
@@ -255,6 +344,7 @@ for a heal. Questions about the bot ("where are you going") are tried before a "
 | wtb | `respond_wtb_none` |
 | thanks / bye / how are you | `respond_thanks` / `respond_bye` / `respond_howru` |
 | a question | `respond_question` |
+| gate, mark, buff, guide, appraise, carry, giveback, gift, can, cancel, protect, friend, companion, dismiss, remember | see Friends and favours |
 | anything else | `respond_name` when named, `respond_chat` to the player it is talking with |
 
 A hello on the same line as a question is answered too, in front of the answer ("hey,
@@ -375,11 +465,17 @@ and read back at start; deleting the file lets bots try every spot again.
 - **Bank.** A bot at a bank opens its box from the banker's context menu (Open Bankbox)
   and moves gold by hand: carrying more than 1500 it puts the surplus in (keeping 300-600),
   carrying less than 200 it takes up to 500 out. Once every ten minutes at most.
-- **A rune home.** A caster with Magery 50 or more whose book holds Mark and Recall marks a
-  blank rune at its home town's bank with the Mark spell through its client (mana, reagents
-  and skill as for anyone; the blank rune is the one thing it is given). Later it recalls on it to get home from where no
-  road leads home, when it is stranded off the roads, or when it is on a map with no
-  roads, before any lift. The rune is `PLAYERBOT.RUNE`.
+- **Runes.** A caster with Magery 50 or more whose book holds Mark and Recall keeps a
+  library of up to 8 runes in its pack. At a town's bank it has no rune for (and, for one
+  who hunts, at a dungeon's mouth) it marks a blank or worn-out rune with the Mark spell
+  through its client (mana, reagents and skill as for anyone); room is kept for its home
+  town's. Blank runes are bought like anything else: out of blank ones and with room for
+  more, it walks to a mage shop within 300 tiles and buys two (`rune` in `shopping.txt`).
+  A rune marked off every map (the pack's blank rune is made with `MOREP=-1,-1`) is blank. What a rune leads
+  to is read from its mark: the town of the nearest place within 40 tiles, else the
+  dungeon, else the region. It recalls home on its home town's rune from where no road
+  leads home, when it is stranded off the roads, or when it is on a map with no roads,
+  before any lift; the other runes are where it can open a gate to for a player (below).
 - **Company.** A bot setting off on an ordinary trip asks an idle bot of the same home
   standing within 6 tiles along, 15 times in a hundred (`travel_together` line). The
   companion goes to the same place, waits when it gets ahead, runs when it falls more
@@ -479,6 +575,8 @@ The end of the line is about getting stuck:
 | `unreachable`, `giveups`, `faults` | foes given up as out of reach; other walks given up; acts that threw |
 | `staticdoors` | map (static) doors opened |
 | `deposits`, `withdrawals`, `marks`, `recalls`, `companions`, `pauses` | bank moves; runes marked; recalls home; bots taken along; stops to look about |
+| `favors`, `favorfails`, `gates`, `gifts`, `offers` | favours done for players and dropped; gates opened; presents taken; help offered unasked |
+| `newfriends`, `bondpoints`, `companionsnow` | bonds that became friendships; bond points given (net); bots going about with a player now |
 | `stalled [...]` | the most bots stalled at once (no ground for 10 s), by mode, e.g. `Travel:3 Fight:1` |
 | `refusals [...]` | why steps were refused, most first, e.g. `terrain:812 character_on_tile:95` |
 

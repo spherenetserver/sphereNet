@@ -1,0 +1,4 @@
+# favor_retry.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+fizzle oldu, tekrar
+of, bir daha

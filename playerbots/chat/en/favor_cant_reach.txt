@@ -1,0 +1,4 @@
+# favor_cant_reach.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+cant get to u
+i cant reach u from here

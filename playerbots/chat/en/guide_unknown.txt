@@ -1,0 +1,4 @@
+# guide_unknown.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+dont know the way to {target} from here
+no idea how to get to {target} from here

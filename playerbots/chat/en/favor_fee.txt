@@ -1,0 +1,5 @@
+# favor_fee.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+the regs arent free, {price}gp. put it in a trade
+{price}gp for reagents, trade it over
+[stingy] {price}gp. no gold no gate

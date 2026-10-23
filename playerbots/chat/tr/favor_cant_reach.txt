@@ -1,0 +1,4 @@
+# favor_cant_reach.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+yanına gelemiyorum
+buradan sana ulaşamıyorum

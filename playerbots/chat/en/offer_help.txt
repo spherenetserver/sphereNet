@@ -1,0 +1,5 @@
+# offer_help.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+looking for something?
+need anything?
+lost? want some help?

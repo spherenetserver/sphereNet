@@ -1,0 +1,4 @@
+# memory_guide.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+found ur way to {place} ok?
+showed u {place} {when}

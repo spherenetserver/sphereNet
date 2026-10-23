@@ -1,0 +1,4 @@
+# carry_ok.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+got it, ill hold it. if i die its on my body tho
+ok, its with me. ask when u want it back

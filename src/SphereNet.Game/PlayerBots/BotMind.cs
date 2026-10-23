@@ -77,6 +77,9 @@ public sealed class BotMind
 
     public void RememberPortal(int x, int y, byte map, long now) => _portals[(x, y, map)] = now + 180_000;
 
+    /// <summary>A portal tile it means to step on after all (its own gate, after a companion).</summary>
+    public void ForgetPortal(int x, int y, byte map) => _portals.Remove((x, y, map));
+
     public bool AvoidsTile(int x, int y, byte map, long now)
     {
         if (_portals.Count == 0 || !_portals.TryGetValue((x, y, map), out long until)) return false;
@@ -215,6 +218,8 @@ public sealed class BotMind
     public string? PendingPrefix { get; set; }
     /// <summary>The reply goes to party chat, not out loud.</summary>
     public bool PendingParty { get; set; }
+    /// <summary>What the reply offers, done when the player says yes to it.</summary>
+    public Action? PendingOnYes { get; set; }
 
     // Talking with players and other bots.
     /// <summary>The scene this bot is acting in, if any; it stays put meanwhile.</summary>
@@ -308,6 +313,8 @@ public sealed class BotMind
     public long NextMarkMs { get; set; }
     /// <summary>When to look whether the last Mark took; 0 when none is pending.</summary>
     public long MarkCheckMs { get; set; }
+    /// <summary>The rune the last Mark was cast on.</summary>
+    public Objects.Items.Item? MarkingRune { get; set; }
     public long NextRecallMs { get; set; }
     public long RecallSinceMs { get; set; }
     /// <summary>PLAYERBOT.ROLE as read once: pk, thief or -.</summary>
@@ -320,6 +327,46 @@ public sealed class BotMind
 
     /// <summary>The bot this one travels with, keeping pace, until it arrives.</summary>
     public BotMind? Leader { get; set; }
+
+    // Players: a favour in hand, a player shown the way, the player it goes about with.
+    /// <summary>The favour this bot is doing, while it is in hand.</summary>
+    public BotFavor? Favor { get; set; }
+    /// <summary>A player it is leading to a place (it walks in front, waits for them).</summary>
+    public Character? Guiding { get; set; }
+    public long GuideFarSinceMs { get; set; }
+    /// <summary>The player this bot goes about with (PLAYERBOT.COMPANION), resolved
+    /// from the tag; null when none.</summary>
+    public Character? Companion { get; set; }
+    /// <summary>The companion is away (logged out, or gone where the bot was not):
+    /// since when, and whether it has been told the bot is back.</summary>
+    public long CompanionAwayMs { get; set; }
+    public bool CompanionMissed { get; set; }
+    /// <summary>Told to wait by its companion: until when.</summary>
+    public long CompanionHoldUntilMs { get; set; }
+    public long NextCompanionCheckMs { get; set; }
+    /// <summary>Told by its companion to watch over them: it strikes first at what comes near.</summary>
+    public bool Protecting { get; set; }
+    /// <summary>A gate it walks to, to catch up with its companion on the other side.</summary>
+    public Objects.Items.Item? CatchGate { get; set; }
+    /// <summary>When it last offered help unasked, so it is not a nuisance.</summary>
+    public long NextOfferMs { get; set; }
+    /// <summary>The items a trade partner put in the window, as it last looked: what
+    /// a completed trade brought it.</summary>
+    public List<Objects.Items.Item>? TradeTheirs { get; set; }
+    public long TradeTheirGold { get; set; }
+    /// <summary>What the open trade window is for.</summary>
+    public BotTradeMode TradeMode { get; set; }
+    /// <summary>A price told: the window is closed at this time (0: not yet).</summary>
+    public long AppraiseCloseMs { get; set; }
+    /// <summary>Things held for players it is to hand back (walk over, trade them in).</summary>
+    public Character? GiveBackTo { get; set; }
+    public long GiveBackUntilMs { get; set; }
+    public long NextGiveBackMs { get; set; }
+    /// <summary>Its nature (PLAYERBOT.TRAIT), read once.</summary>
+    public string? Trait { get; set; }
+    /// <summary>When a bond last moved, per player and reason, so talk or a hunt is
+    /// counted once in a while, not per line.</summary>
+    public Dictionary<(uint Player, string What), long> BondClock { get; } = [];
 
     /// <summary>Acts that threw, in a row.</summary>
     public int ActFaults { get; set; }

@@ -1,0 +1,4 @@
+# mark_ok.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ok, marking it here
+got it, marking

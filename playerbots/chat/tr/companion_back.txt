@@ -1,0 +1,5 @@
+# companion_back.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+geldim, nereye gidiyoruz?
+buradayım, plan ne?
+dönmüşsün, hadi

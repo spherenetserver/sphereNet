@@ -1,0 +1,4 @@
+# offer_cure_yes.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+al
+dur bi

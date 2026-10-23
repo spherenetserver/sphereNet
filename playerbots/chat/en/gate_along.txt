@@ -1,0 +1,5 @@
+# gate_along.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ok im coming too
+right behind u
+sure, after u

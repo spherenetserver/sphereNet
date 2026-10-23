@@ -1,0 +1,5 @@
+# friend_already.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+zaten arkadaşız
+tabi ki öyleyiz
+[kind] her zaman

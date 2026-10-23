@@ -1,0 +1,4 @@
+# carry_ok.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+tamam, bende. ölürsem cesedimde kalır ama
+aldım, istediğinde söyle

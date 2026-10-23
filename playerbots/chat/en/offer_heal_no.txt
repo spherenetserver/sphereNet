@@ -1,0 +1,3 @@
+# offer_heal_no.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ok, shout if u need it

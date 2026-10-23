@@ -1,0 +1,4 @@
+# favor_rune_blank.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+o rün boş ya da eskimiş
+o rün bir yere götürmüyor

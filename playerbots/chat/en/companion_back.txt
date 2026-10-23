@@ -1,0 +1,5 @@
+# companion_back.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+there u are! where to?
+back again, whats the plan?
+hey, ur back. lets go

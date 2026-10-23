@@ -1,0 +1,4 @@
+# memory_gift.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+still have the {place} u gave me
+thanks again for the {place}

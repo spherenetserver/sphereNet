@@ -1,0 +1,4 @@
+# companion_ghost.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+healera git, cesedini bekliyorum
+eşyalarını koruyorum, bi healer bul

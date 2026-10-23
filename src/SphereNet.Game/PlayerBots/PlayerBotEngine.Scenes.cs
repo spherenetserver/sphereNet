@@ -34,6 +34,7 @@ public sealed partial class PlayerBotEngine
         if (player.IsMurderer && now - w.LastRedAlertMs > 600_000)
             CallOutRed(w, now);
         GreetOnSight(w, now);
+        OfferHelp(w, now);
 
         if (now < w.NextSceneMs) return;
         if (w.Crowd == 0)
@@ -210,8 +211,14 @@ public sealed partial class PlayerBotEngine
                     m.Greeted.Remove(old);
             bool known = Knows(m, player);
             if (_rng.Next(100) >= (known ? 80 : 12)) continue;
-            QueueReply(m, known ? "friend_greet" : "respond_greet", now, to: player, lang: w.Language,
-                fallback: "respond_greet");
+            // A friend now and then brings up something they shared.
+            if (known && _rng.Next(100) < 45 && BondLevel(m, player) == BotBondLevel.Friend &&
+                PickMemory(m, player, w.Language ?? Chat.Language) is { } memory)
+                QueueReply(m, memory.Category, now, to: player, lang: w.Language, fallback: "friend_greet",
+                    tokens: memory.Tokens, prefix: "friend_greet");
+            else
+                QueueReply(m, known ? "friend_greet" : "respond_greet", now, to: player, lang: w.Language,
+                    fallback: "respond_greet");
             w.LastGreetMs = now;
             return;
         }
@@ -314,9 +321,10 @@ public sealed partial class PlayerBotEngine
     //  Players a bot knows
     // ------------------------------------------------------------------
 
-    private static bool Knows(BotMind m, Character player) =>
-        m.Char.TryGetTag(KnownTag, out string? known) && known != null &&
-        known.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(player.Uid.Value.ToString());
+    private bool Knows(BotMind m, Character player) =>
+        (m.Char.TryGetTag(KnownTag, out string? known) && known != null &&
+         known.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(player.Uid.Value.ToString())) ||
+        BondLevel(m, player) >= BotBondLevel.Acquaintance;
 
     /// <summary>Remember a player this bot has talked with (kept with the character:
     /// a bot greets an old acquaintance by name after a restart too).</summary>

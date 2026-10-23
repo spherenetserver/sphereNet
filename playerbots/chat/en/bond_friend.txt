@@ -1,0 +1,5 @@
+# bond_friend.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+u know, ur alright. friends?
+glad i met u
+we make a good team

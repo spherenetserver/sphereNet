@@ -4,6 +4,58 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-23] - Oyuncu botlari: konusarak istenen iyilikler, arkadaslik, yoldaslar, run kutuphanesi
+------------------------------------------------------------------------
+YENI - Iyilikler: oyuncu bottan duz konusmayla yardim isteyip birkac satir boyunca
+       surdurebilir. Gate: buyucu bot soylenen yerin kendi run'una Gate Travel acar, yer
+       soylenmezse run'larini sayip nereye diye sorar ya da oyuncunun isaretli run'unu
+       takas penceresinden alir, uzerine atar ve takasla geri verir; once kitabina,
+       magery'sine, manasina (azsa bir kez soyleyip meditasyon yapar), buyu motorunun
+       atis testine ve bolgenin gate giris/cikis kurallarina bakar, gate'in ustunden
+       cekilir ve ona basmaz, fizzle olursa iki kez daha dener. Ayrica: oyuncunun bos
+       run'unu isaretleme, oyuncuya Bless / Protection / Magic Reflect / Night Sight /
+       Strength / Agility / Cunning, oyuncuyu bir yere goturme (geride kalirsa bekler),
+       takas penceresinde gosterilene almadan fiyat bicme, yoldasin esyalarini tasima
+       (PLAYERBOT.HELD, asla satilmaz, stok sayilmaz) ve takasla geri verme, hediye alma,
+       su an ne yapabildigini soyleme. "Bosver" ya da hayir iyiligi birakir. Her buyu
+       botun istemcisinden gecer.
+YENI - Reagent parasi: yabancinin (ya da nazik olmayan botun tanidiginin) istedigi gate ya
+       da isaretleme reagent'larin degeri kadar tutar; her reagent'in yapim degeri ile
+       miktari (pinti bot iki kati), takas penceresinden odenir. Arkadas ve yoldas odemez.
+YENI - Arkadaslik: botlar her oyuncu icin bir yakinlik puani tutar (PLAYERBOT.BONDS);
+       sohbet, iyilikler, birlikte kazanilan dovusler, adil takas, hediye ve diriltilmek
+       artirir, saldiri sert dusurur, uc gun gorusulmezse azalir. Seviyeler (tanidik,
+       arkadas) isimle selami, bedava iyiligi, istenmeden yardimi ve yoldasligi belirler.
+       Her bota bir kez bir mizac verilir (PLAYERBOT.TRAIT: nazik, cekingen, konuskan,
+       pinti). Botlar oyuncularla paylastiklarini hatirlar (PLAYERBOT.MEMORY), selamda ve
+       "beni hatirliyor musun" sorusunda anar. Puanlar, esikler ve mizac agirliklari
+       playerbots/bonds.txt dosyasinda; sphere.ini ayari yok.
+YENI - Yoldaslar: oyuncuyla gezmesi istenen arkadas bot oyuncunun yoldasi olur
+       (PLAYERBOT.COMPANION, oyuncu basina bir tane, save'de kalir): takip eder, oyuncunun
+       dovuslerine girer, iyilestirir, zehrini temizler, diriltir, soylenince bekler,
+       cesedini suclu yagmacilara karsi korur, oyuncunun kimseye hitap etmeyen
+       satirlarini cevaplar, oyuncu cikinca dort dakika bekler ve yakinindaki bir gate,
+       kendi run'u ya da yol ile oyuncuya geri gelir. "Serbestsin" bitirir.
+YENI - Istenmeden yardim: oyuncunun yanindaki arkadas bot heal ya da cure teklif edebilir
+       (evet denince yapar), bir katili ve yonunu gosterebilir ya da kasabada bir suredir
+       duran oyuncuya bir sey lazim mi diye sorabilir. Evet ya da hayir artik soruyu soran
+       bota gider.
+DEGISIKLIK - Bot run'lari: Mark ve Recall bilen buyucu en fazla sekiz run tutar; kaldigi
+       her kasaba bankasinda (once kendi kasabasi) ve avlaniyorsa zindan girislerinde
+       birer run isaretler, bos run'u buyucu dukkanindan satin alir (shopping.txt'de
+       rune). Eskiden yoktan verilen bos run kalkti; PLAYERBOT.RUNE artik okunmuyor.
+DUZELTME - Dustugu yerde baskasi tarafindan diriltilen bot artik olum durumunu temizler:
+       aksi halde bir sonraki olum atlaniyordu (ceset not edilmiyor, hemen healer'a
+       tasiniyordu). Dirilteni tesekkur eder ve cesedine yurur.
+DUZELTME - Isareti hicbir haritada olmayan run (X ya da Y'si negatif MOREP; paketin
+       i_rune_marker'i MOREP=-1,-1 ile yaratilir) artik bos sayilir; Source-X
+       m_ptMark.IsValidPoint() ile bakar: Recall ve Gate yolculugu denemek yerine run'un
+       bos oldugunu soyler, boyle bir run Mark icindir.
+DEGISIKLIK - Bir dukkanda aradigini satan kimseyi bulamayan bot o dukkani o ihtiyac icin
+       yarim saat hatirlar (tum botlar) ve bos run icin 300 kareden uzaga yurumez.
+YENI - Telemetri: 30 saniyelik [playerbots] satirinda favors, favorfails, gates, gifts,
+       offers, newfriends, bondpoints, companionsnow.
+
 [2026-10-22] - Oyuncu botlari: party arkadasi, guvenli takas, PK dengesi, gorunmeden tasima
 ------------------------------------------------------------------------
 DUZELTME - Guvenli takas penceresinden esya alinmasi artik iki tarafin onayini da siler;

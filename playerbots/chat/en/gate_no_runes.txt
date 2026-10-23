@@ -1,0 +1,4 @@
+# gate_no_runes.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+got no runes on me. give me a marked rune and ill open it
+no runes, put ur rune in a trade and ill gate u

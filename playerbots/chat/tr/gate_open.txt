@@ -1,0 +1,6 @@
+# gate_open.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+buyur, {target}. kapanmadan geç
+gate açık, {target}
+açtım, gir hadi
+{target} gate açık, iyi yolculuklar

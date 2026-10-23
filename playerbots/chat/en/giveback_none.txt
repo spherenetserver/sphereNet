@@ -1,0 +1,4 @@
+# giveback_none.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+i dont have anything of yours
+nothing of urs on me

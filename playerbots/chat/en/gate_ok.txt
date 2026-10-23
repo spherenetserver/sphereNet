@@ -1,0 +1,6 @@
+# gate_ok.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ok, {target} gate coming up
+sure, opening {target}
+on it, {target}
+[kind] np, {target} it is

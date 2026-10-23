@@ -1,0 +1,5 @@
+# appraise_value.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+{items}
+id say {items}
+worth about: {items}

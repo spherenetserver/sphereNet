@@ -30,10 +30,13 @@ public sealed partial class PlayerBotEngine
         if (speaker.IsPlayerBot || string.IsNullOrWhiteSpace(text) || _minds.Count == 0) return;
         long now = NowMs();
         var w = WatcherOf(speaker, now);
+        w.LastSpokeMs = now;
         w.Language = Intents.DetectLanguage(text) ?? w.Language;
         string lang = w.Language ?? Chat.Language;
         var intent = InContext(w, Intents.Parse(text), text, now);
         if (TryPartyCommand(speaker, intent, text, viaParty: false, now, lang)) return;
+        // A favour in hand: the line may be its answer ("britain", "never mind").
+        if (!speaker.IsDead && TryFavorFollowUp(speaker, w, intent, text, now, lang)) return;
 
         // A ghost is only understood as a plea to be raised.
         if (speaker.IsDead)
@@ -61,6 +64,13 @@ public sealed partial class PlayerBotEngine
         var target = named;
         if (target == null && w.Focus is { } focus && now < w.FocusUntilMs && near.Contains(focus))
             target = focus;
+        // A yes or a no answers whoever asked the question.
+        if (target == null && intent.Kind is BotIntentKind.Yes or BotIntentKind.No && w.AskedBy is { } asker &&
+            near.Contains(asker))
+            target = asker;
+        // A companion is who a player turns to: an ask or a question named to nobody is its.
+        if (target == null && intent.Kind != BotIntentKind.None && CompanionOf(speaker) is { } mate && near.Contains(mate))
+            target = mate;
         bool addressed = target != null;
         if (target == null)
         {
@@ -79,13 +89,20 @@ public sealed partial class PlayerBotEngine
                 BotIntentKind.News => 30,
                 BotIntentKind.Follow => 30,
                 BotIntentKind.Doing => 20,
+                BotIntentKind.Gate => 60,
+                BotIntentKind.Buff => 45,
+                BotIntentKind.Mark => 40,
+                BotIntentKind.Guide => 45,
+                BotIntentKind.Can => 30,
+                BotIntentKind.Appraise => 25,
                 _ => 0,
             };
             if (near.Count == 0 || chance == 0 || _rng.Next(100) >= chance) return;
             var pool = intent.Kind switch
             {
                 BotIntentKind.Party or BotIntentKind.Follow => near.Where(m => m.IsFighter).ToList(),
-                BotIntentKind.Heal => near.Where(m => m.IsCaster).ToList(),
+                BotIntentKind.Heal or BotIntentKind.Buff or BotIntentKind.Mark => near.Where(m => m.IsCaster).ToList(),
+                BotIntentKind.Gate => near.Where(CanGate).ToList(),
                 _ => near,
             };
             if (pool.Count == 0) pool = near;
@@ -95,7 +112,11 @@ public sealed partial class PlayerBotEngine
         if (target.Scene != null) EndScene(target.Scene);
         w.Focus = target;
         w.FocusUntilMs = now + FocusMs;
-        if (addressed) Remember(target, speaker);
+        if (addressed)
+        {
+            Remember(target, speaker);
+            BondTalk(target, speaker, now);
+        }
         Answer(target, speaker, w, intent, text, named != null, now, lang);
     }
 
@@ -130,14 +151,18 @@ public sealed partial class PlayerBotEngine
         Action? action = null;
         string? topicType = intent.PlaceType, topicWord = intent.PlaceWord;
         // A question asked again at once: "like I said".
-        if (intent.Kind is not (BotIntentKind.None or BotIntentKind.Greet or BotIntentKind.Thanks or BotIntentKind.Bye
-                or BotIntentKind.Yes or BotIntentKind.No or BotIntentKind.Wts or BotIntentKind.Wtb) &&
+        if (intent.Kind is BotIntentKind.Where or BotIntentKind.Far or BotIntentKind.Doing or BotIntentKind.Here or
+                BotIntentKind.WhoAreYou or BotIntentKind.News or BotIntentKind.Question or BotIntentKind.HowAreYou or
+                BotIntentKind.Party or BotIntentKind.Res or BotIntentKind.Heal or BotIntentKind.Follow or
+                BotIntentKind.Bot or BotIntentKind.Selling &&
             intent.Kind == w.TopicKind && (intent.PlaceType == null || intent.PlaceType == w.TopicPlaceType) && now - w.TopicMs < RepeatMs)
             prefix = "respond_repeat";
         else if (intent.AlsoGreets)
             prefix = Knows(m, player) && Chat.Has("friend_greet", lang) ? "friend_greet" : "respond_greet";
         string? asked = w.AskedBy == m && w.Asked != null && now - w.AskedMs < AskedMs ? w.Asked : null;
+        var onYes = asked != null ? w.AskedYes : null;
         w.Asked = null;
+        w.AskedYes = null;
         switch (intent.Kind)
         {
             case BotIntentKind.Greet:
@@ -180,6 +205,93 @@ public sealed partial class PlayerBotEngine
             case BotIntentKind.Heal:
                 (category, action) = AnswerHeal(m, player, now);
                 break;
+            case BotIntentKind.Follow when m.Companion == player:
+                m.CompanionHoldUntilMs = 0;
+                category = "party_follow";
+                break;
+            case BotIntentKind.Follow when Parties?.FindParty(m.Char.Uid) == null && m.Companion == null &&
+                                          BondLevel(m, player) == BotBondLevel.Friend && !IsRogueBot(m.Char):
+                // A friend asked along goes along for good.
+                (category, tokens) = AnswerCompanion(m, player, now);
+                break;
+            case BotIntentKind.Gate:
+                (category, tokens) = AskGate(m, player, w, intent, lang, now);
+                fallback = null;
+                break;
+            case BotIntentKind.Mark:
+                (category, tokens) = AskMark(m, player, w, lang, now);
+                fallback = null;
+                break;
+            case BotIntentKind.Buff:
+                (category, tokens) = AskBuff(m, player, w, intent, lang, now);
+                fallback = null;
+                break;
+            case BotIntentKind.Guide:
+                (category, tokens) = AskGuide(m, player, w, intent, lang, now);
+                fallback = null;
+                break;
+            case BotIntentKind.Appraise:
+                (category, tokens) = AskAppraise(m, player, w, lang, now);
+                break;
+            case BotIntentKind.Carry:
+                (category, tokens) = AskCarry(m, player, w, lang, now);
+                fallback = null;
+                break;
+            case BotIntentKind.GiveBack:
+                (category, tokens) = AskGiveBack(m, player, now);
+                fallback = null;
+                break;
+            case BotIntentKind.Gift:
+                (category, tokens) = AskGift(m, player, w, lang, now);
+                break;
+            case BotIntentKind.Can:
+                (category, tokens) = AnswerCan(m, player, lang);
+                fallback = null;
+                break;
+            case BotIntentKind.Cancel:
+                category = "ack_yes";
+                break;
+            case BotIntentKind.Friend:
+                (category, tokens) = AnswerFriend(m, player);
+                fallback = "respond_chat";
+                break;
+            case BotIntentKind.Companion:
+                (category, tokens) = AnswerCompanion(m, player, now);
+                fallback = null;
+                break;
+            case BotIntentKind.Dismiss:
+                (category, tokens) = AnswerDismiss(m, player, now);
+                fallback = "ack_yes";
+                break;
+            case BotIntentKind.Remember:
+                (category, tokens, string? first) = AnswerRemember(m, player, lang);
+                if (first != null) prefix = first;
+                fallback = "remember_yes";
+                break;
+            case BotIntentKind.Protect:
+                if (m.Companion == player)
+                {
+                    m.Protecting = true;
+                    category = "protect_yes";
+                }
+                else category = "protect_no";
+                fallback = null;
+                break;
+            case BotIntentKind.Stay when m.Companion == player:
+                m.CompanionHoldUntilMs = now + 600_000;
+                m.HoldAt = m.Char.Position;
+                category = "party_stay";
+                fallback = null;
+                break;
+            case BotIntentKind.Status when m.Companion == player:
+                tokens = new Dictionary<string, string>
+                {
+                    ["hp"] = m.Char.Hits.ToString(), ["maxhp"] = m.Char.MaxHits.ToString(),
+                    ["mana"] = m.Char.Mana.ToString(), ["maxmana"] = m.Char.MaxMana.ToString(),
+                };
+                category = "party_status";
+                fallback = null;
+                break;
             case BotIntentKind.Follow:
                 var botParty = Parties?.FindParty(m.Char.Uid);
                 category = botParty != null && botParty == Parties?.FindParty(player.Uid) ? "respond_follow_already"
@@ -192,6 +304,8 @@ public sealed partial class PlayerBotEngine
                 string answer = intent.Kind == BotIntentKind.Yes ? "_yes" : "_no";
                 category = asked != null && Chat.Has(asked + answer, lang) ? asked + answer : "ack" + answer;
                 fallback = "respond_chat";
+                // What the question offered is done on a yes.
+                if (intent.Kind == BotIntentKind.Yes && onYes != null) action = onYes;
                 break;
             case BotIntentKind.None when asked != null && Chat.Has(asked + "_reply", lang):
                 category = asked + "_reply";
@@ -318,9 +432,11 @@ public sealed partial class PlayerBotEngine
     }
 
     /// <summary>"EvaluatingIntel" as "evaluating intel".</summary>
-    internal static string SkillWords(SkillType skill)
+    internal static string SkillWords(SkillType skill) => CamelWords(skill.ToString());
+
+    /// <summary>A CamelCase name in lower-case words.</summary>
+    private static string CamelWords(string name)
     {
-        string name = skill.ToString();
         var sb = new System.Text.StringBuilder(name.Length + 4);
         for (int i = 0; i < name.Length; i++)
         {
@@ -487,9 +603,11 @@ public sealed partial class PlayerBotEngine
                 w.Asked = category;
                 w.AskedBy = mind;
                 w.AskedMs = now;
+                w.AskedYes = mind.PendingOnYes;
             }
             action?.Invoke();
         }
+        mind.PendingOnYes = null;
         mind.PendingPrefix = null;
         mind.PendingParty = false;
         mind.PendingTo = null;

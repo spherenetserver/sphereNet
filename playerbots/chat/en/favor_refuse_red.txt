@@ -1,0 +1,4 @@
+# favor_refuse_red.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ur flagged, i wont get mixed up in that
+not helping a criminal, sorry

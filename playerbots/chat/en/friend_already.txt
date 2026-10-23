@@ -1,0 +1,5 @@
+# friend_already.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+we already are
+course we are
+[kind] always

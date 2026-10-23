@@ -1,0 +1,5 @@
+# favor_cancel.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ok, nvm then
+sure, forget it
+np

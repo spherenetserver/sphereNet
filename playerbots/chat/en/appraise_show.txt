@@ -1,0 +1,4 @@
+# appraise_show.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+put it in a trade, ill have a look
+show me in a trade window

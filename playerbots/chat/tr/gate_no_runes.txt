@@ -1,0 +1,4 @@
+# gate_no_runes.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+üstümde rün yok. işaretli rünün varsa trade'e koy, açarım
+rünüm yok, rününü trade'e koy gate açayım

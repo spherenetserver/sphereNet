@@ -1,0 +1,5 @@
+# memory_hunt.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{when} {place} civarında güzel avlamıştık
+{place} hatırlıyo musun? güzeldi
+{place} tarafını beraber temizlemiştik

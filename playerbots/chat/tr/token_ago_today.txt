@@ -1,0 +1,5 @@
+# token_ago_today.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+bugün
+biraz önce
+az evvel

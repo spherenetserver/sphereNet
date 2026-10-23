@@ -1,0 +1,5 @@
+# thanks_raised.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+thanks for the res!
+u saved me, thanks
+ty for raising me

@@ -1,0 +1,4 @@
+# gate_blocked_there.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{target} gate kabul etmiyor
+{target} tarafına gate açılmıyor, kapalı

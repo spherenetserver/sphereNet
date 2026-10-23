@@ -13,20 +13,16 @@ namespace SphereNet.Game.PlayerBots;
 /// ("Open Bankbox", as a player does) and moves gold by hand: carrying more than
 /// <see cref="BankDepositAbove"/> it puts the surplus in, carrying less than
 /// <see cref="BankWithdrawBelow"/> it takes up to <see cref="BankWithdrawTo"/> out.</item>
-/// <item><b>A rune home.</b> A caster with the magery for it marks a blank rune at its
-/// home town's bank (the Mark spell through its client: mana, reagents and skill as for
-/// anyone) and later recalls on it to get home from where no road leads (an island, a
-/// gate's landing) or when stranded off the roads.</item>
+/// <item><b>Runes.</b> See the Runes part: a caster keeps runes of the towns it
+/// visits, bought blank and marked there, and recalls home on one.</item>
 /// <item><b>Company.</b> A bot setting off sometimes takes another idle bot standing by
 /// along; the companion goes to the same place, waits when it gets ahead and runs when
 /// it falls behind, until the leader arrives.</item>
 /// </list>
-/// Nothing is made out of nothing except the blank rune itself (a few coins' worth).
+/// Nothing is made out of nothing.
 /// </summary>
 public sealed partial class PlayerBotEngine
 {
-    public const string RuneTag = "PLAYERBOT.RUNE";
-
     /// <summary>Gold carried above which the surplus goes into the bank.</summary>
     public int BankDepositAbove { get; set; } = 1500;
     /// <summary>Gold carried below which some is taken out of the bank.</summary>
@@ -174,105 +170,6 @@ public sealed partial class PlayerBotEngine
         foreach (var item in container.Contents)
             if (!item.IsDeleted && item.ItemType == ItemType.Gold) n += item.Amount;
         return n;
-    }
-
-    // ------------------------------------------------------------------
-    //  A rune home
-    // ------------------------------------------------------------------
-
-    /// <summary>The bot's own rune, marked or still blank, if it is in its pack.</summary>
-    private Item? OwnRune(Character ch)
-    {
-        if (!ch.TryGetTag(RuneTag, out string? tag) || !uint.TryParse(tag, out uint uid)) return null;
-        var rune = _world.FindItem(new Serial(uid));
-        if (rune == null || rune.IsDeleted || rune.ItemType != ItemType.Rune || rune.GetTopLevelObj() != ch)
-        {
-            ch.RemoveTag(RuneTag);
-            return null;
-        }
-        return rune;
-    }
-
-    private static bool KnowsTravel(BotMind mind) =>
-        mind.IsCaster && mind.Char.GetSkill(SkillType.Magery) >= 500;
-
-    /// <summary>At its home town's bank, a caster with no marked rune marks one there.</summary>
-    private bool TryMarkHomeRune(BotMind mind, long now)
-    {
-        if (IsPk(mind)) return false;
-        var ch = mind.Char;
-        if (mind.MarkCheckMs != 0 && now >= mind.MarkCheckMs)
-        {
-            mind.MarkCheckMs = 0;
-            if (OwnRune(ch) is { HasRuneMark: true })
-            {
-                WindowMarksTaken++;
-                mind.Note(now, "its rune is marked");
-            }
-            else
-            {
-                WindowMarksFailed++;
-                mind.Note(now, "the mark did not take");
-                if (WindowMarksFailed <= 5)
-                    _logger.LogInformation("[playerbots] {Name} mark did not take: {Trace}", ch.Name,
-                        string.Join(" | ", mind.Trace().TakeLast(8).Select(t => t.Text)));
-            }
-        }
-        if (mind.Client == null || !KnowsTravel(mind) || now < mind.NextMarkMs || mind.At == null ||
-            !mind.At.Type.Equals("Bank", StringComparison.OrdinalIgnoreCase) ||
-            !mind.At.City.Equals(mind.Home, StringComparison.OrdinalIgnoreCase) ||
-            ch.Mana < 20 || ch.TryGetCastingSpell(out _) || ch.Backpack is not { } pack)
-            return false;
-        var rune = OwnRune(ch);
-        if (rune != null && rune.HasRuneMark && rune.More1 > 0) return false;
-        mind.NextMarkMs = now + 300_000;
-        // Only a spell its book holds.
-        if (!HasSpell(ch, SpellType.Mark) || !HasSpell(ch, SpellType.Recall)) return false;
-        if (rune == null || rune.More1 <= 0 && rune.HasRuneMark)
-        {
-            // A blank rune, as one buys for a few coins.
-            if (rune != null) _world.DeleteObject(rune);
-            rune = _world.CreateItem();
-            rune.BaseId = 0x1F14;
-            rune.ItemType = ItemType.Rune;
-            rune.Name = "a recall rune";
-            if (!pack.TryAddItem(rune))
-            {
-                _world.DeleteObject(rune);
-                return false;
-            }
-            ch.SetTag(RuneTag, rune.Uid.Value.ToString());
-        }
-        mind.Client.HandleCastSpell(SpellType.Mark, rune.Uid.Value);
-        mind.MarkCheckMs = now + 8000;
-        WindowMarks++;
-        mind.Note(now, "marks its rune at the home bank");
-        mind.NextActMs = now + 4000;
-        return true;
-    }
-
-    /// <summary>A caster with a marked rune recalls home. False when it cannot.</summary>
-    private bool TryRecallHome(BotMind mind, long now, string why)
-    {
-        // A rune goes to a town bank; a player killer has no business there.
-        if (IsPk(mind)) return false;
-        var ch = mind.Char;
-        if (mind.Client == null || !KnowsTravel(mind) || now < mind.NextRecallMs || ch.Mana < 11 ||
-            ch.IsDead || ch.TryGetCastingSpell(out _))
-            return false;
-        var rune = OwnRune(ch);
-        if (rune == null || !rune.TryGetRuneMark(out var mark) || rune.More1 <= 0 || !HasSpell(ch, SpellType.Recall)) return false;
-        if (mark.Map == ch.MapIndex && mark.GetDistanceTo(ch.Position) < 64) return false; // walk it
-        mind.NextRecallMs = now + 60_000;
-        mind.RecallSinceMs = now;
-        mind.Client.HandleCastSpell(SpellType.Recall, rune.Uid.Value);
-        WindowRecalls++;
-        mind.Note(now, $"recalls home ({why})");
-        mind.Goal = null;
-        ch.RemoveTag(GoalTag);
-        mind.BeginLinger(null, now, _rng, short_: true);
-        mind.NextActMs = now + 5000;
-        return true;
     }
 
     // ------------------------------------------------------------------

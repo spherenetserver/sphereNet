@@ -1,0 +1,4 @@
+# carry_give.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+sure, put it in a trade
+ok, hand it over

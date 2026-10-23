@@ -1,0 +1,4 @@
+# gate_blocked_here.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+cant open a gate here, this place blocks it
+no gating out of here, sorry

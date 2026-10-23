@@ -1,0 +1,4 @@
+# memory_guide.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{place} yolunu buldun mu?
+{when} sana {place} yolunu göstermiştim

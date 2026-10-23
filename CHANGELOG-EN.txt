@@ -4,6 +4,58 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-23] - Player bots: favours asked in conversation, friendship, companions, rune library
+------------------------------------------------------------------------
+NEW - Favours: a player can ask a bot for help in plain speech and follow it through over
+      several lines. Gate: a caster opens Gate Travel on its own rune of the place named,
+      asks where when none is named (listing its runes), or takes the player's marked rune
+      from a trade window, casts on it and trades it back; it checks its book, magery,
+      mana (meditating once short), the spell engine's cast test and the regions' gate-in
+      and gate-out rules first, steps off the gate and keeps off it, and retries a fizzle
+      twice. Also: mark a player's blank rune, Bless / Protection / Magic Reflect / Night
+      Sight / Strength / Agility / Cunning on the player, lead the player to a place
+      (waiting while they lag), price things shown in a trade window without buying them,
+      hold a companion's things (PLAYERBOT.HELD, never sold or counted as stock) and hand
+      them back by trade, take a present, and say what it can do now. "Never mind" or a
+      no drops a favour. Every spell goes through the bot's client.
+NEW - Reagent money: a gate or a mark asked by a stranger (or an acquaintance of a bot that
+      is not kind) costs the reagents' worth, each reagent's make value times its amount
+      (double from a stingy bot), paid in a trade window. Friends and companions pay
+      nothing.
+NEW - Friendship: bots keep a bond score per player (PLAYERBOT.BONDS) raised by talk,
+      favours, fights won together, fair trades, presents and being raised from the dead,
+      lowered sharply by an attack, fading after three days unseen. Levels (acquaintance,
+      friend) set greetings by name, free favours, unasked help and companionship. Each
+      bot gets a nature once (PLAYERBOT.TRAIT: kind, shy, chatty, stingy). Bots remember
+      what they shared with players (PLAYERBOT.MEMORY) and bring it up in greetings and
+      when asked "do you remember me". Points, thresholds and nature weights are in
+      playerbots/bonds.txt; no sphere.ini keys.
+NEW - Companions: a friend asked to travel with a player becomes their companion
+      (PLAYERBOT.COMPANION, one per player, kept in the save): it follows, fights the
+      player's fights, heals, cures and raises them, waits when told, guards their body
+      against criminal looters, answers the lines the player says to nobody in particular,
+      waits four minutes after a logout and comes back to the player through a gate near
+      it, on a rune of its own, or by road. "You can go" ends it.
+NEW - Unasked help: a friend near a player may offer a heal or a cure (done on a yes),
+      point out a murderer and the direction, or ask a player standing about in town
+      whether they need anything. A yes or a no now goes to the bot that asked.
+CHANGE - Bot runes: a caster with Mark and Recall keeps up to eight runes, marking one at
+      each town bank it stays at (home first) and, when it hunts, at dungeon mouths, and
+      buys blank runes at a mage shop (rune in shopping.txt). The blank rune it used to be
+      given out of nothing is gone; PLAYERBOT.RUNE is no longer read.
+FIX - A bot raised where it fell by someone else now clears its death state: the next death
+      was otherwise skipped (no corpse noted, an immediate lift to a healer). It thanks the
+      raiser and walks back to its body.
+FIX - A rune whose mark lies off every map (MOREP with a negative X or Y, as the pack's
+      i_rune_marker is created with MOREP=-1,-1) now reads as blank, as Source-X tests
+      m_ptMark.IsValidPoint(): Recall and Gate say the rune is blank instead of trying
+      the trip, and Mark is what such a rune is for.
+CHANGE - A bot that finds nobody at a shop selling what it came for remembers that shop
+      for that need for half an hour (all bots), and does not walk more than 300 tiles
+      for blank runes.
+NEW - Telemetry: favors, favorfails, gates, gifts, offers, newfriends, bondpoints,
+      companionsnow in the 30-second [playerbots] line.
+
 [2026-10-22] - Player bots: party companions, secure trades, PK balance, out-of-sight lifts
 ------------------------------------------------------------------------
 FIX - Taking an item out of a secure trade window now clears both accept flags, as Source-X

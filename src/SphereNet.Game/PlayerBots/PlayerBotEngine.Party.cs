@@ -90,10 +90,14 @@ public sealed partial class PlayerBotEngine
         mind.NextTendMs = now + 1500;
         var ch = mind.Char;
         var party = Parties?.FindParty(ch.Uid);
-        if (party == null || ch.TryGetCastingSpell(out _)) return false;
+        // Its party, and the player it goes about with.
+        var mate = mind.Companion is { HasClient: true } p ? p : null;
+        if ((party == null && mate == null) || ch.TryGetCastingSpell(out _)) return false;
         Character? ghost = null, poisoned = null, worst = null;
         int worstPct = 70;
-        foreach (var uid in party.Members)
+        IEnumerable<Serial> members = party?.Members ?? [];
+        if (mate != null && (party == null || !party.IsMember(mate.Uid))) members = members.Append(mate.Uid);
+        foreach (var uid in members)
         {
             if (uid == ch.Uid || _world.FindChar(uid) is not { IsDeleted: false } c || c.MapIndex != ch.MapIndex) continue;
             if (c.Position.GetDistanceTo(ch.Position) > 10 || !_world.CanSeeLOS(ch.Position, c.Position)) continue;

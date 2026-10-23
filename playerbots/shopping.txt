@@ -4,8 +4,10 @@
 # buy is how many it asks for (fewer when its gold does not stretch); the place
 # types are destinations.json "Type" values where a vendor of it stands.
 # Who needs what: Bandage a bot with Healing, Reagent a caster, WeaponArrow a bow
-# user, WeaponBolt a crossbow user.
+# user, WeaponBolt a crossbow user, Rune a caster with Mark and Recall (blank runes,
+# counted as the blank and worn-out ones it carries, while it has room for more).
 bandage  Bandage      10  40  Healer VendorProvisioner
 reagent  Reagent      15  30  VendorMage VendorAlchemist
 arrow    WeaponArrow  30  100 VendorBowyer VendorProvisioner
 bolt     WeaponBolt   30  100 VendorBowyer VendorProvisioner
+rune     Rune         1   2   VendorMage

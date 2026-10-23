@@ -1,0 +1,5 @@
+# offer_heal.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ur hurt, want a heal?
+need a heal?
+[kind] let me heal u?

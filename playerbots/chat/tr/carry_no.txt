@@ -1,0 +1,4 @@
+# carry_no.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+sadece beraber gezdiğim birinin eşyasını taşırım
+önce beraber gezelim

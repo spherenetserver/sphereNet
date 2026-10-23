@@ -1,0 +1,6 @@
+# guide_ok.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+follow me
+this way
+come on, ill take u to {target}
+[chatty] sure, follow me, {target} is not far

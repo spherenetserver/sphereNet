@@ -1,0 +1,4 @@
+# favor_no_regs.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+out of reagents, sorry
+cant, no regs left

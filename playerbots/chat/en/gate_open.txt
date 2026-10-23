@@ -1,0 +1,6 @@
+# gate_open.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+there, {target}. go before it closes
+gate's up, {target}
+open! step in
+{target} gate open, have fun

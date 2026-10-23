@@ -1,0 +1,5 @@
+# mark_give.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+sure, put ur blank rune in a trade
+ok, hand me the rune
+give me a rune and ill mark it right here

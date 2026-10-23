@@ -1,0 +1,6 @@
+# guide_ok.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+takip et
+bu taraftan
+gel, seni {target} götüreyim
+[chatty] tabi, peşimden gel, {target} uzak değil

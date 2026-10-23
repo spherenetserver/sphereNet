@@ -1,0 +1,4 @@
+# guide_far.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+{target} is way too far to walk
+thats a long way, {target}. take the moongate

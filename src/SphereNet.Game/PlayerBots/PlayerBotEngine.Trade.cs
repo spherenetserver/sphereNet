@@ -5,6 +5,11 @@ using SphereNet.Game.Trade;
 
 namespace SphereNet.Game.PlayerBots;
 
+/// <summary>What a trade window is for: an ordinary deal, or a favour's business -
+/// things held handed back, a rune or the reagent money for a spell, things to hold,
+/// a present, things to price.</summary>
+public enum BotTradeMode { Deal, Return, Rune, Pay, Carry, Gift, Appraise }
+
 /// <summary>
 /// Trading with players through the secure trade window, as a client trades: what
 /// goes in or out of the bot's side is picked up and dropped through its client, and
@@ -47,7 +52,8 @@ public sealed partial class PlayerBotEngine
         var list = new List<Item>();
         if (ch.Backpack is not { } pack) return list;
         foreach (var item in _world.GetContainerContents(pack.Uid))
-            if (IsStock(item)) list.Add(item);
+            // What it holds for a player is not its to sell.
+            if (IsStock(item) && HeldFor(ch, item) == 0) list.Add(item);
         return list;
     }
 
@@ -103,6 +109,15 @@ public sealed partial class PlayerBotEngine
             client.HandleSecureTrade(1, mine.Uid.Value, 0);
             return false;
         }
+
+        // What their window holds, for when the trade completes.
+        mind.TradeTheirs = theirs.Contents.Where(i => !i.IsDeleted).ToList();
+        mind.TradeTheirGold = trade.GetGoldOffer(partner);
+        // Not a deal: a favour's rune or money, things held or handed back, a present,
+        // a price asked.
+        mind.TradeMode = TradeModeOf(mind, partner, mine);
+        if (mind.TradeMode != BotTradeMode.Deal)
+            return ActFavorTrade(mind, trade, partner, mine, theirs, now);
 
         long theirGold = trade.GetGoldOffer(partner), theirValue = 0, myGold = 0, myValue = 0;
         Item? worthless = null;
@@ -217,11 +232,238 @@ public sealed partial class PlayerBotEngine
     {
         mind.Trade = null;
         mind.TradeKey = null;
-        if (last.IsCompleted && last.InitiatorAccepted && last.PartnerAccepted)
+        var mode = mind.TradeMode;
+        var theirs = mind.TradeTheirs ?? [];
+        long theirGold = mind.TradeTheirGold;
+        mind.TradeMode = BotTradeMode.Deal;
+        mind.TradeTheirs = null;
+        mind.TradeTheirGold = 0;
+        mind.AppraiseCloseMs = 0;
+        var partner = last.GetPartner(mind.Char);
+        if (!(last.IsCompleted && last.InitiatorAccepted && last.PartnerAccepted))
         {
-            WindowTrades++;
-            mind.Note(now, $"traded with {last.GetPartner(mind.Char).GetName()}");
-            if (_rng.Next(100) < 70) Speak(mind, "trade_done", fallback: null, to: last.GetPartner(mind.Char));
+            // Turned down: offered again later, not pressed.
+            if (mode == BotTradeMode.Return)
+            {
+                mind.NextGiveBackMs = now + 120_000;
+                mind.GiveBackTo = null;
+            }
+            return;
+        }
+        WindowTrades++;
+        mind.Note(now, $"traded with {partner.GetName()} ({mode})");
+        if (mode != BotTradeMode.Deal)
+        {
+            FavorTradeDone(mind, partner, mode, theirs, theirGold, now);
+            return;
+        }
+        AddBond(mind, partner, Rule("trade"), now, "a fair trade");
+        if (_rng.Next(100) < 70) Speak(mind, "trade_done", fallback: null, to: partner);
+    }
+
+    // ------------------------------------------------------------------
+    //  Trades that are no deal
+    // ------------------------------------------------------------------
+
+    /// <summary>What a trade window with this player is for: a favour's rune or money,
+    /// a present, things to hold or to price, things held being handed back; else an
+    /// ordinary deal.</summary>
+    private BotTradeMode TradeModeOf(BotMind mind, Character partner, Item mine)
+    {
+        var ch = mind.Char;
+        bool anyMine = false, allHeld = true;
+        foreach (var item in mine.Contents)
+        {
+            if (item.IsDeleted || item.ItemType == ItemType.Gold) continue;
+            anyMine = true;
+            if (HeldFor(ch, item) != partner.Uid.Value) allHeld = false;
+        }
+        if (anyMine && allHeld) return BotTradeMode.Return;
+        if (mind.Favor is not { } f || f.Player != partner) return BotTradeMode.Deal;
+        return f.Stage switch
+        {
+            BotFavorStage.AwaitRune => BotTradeMode.Rune,
+            BotFavorStage.AwaitPay => BotTradeMode.Pay,
+            BotFavorStage.AwaitGoods => f.Kind switch
+            {
+                BotFavorKind.Carry => BotTradeMode.Carry,
+                BotFavorKind.Gift => BotTradeMode.Gift,
+                BotFavorKind.Appraise => BotTradeMode.Appraise,
+                _ => BotTradeMode.Deal,
+            },
+            _ => BotTradeMode.Deal,
+        };
+    }
+
+    private bool ActFavorTrade(BotMind mind, SecureTrade trade, Character partner, Item mine, Item theirs, long now)
+    {
+        var ch = mind.Char;
+        var client = mind.Client!;
+        var mode = mind.TradeMode;
+        var f = mind.Favor;
+        // None of its own gold goes in.
+        if (mine.Contents.FirstOrDefault(i => !i.IsDeleted && i.ItemType == ItemType.Gold) is { } own && ch.Backpack is { } pack)
+        {
+            MoveGold(client, own, own.Amount, pack, mine);
+            mind.NextActMs = now + _rng.Next(400, 800);
+            return true;
+        }
+        long theirGold = trade.GetGoldOffer(partner);
+        var goods = new List<Item>();
+        foreach (var item in theirs.Contents)
+        {
+            if (item.IsDeleted) continue;
+            if (item.ItemType == ItemType.Gold) theirGold += item.Amount;
+            else goods.Add(item);
+        }
+        string key = TradeKey(theirs, mine, trade.GetGoldOffer(partner));
+        bool changed = key != mind.TradeKey;
+        if (changed)
+        {
+            mind.TradeKey = key;
+            mind.TradeChangedMs = now;
+            mind.TradeAcceptAtMs = now + _rng.Next(1500, 3000);
+        }
+        bool ok = false;
+        string? say = null;
+        var tokens = new Dictionary<string, string>();
+        switch (mode)
+        {
+            case BotTradeMode.Return:
+                ok = true;
+                break;
+            case BotTradeMode.Rune:
+            {
+                var rune = goods.Count == 1 && goods[0].ItemType == ItemType.Rune ? goods[0] : null;
+                // A gate needs a marked rune that is not worn out; a mark wants one to mark.
+                ok = rune != null && theirGold == 0 &&
+                     (f?.Kind != BotFavorKind.Gate || IsUsableRune(rune));
+                if (!ok && changed && goods.Count > 0)
+                    say = rune != null && f?.Kind == BotFavorKind.Gate ? "favor_rune_blank" : "favor_rune_wrong";
+                break;
+            }
+            case BotTradeMode.Pay:
+                ok = goods.Count == 0 && f != null && theirGold >= f.Fee;
+                if (!ok && changed && f != null)
+                {
+                    say = "favor_fee";
+                    tokens["price"] = f.Fee.ToString();
+                }
+                break;
+            case BotTradeMode.Carry:
+            {
+                long tenths = goods.Sum(i => (long)i.TotalWeightTenths);
+                bool fits = (long)ch.GetTotalWeightTenths() + tenths <= (long)Math.Max(0, ch.MaxWeight) * Item.WeightUnits;
+                ok = goods.Count > 0 && theirGold == 0 && fits;
+                if (!fits && changed) say = "carry_heavy";
+                break;
+            }
+            case BotTradeMode.Gift:
+                ok = goods.Count > 0 || theirGold > 0;
+                break;
+            case BotTradeMode.Appraise:
+                if (changed && goods.Count > 0)
+                {
+                    say = "appraise_value";
+                    tokens["items"] = string.Join(", ", goods.Take(3).Select(i => $"{i.GetDisplayName()} {Worth(i)}gp"));
+                    mind.AppraiseCloseMs = now + 6000;
+                }
+                if (mind.AppraiseCloseMs != 0 && now >= mind.AppraiseCloseMs)
+                {
+                    // Looked at, priced: the window is closed and the things go back.
+                    client.HandleSecureTrade(1, mine.Uid.Value, 0);
+                    if (f != null) FavorDone(mind, f, now, null);
+                    return false;
+                }
+                break;
+        }
+        if (say != null)
+        {
+            tokens["target"] = f?.PlaceWord ?? "";
+            Speak(mind, say, fallback: null, to: partner, extra: tokens, force: true);
+        }
+        bool accepted = trade.Initiator == ch ? trade.InitiatorAccepted : trade.PartnerAccepted;
+        if (ok && !accepted && now >= mind.TradeAcceptAtMs)
+            client.HandleSecureTrade(2, mine.Uid.Value, 1);
+        else if (!ok && accepted)
+            client.HandleSecureTrade(2, mine.Uid.Value, 0);
+        mind.NextActMs = now + 400;
+        return true;
+    }
+
+    /// <summary>A trade for a favour went through: what came across is a rune to use,
+    /// the money paid, things held, a present; things handed back are no longer held.</summary>
+    private void FavorTradeDone(BotMind mind, Character partner, BotTradeMode mode, List<Item> theirs, long theirGold,
+        long now)
+    {
+        var ch = mind.Char;
+        var f = mind.Favor is { } fv && fv.Player == partner ? fv : null;
+        var came = theirs.Where(i => !i.IsDeleted && i.GetTopLevelObj() == ch && i.ItemType != ItemType.Gold).ToList();
+        switch (mode)
+        {
+            case BotTradeMode.Return:
+            {
+                // What went across is held no more (the entries of things it no longer has drop).
+                HeldItems(ch, partner.Uid.Value);
+                mind.GiveBackTo = null;
+                Speak(mind, "giveback_done", fallback: null, to: partner);
+                break;
+            }
+            case BotTradeMode.Rune when f != null:
+            {
+                var rune = came.FirstOrDefault(i => i.ItemType == ItemType.Rune);
+                if (rune == null) break;
+                Hold(ch, rune, partner);
+                f.Rune = rune;
+                f.RuneIsPlayers = true;
+                if (f.Kind == BotFavorKind.Gate)
+                {
+                    if (string.IsNullOrEmpty(f.PlaceWord)) f.PlaceWord = RuneWord(rune);
+                    var (category, tokens) = Proceed(mind, f, now);
+                    Speak(mind, category, fallback: null, to: partner, lang: f.Language, extra: tokens, force: true);
+                }
+                else
+                {
+                    f.Stage = BotFavorStage.Working;
+                    f.UntilMs = now + FavorWorkMs;
+                    if (!f.Paid && FeeFor(mind, partner, SpellType.Mark) is > 0 and var fee)
+                    {
+                        f.Fee = fee;
+                        f.Stage = BotFavorStage.AwaitPay;
+                        f.UntilMs = now + FavorWaitMs;
+                        Speak(mind, "favor_fee", fallback: null, to: partner, lang: f.Language,
+                            extra: new Dictionary<string, string> { ["price"] = fee.ToString() }, force: true);
+                    }
+                    else
+                        Speak(mind, "mark_ok", fallback: null, to: partner, lang: f.Language, force: true);
+                }
+                break;
+            }
+            case BotTradeMode.Pay when f != null:
+                f.Paid = true;
+                f.Stage = BotFavorStage.Working;
+                f.UntilMs = now + FavorWorkMs;
+                Speak(mind, f.Kind == BotFavorKind.Gate ? "gate_ok" : "mark_ok", fallback: null, to: partner,
+                    lang: f.Language, extra: new Dictionary<string, string> { ["target"] = f.PlaceWord ?? "" }, force: true);
+                break;
+            case BotTradeMode.Carry when f != null:
+                foreach (var item in came) Hold(ch, item, partner);
+                Speak(mind, "carry_ok", fallback: null, to: partner, lang: f.Language, force: true);
+                FavorDone(mind, f, now, null);
+                break;
+            case BotTradeMode.Gift when f != null:
+            {
+                long worth = came.Sum(Worth) + theirGold;
+                int per = Math.Max(1, Rule("gift_per"));
+                int points = (int)Math.Clamp(worth / per, 1, Math.Max(1, Rule("gift_max")));
+                WindowGifts++;
+                Memorize(mind, partner, "gift", came.FirstOrDefault()?.GetDisplayName() ?? (theirGold + "gp"));
+                Speak(mind, "gift_thanks", fallback: null, to: partner, lang: f.Language, force: true);
+                EndFavor(f, now, done: true);
+                WindowFavors++;
+                AddBond(mind, partner, points, now, $"a present worth {worth}");
+                break;
+            }
         }
     }
 

@@ -1,0 +1,4 @@
+# buff_wait.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+one sec, just cast
+gimme a few secs

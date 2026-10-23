@@ -1,0 +1,4 @@
+# guide_far_gate.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{target} çok uzak, gate açayım mı?
+yürüyerek olmaz. {target} gate atayım mı?

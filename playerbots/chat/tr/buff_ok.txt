@@ -1,0 +1,5 @@
+# buff_ok.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{spell} geliyo
+olur, {spell}
+dur bi, {spell} atıyom

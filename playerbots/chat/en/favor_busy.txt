@@ -1,0 +1,5 @@
+# favor_busy.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+busy right now, sorry
+already helping someone
+gimme a bit, busy

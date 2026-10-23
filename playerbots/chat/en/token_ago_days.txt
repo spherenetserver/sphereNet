@@ -1,0 +1,5 @@
+# token_ago_days.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+the other day
+a few days ago
+recently

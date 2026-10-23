@@ -1,0 +1,6 @@
+# gate_where.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+where to? i have {runes}
+sure, where? got runes for {runes}
+where u headed? {runes}?
+[stingy] where to? i have {runes}, not free tho

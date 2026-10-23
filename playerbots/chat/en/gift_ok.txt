@@ -1,0 +1,4 @@
+# gift_ok.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+oh, for me? put it in a trade
+aw thanks, trade it over

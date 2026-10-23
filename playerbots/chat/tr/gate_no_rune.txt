@@ -1,0 +1,5 @@
+# gate_no_rune.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{target} rünüm yok, sende varsa trade'e koy
+{target} işaretli değil bende, rününü ver açayım
+{target} mı? rünü yok bende, seninkini ver

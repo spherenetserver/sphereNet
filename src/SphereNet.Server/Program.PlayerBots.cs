@@ -59,11 +59,13 @@ public static partial class Program
             UnseenLiftWaitMs = _config.PlayerBotUnseenLiftSec * 1000L,
             SearchesPerTick = _config.PlayerBotPathSearchesPerTick,
             ResRobeName = SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.SpellResRobename),
+            Spells = _spellEngine,
         };
         engine.LoadArchetypes(dataDir);
         engine.LoadDistribution(dataDir);
         engine.LoadMounts(dataDir);
         engine.LoadShopping(dataDir);
+        engine.LoadBonds(dataDir);
         // Deaths become the news bots tell.
         _deathEngine.OnDeath += engine.OnDeath;
         SphereNet.Game.Party.PartyManager.OnPartyMessage = engine.OnPartyChat;
@@ -99,6 +101,7 @@ public static partial class Program
                 "searches={Searches} (failed {Failed}, slowest {SlowSearch}us) doors={Doors} fights={Fights} deaths={Deaths} reclaims={Reclaims} handbacks={HandBacks} rescues={Rescues} badspots={BadSpots} slowest act {SlowAct}us ({SlowWhat}) route {Route}us step {Step}us spawn {Spawn}us moves {Moves} avg {MoveAvg}us max {MoveMax}us at {MoveWhere} " +
                 "watchers={Watchers} seen avg={SeenAvg} max={SeenMax} lines={Lines} replies={Replies} scenes={Scenes} moved={Moved} mounts={Mounts} regears={Regears} robes={Robes} stalldoors={StallDoors} spotswitches={SpotSwitches} stallsearches={StallSearches} " +
                 "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} tends={Tends} orders={Orders} trades={Trades} liftwaits={LiftWaits} badlinks={BadLinks} searchtimeouts={Timeouts} " +
+                "favors={Favors} favorfails={FavorFails} gates={Gates} gifts={Gifts} offers={Offers} newfriends={NewFriends} bondpoints={BondPoints} companionsnow={CompanionsNow} " +
                 "searchq={Queued} denied={Denied} dropped={Dropped} notrun={NotRun} backlog={Backlog} corridors={Corridors} corridoruses={CorridorUses} cornersplits={CornerSplits} " +
                 "waits={Waits} sidesteps={SideSteps} doorway={Doorway} portals={Portals} portalmisses={PortalMisses} noroute={NoRoute} stranded={Stranded} maprescues={MapRescues} " +
                 "unreachable={Unreachable} giveups={GiveUps} faults={Faults} staticdoors={StaticDoors} deposits={Deposits} withdrawals={Withdrawals} marks={Marks} (taken {MarksTaken}, failed {MarksFailed}) recalls={Recalls} companions={Companions} pauses={Pauses} stalled [{Stalled}] refusals [{Refusals}]",
@@ -111,6 +114,8 @@ public static partial class Program
                 bots.WindowSeenMax, bots.WindowLines, bots.WindowReplies, bots.WindowScenes, bots.WindowMovedHouse, bots.WindowMounts, bots.WindowRegears, bots.WindowRobesShed, bots.WindowStallDoors, bots.WindowSpotSwitches, bots.WindowStallSearches,
                 bots.WindowPurchases, bots.WindowMeditations, bots.WindowPkAttacks, bots.WindowThefts, bots.WindowPartyTends, bots.WindowPartyOrders, bots.WindowTrades, bots.WindowLiftWaits, bots.BadLinks,
                 bots.SearchTimeouts,
+                bots.WindowFavors, bots.WindowFavorFails, bots.WindowGates, bots.WindowGifts, bots.WindowOffers,
+                bots.WindowNewFriends, bots.WindowBondPoints, bots.CompanionCount,
                 bots.WindowSearchQueued, bots.WindowSearchDenied, bots.WindowSearchDropped, bots.WindowSearchesNotRun, bots.WindowSearchBacklog,
                 bots.CorridorCount, bots.WindowCorridorUses, bots.WindowCornerSplits,
                 bots.WindowMobileWaits, bots.WindowSideSteps, bots.WindowDoorwaySteps, bots.WindowPortalCrossings,

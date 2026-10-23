@@ -1,0 +1,4 @@
+# carry_give.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+olur, trade'e koy
+tamam, ver bakalım

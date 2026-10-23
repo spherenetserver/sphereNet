@@ -57,6 +57,8 @@ public sealed partial class PlayerBotEngine
             prey = c;
             preyDist = d;
         }
+        // A real player set on it: the bond with them sours.
+        if (threat is { HasClient: true }) OnAttackedByPlayer(mind, threat, now);
         var victim = threat == null ? PickVictim(mind, now, guarded) : null;
         var foe = threat ?? victim ?? (prey != null && _rng.Next(100) < 70 ? prey : null);
         if (foe == null) return false;
@@ -198,6 +200,8 @@ public sealed partial class PlayerBotEngine
         mind.NextActMs = now + _rng.Next(800, 2500);
         // A player killer moves on from where it killed, after the body.
         if (won && IsPk(mind)) mind.LingerUntilMs = 0;
+        // Won beside the player it goes about with: that is a bond.
+        if (won && foe is { IsPlayer: false }) OnFightWonBeside(mind, now);
         // The body of what it killed: supplies off a monster, anything off a victim.
         if (won && foe != null && !mind.Char.IsDead)
             StartLoot(mind, foe, now);

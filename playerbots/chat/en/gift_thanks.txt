@@ -1,0 +1,6 @@
+# gift_thanks.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+thank u!
+thats very kind of u
+wow thanks
+[shy] oh.. thanks

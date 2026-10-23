@@ -1,0 +1,35 @@
+# How a bot grows fond of a player (docs/PLAYERBOTS.md, Friends). One "key value" per
+# line; a key left out keeps its default. Scores are per bot and per player.
+#
+# Levels: a bot greets an acquaintance by name, does a friend's favours for free and
+# goes about with a friend who asks (a companion).
+acquaintance   5
+friend         25
+max            100
+
+# Points. A positive gain is scaled by the bot's nature (kind 150%, chatty 120%,
+# shy 70%).
+talk           1     # a line said to the bot...
+talk_gap       60    # ...at most once this many seconds
+favor          1     # the bot did something for the player (a gate, a mark, a spell, a walk)
+hunt           2     # a fight won beside the player (party leader or companion)...
+hunt_gap       120   # ...at most once this many seconds
+trade          2     # a fair trade completed
+gift_per       100   # a present: one point per this much it is worth (make value, gold)
+gift_max       10    # at most this many points for one present
+raised         8     # the player raised the bot from the dead
+attacked       -15   # the player set on the bot (once per two minutes)
+
+# Fading: a bond nobody keeps up loses this much a day after this many days unseen.
+decay_days     3
+decay_per_day  1
+
+# A bot's nature, picked once by these weights (PLAYERBOT.TRAIT).
+#   kind    warms fast, asks no reagent money of an acquaintance, offers help more
+#   shy     warms slowly, offers help less
+#   chatty  warms a little faster
+#   stingy  asks double the reagents' worth of anyone short of a friend
+trait.kind     35
+trait.shy      20
+trait.chatty   25
+trait.stingy   20

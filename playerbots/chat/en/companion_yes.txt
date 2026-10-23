@@ -1,0 +1,6 @@
+# companion_yes.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+sure, lets go
+id like that. lead the way
+deal, im with u
+[kind] of course! lets go

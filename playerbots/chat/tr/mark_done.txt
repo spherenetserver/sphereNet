@@ -1,0 +1,4 @@
+# mark_done.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+oldu, işaretlendi. buyur
+işaretledim, geri veriyorum

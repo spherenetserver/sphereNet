@@ -1,0 +1,4 @@
+# companion_res_soon.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+dayan, res için mana topluyorum
+bekle, birazdan res atıcam

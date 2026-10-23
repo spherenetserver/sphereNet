@@ -1,0 +1,4 @@
+# memory_raised.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{place} civarında beni diriltmiştin, borçluyum
+{place} için sana hala borçluyum

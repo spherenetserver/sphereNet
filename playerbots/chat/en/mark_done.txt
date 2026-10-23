@@ -1,0 +1,4 @@
+# mark_done.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+done, its marked. here u go
+marked. ill hand it back

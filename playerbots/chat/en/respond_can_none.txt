@@ -1,0 +1,4 @@
+# respond_can_none.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+not much, im just walking around
+i can show u the way, thats about it

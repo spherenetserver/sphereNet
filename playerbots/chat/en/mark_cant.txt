@@ -1,0 +1,5 @@
+# mark_cant.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+cant mark runes, no mark spell
+[!mage] im no mage
+my magery wont do it

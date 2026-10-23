@@ -1,0 +1,6 @@
+# gift_thanks.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+çok sağol!
+çok naziksin
+vay sağol
+[shy] aa.. teşekkürler

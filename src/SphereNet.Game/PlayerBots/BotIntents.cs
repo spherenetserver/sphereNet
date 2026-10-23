@@ -1,4 +1,5 @@
 using System.Text;
+using SphereNet.Core.Enums;
 
 namespace SphereNet.Game.PlayerBots;
 
@@ -30,6 +31,36 @@ public enum BotIntentKind
     Status,
     /// <summary>What do you have for sale.</summary>
     Selling,
+    /// <summary>Open a gate (to a place named, or on a rune handed over).</summary>
+    Gate,
+    /// <summary>Mark a rune (the player's own blank one) where we stand.</summary>
+    Mark,
+    /// <summary>A beneficial spell: bless, protection, reflect, night sight...</summary>
+    Buff,
+    /// <summary>Take me to a place: the bot walks in front.</summary>
+    Guide,
+    /// <summary>What is this worth: shown in a trade window, priced, not bought.</summary>
+    Appraise,
+    /// <summary>Watch over me (a companion): fight what sets on the player.</summary>
+    Protect,
+    /// <summary>Hold my things for me (a companion).</summary>
+    Carry,
+    /// <summary>Give back what you hold for me.</summary>
+    GiveBack,
+    /// <summary>What comes next in a trade is a present.</summary>
+    Gift,
+    /// <summary>What can you do (for me).</summary>
+    Can,
+    /// <summary>Forget what I asked.</summary>
+    Cancel,
+    /// <summary>Let us be friends.</summary>
+    Friend,
+    /// <summary>Travel with me, for good (a companion).</summary>
+    Companion,
+    /// <summary>A companion let go: go your own way.</summary>
+    Dismiss,
+    /// <summary>Do you remember me.</summary>
+    Remember,
 }
 
 /// <summary>What a player's line asks for. <see cref="PlaceType"/> is the destination
@@ -37,9 +68,10 @@ public enum BotIntentKind
 /// player used for it, echoed back in the answer; <see cref="Rest"/> what follows a
 /// WTS / WTB keyword (the goods) and <see cref="At"/> the word index of that keyword
 /// (0: the line opens with it, the way a trade shout does). <see cref="AlsoGreets"/>:
-/// the line says hello as well ("hi, where is the bank").</summary>
+/// the line says hello as well ("hi, where is the bank"). <see cref="Spell"/> is the
+/// spell a <see cref="BotIntentKind.Buff"/> asks for, when one is named.</summary>
 public readonly record struct BotIntent(BotIntentKind Kind, string? PlaceType = null, string? PlaceWord = null,
-    string? Rest = null, int At = -1, bool AlsoGreets = false);
+    string? Rest = null, int At = -1, bool AlsoGreets = false, SpellType? Spell = null);
 
 /// <summary>
 /// Reads a player's line the way a bystander would: a few keywords per intent and per
@@ -53,6 +85,7 @@ public sealed class BotIntents
     private readonly Dictionary<BotIntentKind, string[]> _intents = [];
     private readonly List<(string Type, string[] Words)> _places = [];
     private readonly Dictionary<string, HashSet<string>> _langWords = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<(SpellType Spell, string[] Words)> _buffs = [];
 
     public static BotIntents Load(string dataDir)
     {
@@ -81,6 +114,9 @@ public sealed class BotIntents
                 b._places.Add(("town:" + key[5..], words));
             else if (key.StartsWith("dest.", StringComparison.OrdinalIgnoreCase))
                 b._places.Add(("dest:" + key[5..], words));
+            else if (key.StartsWith("buff.", StringComparison.OrdinalIgnoreCase) &&
+                     Enum.TryParse(key[5..], ignoreCase: true, out SpellType spell))
+                b._buffs.Add((spell, words));
             else if (key.StartsWith("lang.", StringComparison.OrdinalIgnoreCase))
                 b._langWords[key[5..]] = [.. words];
             else if (key.Equals("not", StringComparison.OrdinalIgnoreCase))
@@ -130,17 +166,37 @@ public sealed class BotIntents
         return false;
     }
 
-    /// <summary>The place a line names, as a destination type and the word used.</summary>
-    public (string Type, string Word)? FindPlace(string text)
+    /// <summary>The place a line names, as a destination type and the word used;
+    /// <paramref name="skip"/> leaves types out (the "gate" of "open a gate" asks for
+    /// no moongate).</summary>
+    public (string Type, string Word)? FindPlace(string text, Func<string, bool>? skip = null)
     {
         var words = Words(text);
         string normalized = string.Join(' ', words);
         foreach (var (type, keys) in _places)
+        {
+            if (skip != null && skip(type)) continue;
             foreach (string k in keys)
                 if (Matches(words, normalized, k, out int at))
                     return (type, k.Contains(' ') ? k : words[at]);
+        }
         return null;
     }
+
+    /// <summary>The beneficial spell a line names ("bless", "night sight"), if any
+    /// (<c>buff.&lt;Spell&gt;: words</c> in the data).</summary>
+    public SpellType? FindBuff(string text)
+    {
+        var words = Words(text);
+        string normalized = string.Join(' ', words);
+        foreach (var (spell, keys) in _buffs)
+            foreach (string k in keys)
+                if (Matches(words, normalized, k, out _))
+                    return spell;
+        return null;
+    }
+
+    private static bool IsMoongate(string type) => type.Equals("Moongate", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>What a line asks for. The more particular asks are tried first ("where
     /// are you going" is a question about the bot, not about a place); a line that also
@@ -153,7 +209,8 @@ public sealed class BotIntents
         if (words.Count == 0) return default;
         string normalized = string.Join(' ', words);
         var intent = Read(text, words, normalized);
-        if (intent.Kind is BotIntentKind.Party or BotIntentKind.Follow or BotIntentKind.Heal &&
+        if (intent.Kind is BotIntentKind.Party or BotIntentKind.Follow or BotIntentKind.Heal or BotIntentKind.Gate or
+                BotIntentKind.Companion or BotIntentKind.Guide or BotIntentKind.Buff or BotIntentKind.Friend &&
             Has(Not, words, normalized, out _))
             return new BotIntent(BotIntentKind.No);
         if (intent.Kind is not (BotIntentKind.Greet or BotIntentKind.None) && Has(BotIntentKind.Greet, words, normalized, out _))
@@ -171,7 +228,18 @@ public sealed class BotIntents
         bool asks = text.TrimEnd().EndsWith('?');
         if (Has(BotIntentKind.Res, words, normalized, out _)) return new BotIntent(BotIntentKind.Res);
         foreach (var kind in Particular)
-            if (Has(kind, words, normalized, out _)) return new BotIntent(kind);
+            if (Has(kind, words, normalized, out _))
+                return kind switch
+                {
+                    // "britain'e gate": the place, not the moongate the word "gate" names.
+                    BotIntentKind.Gate when FindPlace(text, IsMoongate) is { } to => new BotIntent(kind, to.Type, to.Word),
+                    BotIntentKind.Guide when FindPlace(text) is { } place => new BotIntent(kind, place.Type, place.Word),
+                    BotIntentKind.Buff => new BotIntent(kind, Spell: FindBuff(text)),
+                    _ => new BotIntent(kind),
+                };
+        // A spell named on a short line ("bless pls") asks for it.
+        if (_buffs.Count > 0 && words.Count <= 5 && FindBuff(text) is { } buff)
+            return new BotIntent(BotIntentKind.Buff, Spell: buff);
         if (Has(BotIntentKind.Where, words, normalized, out _))
         {
             var place = FindPlace(text);
@@ -203,8 +271,11 @@ public sealed class BotIntents
     /// "where" (a "where are you going" asks what the bot is doing).</summary>
     private static readonly BotIntentKind[] Particular =
     [
-        BotIntentKind.Bot, BotIntentKind.Selling, BotIntentKind.LeaveParty, BotIntentKind.Status, BotIntentKind.Stay,
-        BotIntentKind.Heal, BotIntentKind.Follow, BotIntentKind.Doing,
+        BotIntentKind.Bot, BotIntentKind.Cancel, BotIntentKind.Can, BotIntentKind.Selling, BotIntentKind.GiveBack,
+        BotIntentKind.Carry, BotIntentKind.Gift, BotIntentKind.Appraise, BotIntentKind.Remember, BotIntentKind.Friend,
+        BotIntentKind.Companion, BotIntentKind.Dismiss, BotIntentKind.LeaveParty, BotIntentKind.Status,
+        BotIntentKind.Stay, BotIntentKind.Gate, BotIntentKind.Mark, BotIntentKind.Guide, BotIntentKind.Protect,
+        BotIntentKind.Heal, BotIntentKind.Buff, BotIntentKind.Follow, BotIntentKind.Doing,
         BotIntentKind.Here, BotIntentKind.WhoAreYou, BotIntentKind.News,
     ];
 

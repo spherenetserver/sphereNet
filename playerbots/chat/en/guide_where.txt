@@ -1,0 +1,5 @@
+# guide_where.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+where to?
+sure, where do u need to go?
+where u wanna go?

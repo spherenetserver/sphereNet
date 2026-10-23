@@ -1,0 +1,14 @@
+# token_ability.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+# key=phrase: the words for each favour in "what can you do"
+gate=open gates
+heal=heal
+cure=cure poison
+res=res ghosts
+buff=bless and buff
+mark=mark runes
+guide=show the way
+appraise=price ur stuff
+carry=hold ur stuff
+protect=watch ur back
+companion=travel with u

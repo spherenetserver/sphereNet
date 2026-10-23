@@ -1,0 +1,5 @@
+# favor_failed.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+didnt work, sorry
+cant do it right now
+no luck, sorry

@@ -1,0 +1,5 @@
+# offer_help.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+bir şey mi arıyorsun?
+bişey lazım mı?
+kayboldun mu? yardım lazım mı?

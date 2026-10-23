@@ -1,0 +1,4 @@
+# memory_gift.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+verdiğin {place} hala bende
+{place} için tekrar sağol

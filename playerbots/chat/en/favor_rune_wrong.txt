@@ -1,0 +1,4 @@
+# favor_rune_wrong.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+i need just the rune
+only the rune please

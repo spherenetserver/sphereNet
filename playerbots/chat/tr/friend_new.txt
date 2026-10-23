@@ -1,0 +1,5 @@
+# friend_new.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+daha yeni tanıştık lol, ben {me}
+önce bi tanışalım. ben {me}
+[shy] ee.. belki. ben {me}

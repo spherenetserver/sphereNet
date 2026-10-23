@@ -1,0 +1,5 @@
+# warn_red.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+dikkat, {other} kırmızı, {dir} tarafında
+dikkat et, {dir} tarafında katil var
+{dir} tarafında kırmızı! {other}

@@ -1,0 +1,5 @@
+# warn_red.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+careful, {other} is a red, {dir}
+watch out, murderer to the {dir}
+red to the {dir}! {other}

@@ -1,0 +1,4 @@
+# companion_res_soon.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+hang on, need mana for a res
+wait, ill res u in a sec

@@ -1,0 +1,4 @@
+# gate_blocked_there.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+{target} doesnt take gates
+cant gate into {target}, its blocked

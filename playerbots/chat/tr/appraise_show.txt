@@ -1,0 +1,4 @@
+# appraise_show.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+trade'e koy bakayım
+trade penceresinde göster

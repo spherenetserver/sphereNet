@@ -1,0 +1,4 @@
+# memory_gate.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+i gated u to {place} {when}
+how was {place}?

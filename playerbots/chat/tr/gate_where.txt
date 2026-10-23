@@ -1,0 +1,6 @@
+# gate_where.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+nereye? bende {runes} var
+olur, nereye? {runes} rünüm var
+nereye gidiyon? {runes}?
+[kind] tabi, nereye? {runes} var bende

@@ -28,6 +28,17 @@ public sealed class BotWatcher
     public string? Asked { get; set; }
     public BotMind? AskedBy { get; set; }
     public long AskedMs { get; set; }
+    /// <summary>What a bot's question offers: done on a yes ("shall i heal you?").</summary>
+    public Action? AskedYes { get; set; }
+
+    /// <summary>The favour this player has asked of a bot, while it is in hand.</summary>
+    public BotFavor? Favor { get; set; }
+    /// <summary>When a bot last offered this player help unasked, and where and since
+    /// when the player has stood about (someone looking for something).</summary>
+    public long LastOfferMs { get; set; }
+    public Point3D IdleAnchor { get; set; }
+    public long IdleSinceMs { get; set; }
+    public long LastSpokeMs { get; set; }
 }
 
 /// <summary>

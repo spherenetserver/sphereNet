@@ -1,0 +1,5 @@
+# guide_here.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+here we are, {target}
+this is it
+{target}. there u go

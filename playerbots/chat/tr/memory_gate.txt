@@ -1,0 +1,4 @@
+# memory_gate.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{when} sana {place} gate'i açmıştım
+{place} nasıldı?

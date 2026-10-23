@@ -1,0 +1,5 @@
+# memory_hunt.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+good hunt around {place} {when}
+remember {place}? that was fun
+we cleared {place} together

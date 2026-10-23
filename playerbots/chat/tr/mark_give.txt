@@ -1,0 +1,5 @@
+# mark_give.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+olur, boş rününü trade'e koy
+tamam, rünü ver
+rünü ver, tam buraya işaretleyeyim

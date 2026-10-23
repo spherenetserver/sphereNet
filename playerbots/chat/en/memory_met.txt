@@ -1,0 +1,4 @@
+# memory_met.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+we met around {place}
+met u near {place}, {when}

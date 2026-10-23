@@ -1,0 +1,4 @@
+# gate_blocked_here.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+burada gate açılmıyor, bölge izin vermiyor
+buradan gate olmaz, sry

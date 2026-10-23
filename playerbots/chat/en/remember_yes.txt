@@ -1,0 +1,5 @@
+# remember_yes.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+sure i do
+course
+how could i forget

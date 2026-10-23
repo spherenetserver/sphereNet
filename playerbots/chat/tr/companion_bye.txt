@@ -1,0 +1,5 @@
+# companion_bye.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+tamam, görüşürüz
+kendine iyi bak, lazım olursa çağır
+güzeldi, görüşürüz

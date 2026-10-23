@@ -1,0 +1,4 @@
+# buff_wait.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+bi saniye, daha yeni attım
+birkaç saniye ver

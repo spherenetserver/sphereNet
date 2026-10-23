@@ -45,6 +45,19 @@ public sealed partial class PlayerBotEngine
 
     public void AddNeed(BotNeed need) => _needs.Add(need);
 
+    /// <summary>Shops found with nobody selling a need (its vendors' lists do not hold
+    /// it, or they are sold out), until when they are not walked to for it.</summary>
+    private readonly Dictionary<(string Place, string Need), long> _soldOut = [];
+    private const long SoldOutMs = 1_800_000;
+
+    private bool SoldOut(BotDestination d, BotNeed need, long now)
+    {
+        if (!_soldOut.TryGetValue((d.Name, need.Name), out long until)) return false;
+        if (now < until) return true;
+        _soldOut.Remove((d.Name, need.Name));
+        return false;
+    }
+
     // ------------------------------------------------------------------
     //  Taking what a kill dropped
     // ------------------------------------------------------------------
@@ -185,9 +198,12 @@ public sealed partial class PlayerBotEngine
                 ItemType.Reagent => mind.IsCaster,
                 ItemType.WeaponArrow => EquippedWeapon(ch)?.ItemType == ItemType.WeaponBow,
                 ItemType.WeaponBolt => EquippedWeapon(ch)?.ItemType == ItemType.WeaponXBow,
+                // Blank runes for a caster who keeps runes and has room for more.
+                ItemType.Rune => KeepsRunes(mind) && !IsRogueBot(ch) && UsableRuneCount(ch) < RuneCap,
                 _ => false,
             };
-            if (uses && CountInPack(ch, need.Type) < need.Low) return need;
+            int have = need.Type == ItemType.Rune ? MarkableRuneCount(ch) : CountInPack(ch, need.Type);
+            if (uses && have < need.Low) return need;
         }
         return null;
     }
@@ -199,18 +215,35 @@ public sealed partial class PlayerBotEngine
         if (_needs.Count == 0 || now < mind.NextSupplyCheckMs || mind.Client == null) return null;
         mind.NextSupplyCheckMs = now + 120_000;
         var need = FirstNeed(mind);
-        if (need == null || VendorEngine.CountGold(mind.Char) < 20) return null;
+        if (need == null) return null;
+        if (VendorEngine.CountGold(mind.Char) < 20)
+        {
+            mind.Note(now, $"short of {need.Name}, no gold to buy it");
+            return null;
+        }
         int here = Nav.FindNearest(mind.Char.Position, 64);
         if (here < 0) return null;
         int component = Nav.Waypoints[here].Component;
         var shop = Nav.Destinations
             .Where(d => Nav.ComponentOf(d) == component && d.City.Length > 0 &&
                         need.Places.Any(t => t.Equals(d.Type, StringComparison.OrdinalIgnoreCase)) &&
-                        (d.Arrivals.Count == 0 || d.BadArrivals.Count < d.Arrivals.Count))
+                        (d.Arrivals.Count == 0 || d.BadArrivals.Count < d.Arrivals.Count) &&
+                        !SoldOut(d, need, now))
             .OrderBy(d => d.Pos.GetDistanceTo(mind.Char.Position))
             .FirstOrDefault();
-        if (shop == null) return null;
+        if (shop == null)
+        {
+            mind.Note(now, $"short of {need.Name}, no shop for it on this road");
+            return null;
+        }
+        // Blank runes are no matter of life and death: not worth crossing the land for.
+        if (need.Type == ItemType.Rune && shop.Pos.GetDistanceTo(mind.Char.Position) > RuneShopRange)
+        {
+            mind.Note(now, $"short of {need.Name}; {shop.Name} is too far");
+            return null;
+        }
         mind.ShoppingFor = need;
+        mind.Note(now, $"short of {need.Name}; to {shop.Name}");
         return shop;
     }
 
@@ -230,6 +263,9 @@ public sealed partial class PlayerBotEngine
             mind.NextActMs = now + _rng.Next(800, 2000);
             return true;
         }
+        mind.Note(now, $"nobody at {mind.At?.Name ?? "this place"} sells {need.Name}");
+        // Learned for every bot: that shop is not tried for it again for a while.
+        if (mind.At != null) _soldOut[(mind.At.Name, need.Name)] = now + SoldOutMs;
         mind.ShoppingFor = null;
         return false;
     }

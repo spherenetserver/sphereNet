@@ -1,0 +1,4 @@
+# favor_refuse_red.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+flaglisin, bulaşmam
+suçluya yardım etmem, kusura bakma

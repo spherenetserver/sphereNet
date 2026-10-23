@@ -1,0 +1,5 @@
+# friend_new.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+we just met lol, im {me}
+lets get to know each other first. im {me}
+[shy] uh.. maybe. im {me}

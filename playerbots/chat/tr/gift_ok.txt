@@ -1,0 +1,4 @@
+# gift_ok.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+aa bana mı? trade'e koy
+sağol ya, trade'e koy

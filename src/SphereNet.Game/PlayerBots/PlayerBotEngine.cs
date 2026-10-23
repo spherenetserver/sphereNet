@@ -92,6 +92,9 @@ public sealed partial class PlayerBotEngine
     public Action<Character, string>? Say { get; set; }
     /// <summary>A bot appeared or jumped: tell the clients around it.</summary>
     public Action<Character>? OnAppeared { get; set; }
+    /// <summary>A bot said a line (the bot, the category, the line), whichever way it
+    /// went out: for logs and tests.</summary>
+    public Action<Character, string, string>? OnLine { get; set; }
 
     public int Count => _minds.Count;
     public long StuckRescues { get; private set; }
@@ -202,6 +205,7 @@ public sealed partial class PlayerBotEngine
         ResetDiagnosticsWindow();
         WindowPurchases = WindowMeditations = WindowPkAttacks = WindowThefts = 0;
         WindowPartyTends = WindowPartyOrders = WindowTrades = WindowLiftWaits = 0;
+        WindowFavors = WindowFavorFails = WindowGates = WindowGifts = WindowOffers = WindowNewFriends = WindowBondPoints = 0;
         WindowSeenMax = 0;
         WindowTicks = WindowTotalUs = WindowMaxUs = WindowSearches = WindowSteps = WindowFights = 0;
         WindowMaxSearchUs = WindowFailedSearches = WindowDoors = WindowRescues = 0;
@@ -420,6 +424,7 @@ public sealed partial class PlayerBotEngine
         mind.Note(NowMs(), $"online at {ch.Position}");
         _minds[ch.Uid.Value] = mind;
         _order.Add(mind);
+        ResolveCompanion(mind);
         OnAppeared?.Invoke(ch);
     }
 
@@ -443,6 +448,12 @@ public sealed partial class PlayerBotEngine
         mind.PendingAction = null;
         mind.Banker = null;
         mind.Leader = null;
+        if (mind.Favor != null) EndFavor(mind.Favor, NowMs(), done: false);
+        mind.Guiding = null;
+        mind.Companion = null;
+        mind.GiveBackTo = null;
+        mind.CatchGate = null;
+        mind.PendingOnYes = null;
         if (mind.Client != null) DropClient?.Invoke(ch);
         ch.IsOnline = false;
         ch.IsPlayerBot = false;
@@ -625,6 +636,10 @@ public sealed partial class PlayerBotEngine
         mind.LootCorpse = null;
         mind.DoorTarget = null;
         mind.FollowSide = 0;
+        if (mind.Favor != null) EndFavor(mind.Favor, now, done: false);
+        mind.Guiding = null;
+        mind.GiveBackTo = null;
+        mind.CatchGate = null;
         if (!mind.Char.IsDead)
             mind.BeginLinger(null, now, _rng, short_: true);
         mind.ResetLeg(now);
@@ -661,6 +676,8 @@ public sealed partial class PlayerBotEngine
             ActGhost(mind, now);
             return;
         }
+        // Alive again without being carried off to a healer: someone raised it.
+        if (mind.DeadSinceMs != 0) OnRaisedByOther(mind, now);
         if (now >= mind.NextInviteScanMs)
         {
             mind.NextInviteScanMs = now + 1500;
@@ -669,6 +686,9 @@ public sealed partial class PlayerBotEngine
         if (mind.Mode != BotMode.Fight && mind.Mode != BotMode.Flee && TryStartFight(mind, now))
             return;
         if (ActTrade(mind, now))
+            return;
+        // Things it holds for a player, taken over and traded back.
+        if (ActGiveBack(mind, now))
             return;
         if (CheckGear(mind, now) || CheckMount(mind, now))
             return;
@@ -679,6 +699,9 @@ public sealed partial class PlayerBotEngine
                 mind.NextActMs = now + 600;
                 return;
             }
+            // A favour asked by a player comes before its own plans.
+            if (ActFavor(mind, now))
+                return;
             // Meditation is a rest at a stop, not a halt on the road.
             if (mind.Mode == BotMode.Linger && mind.Scene == null && TryMeditate(mind, now))
                 return;
@@ -690,6 +713,8 @@ public sealed partial class PlayerBotEngine
             mind.NextActMs = now + 600;
             return;
         }
+        if (mind.Mode is BotMode.Linger or BotMode.Travel && ActCompanion(mind, now))
+            return;
         if (mind.Mode is BotMode.Linger or BotMode.Travel && ActFollow(mind, now))
             return;
         // A player killer takes no trips: back to roaming its haunt.
@@ -845,11 +870,20 @@ public sealed partial class PlayerBotEngine
         if (extra != null)
             foreach (var (k, v) in extra) tokens[k] = v;
         var tags = BotTags(mind);
+        // How well it knows the one it speaks to: a line may be for a friend only.
+        if (to is { IsPlayerBot: false, IsPlayer: true })
+            tags.Add(BondLevel(mind, to) switch
+            {
+                BotBondLevel.Friend => "friend",
+                BotBondLevel.Acquaintance => "acquaintance",
+                _ => "stranger",
+            });
         Func<string, bool> stale = mind.SaidLately;
         string? line = Chat.Pick(category, _rng, tokens, lang, tags.Contains, stale) ??
                        (fallback != null ? Chat.Pick(fallback, _rng, tokens, lang, tags.Contains, stale) : null);
         if (line == null) return false;
         mind.NoteSaid(line);
+        OnLine?.Invoke(ch, category, line);
         // A line said first ("hey", "like i said") joins the reply; one that asks
         // something back would leave the reply hanging, so it is left out.
         if (prefix != null && Chat.Pick(prefix, _rng, tokens, lang, tags.Contains, l => l.Contains('?')) is { } first &&
@@ -907,7 +941,9 @@ public sealed partial class PlayerBotEngine
     /// (<c>mage</c>, <c>archer</c>, <c>warrior</c>, <c>fighter</c>, <c>crafter</c>), how
     /// seasoned (<c>new</c>: no skill at 50, <c>vet</c>: one at 90), <c>hurt</c> (under
     /// 60% hit points), <c>town</c> or <c>wild</c> (a guarded region or not),
-    /// <c>mounted</c>, <c>travel</c> or <c>linger</c>.</summary>
+    /// <c>mounted</c>, <c>travel</c> or <c>linger</c>, its nature (<c>kind</c>, <c>shy</c>,
+    /// <c>chatty</c>, <c>stingy</c>) and <c>companion</c> when it goes about with a player.
+    /// Speaking to a player adds <c>friend</c>, <c>acquaintance</c> or <c>stranger</c>.</summary>
     internal HashSet<string> BotTags(BotMind mind)
     {
         var ch = mind.Char;
@@ -923,6 +959,9 @@ public sealed partial class PlayerBotEngine
         tags.Add(_world.FindRegion(ch.Position)?.IsGuarded == true ? "town" : "wild");
         if (ch.IsMounted) tags.Add("mounted");
         tags.Add(mind.Mode == BotMode.Travel ? "travel" : "linger");
+        // Its nature: kind, shy, chatty, stingy.
+        tags.Add(TraitOf(mind));
+        if (mind.Companion != null) tags.Add("companion");
         return tags;
     }
 

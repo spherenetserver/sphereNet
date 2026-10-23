@@ -1,0 +1,5 @@
+# favor_refuse.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+yok
+olmaz
+git başımdan

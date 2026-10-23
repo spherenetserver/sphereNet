@@ -1,0 +1,6 @@
+# gate_cant.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+gate atamam, magery yetmiyor
+[!mage] mage değilim ki, bi castera sor
+kitabımda gate yok sry
+[mage] gate daha kitabımda yok

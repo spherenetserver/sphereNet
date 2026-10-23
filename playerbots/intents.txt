@@ -2,12 +2,15 @@
 #   <intent>: keywords        greet bye thanks howareyou where party res wts wtb question
 #                             doing here whoareyou news heal follow bot far yes no
 #                             stay leaveparty status (orders to a party's bots) selling
+#                             favours: gate mark buff guide appraise protect carry giveback
+#                             gift can cancel; friendship: friend companion dismiss remember
 #   not: / more: words        "not" turns party/follow/heal into a no; "more" ("what about")
 #                             makes a place named alone ask the way there
 #   place.<Type>: keywords    a destination type (destinations.json "Type") a "where" asks about
 #   town.<City>: keywords     a town (destinations.json "City")
 #   dest.<Name>: keywords     one destination by name (destinations.json "Name")
 #   lang.<code>: words        words that tell a line's language (chat/<code>/)
+#   buff.<Spell>: keywords    a beneficial spell a "buff" asks for (SpellType name)
 # Any language may be mixed on one line. A phrase joins its words with '+'. A keyword
 # of four letters or more also matches the start of a word ("banka" -> "bankaya").
 # Places are tried in file order: the first one named wins.
@@ -16,10 +19,32 @@ res: res rez rezz resurrect diril dirilt
 bot: are+you+a+bot are+u+a+bot r+u+a+bot r+u+bot are+you+bot you+a+bot u+a+bot ur+a+bot bot+musun bot+musunuz botmusun bot+mısın sen+bot+mu
 heal: heal+me heal+pls heal+plz heal+please pls+heal plz+heal cure+me need+a+heal need+heal heal+at can+bas iyileştir iyilestir şifa+ver sifa+ver
 selling: what+are+you+selling what+r+u+selling what+u+selling what+do+you+sell what+do+you+have+for+sale what+you+got+for+sale anything+for+sale ne+satıyorsun ne+satiyorsun ne+satıyon ne+satiyon satılık+ne+var satilik+ne+var neler+satıyorsun neler+satiyorsun
+cancel: cancel nevermind never+mind forget+it forget+about+it iptal boşver bosver vazgeçtim vazgectim gerek+kalmadı gerek+kalmadi unut+gitsin
+can: what+can+you+do what+can+u+do what+do+you+offer how+can+you+help can+you+help what+are+you+good+at ne+yapabilirsin neler+yapabilirsin ne+yapabiliyorsun neler+yapabiliyorsun neler+biliyorsun ne+işe+yararsın ne+ise+yararsin yardım+edebilir yardim+edebilir yardımın+dokun yardimin+dokun
+giveback: give+me+my give+back give+it+back my+stuff my+things my+items return+my geri+ver geri+verir eşyalarımı esyalarimi itemlarımı itemlarimi emanetimi rünümü+ver runumu+ver rünümü+geri runumu+geri
+carry: carry+this carry+these carry+my can+you+carry hold+this hold+these hold+my keep+this+for+me bunu+taşı bunu+tasi bunları+taşı bunlari+tasi taşır+mısın tasir+misin taşıyabilir tasiyabilir sende+kalsın sende+kalsin emanet
+gift: gift a+present for+you+friend this+is+for+you keep+it hediye senin+için senin+icin bu+senin sana+aldım sana+aldim
+appraise: how+much+is+this how+much+is+it how+much+for+this price+check what+is+this+worth whats+this+worth what+s+this+worth what+is+it+worth is+this+worth ne+eder kaç+eder kac+eder kaça+gider kaca+gider değeri+ne degeri+ne fiyatı+ne fiyati+ne bu+kaç bu+kac
+remember: remember+me do+you+remember+me do+you+know+me you+know+me u+know+me beni+hatırlıyor beni+hatirliyor beni+hatırladın beni+hatirladin beni+tanıyor beni+taniyor beni+tanıdın beni+tanidin
+friend: be+my+friend be+friends lets+be+friends let+s+be+friends wanna+be+friends we+friends arkadaş+olalım arkadas+olalim arkadaş+olur arkadas+olur arkadaşım+ol arkadasim+ol dost+olalım dost+olalim kanka+olalım kanka+olalim
+companion: travel+with+me be+my+companion adventure+with+me come+adventure stick+with+me roam+with+me benimle+gezer benimle+gez benimle+dolaş benimle+dolas birlikte+gezelim beraber+gezelim gezelim+mi yoldaşım+ol yoldasim+ol yoldaş+olur yoldas+olur hep+benimle
+dismiss: you+can+go go+your+own+way go+your+way dismissed you+are+free ur+free serbestsin gidebilirsin artık+git artik+git yoluna+git ayrılalım ayrilalim
+gate: gate+aç gate+ac gate+açar gate+acar gate+açsana gate+acsana gate+atar gate+at gate+atsana gate+lazım gate+lazim gate+var gate+to gate+me gate+pls gate+plz gate+please gate+for+me open+a+gate open+gate can+you+gate where+can+you+gate which+runes nereye+gate hangi+rün hangi+run rünlerin runelerin kapı+aç kapi+ac
+mark: mark+a+rune mark+rune mark+my+rune mark+this mark+it mark+here rün+işaretle run+isaretle rune+işaretle rune+isaretle rünü+işaretle runu+isaretle işaretler+misin isaretler+misin buraya+rün buraya+run
+guide: take+me+to take+me+there lead+me+to lead+the+way show+me+the+way can+you+take+me guide+me götür gotur götürür goturur götürsene gotursene yolu+göster yolu+goster yol+göster yol+goster
+protect: protect+me guard+me cover+me watch+my+back beni+koru koru+beni bana+göz+kulak bana+goz+kulak arkamı+kolla arkami+kolla
+buff: buff+me buff+pls buff+plz buff+at buff+ver buffla buff+lazım buff+lazim
+buff.Bless: bless blesle bless+ver bless+at
+buff.Protection: protection+spell protection+ver protection+at prot+ver koruma+büyüsü koruma+buyusu
+buff.MagicReflect: magic+reflect reflect+ver reflect+at mr+at mr+ver reflect+pls
+buff.NightSight: night+sight nightsight gece+görüşü gece+gorusu gece+görüş gece+gorus
+buff.Strength: strength+spell strength+ver str+ver str+at güç+ver guc+ver
+buff.Agility: agility+spell agility+ver agi+ver dex+ver çeviklik ceviklik
+buff.Cunning: cunning+spell cunning+ver int+ver int+at zeka+ver
 stay: stay stay+here wait+here wait+for+me hold+here hold+up hold+position bekle burada+bekle beni+bekle burada+kal dur+burada orada+kal
 leaveparty: leave+party leave+the+party leave+group disband partiden+çık partiden+cik partyden+çık partyden+cik gruptan+çık gruptan+cik dağılın dagilin
 status: status your+hp ur+hp how+much+hp hp+mana hp+and+mana how+much+mana durum durumun ne+durumdasın ne+durumdasin canın+ne canin+ne can+mana
-follow: come+here follow+me come+with+me come+with+us join+me takip+et beni+takip benimle+gel bizimle+gel peşimden+gel pesimden+gel buraya+gel yanıma+gel yanima+gel gel+buraya takip+edin
+follow: come+here follow+me sen+de+gel sende+gel you+too come+too come+along come+with+me come+with+us join+me takip+et beni+takip benimle+gel bizimle+gel peşimden+gel pesimden+gel buraya+gel yanıma+gel yanima+gel gel+buraya takip+edin
 doing: what+are+you+doing what+r+u+doing what+you+doing what+u+doing wyd where+are+you+going where+r+u+going where+you+going where+u+going where+are+you+headed where+u+headed ne+yapıyorsun ne+yapıyon ne+yapıyosun napıyorsun napıyosun napıyon napiyon napiyorsun nereye+gidiyorsun nereye+gidiyon nereye+gidiyosun nereye+böyle
 here: where+are+we where+am+i where+is+this what+is+this+place what+place+is+this what+town which+town what+city neredeyiz nerdeyiz burası+neresi burasi+neresi neresi+burası neresi+burasi hangi+şehir hangi+sehir hangi+kasaba
 whoareyou: who+are+you who+r+u what+are+you what+class whats+your+class what+is+your+class your+skills ur+skills what+skills kimsin nesin classın+ne class+ne skillerin skill+ne

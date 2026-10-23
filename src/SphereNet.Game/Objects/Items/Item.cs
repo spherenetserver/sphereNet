@@ -992,7 +992,10 @@ public class Item : ObjBase
     public bool TryGetRuneMark(out Point3D mark)
     {
         MigrateRuneFromTags();
-        if (_moreP.X == 0 && _moreP.Y == 0)
+        // Unset, or no point on any map: a blank rune. Source-X tests
+        // m_ptMark.IsValidPoint() (CCharSpell.cpp:400, CPointBase.cpp:284), and the
+        // pack's i_rune_marker is created with MOREP=-1,-1.
+        if ((_moreP.X == 0 && _moreP.Y == 0) || _moreP.X < 0 || _moreP.Y < 0)
         {
             mark = default;
             return false;

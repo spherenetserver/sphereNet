@@ -1,0 +1,4 @@
+# guide_far_gate.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+{target} is far, want a gate there?
+too far to walk. gate to {target}?

@@ -1,0 +1,5 @@
+# companion_bye.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ok, see u around
+take care, call me if u need me
+it was fun, bye

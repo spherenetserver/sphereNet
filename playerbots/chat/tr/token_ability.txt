@@ -1,0 +1,14 @@
+# token_ability.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+# anahtar=ifade: "ne yapabilirsin" cevabinda her hizmetin sozu
+gate=gate açarım
+heal=heal atarım
+cure=zehir temizlerim
+res=res atarım
+buff=bless/buff atarım
+mark=rün işaretlerim
+guide=yol gösteririm
+appraise=eşyana fiyat biçerim
+carry=eşyanı taşırım
+protect=arkanı kollarım
+companion=seninle gezerim

@@ -1,0 +1,6 @@
+# gate_cant.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+cant gate, my magery isnt there
+[!mage] im no mage, ask a caster
+no gate in my book sorry
+[mage] gate isnt in my book yet

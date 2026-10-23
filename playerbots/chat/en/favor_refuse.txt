@@ -1,0 +1,5 @@
+# favor_refuse.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+no
+not doing that
+go away

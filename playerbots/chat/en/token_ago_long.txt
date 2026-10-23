@@ -1,0 +1,5 @@
+# token_ago_long.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+a while back
+long ago
+ages ago

@@ -1,0 +1,5 @@
+# respond_can.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+şunları yapabilirim: {abilities}
+{abilities}. söylemen yeter
+[chatty] {abilities}, ne lazımsa

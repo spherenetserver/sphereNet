@@ -1,0 +1,5 @@
+# favor_mana.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+low on mana, give me a moment
+need to med first
+mana's low, wait a sec

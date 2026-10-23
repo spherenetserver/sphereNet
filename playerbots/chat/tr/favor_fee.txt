@@ -1,0 +1,5 @@
+# favor_fee.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+reagent bedava değil, {price}gp. trade'e koy
+reagent parası {price}gp, trade'e koy
+[stingy] {price}gp. para yoksa iş yok

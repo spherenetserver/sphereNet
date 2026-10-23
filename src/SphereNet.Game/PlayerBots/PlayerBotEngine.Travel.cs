@@ -28,8 +28,8 @@ public sealed partial class PlayerBotEngine
         }
         // A player killer keeps to its haunt.
         if (ActPkLinger(mind, now)) return;
-        // Errands at a stop: the rune home marked, the purse squared with the bank.
-        if (mind.BankStage == 0 && TryMarkHomeRune(mind, now)) return;
+        // Errands at a stop: a rune of the place marked, the purse squared with the bank.
+        if (mind.BankStage == 0 && TryMarkRune(mind, now)) return;
         if (ActBank(mind, now)) return;
         bool watched = IsWatched(mind.Char.Position);
         if (now >= mind.LingerUntilMs)
@@ -317,6 +317,12 @@ public sealed partial class PlayerBotEngine
             mind.LegProgressMs = now;
             return;
         }
+        // Showing a player the way: wait for them.
+        if (mind.Guiding != null && PaceGuided(mind, now))
+        {
+            mind.LegProgressMs = now;
+            return;
+        }
         bool run = mind.Running && ch.Stam > ch.MaxStam / 3;
         long st0 = Stopwatch.GetTimestamp();
         _stepCorridor = !finalLeg && mind.Leg > 0 ? (route[mind.Leg - 1], route[mind.Leg]) : null;
@@ -400,6 +406,7 @@ public sealed partial class PlayerBotEngine
     {
         var ch = mind.Char;
         mind.Note(now, $"arrived at {goal.Name}");
+        if (mind.Guiding != null) GuideArrived(mind, now);
         if (goal.Type == CorpseGoalType)
         {
             // The clock for taking things off starts at the body, not at the healer:

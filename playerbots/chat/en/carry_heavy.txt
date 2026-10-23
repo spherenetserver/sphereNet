@@ -1,0 +1,4 @@
+# carry_heavy.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+too heavy for me
+cant carry all that

@@ -1,0 +1,4 @@
+# guide_unknown.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+buradan {target} yolunu bilmiyorum
+{target} nasıl gidilir bilmiyorum buradan

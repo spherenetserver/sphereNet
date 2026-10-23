@@ -1,0 +1,4 @@
+# companion_ghost.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+go to a healer, ill guard ur body
+ill watch ur stuff, find a healer

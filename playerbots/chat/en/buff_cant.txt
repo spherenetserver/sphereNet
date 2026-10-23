@@ -1,0 +1,5 @@
+# buff_cant.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+dont have {spell}
+[!mage] im no mage
+no {spell} in my book

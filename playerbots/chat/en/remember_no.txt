@@ -1,0 +1,4 @@
+# remember_no.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+sorry, dont think we met
+nope, who are u?

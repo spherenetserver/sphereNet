@@ -1,0 +1,5 @@
+# favor_refuse_grudge.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+after what u did? no
+u attacked me, forget it
+not for u

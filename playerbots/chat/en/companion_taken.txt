@@ -1,0 +1,4 @@
+# companion_taken.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+u already have {other} with u
+{other} goes with u already

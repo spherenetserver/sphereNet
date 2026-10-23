@@ -1,0 +1,4 @@
+# companion_already.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+zaten seninleyim
+buradayım ya

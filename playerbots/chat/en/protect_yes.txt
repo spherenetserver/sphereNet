@@ -1,0 +1,5 @@
+# protect_yes.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+ill watch ur back
+nothing touches u
+got ur back

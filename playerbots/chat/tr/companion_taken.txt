@@ -1,0 +1,4 @@
+# companion_taken.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+{other} zaten seninle
+yanında {other} var zaten

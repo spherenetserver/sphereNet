@@ -1,0 +1,4 @@
+# memory_raised.txt - see docs/PLAYERBOTS.md (Talking). [tags] at a line start limit it to bots with them.
+
+u raised me near {place}, i owe u
+still owe u for {place}

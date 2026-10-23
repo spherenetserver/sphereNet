@@ -1,0 +1,5 @@
+# favor_mana.txt - bkz. docs/PLAYERBOTS.md (Talking). Satir basindaki [etiket] satiri o botlara ayirir.
+
+manam az, biraz bekle
+önce med yapayım
+mana düşük, bi saniye

@@ -1,14 +1,19 @@
 # How likely a bot goes to a place of each type, by weight (destinations.json
 # "Type"). A bank is where the crowd stood; a tailor's shop saw one customer.
-# '*' is the weight of a type not listed.
-*                  1
-Bank              14
-Healer             4
-Inn                3
-Tavern             3
-Moongate           3
-Landmark           2
-VendorProvisioner  2
-VendorSmith        2
-VendorMage         2
-Forge              2
+# The second number is the room: how many bots the place holds (those there and
+# those on their way). The fuller a place the less it draws; a full one draws
+# nobody, and a bot that comes to it anyway leaves soon. Places within ten tiles
+# of each other share a crowd. A line with one number keeps the default room.
+# '*' is the weight and room of a type not listed.
+*                  1   6
+Bank              14  10
+Healer             4   6
+Inn                3   8
+Tavern             3   8
+Moongate           3  10
+Graveyard          1  10
+Landmark           2   6
+VendorProvisioner  2   6
+VendorSmith        2   6
+VendorMage         2   6
+Forge              2   6

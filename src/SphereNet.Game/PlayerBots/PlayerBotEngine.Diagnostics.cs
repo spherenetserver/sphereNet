@@ -119,6 +119,42 @@ public sealed partial class PlayerBotEngine
         return stall > StallReportMs ? $"{what} (stalled {stall / 1000}s)" : what;
     }
 
+    /// <summary>The <paramref name="count"/> places with the most bots at them or on
+    /// their way, against the room their type has.</summary>
+    public IReadOnlyList<string> ListPlaces(int count)
+    {
+        long now = NowMs();
+        var lines = Nav.Destinations
+            .Select(d => (Place: d, Crowd: CrowdAt(d, now)))
+            .Where(x => x.Crowd > 0)
+            .OrderByDescending(x => x.Crowd)
+            .Take(Math.Max(1, count))
+            .Select(x => $"{x.Crowd,4}/{PlaceRoom(x.Place),-3} {x.Place.Name} ({x.Place.Type}) at {x.Place.Pos}")
+            .ToList();
+        if (lines.Count == 0) lines.Add("no bot is at or on its way to any place");
+        return lines;
+    }
+
+    /// <summary>The bots within <paramref name="range"/> of a point on map 0..n, one line
+    /// each with what it is doing and its last decision: why a crowd stands where it does.</summary>
+    public IReadOnlyList<string> ListNear(int x, int y, int range, int map)
+    {
+        long now = NowMs();
+        var lines = new List<string>();
+        var near = _order.Where(m => m.Char.MapIndex == map &&
+                                     Math.Max(Math.Abs(m.Char.X - x), Math.Abs(m.Char.Y - y)) <= range).ToList();
+        lines.Add($"{near.Count} bots within {range} of {x},{y} (map {map})");
+        foreach (var g in near.GroupBy(m => ActivityOf(m.Char)).OrderByDescending(g => g.Count()))
+            lines.Add($"  {g.Count(),4}  {g.Key}");
+        foreach (var m in near.Take(40))
+        {
+            var last = m.Trace().LastOrDefault();
+            lines.Add($"0{m.Char.Uid.Value:X8} {BaseName(m.Char)} at {m.Char.Position} {ActivityOf(m.Char)} " +
+                      $"| {(last.Text != null ? $"-{(now - last.Ms) / 1000}s {last.Text}" : "-")}");
+        }
+        return lines;
+    }
+
     /// <summary>One bot's last decisions, oldest first, found by uid (hex or decimal)
     /// or by a part of its name.</summary>
     public IReadOnlyList<string> TraceOf(string key)

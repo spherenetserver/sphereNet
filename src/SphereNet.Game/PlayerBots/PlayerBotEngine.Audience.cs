@@ -59,6 +59,8 @@ public sealed partial class PlayerBotEngine
     private readonly Dictionary<string, int> _townWeights = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _placeWeights = new(StringComparer.OrdinalIgnoreCase);
     private int _defaultPlaceWeight = 1;
+    private readonly Dictionary<string, int> _placeRooms = new(StringComparer.OrdinalIgnoreCase);
+    private int _defaultPlaceRoom = 6;
     private Dictionary<string, int> _homeCounts = new(StringComparer.OrdinalIgnoreCase);
     private long _nextHomeCountMs;
 
@@ -75,17 +77,39 @@ public sealed partial class PlayerBotEngine
     public int WindowSeenMax { get; private set; }
 
     /// <summary>Read <c>towns.txt</c> (home town weights) and <c>places.txt</c>
-    /// (destination type weights; <c>*</c> sets the default). Lines are
-    /// <c>name weight</c>; a name may contain spaces.</summary>
+    /// (destination type weights and, optionally, room; <c>*</c> sets the default).
+    /// Lines are <c>name weight [room]</c>; a name may contain spaces.</summary>
     public void LoadDistribution(string dataDir)
     {
         ReadWeights(Path.Combine(dataDir, "towns.txt"), _townWeights);
-        ReadWeights(Path.Combine(dataDir, "places.txt"), _placeWeights);
+        ReadPlaces(Path.Combine(dataDir, "places.txt"));
         if (_placeWeights.Remove("*", out int def)) _defaultPlaceWeight = def;
+        if (_placeRooms.Remove("*", out int room)) _defaultPlaceRoom = room;
     }
 
     public void SetTownWeight(string town, int weight) => _townWeights[town] = weight;
     public void SetPlaceWeight(string type, int weight) => _placeWeights[type] = weight;
+    public void SetPlaceRoom(string type, int room) => _placeRooms[type] = room;
+
+    private void ReadPlaces(string path)
+    {
+        if (!File.Exists(path)) return;
+        foreach (string raw in File.ReadAllLines(path))
+        {
+            string line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+            var parts = line.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2 || !int.TryParse(parts[^1], out int last)) continue;
+            if (parts.Length >= 3 && int.TryParse(parts[^2], out int weight))
+            {
+                string name = string.Join(' ', parts[..^2]);
+                _placeWeights[name] = Math.Max(0, weight);
+                _placeRooms[name] = Math.Max(1, last);
+            }
+            else
+                _placeWeights[string.Join(' ', parts[..^1])] = Math.Max(0, last);
+        }
+    }
 
     private static void ReadWeights(string path, Dictionary<string, int> into)
     {
@@ -101,6 +125,67 @@ public sealed partial class PlayerBotEngine
     }
 
     private int PlaceWeight(BotDestination d) => _placeWeights.TryGetValue(d.Type, out int w) ? w : _defaultPlaceWeight;
+
+    /// <summary>How many bots a place of this type holds before it is full: past it a
+    /// bank would be a scrum of bots shoving each other about the doorway.</summary>
+    private int PlaceRoom(BotDestination d) => _placeRooms.TryGetValue(d.Type, out int r) ? r : _defaultPlaceRoom;
+
+    /// <summary>Places of one type closer than this share a crowd (a bank listed twice
+    /// in the data): who stands at one stands at the other.</summary>
+    private const int CrowdShareRange = 10;
+
+    private readonly Dictionary<BotDestination, int> _placeCrowd = [];
+    private readonly Dictionary<BotDestination, List<BotDestination>> _crowdNeighbours = [];
+    private long _nextCrowdCountMs;
+
+    /// <summary>Bots at a place or on their way to it, counted once every two seconds,
+    /// with the places that share its crowd.</summary>
+    private int CrowdAt(BotDestination d, long now)
+    {
+        if (now >= _nextCrowdCountMs)
+        {
+            _nextCrowdCountMs = now + 2000;
+            _placeCrowd.Clear();
+            foreach (var m in _order)
+            {
+                if (m.Char.IsDead) continue;
+                var place = m.Mode == BotMode.Travel ? m.Goal : m.Mode == BotMode.Linger ? m.At : null;
+                if (place != null) _placeCrowd[place] = _placeCrowd.GetValueOrDefault(place) + 1;
+            }
+        }
+        if (!_crowdNeighbours.TryGetValue(d, out var near))
+        {
+            near = Nav.Destinations.Where(o => o.Pos.Map == d.Pos.Map && o.Pos.GetDistanceTo(d.Pos) <= CrowdShareRange &&
+                                               o.Type.Equals(d.Type, StringComparison.OrdinalIgnoreCase)).ToList();
+            _crowdNeighbours[d] = near;
+        }
+        int crowd = 0;
+        foreach (var o in near) crowd += _placeCrowd.GetValueOrDefault(o);
+        return crowd;
+    }
+
+    /// <summary>A place's weight with its crowd taken off: the fuller it is the less it
+    /// draws, and a full one draws nobody.</summary>
+    private int RoomyWeight(BotDestination d, long now)
+    {
+        int room = PlaceRoom(d);
+        int free = room - CrowdAt(d, now);
+        return free <= 0 ? 0 : PlaceWeight(d) * free;
+    }
+
+    /// <summary>A place by weight and room. When every one is full (a small town with
+    /// more bots than places), the one least over its room, so the overflow spreads
+    /// over the town instead of piling onto the place with the biggest weight.</summary>
+    private BotDestination? PickPlace(IReadOnlyList<BotDestination> list)
+    {
+        long now = NowMs();
+        if (list.Any(d => RoomyWeight(d, now) > 0)) return WeightedPick(list, d => RoomyWeight(d, now));
+        var drawing = list.Where(d => PlaceWeight(d) > 0).ToList();
+        if (drawing.Count == 0) return WeightedPick(list, PlaceWeight);
+        double least = drawing.Min(d => (double)CrowdAt(d, now) / PlaceRoom(d));
+        var emptiest = drawing.Where(d => (double)CrowdAt(d, now) / PlaceRoom(d) <= least + 0.25).ToList();
+        return WeightedPick(emptiest, PlaceWeight);
+    }
 
     private T? WeightedPick<T>(IReadOnlyList<T> items, Func<T, int> weight)
     {
@@ -192,7 +277,7 @@ public sealed partial class PlayerBotEngine
         var here = mind.Char.Position;
         var pulled = pool.Where(d => d != mind.At && Within(d.Pos, here, 220) &&
                                      WatcherNear(d.Pos, 30) is { } w && w.Crowd < CrowdCap).ToList();
-        return pulled.Count > 0 ? WeightedPick(pulled, PlaceWeight) : null;
+        return pulled.Count > 0 ? PickPlace(pulled) : null;
     }
 
     /// <summary>The home town a new bot gets: the town furthest below its share of

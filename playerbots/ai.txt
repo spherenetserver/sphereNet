@@ -1,0 +1,38 @@
+# The bots' brain: a small language model the server runs on its own CPU (llama.cpp,
+# in process, no network, nothing paid per word). A player's small talk or question to
+# a bot that no fact answers (not the way, the news, a price, a favour) is answered by
+# the model, with who the bot is, where it is, what it is doing and how well it knows
+# the player; when the reply is late or the model busy, the bot says one of its own
+# lines as before. Without a "model" line (or this file) there is no brain.
+#
+# A model is a GGUF file; put it beside this file (playerbots/models/) or give a full
+# path. Measured on an 8-core desktop CPU with 4 threads:
+#   gemma-3-1b-it-Q4_K_M.gguf   0.8 GB  0.5-2.5 s a reply, good Turkish   (recommended)
+#   gemma-3-4b-it-Q4_K_M.gguf   2.5 GB  2-5 s a reply, the best replies   (a strong CPU)
+# How many it keeps up with, Gemma 3 1B, lines arriving steadily, answered within the
+# 4 s wait: one line a second - 48 of 60 (4 threads); two a second (30 players each
+# talking every 15 s) - 60 of 120 with 4 threads, 82 of 120 with 6 threads and
+# parallel 2. The rest get the bot's own line.
+# from https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF (or -4b-it-GGUF). Gemma is
+# Google's model under its own terms of use: read them before running it on a shard.
+#
+#model        models/gemma-3-1b-it-Q4_K_M.gguf
+
+# CPU threads the model works on; the other cores stay the game's. Reading a prompt
+# is the costly part and it scales with threads: 4 on a 4-core machine, 6 on 8 cores.
+threads      4
+# Replies written at once, each in its own sequence of one context: they share every
+# step, so two together take little more than one - with enough threads (6 or more).
+# More than two makes each reply slower than the wait below allows.
+parallel     2
+# Most tokens in a reply (a short chat line is 10-25).
+tokens       24
+# Milliseconds a bot waits for its reply (counted from the player's line).
+wait         4000
+# Replies waiting beyond the ones being written; more are refused (own lines).
+queue        4
+# Exchanges with the same player remembered for the next reply (forgotten after
+# three minutes without talk).
+history      3
+# Livelier (higher) or plainer (lower) replies.
+temperature  0.7

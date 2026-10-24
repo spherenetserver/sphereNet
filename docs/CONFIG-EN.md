@@ -183,7 +183,7 @@ Server-driven player characters: ordinary player characters (saved with the worl
 Population the server fills up to, one new bot at a time; bots already in the save are adopted first. Lowering it logs the surplus out (they stay in the save).
 
 - **Type:** integer (minimum 0)
-- **Default:** `50`
+- **Default:** `300`
 
 ### PLAYERBOTDATADIR
 

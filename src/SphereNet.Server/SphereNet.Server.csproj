@@ -28,6 +28,7 @@
     <ProjectReference Include="..\SphereNet.Persistence\SphereNet.Persistence.csproj" />
     <ProjectReference Include="..\SphereNet.Panel\SphereNet.Panel.csproj" />
     <ProjectReference Include="..\SphereNet.Plugins.Abstractions\SphereNet.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\SphereNet.BotBrain\SphereNet.BotBrain.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -45,6 +46,26 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Sentry.Extensions.Logging" Version="5.3.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+  <!-- llama.cpp for the bot brain (SphereNet.BotBrain): the native libraries of the
+       platform built for, beside the server under runtimes/<rid>/native, where
+       LLamaSharp looks for them (with a single-file EXE they stay files beside it).
+       A build with no runtime identifier takes the building machine's. -->
+  <ItemGroup>
+    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.30.0" ExcludeAssets="all" GeneratePathProperty="true" />
+  </ItemGroup>
+  <PropertyGroup>
+    <BotBrainRid>$(RuntimeIdentifier)</BotBrainRid>
+    <BotBrainRid Condition="'$(BotBrainRid)' == '' And $([MSBuild]::IsOSPlatform('Windows'))">win-x64</BotBrainRid>
+    <BotBrainRid Condition="'$(BotBrainRid)' == '' And $([MSBuild]::IsOSPlatform('Linux'))">linux-x64</BotBrainRid>
+    <BotBrainRid Condition="'$(BotBrainRid)' == '' And $([MSBuild]::IsOSPlatform('OSX'))">osx-arm64</BotBrainRid>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="$(PkgLLamaSharp_Backend_Cpu)\LLamaSharpRuntimes\$(BotBrainRid)\**"
+             Link="runtimes\$(BotBrainRid)\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+             ExcludeFromSingleFile="true" Visible="false" />
   </ItemGroup>
 
   <!-- Exclude WinForms files (no longer used) -->

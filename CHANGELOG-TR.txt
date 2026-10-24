@@ -4,6 +4,83 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-24] - Oyuncu botlari: yerlerin icine yurume, yer kapasitesi, cikintidaki dusman, agirlikli arama, menulu gate, dogrulanan ogrenme, bot beyni
+------------------------------------------------------------------------
+DEGISIKLIK - PlayerBotCount varsayilani 300 (eskiden 50), kodda ve gelen sphere.ini'de.
+YENI - Bot beyni (istege bagli): sunucunun kendisinin calistirdigi kucuk bir dil modeli,
+       islemci uzerinde surec icinde llama.cpp (yeni proje SphereNet.BotBrain, LLamaSharp
+       0.30), oyuncunun bota soyledigi ve hicbir bilginin cevaplamadigi sohbeti ya da
+       soruyu cevaplar; yol, haberler, fiyatlar, iyilikler ve partiler niyet sisteminde
+       kalir. Modele once her bot icin ayni kurallar (oyundaki bir oyuncu karakteri,
+       oyuncunun dili, tek kisa gunluk cumle, oyun disina cikmama, insan oldugunu
+       iddia etmeme), sonra botun adi, turu, evi, en iyi becerileri, mizaci, ne yaptigi
+       ve nerede oldugu, oyuncuyu ne kadar tanidigi ve onunla son uc konusmasi
+       soylenir. Tek bir isci is parcacigi bot yazarken birkac cekirdekte ayni anda en
+       fazla iki cevap (her adimi paylasan tek baglamin dizileri; ai.txt parallel), en
+       fazla 24 token yazar; zamaninda gelmeyen cevap, mesgul beyin ya da uygunsuz cevap (oyun disi,
+       bos) botu kendi cumlesiyle birakir, oyun hic beklemez. Isci baglamini ve her
+       istemin basladigi kurallari tutar, yalnizca bota ait kisim yeniden okunur.
+       Ayarlar playerbots/ai.txt icinde (model dosyasi, cekirdek, bekleme, kuyruk,
+       gecmis; sphere.ini anahtari yok); model yoksa kapali. 1000 botla 8 cekirdekli
+       islemcide, 4 cekirdek, Gemma 3 1B ile olculen: iki saniyede bir soruyla cevaplar
+       ortalama 1.4-2.5 sn, Turkce ve Ingilizce dogal. Yuk (duzenli gelen satirlar,
+       4 sn bekleme icinde cevaplananlar): saniyede bir - 60'ta 48; saniyede iki (otuz
+       oyuncunun her biri 15 saniyede bir) - 4 cekirdekte 120'de 60, 6 cekirdekte 120'de
+       82; ayni anda dort ya da fazlasini yazmak her cevabi beklemeden yavas yapar. Bot
+       yazma suresinin sonunda hala bekliyorsa bir dusunme emote'u gosterir
+       ("*dusunuyor...*", sohbet kategorisi brain_thinking), oyuncu cevabi bekler. Konsol PLAYERBOTS THINK <bot>
+       <satir>; telemetri [botbrain] asked, said, late, busy, unfit, thought avg/max.
+DUZELTME - Bir yere varan bot herkesin durdugu varis karesinde kalip onun uc kare
+       cevresinde dolasiyordu: citle cevrili mezarlikta hepsi iki kapisinda, bankada
+       kapi agzinda birbirini iterek duruyordu. Artik kendine ait bir kareye yurur: veri
+       yerin sinirini ciziyorsa (destinations "Polygon": avlu, banka salonu, iskele) onun
+       icinde, cizmiyorsa varis karesinin bes kare cevresinde; kendi katinda, portal
+       olmayan, duz yurunerek varilan (arada cit ya da duvar yok, arama gerekmez) ve
+       denenen birkac kare icinde cevresi en bos olan kare.
+DEGISIKLIK - Yer kapasitesi: places.txt her tur icin ikinci bir sayi alir, bir yerin kac
+       bot tasidigi (oradakiler ve yoldakiler sayilir; on kare icindeki ayni turden yerler,
+       ornegin iki kez yazilmis bir banka, sayiyi paylasir). Yer doldukca daha az ceker,
+       dolu yer kimseyi cekmez; sunulan her yer doluysa kapasitesini en az asan secilir ve
+       dolu bir yere varan bot kasabasinda bos yer varsa kisa surede ayrilir. Banka 10,
+       han ve meyhane 8, moongate ve mezarlik 10, digerleri 6. Bankada kalis iki ila bes
+       dakika (eskiden uc ila sekiz). On bes dakikada kirktan fazla bot toplayan bir
+       Britain bankasinda artik on civari bot olur.
+DUZELTME - Botun hemen yanindaki (haritada bir kare otedeki) dusman gorus testi yapilmadan
+       menzilde sayiliyordu, oysa darbe gorus ister: botun ustundeki bir cikintida duran
+       yaratikla sonsuza dek "dovusuluyordu" (bir bot on dakikadan fazla), birakildiginda
+       da yaninda durdugu icin hemen yeniden ele aliniyordu. Menzil artik gorus ve en fazla
+       16 yukseklik farki ister; kilicli bot o kadar yukarida ya da asagida olan avi secmez.
+DEGISIKLIK - Bot kare aramalari agirlikli (kalan yol iki kez sayilir, PathOptions.Hasty;
+       yaratik aramalari degismedi): en kisaya yakin yol daha az dugumle bulunur. Suresi
+       dolan arama, 3-20 saniye bekleyen basarisiz arama sayilmak yerine bir saniye sonra
+       yeniden istenir (iki kez). Ayni dunyada olculen: basarisiz arama 76 -> 60, yolda
+       takilan bot 30 saniyede 16-22 -> 7-11, bot tick 6.1 -> 5.0 ms.
+DUZELTME - Eve yolu olmayan bot ev bankasinin varis karesine, bankanin tum kareleri
+       ulasilamaz ogrenildiyse bankanin ortasina kaldiriliyordu; bankanin icinden de yol
+       yoktu, bu yuzden ayni kareye tekrar tekrar kaldiriliyordu (yaklasik elli bot, sekiz
+       dakikada bir bankaya 578 kaldirma). Kaldirma artik ev kasabasinin kullanilabilir bir
+       yerine (once banka), kullanilabilir karesi olmayan yerde ortasina degil yol
+       dugumune gider.
+DUZELTME - MOREP=-1,-1 ile yapilan gate ya da telepad (paketin oyuncuyu menuyle tasiyan
+       moongate'leri) portal saniliyordu: kasabadan cikmak isteyen botlar ustune basip
+       hicbir yere tasinmadan uzerinde ve cevresinde kaliyordu (Buccaneer's Den gate'i
+       cevresinde 61 bot). Artik adimin kendisi gibi yalnizca haritada hedefi olan gate
+       portal sayilir; menulu gate beklenen bir yerdir ve evden uzakta, eve yolu olmayan,
+       cevresinde yalnizca menulu gate bulunan bot gate'i yeniden secmek yerine eve
+       goturulur (run'u ile ya da gorulmeden kaldirilarak).
+DUZELTME - Bir varis karesi ya da yol baglantisi, kurtarma bir kapi agzindaki kalabaliktan
+       ya da suresi dolan bir aramadan dogsa bile iki kurtarmada ulasilamaz ogreniliyor ve
+       kalici olarak her rotadan cikiyordu (alti dakikada on baglanti, biri bir moongate
+       dugumunu kasabasindan koparan). Artik once bot yuruyen olarak bir arama yolu arar;
+       yol bulursa ya da suresi dolarsa hicbir sey ogrenilmez. Telemetri: unlearned.
+DEGISIKLIK - Kotu-kare dosyasinin hic varis karesi birakmayacagi bir yer, acilista son
+       ogrenilen karesini geri alir (gercekten kapaliysa yeniden ogrenilir): kotu bir
+       anda (bot dolu bir kapi agzi, suresi dolan bir arama) ogrenilen bir kare artik bir
+       yeri kalici olarak kapatmaz.
+YENI - Konsol: PLAYERBOTS NEAR x y [menzil [harita]] bir nokta cevresindeki botlari ve ne
+       yaptiklarini listeler; PLAYERBOTS PLACES [n] kapasitesine gore en dolu yerleri.
+       Telemetri: retried, settles, crowdleaves.
+
 [2026-10-23] - Oyuncu botlari: konusarak istenen iyilikler, arkadaslik, yoldaslar, run kutuphanesi
 ------------------------------------------------------------------------
 YENI - Iyilikler: oyuncu bottan duz konusmayla yardim isteyip birkac satir boyunca

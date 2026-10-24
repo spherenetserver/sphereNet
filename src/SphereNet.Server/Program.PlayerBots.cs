@@ -66,6 +66,7 @@ public static partial class Program
         engine.LoadMounts(dataDir);
         engine.LoadShopping(dataDir);
         engine.LoadBonds(dataDir);
+        LoadPlayerBotBrain(engine, dataDir);
         // Deaths become the news bots tell.
         _deathEngine.OnDeath += engine.OnDeath;
         SphereNet.Game.Party.PartyManager.OnPartyMessage = engine.OnPartyChat;
@@ -86,6 +87,26 @@ public static partial class Program
     }
 
     private static long _nextPlayerBotReportMs;
+    private static SphereNet.BotBrain.LlamaBotBrain? _botBrain;
+
+    /// <summary>The bots' brain, when playerbots/ai.txt names a model: loaded off the
+    /// main thread (a model takes seconds to load); bots answer from their own lines
+    /// until it is ready, and for good when it does not load.</summary>
+    private static void LoadPlayerBotBrain(PlayerBotEngine engine, string dataDir)
+    {
+        var settings = SphereNet.BotBrain.BotBrainSettings.Read(dataDir);
+        if (settings == null) return;
+        engine.BrainWaitMs = settings.WaitMs;
+        engine.BrainHistory = settings.History;
+        var logger = _loggerFactory.CreateLogger("BotBrain");
+        Task.Run(() =>
+        {
+            var brain = SphereNet.BotBrain.LlamaBotBrain.Load(settings, logger);
+            if (brain == null) return;
+            _botBrain = brain;
+            engine.Brain = brain;
+        });
+    }
 
     private static void TickPlayerBots()
     {
@@ -100,7 +121,7 @@ public static partial class Program
                 "[playerbots] online={Count} tick avg={Avg}us max={Max}us deferred={Deferred} steps={Steps} " +
                 "searches={Searches} (failed {Failed}, slowest {SlowSearch}us) doors={Doors} fights={Fights} deaths={Deaths} reclaims={Reclaims} handbacks={HandBacks} rescues={Rescues} badspots={BadSpots} slowest act {SlowAct}us ({SlowWhat}) route {Route}us step {Step}us spawn {Spawn}us moves {Moves} avg {MoveAvg}us max {MoveMax}us at {MoveWhere} " +
                 "watchers={Watchers} seen avg={SeenAvg} max={SeenMax} lines={Lines} replies={Replies} scenes={Scenes} moved={Moved} mounts={Mounts} regears={Regears} robes={Robes} stalldoors={StallDoors} spotswitches={SpotSwitches} stallsearches={StallSearches} " +
-                "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} tends={Tends} orders={Orders} trades={Trades} liftwaits={LiftWaits} badlinks={BadLinks} searchtimeouts={Timeouts} " +
+                "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} tends={Tends} orders={Orders} trades={Trades} liftwaits={LiftWaits} badlinks={BadLinks} searchtimeouts={Timeouts} retried={Retried} unlearned={Unlearned} settles={Settles} crowdleaves={CrowdLeaves} " +
                 "favors={Favors} favorfails={FavorFails} gates={Gates} gifts={Gifts} offers={Offers} newfriends={NewFriends} bondpoints={BondPoints} companionsnow={CompanionsNow} " +
                 "searchq={Queued} denied={Denied} dropped={Dropped} notrun={NotRun} backlog={Backlog} corridors={Corridors} corridoruses={CorridorUses} cornersplits={CornerSplits} " +
                 "waits={Waits} sidesteps={SideSteps} doorway={Doorway} portals={Portals} portalmisses={PortalMisses} noroute={NoRoute} stranded={Stranded} maprescues={MapRescues} " +
@@ -113,7 +134,7 @@ public static partial class Program
                 bots.Watching.Count, bots.WindowSeenSamples > 0 ? (bots.WindowSeenSum * 10 / bots.WindowSeenSamples) / 10.0 : 0,
                 bots.WindowSeenMax, bots.WindowLines, bots.WindowReplies, bots.WindowScenes, bots.WindowMovedHouse, bots.WindowMounts, bots.WindowRegears, bots.WindowRobesShed, bots.WindowStallDoors, bots.WindowSpotSwitches, bots.WindowStallSearches,
                 bots.WindowPurchases, bots.WindowMeditations, bots.WindowPkAttacks, bots.WindowThefts, bots.WindowPartyTends, bots.WindowPartyOrders, bots.WindowTrades, bots.WindowLiftWaits, bots.BadLinks,
-                bots.SearchTimeouts,
+                bots.SearchTimeouts, bots.WindowSearchTimeouts, bots.WindowUnlearned, bots.WindowSettles, bots.WindowCrowdLeaves,
                 bots.WindowFavors, bots.WindowFavorFails, bots.WindowGates, bots.WindowGifts, bots.WindowOffers,
                 bots.WindowNewFriends, bots.WindowBondPoints, bots.CompanionCount,
                 bots.WindowSearchQueued, bots.WindowSearchDenied, bots.WindowSearchDropped, bots.WindowSearchesNotRun, bots.WindowSearchBacklog,
@@ -123,6 +144,14 @@ public static partial class Program
                 bots.WindowUnreachableFoes, bots.WindowGiveUps, bots.WindowActFaults, bots.WindowStaticDoors,
                 bots.WindowDeposits, bots.WindowWithdrawals, bots.WindowMarks, bots.WindowMarksTaken, bots.WindowMarksFailed, bots.WindowRecalls, bots.WindowCompanions,
                 bots.WindowPauses, bots.StallReport(), bots.RefusalReport());
+        if (_botBrain is { } brain && bots.WindowThoughts + Interlocked.Read(ref brain.Thoughts) > 0)
+        {
+            long n = Interlocked.Exchange(ref brain.Thoughts, 0), total = Interlocked.Exchange(ref brain.TotalMs, 0);
+            _log.LogInformation(
+                "[botbrain] asked={Asked} said={Said} late={Late} busy={Busy} unfit={Unfit} thought={Thought} avg={Avg}ms max={Max}ms",
+                bots.WindowThoughts, bots.WindowThoughtsSaid, bots.WindowThoughtsLate, bots.WindowThoughtsRefused,
+                bots.WindowThoughtsUnfit, n, n > 0 ? total / n : 0, Interlocked.Exchange(ref brain.MaxMs, 0));
+        }
         bots.ResetWindow();
     }
 
@@ -139,7 +168,8 @@ public static partial class Program
     }
 
     /// <summary>Console PLAYERBOTS: STALLS [n] lists the bots stalled longest, TRACE
-    /// &lt;uid|name&gt; one bot's last decisions, NAVCHECK [LINKS [LEARN]] the road data
+    /// &lt;uid|name&gt; one bot's last decisions, NEAR x y [range [map]] the bots about a
+    /// point and what they do, THINK &lt;bot&gt; &lt;line&gt; a line put to a bot's brain, PLACES [n] the fullest places, NAVCHECK [LINKS [LEARN]] the road data
     /// against the running world. Runs on the main loop (it reads bot state).</summary>
     private static void HandlePlayerBotsCommand(string args, Action<string> output)
     {
@@ -156,6 +186,17 @@ public static partial class Program
         {
             case "STALLS":
                 lines = bots.ListStalls(parts.Length > 1 && int.TryParse(parts[1], out int n) ? n : 20);
+                break;
+            case "PLACES":
+                lines = bots.ListPlaces(parts.Length > 1 && int.TryParse(parts[1], out int np) ? np : 20);
+                break;
+            case "THINK" when parts.Length > 2:
+                lines = [bots.ConsoleThink(parts[1], string.Join(' ', parts.Skip(2)))];
+                break;
+            case "NEAR" when parts.Length > 2 && int.TryParse(parts[1], out int nx) && int.TryParse(parts[2], out int ny):
+                lines = bots.ListNear(nx, ny,
+                    parts.Length > 3 && int.TryParse(parts[3], out int nr) ? nr : 12,
+                    parts.Length > 4 && int.TryParse(parts[4], out int nm) ? nm : 0);
                 break;
             case "TRACE" when parts.Length > 1:
                 lines = bots.TraceOf(string.Join(' ', parts.Skip(1)));

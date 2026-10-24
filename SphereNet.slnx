@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/SphereNet.BotBrain/SphereNet.BotBrain.csproj" />
     <Project Path="src/SphereNet.Core/SphereNet.Core.csproj" />
     <Project Path="src/SphereNet.Network/SphereNet.Network.csproj" />
     <Project Path="src/SphereNet.Plugins.Abstractions/SphereNet.Plugins.Abstractions.csproj" />

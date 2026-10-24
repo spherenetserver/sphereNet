@@ -60,7 +60,10 @@ public sealed partial class PlayerBotEngine
                         {
                             if (item.IsDeleted || !item.IsOnGround || item.X != x || item.Y != y) continue;
                             if (item.ItemType is not (ItemType.Moongate or ItemType.Telepad)) continue;
-                            if (item.MoreP.X == 0 && item.MoreP.Y == 0) continue;
+                            // Carries a walker only with a destination on the map, as the
+                            // step itself decides (MovementEngine): a gate made with MOREP
+                            // -1,-1 sends players by its menu, and a bot stood on it for good.
+                            if (!LeadsSomewhere(item.MoreP)) continue;
                             tiles.Add(item.Position);
                             dests.Add(item.MoreP);
                             break;
@@ -100,6 +103,10 @@ public sealed partial class PlayerBotEngine
                 "[playerbots] portals: {Found} places with a portal in this world, {Walked} walked through, {Missing} without ({Names})",
                 found, walked, missing, string.Join(", ", missingNames));
     }
+
+    /// <summary>Whether a gate or telepad with this MOREP carries the one stepping on it:
+    /// a point on the map, not 0,0 and not off it (Source-X IsValidPoint).</summary>
+    private static bool LeadsSomewhere(Point3D dest) => (dest.X != 0 || dest.Y != 0) && dest.X >= 0 && dest.Y >= 0;
 
     /// <summary>The map teleporter at a tile, whatever floor height the data recorded
     /// for it (the lookup itself wants the height within five).</summary>
@@ -208,7 +215,7 @@ public sealed partial class PlayerBotEngine
                 }
                 foreach (var item in _world.GroundItemsOnTile(at.Map, x, y))
                     if (!item.IsDeleted && item.X == x && item.Y == y &&
-                        item.ItemType is ItemType.Moongate or ItemType.Telepad)
+                        item.ItemType is ItemType.Moongate or ItemType.Telepad && LeadsSomewhere(item.MoreP))
                     {
                         mind.RememberPortal(x, y, at.Map, now);
                         break;

@@ -17,7 +17,8 @@ namespace SphereNet.Game.PlayerBots;
 /// a node budget and a deadline.
 ///
 /// A search that failed waits 3, 10, then 20 seconds before the same bot may ask
-/// again. A path found for a road link is kept (a corridor): the next bot stopped on
+/// again; one that only ran out of time asks again a second later, twice. Searches
+/// are weighted (<see cref="PathOptions.Hasty"/>): a way soon, not the best way. A path found for a road link is kept (a corridor): the next bot stopped on
 /// that link follows it without a search of its own.
 /// </summary>
 public sealed partial class PlayerBotEngine
@@ -48,6 +49,7 @@ public sealed partial class PlayerBotEngine
         public List<Point3D>? Path;
         public long Us;
         public bool Ran;
+        public bool TimedOut;
     }
 
     public long WindowSearchQueued { get; private set; }
@@ -57,6 +59,8 @@ public sealed partial class PlayerBotEngine
     public int WindowSearchBacklog { get; private set; }
     public long WindowCorridorUses { get; private set; }
     public long WindowStallSearches { get; private set; }
+    /// <summary>Searches that ran out of time and were asked again soon.</summary>
+    public long WindowSearchTimeouts { get; private set; }
     /// <summary>Diagonal path steps taken as two straight ones (a corner the search
     /// cut and the step would not).</summary>
     public long WindowCornerSplits { get; private set; }
@@ -113,7 +117,8 @@ public sealed partial class PlayerBotEngine
             }
             m.SearchGeneration++;
             m.SearchInBatch = true;
-            var options = PathOptions.OpenDoors | (m.SearchAvoidChars ? PathOptions.AvoidChars : PathOptions.None);
+            var options = PathOptions.OpenDoors | PathOptions.Hasty |
+                          (m.SearchAvoidChars ? PathOptions.AvoidChars : PathOptions.None);
             _batch.Add(new SearchRequest(m, m.SearchGeneration, m.Char.Position, m.SearchTarget,
                 m.SearchMaxNodes, m.SearchRadius, options, m.SearchCorridor));
         }
@@ -147,11 +152,13 @@ public sealed partial class PlayerBotEngine
         // The batch's time is up: this one waits for its bot to ask again.
         if (s0 >= _batchDeadline) return;
         List<Point3D>? path = null;
+        bool timedOut = false;
         try
         {
             long deadline = Math.Min(s0 + (long)(SearchMs * Stopwatch.Frequency / 1000.0), _batchDeadline);
             path = _pathfinder.FindPath(r.From, r.To, r.From.Map, CanFlags.None, r.Mind.Char,
                 maxNodes: r.MaxNodes, maxRadius: r.Radius, deadline: deadline, options: r.Options);
+            timedOut = path == null && Pathfinder.LastSearchTimedOut;
         }
         catch (Exception)
         {
@@ -161,6 +168,7 @@ public sealed partial class PlayerBotEngine
         {
             Path = path,
             Ran = true,
+            TimedOut = timedOut,
             Us = (Stopwatch.GetTimestamp() - s0) * 1_000_000 / Stopwatch.Frequency,
         };
     }
@@ -207,6 +215,7 @@ public sealed partial class PlayerBotEngine
                 m.TilePathCorridor = null;
                 m.FollowSide = 0;
                 m.SearchFailures = 0;
+                m.SearchTimeouts = 0;
                 m.NextSearchMs = now + 1000;
                 if (r.Corridor is { } key && Chebyshev(path[^1], r.To) <= 1)
                 {
@@ -215,9 +224,18 @@ public sealed partial class PlayerBotEngine
                 }
                 m.Note(now, $"path found, {path.Count} tiles in {res.Us}us");
             }
+            else if (res.TimedOut && ++m.SearchTimeouts <= 2)
+            {
+                // Out of time, not out of ways: the walk along the wall goes on and
+                // the next search starts nearer. Only a third in a row counts as failed.
+                WindowSearchTimeouts++;
+                m.NextSearchMs = now + 1000;
+                m.Note(now, $"search for {r.To} ran out of time ({r.MaxNodes} nodes, {res.Us}us); again soon");
+            }
             else
             {
                 WindowFailedSearches++;
+                m.SearchTimeouts = 0;
                 m.SearchFailures++;
                 m.NextSearchMs = now + m.SearchFailures switch { 1 => 3000, 2 => 10_000, _ => 20_000 };
                 m.Note(now, $"no path to {r.To} ({r.MaxNodes} nodes, {res.Us}us)");

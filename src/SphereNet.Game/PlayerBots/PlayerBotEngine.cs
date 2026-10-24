@@ -110,6 +110,7 @@ public sealed partial class PlayerBotEngine
     {
         if (BadSpotFile == null || !File.Exists(BadSpotFile)) return 0;
         int n = 0;
+        var lastLearned = new Dictionary<BotDestination, int>();
         foreach (string line in File.ReadAllLines(BadSpotFile))
         {
             if (line.StartsWith("link|", StringComparison.Ordinal))
@@ -123,8 +124,18 @@ public sealed partial class PlayerBotEngine
             if (bar <= 0 || !int.TryParse(line.AsSpan(bar + 1), out int spot)) continue;
             if (Nav.FindDestination(line[..bar]) is { } dest && spot >= 0 && spot < dest.Arrivals.Count &&
                 dest.BadArrivals.Add(spot))
+            {
                 n++;
+                lastLearned[dest] = spot;
+            }
         }
+        // A place left with no spot at all is never gone to again, and lifts aimed at it
+        // land in its middle. One learned in a bad hour (a doorway full of bots, a search
+        // out of time) would close it for good: after a restart its last learned spot is
+        // tried again, and learned again if it really is shut.
+        foreach (var (dest, last) in lastLearned)
+            if (dest.BadArrivals.Count >= dest.Arrivals.Count && dest.BadArrivals.Remove(last))
+                n--;
         BadSpots += n;
         return n;
     }
@@ -132,13 +143,22 @@ public sealed partial class PlayerBotEngine
     private const int RescuesToMarkSpot = 2;
 
     /// <summary>A road link a bot had to be lifted off twice is left out of routes
-    /// (kept in the bad-spot file as "link|from|to" by node name).</summary>
-    private void LearnBadLink(int from, int to)
+    /// (kept in the bad-spot file as "link|from|to" by node name), once a search of its
+    /// own finds no way along it: a crowd in a gateway or a search out of time also gets
+    /// a bot lifted, and a link learned for that is lost to every bot for good.</summary>
+    private void LearnBadLink(int from, int to, Character walker)
     {
         var key = (Math.Min(from, to), Math.Max(from, to));
         int seen = _linkFailures.GetValueOrDefault(key) + 1;
         _linkFailures[key] = seen;
-        if (seen < RescuesToMarkSpot || !Nav.MarkBadLink(from, to)) return;
+        if (seen < RescuesToMarkSpot || Nav.IsBadLink(from, to)) return;
+        if (!ProvedShut(Nav.Waypoints[from].Pos, Nav.Waypoints[to].Pos, walker))
+        {
+            _linkFailures[key] = 0;
+            WindowUnlearned++;
+            return;
+        }
+        if (!Nav.MarkBadLink(from, to)) return;
         BadLinks++;
         if (BadSpotFile == null) return;
         try
@@ -150,15 +170,47 @@ public sealed partial class PlayerBotEngine
     }
 
     private readonly Dictionary<(int, int), int> _linkFailures = [];
+
+    /// <summary>Spots and links two rescues pointed at that a search then walked: not learned.</summary>
+    public long WindowUnlearned { get; private set; }
+
+    /// <summary>Whether a search with the bot as walker finds no way between two points
+    /// within its budget. One that runs out of time proves nothing, and nothing is
+    /// learned from it. Runs on the main thread: rescues are a few a minute.</summary>
+    private bool ProvedShut(Point3D from, Point3D to, Character walker)
+    {
+        if (from.Map != to.Map) return true;
+        int dist = from.GetDistanceTo(to);
+        if (dist <= 1) return false;
+        long deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency / 50; // 20 ms
+        var path = _pathfinder.FindPath(from, to, from.Map, CanFlags.None, walker, maxNodes: 4000,
+            maxRadius: dist + 20, deadline: deadline, options: PathOptions.OpenDoors | PathOptions.Hasty);
+        return path == null && !Pathfinder.LastSearchTimedOut;
+    }
     /// <summary>Road links learned to be impassable.</summary>
     public int BadLinks { get; private set; }
 
-    private void LearnBadSpot(BotDestination dest, int spot)
+    /// <summary>A stopping spot a bot had to be lifted into or out of twice is not
+    /// chosen again. With a <paramref name="walker"/>, only once a search from the spot's
+    /// road node finds no way to it (see <see cref="LearnBadLink"/>); a portal that did
+    /// not carry the bot needs no search.</summary>
+    private void LearnBadSpot(BotDestination dest, int spot, Character? walker = null)
     {
         if (dest.BadArrivals.Contains(spot)) return;
         int seen = dest.SpotFailures.GetValueOrDefault(spot) + 1;
         dest.SpotFailures[spot] = seen;
-        if (seen < RescuesToMarkSpot || !dest.BadArrivals.Add(spot)) return;
+        if (seen < RescuesToMarkSpot) return;
+        if (walker != null)
+        {
+            int node = dest.ArrivalLinks[spot].Count > 0 ? dest.ArrivalLinks[spot][0] : dest.NearestWaypoint;
+            if (node >= 0 && !ProvedShut(Nav.Waypoints[node].Pos, dest.Arrivals[spot], walker))
+            {
+                dest.SpotFailures[spot] = 0;
+                WindowUnlearned++;
+                return;
+            }
+        }
+        if (!dest.BadArrivals.Add(spot)) return;
         BadSpots++;
         if (BadSpotFile == null) return;
         try { File.AppendAllText(BadSpotFile, $"{dest.Name}|{spot}{Environment.NewLine}"); }
@@ -196,6 +248,7 @@ public sealed partial class PlayerBotEngine
     public void ResetWindow()
     {
         WindowLines = WindowReplies = WindowScenes = WindowSeenSum = WindowSeenSamples = WindowMovedHouse = WindowMounts = WindowRegears = WindowRobesShed = WindowStallDoors = WindowSpotSwitches = WindowStallSearches = 0;
+        WindowSearchTimeouts = WindowSettles = WindowCrowdLeaves = WindowUnlearned = 0;
         WindowSearchQueued = WindowSearchDenied = WindowSearchDropped = WindowCorridorUses = WindowCornerSplits = WindowSearchesNotRun = 0;
         WindowSearchBacklog = 0;
         WindowMobileWaits = WindowSideSteps = WindowDoorwaySteps = WindowNoRoute = WindowStrandedRescues = WindowMapRescues = 0;
@@ -203,6 +256,7 @@ public sealed partial class PlayerBotEngine
         WindowDeposits = WindowWithdrawals = WindowMarks = WindowRecalls = WindowCompanions = WindowPauses = WindowStaticDoors = 0;
         WindowMarksTaken = WindowMarksFailed = 0;
         ResetDiagnosticsWindow();
+        ResetBrainWindow();
         WindowPurchases = WindowMeditations = WindowPkAttacks = WindowThefts = 0;
         WindowPartyTends = WindowPartyOrders = WindowTrades = WindowLiftWaits = 0;
         WindowFavors = WindowFavorFails = WindowGates = WindowGifts = WindowOffers = WindowNewFriends = WindowBondPoints = 0;
@@ -498,6 +552,7 @@ public sealed partial class PlayerBotEngine
         if (!_portalsResolved) ResolvePortals();
         // Last tick's searches, run since (in the host's parallel phase, or here).
         ApplySearches(now);
+        if (_consoleThoughts.Count > 0) LogConsoleThoughts(now);
         // Who is looking first: arrivals and departures happen out of their sight.
         RefreshAudience(now);
         KeepPopulation(now);
@@ -857,7 +912,7 @@ public sealed partial class PlayerBotEngine
     /// (<paramref name="to"/>), <c>{me}</c> the bot. Returns whether a line was said.</summary>
     private bool Speak(BotMind mind, string category, string? fallback = "small_talk", Character? to = null,
         string? lang = null, IReadOnlyDictionary<string, string>? extra = null, bool force = false, string? prefix = null,
-        bool party = false)
+        bool party = false, byte mode = 0)
     {
         var ch = mind.Char;
         // Talk nobody hears is skipped; a line that does something in the world (a
@@ -882,13 +937,22 @@ public sealed partial class PlayerBotEngine
         string? line = Chat.Pick(category, _rng, tokens, lang, tags.Contains, stale) ??
                        (fallback != null ? Chat.Pick(fallback, _rng, tokens, lang, tags.Contains, stale) : null);
         if (line == null) return false;
-        mind.NoteSaid(line);
-        OnLine?.Invoke(ch, category, line);
         // A line said first ("hey", "like i said") joins the reply; one that asks
         // something back would leave the reply hanging, so it is left out.
-        if (prefix != null && Chat.Pick(prefix, _rng, tokens, lang, tags.Contains, l => l.Contains('?')) is { } first &&
-            !first.Contains('?'))
-            line = first.TrimEnd('.', '!', ' ') + ", " + line;
+        string? before = prefix != null && Chat.Pick(prefix, _rng, tokens, lang, tags.Contains, l => l.Contains('?')) is { } first &&
+                         !first.Contains('?') ? first : null;
+        Utter(mind, category, line, party, before, mode);
+        return true;
+    }
+
+    /// <summary>Say a line through the bot's client (party chat, or speech where it
+    /// stands), as said under <paramref name="category"/>.</summary>
+    private void Utter(BotMind mind, string category, string line, bool party, string? before = null, byte mode = 0)
+    {
+        var ch = mind.Char;
+        mind.NoteSaid(line);
+        OnLine?.Invoke(ch, category, line);
+        if (before != null) line = before.TrimEnd('.', '!', ' ') + ", " + line;
         WindowLines++;
         if (party && mind.Client != null)
         {
@@ -900,10 +964,10 @@ public sealed partial class PlayerBotEngine
             mind.Client.HandleExtendedCommand(0x06, data);
         }
         else if (mind.Client != null)
-            mind.Client.HandleSpeech(0, ch.SpeechColor != 0 ? ch.SpeechColor : (ushort)0x03B2, 3, line);
+            mind.Client.HandleSpeech(mode, mode == EmoteMode ? Objects.ObjBase.EmoteHue
+                : ch.SpeechColor != 0 ? ch.SpeechColor : (ushort)0x03B2, 3, line);
         else
             Say?.Invoke(ch, line);
-        return true;
     }
 
     /// <summary>The tokens any line may use: where the bot is and is going, a price, a

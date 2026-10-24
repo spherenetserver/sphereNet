@@ -367,6 +367,10 @@ public sealed partial class PlayerBotEngine
         WindowReplies++;
         QueueReply(m, category, now, to: player, lang: lang, fallback: fallback, tokens: tokens, action: action,
             prefix: prefix, party: party);
+        // Small talk and questions no fact answers: the brain writes the reply while the
+        // bot types; its own line stands in when the reply is late.
+        if (action == null && !party && BrainAnswers(intent.Kind, category))
+            TryThink(m, player, text, lang, now);
     }
 
     /// <summary>What the bot is doing, from what it is doing: walking somewhere (that
@@ -572,6 +576,9 @@ public sealed partial class PlayerBotEngine
         string? fallback = "respond_what", Dictionary<string, string>? tokens = null, Action? action = null,
         string? prefix = null, bool party = false)
     {
+        mind.PendingThought?.Abandon();
+        mind.PendingThought = null;
+        mind.ThinkingShown = false;
         mind.PendingPrefix = prefix;
         mind.PendingParty = party;
         mind.PendingCategory = category;
@@ -588,11 +595,28 @@ public sealed partial class PlayerBotEngine
     private void SayPending(BotMind mind, long now)
     {
         if (mind.PendingCategory == null || now < mind.PendingSayMs) return;
+        // The brain's reply, when one is being written: wait for it while it may come.
+        if (!TakeThought(mind, now, out string? thought))
+        {
+            // The reply is not written yet when the bot would have answered: it shows
+            // it is thinking (an emote, once), so the player waits for it.
+            if (!mind.ThinkingShown)
+            {
+                mind.ThinkingShown = true;
+                Speak(mind, "brain_thinking", fallback: null, to: mind.PendingTo, lang: mind.PendingLanguage, mode: EmoteMode);
+            }
+            return;
+        }
         string category = mind.PendingCategory;
         var action = mind.PendingAction;
         mind.PendingCategory = null;
         mind.PendingAction = null;
-        if (!mind.Char.IsDead)
+        if (!mind.Char.IsDead && thought != null)
+        {
+            Utter(mind, "brain", thought, party: false);
+            action?.Invoke();
+        }
+        else if (!mind.Char.IsDead)
         {
             if (Speak(mind, category, fallback: mind.PendingFallback, to: mind.PendingTo, lang: mind.PendingLanguage,
                     extra: mind.PendingTokens, prefix: mind.PendingPrefix, party: mind.PendingParty) &&

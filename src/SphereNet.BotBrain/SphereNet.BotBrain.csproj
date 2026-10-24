@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SphereNet.Game\SphereNet.Game.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- llama.cpp for .NET: a small language model run on the CPU, in process. -->
+    <PackageReference Include="LLamaSharp" Version="0.30.0" />
+    <!-- Its native libraries are copied by SphereNet.Server, for the platform built for
+         only: through a project reference this package sees no runtime identifier and
+         copies every platform's (some 100 MB). -->
+    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.30.0" ExcludeAssets="build" />
+  </ItemGroup>
+
+</Project>

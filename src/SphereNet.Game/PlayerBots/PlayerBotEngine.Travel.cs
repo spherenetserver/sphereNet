@@ -31,6 +31,8 @@ public sealed partial class PlayerBotEngine
         // Errands at a stop: a rune of the place marked, the purse squared with the bank.
         if (mind.BankStage == 0 && TryMarkRune(mind, now)) return;
         if (ActBank(mind, now)) return;
+        // Just come: on into the place, to a tile of its own.
+        if (ActSettle(mind, now)) return;
         bool watched = IsWatched(mind.Char.Position);
         if (now >= mind.LingerUntilMs)
         {
@@ -359,11 +361,11 @@ public sealed partial class PlayerBotEngine
         // what stopped it was the place itself, not people.
         bool farOff = dist > 3 || mind.LastBlock == BotBlock.Static;
         if (mind.Leg == 0 && mind.At != null && mind.At.ArrivalAt(ch.Position) is int outOf and >= 0)
-            LearnBadSpot(mind.At, outOf);
+            LearnBadSpot(mind.At, outOf, ch);
         else if (mind.Leg >= route.Count && mind.GoalSpot >= 0 && farOff && !mind.PortalTrip)
-            LearnBadSpot(goal, mind.GoalSpot);
+            LearnBadSpot(goal, mind.GoalSpot, ch);
         else if (mind.Leg > 0 && mind.Leg < route.Count && farOff)
-            LearnBadLink(route[mind.Leg - 1], route[mind.Leg]);
+            LearnBadLink(route[mind.Leg - 1], route[mind.Leg], ch);
         if (WindowRescues <= 15)
             _logger.LogInformation(
                 "[playerbots] rescue {Name} at {Pos} -> {Target} (leg {Leg}/{Legs} to {Goal}, mode {Mode}, dead {Dead}, last refusal {Refusal}, trace {Trace})",
@@ -452,6 +454,120 @@ public sealed partial class PlayerBotEngine
             return;
         }
         mind.BeginLinger(goal, now, _rng, short_: IsUnderground(ch.Position));
+        StartSettle(mind, goal, now);
+    }
+
+    /// <summary>How far about the spot it stopped on a bot looks for a tile of its own
+    /// at a place the data draws no outline for.</summary>
+    private const int SettleRange = 5;
+    /// <summary>How far from where it stopped a tile of its own may be, outline or not:
+    /// each tile tried is walked out step by step, so a dock's far end costs dearly.</summary>
+    private const int SettleReach = 12;
+    /// <summary>Time a bot gives the walk to its tile before it stays where it got to.</summary>
+    private const long SettleWalkMs = 30_000;
+
+    /// <summary>Bots that walked on into a place, and that left a full one early.</summary>
+    public long WindowSettles { get; private set; }
+    public long WindowCrowdLeaves { get; private set; }
+
+    /// <summary>A bot come to a place does not stay on the spot it stopped on (the
+    /// doorway every visitor stops on, a graveyard's gate): it walks on to a tile of
+    /// the place with the fewest others about it. A full place is left soon.</summary>
+    private void StartSettle(BotMind mind, BotDestination at, long now)
+    {
+        if (CrowdAt(at, now) > PlaceRoom(at) && HasRoomNear(at, now))
+        {
+            mind.LingerUntilMs = Math.Min(mind.LingerUntilMs, now + _rng.Next(15_000, 45_000));
+            WindowCrowdLeaves++;
+        }
+        if (SettleSpot(mind, at) is not { } spot) return;
+        mind.SettleTo = spot;
+        mind.SettleSinceMs = now;
+        WindowSettles++;
+        mind.Note(now, $"walks on into {at.Name}, to {spot}");
+    }
+
+    /// <summary>Whether the walk rule lets <paramref name="ch"/> go from
+    /// <paramref name="from"/> to <paramref name="to"/> step by step along the
+    /// straight line (people aside: they move).</summary>
+    private bool WalksStraightTo(Character ch, Point3D from, Point3D to)
+    {
+        var at = from;
+        for (int n = 0; n < 64 && (at.X != to.X || at.Y != to.Y); n++)
+        {
+            int dx = Math.Sign(to.X - at.X), dy = Math.Sign(to.Y - at.Y);
+            var dir = at.GetDirectionTo(new Point3D((short)(at.X + dx), (short)(at.Y + dy), at.Z, at.Map));
+            // The search's step test: the walk rule without the refusal report a real
+            // step builds (several tries of up to dozens of steps each, per arrival).
+            if (!_world.Standing.CheckPathStep(ch, at.Map, at.X, at.Y, at.Z, dir, out int z))
+                return false;
+            at = new Point3D((short)(at.X + dx), (short)(at.Y + dy), (sbyte)z, at.Map);
+        }
+        return at.X == to.X && at.Y == to.Y && Math.Abs(at.Z - to.Z) <= 8;
+    }
+
+    /// <summary>Whether the town of <paramref name="at"/> has another place with room:
+    /// leaving a full place for a town that is full everywhere is only more walking.</summary>
+    private bool HasRoomNear(BotDestination at, long now) =>
+        at.City.Length > 0 && Nav.Destinations.Any(d => d != at && d.City.Equals(at.City, StringComparison.OrdinalIgnoreCase) &&
+                                                       PlaceWeight(d) > 0 && CrowdAt(d, now) < PlaceRoom(d));
+
+    private bool ActSettle(BotMind mind, long now)
+    {
+        if (mind.SettleTo is not { } spot) return false;
+        var ch = mind.Char;
+        int dist = ch.Position.GetDistanceTo(spot);
+        if (dist <= (SomeoneOn(spot, ch) ? 1 : 0) || now - mind.SettleSinceMs > SettleWalkMs)
+        {
+            mind.SettleTo = null;
+            mind.LingerAnchor = ch.Position;
+            return false;
+        }
+        // The tile was chosen as one walked to in a straight line: no search.
+        bool stepped = StepToward(mind, spot, run: false, searchWithin: 0);
+        mind.NextActMs = now + StepDelay(mind, stepped, false, now);
+        return true;
+    }
+
+    /// <summary>The tile a bot at <paramref name="at"/> goes to stand on: inside the
+    /// place's outline when the data draws one, else a tile about where it stopped; a
+    /// floor on its own level, no portal, and one it walks to in a straight line (no
+    /// wall, fence or tomb between: no search is needed to get there). Of a few tried,
+    /// the one with the fewest others about it. Null when none is.</summary>
+    private Point3D? SettleSpot(BotMind mind, BotDestination at)
+    {
+        var ch = mind.Char;
+        var here = ch.Position;
+        var outline = at.Outline;
+        int minX = here.X - SettleRange, maxX = here.X + SettleRange;
+        int minY = here.Y - SettleRange, maxY = here.Y + SettleRange;
+        if (outline != null)
+        {
+            minX = Math.Max(here.X - SettleReach, outline.Min(c => c.X)); maxX = Math.Min(here.X + SettleReach, outline.Max(c => c.X));
+            minY = Math.Max(here.Y - SettleReach, outline.Min(c => c.Y)); maxY = Math.Min(here.Y + SettleReach, outline.Max(c => c.Y));
+            if (minX > maxX || minY > maxY) return null;
+        }
+        Point3D? best = null;
+        int bestCrowd = int.MaxValue;
+        for (int i = 0, found = 0; i < 8 && found < 3; i++)
+        {
+            int x = _rng.Next(minX, maxX + 1), y = _rng.Next(minY, maxY + 1);
+            if (outline != null ? !at.Encloses(x, y) : x == here.X && y == here.Y) continue;
+            var raw = new Point3D((short)x, (short)y, here.Z, here.Map);
+            if (!BotNavGraph.TrySeat(_world.MapData, raw, out var seat) || Math.Abs(seat.Z - here.Z) > 6) continue;
+            if (FindTeleport(seat) != null) continue;
+            if (!WalksStraightTo(ch, here, seat)) continue;
+            found++;
+            int crowd = 0;
+            foreach (var c in _world.GetCharsInRange(seat, 2))
+                if (c != ch && !c.IsDead) crowd++;
+            if (crowd < bestCrowd)
+            {
+                best = seat;
+                bestCrowd = crowd;
+            }
+        }
+        return best;
     }
 
     // ------------------------------------------------------------------
@@ -535,7 +651,11 @@ public sealed partial class PlayerBotEngine
         mind.LingerUntilMs = now + _rng.Next(1000, 4000);
     }
 
-    /// <summary>A stopping spot in the bot's home town, its bank first.</summary>
+    /// <summary>A stopping spot in the bot's home town, its bank first: a place still
+    /// usable (a stopping spot not known to be unreachable), on that spot. A place known
+    /// by its middle only, or whose every spot was found unreachable, gives its road node
+    /// instead: the middle of a bank can be behind its counter, and a bot set down where
+    /// no road leads out is lifted there again and again.</summary>
     private Point3D? HomeSpot(BotMind mind)
     {
         // A player killer's home is its haunt, out of town.
@@ -546,15 +666,18 @@ public sealed partial class PlayerBotEngine
         {
             if (d.City.Length == 0 || (home.Length > 0 && !d.City.Equals(home, StringComparison.OrdinalIgnoreCase))) continue;
             if (d.IsPortalType) continue;
-            if (best == null || d.Type.Equals("Bank", StringComparison.OrdinalIgnoreCase)) best = d;
-            if (d.Type.Equals("Bank", StringComparison.OrdinalIgnoreCase)) break;
+            bool better = best == null || (IsUsable(d) && !IsUsable(best)) ||
+                          (IsUsable(d) == IsUsable(best) && d.Type.Equals("Bank", StringComparison.OrdinalIgnoreCase) &&
+                           !best.Type.Equals("Bank", StringComparison.OrdinalIgnoreCase));
+            if (better) best = d;
         }
         if (best == null && home.Length > 0)
             foreach (var d in Nav.Destinations)
                 if (d.City.Length > 0 && !d.IsPortalType) { best = d; break; }
         if (best == null) return null;
         int spot = best.PickArrival(_rng);
-        return spot >= 0 ? best.Arrivals[spot] : best.Pos;
+        if (spot >= 0) return best.Arrivals[spot];
+        return best.NearestWaypoint >= 0 ? Nav.Waypoints[best.NearestWaypoint].Pos : best.Pos;
     }
 
     /// <summary>The road node linked to the arrival spot of <paramref name="at"/>
@@ -617,11 +740,17 @@ public sealed partial class PlayerBotEngine
                 var inside = list0.Where(d => want.Any(t => d.Type.Equals(t, StringComparison.OrdinalIgnoreCase)) && d != mind.At).ToList();
                 if (inside.Count > 0) return inside[_rng.Next(inside.Count)];
             }
-            else if (!list0.Any(d => d.City.Equals(mind.Home, StringComparison.OrdinalIgnoreCase)) || _rng.Next(100) < 4)
+            else if (!list0.Any(d => d.City.Equals(mind.Home, StringComparison.OrdinalIgnoreCase)) is var away &&
+                     (away || _rng.Next(100) < 4))
             {
-                // Away from home with no road back, or just a trip: the moongate.
-                var gates = list0.Where(d => d.Type.Equals("Moongate", StringComparison.OrdinalIgnoreCase) && d != mind.At).ToList();
+                // Away from home with no road back, or just a trip: a moongate that
+                // carries a walker. A menu gate carries nobody who does not answer its
+                // menu: away from home with only such gates, there is nowhere to go from
+                // here, and the bot is taken home (see ActLinger).
+                var gates = list0.Where(d => d.Type.Equals("Moongate", StringComparison.OrdinalIgnoreCase) && d != mind.At &&
+                                             !d.Portalless).ToList();
                 if (gates.Count > 0) return gates[_rng.Next(gates.Count)];
+                if (away && !string.IsNullOrEmpty(mind.Home)) return null;
             }
             // A fighter goes hunting now and then; less often while players are about
             // to see it in town.
@@ -646,7 +775,7 @@ public sealed partial class PlayerBotEngine
         if (list.Count == 0) return null;
         if (spawnable && PickSpawnTown(list.Select(d => d.City).Distinct(StringComparer.OrdinalIgnoreCase).ToList()) is { } town)
             list = list.Where(d => d.City.Equals(town, StringComparison.OrdinalIgnoreCase)).ToList();
-        return WeightedPick(list, PlaceWeight);
+        return spawnable ? WeightedPick(list, PlaceWeight) : PickPlace(list);
     }
 
     private string? PickArchetype()

@@ -27,6 +27,10 @@ public sealed class BotMind
     public BotDestination? Goal { get; set; }
     public BotDestination? At { get; set; }
     public Point3D LingerAnchor { get; set; }
+    /// <summary>The tile a bot just come to a place walks on to, to stand inside it
+    /// rather than on its doorstep; null once there (or given up).</summary>
+    public Point3D? SettleTo { get; set; }
+    public long SettleSinceMs { get; set; }
 
     // Road trip
     public List<int>? Route { get; set; }
@@ -122,6 +126,8 @@ public sealed class BotMind
     public (int From, int To)? SearchCorridor { get; set; }
     public long NextSearchMs { get; set; }
     public int SearchFailures { get; set; }
+    /// <summary>Searches in a row that ran out of time (not counted as failed until a third).</summary>
+    public int SearchTimeouts { get; set; }
 
     // Somebody in the way: until when the bot waits, how often it has, and since when.
     public long MobileWaitUntilMs { get; set; }
@@ -208,6 +214,18 @@ public sealed class BotMind
     // A reply waiting out its typing delay: what to say, to whom, in which language,
     // with which tokens, and what to do once it is said (cast a resurrection, say).
     public string? PendingCategory { get; set; }
+    /// <summary>The brain's reply being written for the queued answer, the player's
+    /// line it answers, and how long the bot waits for it.</summary>
+    public BotThought? PendingThought { get; set; }
+    public string? PendingThoughtLine { get; set; }
+    public long PendingThoughtUntilMs { get; set; }
+    /// <summary>The bot has shown it is thinking the reply over (once per reply).</summary>
+    public bool ThinkingShown { get; set; }
+    /// <summary>The player the bot last talked with through the brain, and what was
+    /// said (their line, its reply), oldest first; forgotten after a few minutes.</summary>
+    public uint ChatWith { get; set; }
+    public long ChatAtMs { get; set; }
+    public List<(string Player, string Bot)> ChatLog { get; } = [];
     public long PendingSayMs { get; set; }
     public string? PendingFallback { get; set; }
     public Character? PendingTo { get; set; }
@@ -463,9 +481,10 @@ public sealed class BotMind
         Char.RemoveTag(PlayerBotEngine.GoalTag);
         LingerAnchor = Char.Position;
         LingerExtensions = 0;
+        SettleTo = null;
         bool bank = at != null && at.Type.Equals("Bank", StringComparison.OrdinalIgnoreCase);
         long span = short_ ? rng.Next(10_000, 60_000)
-            : bank ? rng.Next(180_000, 480_000) : rng.Next(60_000, 240_000);
+            : bank ? rng.Next(120_000, 300_000) : rng.Next(60_000, 240_000);
         LingerUntilMs = now + span;
         NextChatMs = now + rng.Next(5_000, 40_000);
         NextActMs = now + rng.Next(1000, 4000);

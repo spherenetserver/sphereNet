@@ -16,6 +16,10 @@ public enum PathOptions
     /// <summary>Anybody standing on a tile blocks it, even someone the walker could
     /// push past: the route goes round a crowd instead of into it.</summary>
     AvoidChars = 2,
+    /// <summary>The distance still to go counts twice (weighted A*): a way at most
+    /// twice the shortest, in practice within a few tiles of it, found in a fraction
+    /// of the nodes. For a walker that wants a way soon rather than the best one.</summary>
+    Hasty = 4,
 }
 
 /// <summary>
@@ -64,6 +68,7 @@ public sealed class Pathfinder
         // Each tile's contents are read once per search, however many of its
         // neighbours ask about it (SourceXWalk tile columns).
         SourceXWalk.BeginSearch();
+        _lastTimedOut = false;
         try
         {
             return Search(start, goal, mapIndex, canFlags, self, maxNodes, maxRadius, deadline, options);
@@ -99,7 +104,8 @@ public sealed class Pathfinder
         cameFrom.Clear();
         gScore.Clear();
 
-        var startNode = new PathNode(start.X, start.Y, start.Z, 0, Heuristic(start, goal));
+        int weight = (options & PathOptions.Hasty) != 0 ? 2 : 1;
+        var startNode = new PathNode(start.X, start.Y, start.Z, 0, weight * Heuristic(start, goal));
         openSet.Enqueue(startNode, startNode.F);
         gScore[PackKey(startNode.X, startNode.Y, startNode.Z)] = 0;
 
@@ -120,6 +126,7 @@ public sealed class Pathfinder
             if (deadline != 0 && (nodesExplored & 7) == 0 && System.Diagnostics.Stopwatch.GetTimestamp() > deadline)
             {
                 TimedOut++;
+                _lastTimedOut = true;
                 return null;
             }
 
@@ -203,7 +210,7 @@ public sealed class Pathfinder
 
                     int moveCost = ((dx != 0 && dy != 0) ? 14 : 10) + extraCost; // diagonal vs cardinal
                     int newG = current.G + moveCost;
-                    int h = Heuristic(neighborPos, goal);
+                    int h = weight * Heuristic(neighborPos, goal);
 
                     var neighbor = new PathNode(nx, ny, nz, newG, h);
 
@@ -226,6 +233,11 @@ public sealed class Pathfinder
 
     /// <summary>Searches given up at their deadline, since start.</summary>
     public long TimedOut { get; private set; }
+
+    /// <summary>Whether the last search on this thread stopped at its deadline (as
+    /// opposed to finding a path, or proving there is none within its budget).</summary>
+    [ThreadStatic] private static bool _lastTimedOut;
+    public static bool LastSearchTimedOut => _lastTimedOut;
 
     private const int DoorCost = 20;
 

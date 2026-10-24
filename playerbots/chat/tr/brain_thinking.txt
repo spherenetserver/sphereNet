@@ -1,0 +1,8 @@
+# brain_thinking.txt — an emote shown when the reply is still being thought over
+# (the bot brain): the player sees the bot will answer. Asterisks are part of the line.
+
+*düşünüyor...*
+*biraz düşünüyor*
+*hmm...*
+*kafasını kaşıyor*
+*bir an duraksıyor*

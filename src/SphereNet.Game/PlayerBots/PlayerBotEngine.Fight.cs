@@ -21,6 +21,9 @@ public sealed partial class PlayerBotEngine
     public int FoeGiveUpMs { get; set; } = 20_000;
     /// <summary>How long a foe given up is left alone.</summary>
     public int FoeAvoidMs { get; set; } = 300_000;
+    /// <summary>Height apart beyond which a foe right beside the bot is still out of its
+    /// reach: up on a ledge, down a cliff.</summary>
+    private const int ReachZ = 16;
 
     private bool TryStartFight(BotMind mind, long now)
     {
@@ -43,7 +46,7 @@ public sealed partial class PlayerBotEngine
             // read the attack; striking back at an aggressor is not a crime.
             if (c.FightTarget == ch.Uid && (!c.IsPlayer || c.IsInWarMode))
             {
-                if (avoided && d > 1) continue;
+                if (avoided && (d > 1 || Math.Abs(c.Z - ch.Z) > ReachZ)) continue;
                 if (d < threatDist) { threat = c; threatDist = d; }
                 continue;
             }
@@ -54,6 +57,8 @@ public sealed partial class PlayerBotEngine
             if (d > 8 || d >= preyDist || c.MaxHits > ch.MaxHits * mind.Nerve) continue;
             // Prey is what it can see: a monster behind a fence is not.
             if (!_world.CanSeeLOS(ch.Position, c.Position)) continue;
+            // Nor, for a blade, one up on a ledge it cannot climb to.
+            if (!mind.IsArcher && !mind.IsCaster && Math.Abs(c.Z - ch.Z) > ReachZ) continue;
             prey = c;
             preyDist = d;
         }
@@ -133,7 +138,9 @@ public sealed partial class PlayerBotEngine
         int dist = ch.Position.GetDistanceTo(foe.Position);
         // Keep the range the weapon wants: blades close in, bows and casters hang back.
         int want = mind.IsArcher ? 6 : mind.IsCaster ? 5 : Math.Max(1, CombatHelper.GetWeaponRange(EquippedWeapon(ch)).Max);
-        bool sight = dist <= 1 || (dist <= 12 && _world.CanSeeLOS(ch.Position, foe.Position));
+        // In reach is where a blow lands: the combat rule wants sight even next to the
+        // foe, so one on a ledge above or below is not in reach however near it stands.
+        bool sight = dist <= 12 && Math.Abs(ch.Z - foe.Z) <= ReachZ && _world.CanSeeLOS(ch.Position, foe.Position);
         if (dist <= want && sight)
             mind.FightInReachMs = now;
         else if (now - mind.FightInReachMs > FoeGiveUpMs)

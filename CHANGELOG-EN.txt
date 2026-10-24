@@ -4,6 +4,85 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-24] - Player bots: walking on into places, place room, ledge foes, weighted searches, menu gates, verified learning, bot brain
+------------------------------------------------------------------------
+CHANGE - PlayerBotCount defaults to 300 (was 50), in the code and in the shipped
+      sphere.ini.
+NEW - Bot brain (optional): a small language model the server runs itself, llama.cpp on
+      the CPU in process (new project SphereNet.BotBrain, LLamaSharp 0.30), answers a
+      player's small talk or question to a bot that no fact answers; the way, news,
+      prices, favours and parties stay with the intents. It is told the same rules for
+      every bot (a player character in game, the player's language, one short casual
+      sentence, nothing outside the game, no claim to be human), then the bot's name,
+      kind, home, best skills, nature, what it is doing and where, how well it knows
+      the player, and its last three exchanges with them. One worker thread writes up to
+      two replies at once (sequences of one context sharing each step; ai.txt parallel)
+      on a few CPU threads while the bot types, 24 tokens at most; a reply not there in time, a
+      busy brain or an unfit reply (out of the game, empty) leaves the bot its own line,
+      so the game never waits. The worker keeps its context and the rules every prompt
+      starts with, so only the part about the bot is read anew. Set up in
+      playerbots/ai.txt (model file, threads, wait, queue, history; no sphere.ini keys);
+      off without a model. Measured with 1000 bots on an 8-core CPU, 4 threads, Gemma 3
+      1B: replies in 1.4-2.5 s on average with a line every two seconds, natural Turkish
+      and English. Load (lines arriving steadily, answered within the 4 s wait): one a
+      second - 48 of 60; two a second (thirty players each talking every fifteen
+      seconds) - 60 of 120 on 4 threads, 82 of 120 on 6 threads; writing four or more at
+      once makes each reply slower than the wait. When the bot is still waiting at the
+      end of its typing delay it shows a thinking emote ("*thinks...*",
+      chat category brain_thinking) so the player waits for the reply. Console PLAYERBOTS THINK <bot> <line>; telemetry [botbrain] asked,
+      said, late, busy, unfit, thought avg/max.
+FIX - A bot that came to a place stayed on the stopping spot every visitor stops on and
+      idled within three tiles of it: at a fenced graveyard all of them stood at its two
+      gates, at a bank they filled the doorway shoving each other. It now walks on to a
+      tile of its own: inside the place's outline when the data draws one (destinations
+      "Polygon": a yard, a bank's hall, a dock), else within five tiles of the spot; a
+      tile on its own level, not a portal, reached by walking straight at it (no fence or
+      wall between, so no search) and, of a few tried, with the fewest others about it.
+CHANGE - Place room: places.txt takes a second number per type, how many bots a place
+      holds (bots there and on their way count; places of one type within ten tiles,
+      such as a bank listed twice, share the count). The fuller a place the less it
+      draws and a full one draws nobody; when every place on offer is full the one least
+      over its room is taken, and a bot arriving at a full place leaves soon if its town
+      has room elsewhere. Banks hold 10, inns, taverns 8, moongates and graveyards 10,
+      the rest 6. A bank stay is two to five minutes (was three to eight). A Britain
+      bank that gathered over forty bots in fifteen minutes now holds about ten.
+FIX - A foe right beside a bot (one tile apart on the map) counted as in reach without a
+      sight test, while the blow needs sight: a monster up on a ledge above the bot was
+      "fought" for good (one bot for over ten minutes), and once given up it was taken up
+      again at once because it stood next to the bot. Reach now needs sight and no more
+      than 16 height apart; a bot with a blade does not pick prey that far above or
+      below it.
+CHANGE - Bot tile searches are weighted (the way still to go counts twice, PathOptions.Hasty;
+      creature searches are unchanged): a near-shortest way in fewer nodes. A search that
+      ran out of time is asked again a second later (twice) instead of counting as failed
+      with a 3-20 second wait. Measured on the same world: failed searches 76 -> 60 and
+      bots stalled on trips 16-22 -> 7-11 per 30 seconds, bot tick 6.1 -> 5.0 ms.
+FIX - A bot with no road home was lifted onto its home bank's stopping spot, or the bank's
+      middle when every spot of it had been learned unreachable; from inside the bank there
+      was no road either, so it was lifted onto the same tile again, endlessly (about fifty
+      bots, 578 lifts in eight minutes onto one bank). The lift now goes to a usable place
+      of the home town (bank first), and to a place's road node, not its middle, when it
+      has no usable spot.
+FIX - A gate or telepad made with MOREP=-1,-1 (the pack's menu moongates, which send
+      players by a menu) was taken for a portal: bots on their way out of a town stepped
+      on it, were carried nowhere and stood on and around it for good (61 bots about the
+      Buccaneer's Den gate). Only a gate with a destination on the map is a portal now,
+      as the step itself decides; a menu gate is a place to wait about, and a bot away
+      from home with no road back and only menu gates about is taken home (its rune, or
+      a lift out of sight) instead of choosing the gate again.
+FIX - A stopping spot or road link was learned unreachable after two rescues even when the
+      rescue came of a crowd in a gateway or a search out of time, and stayed out of every
+      route for good (ten links in six minutes, one of them cutting a moongate's node off
+      its town). A search with the bot as walker now looks for the way first; when it finds
+      one, or runs out of time, nothing is learned. Telemetry: unlearned.
+CHANGE - A place the bad-spot file would leave with no stopping spot gets its last learned
+      spot back at start, to be learned again if it really is shut: one spot learned in
+      a bad hour (a doorway full of bots, a search out of time) no longer closes a place
+      for good.
+NEW - Console: PLAYERBOTS NEAR x y [range [map]] lists the bots about a point and what
+      they do; PLAYERBOTS PLACES [n] the fullest places against their room. Telemetry:
+      retried, settles, crowdleaves.
+
 [2026-10-23] - Player bots: favours asked in conversation, friendship, companions, rune library
 ------------------------------------------------------------------------
 NEW - Favours: a player can ask a bot for help in plain speech and follow it through over

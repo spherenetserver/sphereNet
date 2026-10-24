@@ -87,7 +87,8 @@ count logs the surplus out; they stay in the save as logged-out players. With
 | `intents.txt` | keywords that tell what a player's line asks for, the places a "where" can name, and the words that tell a language |
 | `scenes.txt` | the exchanges bots act out near players |
 | `towns.txt` | home town weights |
-| `places.txt` | destination type weights |
+| `ai.txt` | the brain: the model file, CPU threads, reply length, how long a bot waits for a reply, queue, history, temperature |
+| `places.txt` | destination type weights and room (how many bots a place of the type holds) |
 | `mounts.txt` | share of riders and the creatures they ride |
 | `shopping.txt` | what a bot buys when it runs short (item type, too-few count, how many) and the place types that sell it |
 | `bonds.txt` | how a bot grows fond of a player: the levels, the points for talk, favours, hunts, trades, presents, being raised or attacked, how a bond fades, and the weights of the bots' natures |
@@ -120,17 +121,22 @@ Each bot has a mode, acted on when its next action time comes:
   destination's, then node to node and onto a stopping spot. Destinations are chosen on
   the piece of road the bot stands on; most stay in the home town. A fighter sometimes
   heads for a dungeon entrance; underground it goes room to room for a while, then to
-  the way out. A bot away from home, with no road back, takes a moongate.
+  the way out. A bot away from home, with no road back, takes a moongate that carries a
+  walker; where the moongates only send people by a menu, it is taken home (recalling on
+  its rune when it has one, else lifted out of sight).
 - **Fight**: anything attacking the bot is fought, a player in war mode against it
   included (striking back at an aggressor is no crime); set on in a guarded region by a
   criminal or a murderer, the bot also calls the guards. A monster a player is already
   fighting is left to that player; a fighter outside a guarded region
   also picks fights with monsters up to its nerve (a per-bot multiple of its own hit
-  points) that it can see: a monster behind a fence or a wall is no prey. Melee closes
+  points) that it can see: a monster behind a fence or a wall is no prey, nor, for a
+  bot with a blade, one more than 16 high above or below it. Melee closes
   in, archers and casters keep their distance, casters cast. A foe the bot never stands
-  in reach of (and in sight of, for a bow or a spell) for 20 seconds - one in a pen,
-  across water, up on a ledge - is given up and left alone for five minutes; if it is
-  the one attacking, the bot runs from it instead. A bot idling at a stop that is
+  in reach of for 20 seconds - one in a pen, across water, up on a ledge - is given up
+  and left alone for five minutes; if it is the one attacking, the bot runs from it
+  instead. In reach is where a blow lands: within the weapon's range, in sight and no
+  more than 16 high apart, so a foe on a ledge right above the bot is out of reach and is
+  not taken up again while it stands there. A bot idling at a stop that is
   struck acts on it at once rather than at its next idle act.
   Below a per-bot hit-point threshold it heals (Greater Heal, bandage, heal potion) or
   runs - for the nearest road node that takes it away from the threat, not straight at
@@ -361,6 +367,60 @@ line of the category can be said.
 Replies come after a short typing delay. Only real players are answered, so two bots
 never talk themselves into a loop.
 
+### The brain (optional)
+
+With a model named in `ai.txt`, small talk and questions no fact answers are answered
+by a small language model the server runs itself: llama.cpp on the CPU, in process
+(`SphereNet.BotBrain`, LLamaSharp), with no network and nothing paid per word. Without
+the file or its `model` line, or when the model does not load, bots talk as above.
+
+- **What it answers.** A player's line the intents read as a question or "how are you",
+  or one they do not read at all, said to a bot (by name, to the bot the player is
+  talking with, to their companion). The way, the news, prices, favours, parties and
+  everything else the bot knows a fact for stay with the intents and the chat lines.
+- **What it is told.** First the same rules for every bot (a player character in
+  Ultima Online chatting in game; the player's language; one short casual sentence;
+  nothing outside the game; no claim to be human), then the bot: its name, kind
+  (mage, archer, warrior, crafter), home town, two best skills, nature, what it is doing
+  and where, the region, how well it knows the player and whether it is their
+  companion, and its last three exchanges with that player (a conversation is forgotten
+  after three minutes without talk).
+- **Never waiting on it.** One worker thread writes up to `parallel` replies at once,
+  each in its own sequence of one shared context (every step reads the weights once
+  for all of them), on `threads` CPU threads; `queue` more wait and the rest are
+  refused. The reply is written
+  while the bot types. When it is not there `wait` milliseconds after the player's line,
+  or the brain was busy, or the reply is unfit (empty, or stepping out of the game: "AI",
+  "assistant", links), the bot says its own line, as it would have. A reply is cut to
+  its first line and 140 characters, without quotes, a name prefix or emoji.
+- **Fast.** The worker keeps one context and what it last read: every prompt starts with
+  the same rules, so only the part about the bot and the line is read anew.
+
+Measured on an 8-core desktop CPU with 4 threads: Gemma 3 1B (Q4_K_M, 0.8 GB) answers in
+0.5-2.5 s with natural Turkish and English; Gemma 3 4B in 2-5 s with the best replies;
+Qwen2.5 1.5B and 3B write broken Turkish. A model is the shard's to download (see
+`ai.txt`) and is never committed.
+
+How much it keeps up with (Gemma 3 1B, lines arriving steadily, a reply counted only
+when it comes within the 4 s wait):
+
+| Lines a second | threads / parallel | Answered in time | Line to reply |
+|---|---|---|---|
+| 1 | 4 / 1 | 48 of 60 | 1.9 s |
+| 1 | 4 / 4 | 27 of 60 | 4.5 s |
+| 2 | 4 / 1 | 57 of 120 | 1.9 s |
+| 2 | 4 / 2 | 60 of 120 | 3.0 s |
+| 2 | 6 / 2 | 82 of 120 | 2.4 s |
+| 2 | 8 / 1 | 73 of 120 | 1.4 s |
+| 3 | 4 / 4 | 1 of 181 | 7.0 s |
+
+Reading each new prompt is what costs, and it takes CPU, not memory bandwidth: writing
+several together raises the replies a second but makes each slower, and past two, on
+four threads, slower than the wait. Thirty players each talking to bots every fifteen
+seconds is two lines a second: about half to two thirds get the brain's reply, the
+rest the bot's own line. Players do not all talk at once in practice; at one line a
+second most replies are the brain's.
+
 ### News
 
 Deaths are news (`DeathEngine.OnDeath`): a player killed by a monster (`death`), a
@@ -376,7 +436,21 @@ and place fill the tokens, and `{when}` comes from `token_when_now` (under ten m
   `towns.txt`. A bot of a town over its share, out of every player's sight, now and then
   moves house to a town under its share; its next trips take it there.
 - Destinations are picked by the `places.txt` weight of their type: a bank holds a crowd,
-  a tailor's shop sees one customer.
+  a tailor's shop sees one customer. The second number on a line is the type's room: the
+  bots at a place and on their way to it count against it (places of one type within ten
+  tiles of each other, such as a bank listed twice, share one count), the fuller a place
+  the less it draws, and a full one draws nobody. When every place on offer is full (a
+  small town with more bots than places) the one least over its room is taken. A bot that
+  comes to a full place while its town has room elsewhere leaves after 15-45 seconds.
+- A bot that comes to a place does not stay on the stopping spot every visitor stops on
+  (a doorway, a graveyard's gate): it walks on to a tile of its own, inside the place's
+  outline when the data draws one (`Polygon` in `destinations.json`: a graveyard's yard,
+  a bank's hall, a dock) and within twelve tiles, else within five tiles of the spot, and
+  idles about that tile.
+  The tile is on the bot's own level, is not a portal, is reached by walking straight at
+  it (no wall, fence or tomb between, so no search is needed) and, of a few tried, has
+  the fewest others about it. A walk that has not got there in 30 seconds ends where it is.
+- A bot stays two to five minutes at a bank, one to four at other places.
 - `PlayerBotGravity` percent of town trips go to a place within 30 tiles of a connected
   player, unless `PlayerBotCrowd` bots already stand around that player.
 - A bot at a bank, healer, inn or moongate stays once more (one to two and a half
@@ -423,8 +497,11 @@ read-only rules, and the paths are handed to their bots before they act. A searc
 most 2000 nodes (fewer for a short way) and 5 ms, and the whole batch 6 ms of the phase
 (a search that has not started by then waits for its bot to ask again). For a bot a shut, unlocked door is a
 way through (it is opened on reaching it) and, when the search was asked for because of
-people, anybody standing on a tile blocks it. A failed search waits 3, 10, then 20
-seconds before the same bot may ask again. A path is followed tile by tile: somebody on
+people, anybody standing on a tile blocks it. The search is weighted (the way still to
+go counts twice): it finds a way at most twice the shortest, in practice within a few
+tiles of it, in fewer nodes, so fewer searches run out of time. A search that ran out of
+time is asked again a second later (twice; the third counts as failed). A failed search
+waits 3, 10, then 20 seconds before the same bot may ask again. A path is followed tile by tile: somebody on
 it is waited for, a shut door on it opened, a diagonal round a corner that the step
 refuses is taken as two straight steps, and anything else drops the path and asks for a
 new one.
@@ -446,7 +523,12 @@ three tiles while walking a wall. A leg that makes none for a minute, or takes f
 than its length allows (90 seconds plus 0.8 s per tile), lifts the bot onto the leg's
 target (a rescue). A rescue more than three tiles from the leg's target teaches the way:
 twice on the same stopping spot and the spot is not used again; twice on the same road
-link and the link is left out of every route (`link|from|to` in the bad-spot file). A
+link and the link is left out of every route (`link|from|to` in the bad-spot file). Before
+either is written down a tile search (the bot as walker, 4000 nodes, 20 ms) looks for a
+way from the spot's road node to the spot, or along the link: when it finds one, or runs
+out of time, nothing is learned and the count starts again (a crowd in a gateway or a
+search out of time gets a bot lifted too, and a link learned for that would be lost to
+every bot for good). A
 place with no usable stopping spot left is not chosen at all. A bot rescued within three
 tiles of its target teaches something only when a wall stopped it: one held up by people
 (a doorway full of others) teaches nothing. A bot lingering right by a door steps
@@ -458,7 +540,12 @@ node linked to the spot it is heading for, not at whichever node is nearest thro
 wall. When the first leg makes no ground for 12 seconds the bot walks to the nearest
 unlocked door within 8 tiles and opens it, then tries the next-nearest start nodes.
 Learned spots and links are kept in `playerbots_badspots.txt` in the world save directory
-and read back at start; deleting the file lets bots try every spot again.
+and read back at start; deleting the file lets bots try every spot again. A place the file
+would leave with no stopping spot at all gets its last learned spot back at start (to be
+learned again if it really is shut). A bot with no road home is lifted to a stopping spot
+of a usable place of its home town, its bank first; a place known by its middle only, or
+with every spot found unreachable, gives its road node instead of its middle (the middle
+of a bank can be behind its counter, with no road out).
 
 ### Errands
 
@@ -504,7 +591,9 @@ A dungeon's way in, the stairs between its levels and a moongate all carry a wal
 the moment it steps onto the tile, and only then. At the first tick the engine looks up
 each portal-type destination's tiles in the running world: map teleporters
 (`[TELEPORTERS]`) within three tiles of its stopping spots, and gates and telepads that
-lead somewhere; when the data names where the portal goes (`TargetX/Y`), only tiles that
+lead somewhere (a MOREP on the map: a gate made with `MOREP=-1,-1`, such as the pack's
+menu moongates, sends players by its menu and does not carry a bot that steps on it, so
+it is no portal); when the data names where the portal goes (`TargetX/Y`), only tiles that
 go there count. A trip to a portal ends on its tile: the last leg is never stopped short
 of, a tile somebody stands on is swapped for a free one of the same portal, and a bot
 still on this side at the end steps onto the other tiles (or off and back onto the only
@@ -560,7 +649,10 @@ to a door), `spotswitches` (last legs moved to another stopping spot), `stallsea
 (searches asked for on trips), `purchases`, `meditations`, `pkattacks`, `thefts`,
 `tends` (party members healed, cured or raised), `orders` (party orders taken), `trades`
 (trades completed), `liftwaits` (lifts held while a player looked),
-`badlinks` and `searchtimeouts` (searches given up at their deadline since start).
+`badlinks` and `searchtimeouts` (searches given up at their deadline since start),
+`retried` (searches out of time asked again), `unlearned` (spots and links two rescues
+pointed at that a search then walked), `settles` (bots walking on into a place)
+and `crowdleaves` (bots leaving a full place early).
 
 The end of the line is about getting stuck:
 
@@ -580,6 +672,10 @@ The end of the line is about getting stuck:
 | `stalled [...]` | the most bots stalled at once (no ground for 10 s), by mode, e.g. `Travel:3 Fight:1` |
 | `refusals [...]` | why steps were refused, most first, e.g. `terrain:812 character_on_tile:95` |
 
+With a brain, a second line every 30 seconds counts its work: `asked` (lines handed to
+it), `said` (replies said), `late`, `busy` (refused), `unfit`, `thought` (replies
+written) and their `avg` and `max` time.
+
 `tick` is the whole bot pass per server tick. Bot decisions share a budget of 12 ms
 per tick; `deferred` counts the decisions that waited for the next tick (100 ms
 later) because it was spent, and the next tick resumes where the last one stopped.
@@ -596,6 +692,9 @@ spot keeps catching bots.
 |---|---|
 | `PLAYERBOTS STALLS [n]` | the `n` (20) bots stalled longest right now: uid, name, position, mode, seconds, where it is going, the last refusal, whether it walks a wall, its tile path and its search state |
 | `PLAYERBOTS TRACE <uid\|name>` | one bot's last 32 decisions with their age (trip chosen, search asked and found, path dropped and why, portal crossed, rescue, walk given up, refused step kinds, and the system messages its client was told) |
+| `PLAYERBOTS THINK <uid\|name> <line>` | the line put to that bot's brain as a stranger's; the reply (or why there is none) goes to the server log |
+| `PLAYERBOTS NEAR x y [range [map]]` | the bots within `range` (12) of a point: how many do what, then one line each with its activity and last decision |
+| `PLAYERBOTS PLACES [n]` | the `n` (20) places with the most bots at them or on their way, against their room |
 | `PLAYERBOTS NAVCHECK` | every portal-type place and whether the world has a portal there |
 | `PLAYERBOTS NAVCHECK LINKS [LEARN]` | also a tile search along every road link and from every stopping spot to its node, with an online bot as the walker; `LEARN` leaves failures out of routes and writes them to the bad-spot file. Runs on the main loop: it takes a while on a full road network |
 

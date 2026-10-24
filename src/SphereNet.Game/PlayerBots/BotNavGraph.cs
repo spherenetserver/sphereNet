@@ -71,6 +71,26 @@ public sealed class BotDestination
     /// or a passage walked through, not a teleporter. Visited as an ordinary place.</summary>
     public bool WalkedThrough { get; set; }
 
+    /// <summary>The place's outline as the data draws it (a graveyard's yard, a bank's
+    /// hall, a dock), corners in order; null when the data gives none.</summary>
+    public IReadOnlyList<(short X, short Y)>? Outline { get; set; }
+
+    /// <summary>Whether a tile lies inside <see cref="Outline"/> (false without one).</summary>
+    public bool Encloses(int x, int y)
+    {
+        if (Outline is not { Count: >= 3 } poly) return false;
+        // Even-odd rule, at the tile's middle.
+        double px = x + 0.5, py = y + 0.5;
+        bool inside = false;
+        for (int i = 0, j = poly.Count - 1; i < poly.Count; j = i++)
+        {
+            double xi = poly[i].X, yi = poly[i].Y, xj = poly[j].X, yj = poly[j].Y;
+            if ((yi > py) != (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+                inside = !inside;
+        }
+        return inside;
+    }
+
     /// <summary>The arrival spot <paramref name="pos"/> stands on (within 2 tiles), or -1.</summary>
     public int ArrivalAt(Point3D pos)
     {
@@ -179,6 +199,14 @@ public sealed class BotNavGraph
                 NearestWaypoint = wpIndex,
                 Target = target,
             };
+            if (e.TryGetProperty("Polygon", out var polygon))
+            {
+                var corners = new List<(short X, short Y)>();
+                foreach (var corner in polygon.EnumerateArray())
+                    if (corner.GetArrayLength() >= 2)
+                        corners.Add(((short)corner[0].GetInt32(), (short)corner[1].GetInt32()));
+                if (corners.Count >= 3) dest.Outline = corners;
+            }
             if (e.TryGetProperty("Arrivals", out var arrivals))
                 foreach (var a in arrivals.EnumerateArray())
                 {
@@ -347,6 +375,9 @@ public sealed class BotNavGraph
     }
 
     private readonly HashSet<(int, int)> _badLinks = [];
+
+    /// <summary>Whether the link between two nodes is left out of routes.</summary>
+    public bool IsBadLink(int a, int b) => _badLinks.Contains((Math.Min(a, b), Math.Max(a, b)));
 
     /// <summary>Leave the link between two nodes out of every route from now on
     /// (bots kept failing to walk it). False when either node is unknown or the

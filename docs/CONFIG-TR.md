@@ -182,7 +182,7 @@ Sunucunun yönettiği oyuncu karakterleri: dünya save'ine yazılan, yeniden ba�
 Sunucunun tek tek bot ekleyerek tamamladığı nüfus; save'deki botlar önce geri alınır. Düşürülürse fazlası log out olur (save'de kalırlar).
 
 - **Tür:** integer (en az 0)
-- **Varsayılan:** `50`
+- **Varsayılan:** `300`
 
 ### PLAYERBOTDATADIR
 

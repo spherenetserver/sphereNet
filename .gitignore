@@ -47,3 +47,7 @@ oldSphere.rar
 
 # Local review reports
 /docs/reviews/
+
+# Bot brain models (GGUF, gigabytes): downloaded by the shard, never committed
+playerbots/models/
+*.gguf

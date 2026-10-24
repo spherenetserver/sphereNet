@@ -140,7 +140,13 @@ public sealed class PlayerBotEngineTests : IDisposable
         var world = World();
         var nav = new BotNavGraph();
         nav.LoadWaypoints(WaypointsJson, world.MapData);
-        nav.LoadDestinations(DestinationsJson, world.MapData);
+        // A bank with two stopping spots: one learned bad stays bad. (A place the file
+        // would leave with none gets its last one back - PlayerBotPlacesTests.)
+        nav.LoadDestinations(DestinationsJson.Replace(
+            "\"Arrivals\": [ { \"X\": 122, \"Y\": 101, \"Z\": 0 } ]",
+            "\"Arrivals\": [ { \"X\": 122, \"Y\": 101, \"Z\": 0 }, { \"X\": 120, \"Y\": 101, \"Z\": 0 } ]"),
+            world.MapData);
+        Assert.Equal(2, nav.FindDestination("Town Bank")!.Arrivals.Count);
         string file = Path.Combine(_dir, "badspots.txt");
         File.WriteAllLines(file, ["Town Bank|0", "Nowhere|3", "Town Bank|9", "garbage"]);
         var engine = Engine(world, nav);

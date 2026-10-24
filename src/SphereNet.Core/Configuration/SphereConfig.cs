@@ -800,7 +800,7 @@ public sealed class SphereConfig
     // population the engine fills up to; bots already in the save are adopted
     // first, so a restart resumes the same characters where they stood.
     public bool PlayerBots { get; set; }
-    public int PlayerBotCount { get; set; } = 50;
+    public int PlayerBotCount { get; set; } = 300;
     public string PlayerBotDataDir { get; set; } = "playerbots/";
     public string PlayerBotLanguage { get; set; } = "en";
     // Where a dead bot is raised: a murderer at this region's anchor (AREADEF NAME or

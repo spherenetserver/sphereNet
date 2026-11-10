@@ -494,6 +494,10 @@ public sealed class SmeltRepairParity08ATests
             bench.World.PlaceItem(block, bench.Me.Position);
         }
 
+        // The craft skill comes from the piece's SKILLMAKE; without one the repair ends
+        // silently (Use_Repair, CCharUse.cpp:812).
+        DefineItem(0x13BB, d => { d.Type = ItemType.Armor; d.SkillMakeRaw = "Tinkering 50.0"; });
+
         var broken = bench.World.CreateItem();
         broken.BaseId = 0x13BB;
         broken.ItemType = ItemType.Armor;

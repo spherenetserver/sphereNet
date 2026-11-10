@@ -2512,19 +2512,20 @@ public static class ActiveSkillEngine
 
     // --------------------------------------------------------------- Tinkering
 
-    /// <summary>Source-X weapon-dclick repair via tinkering skill.</summary>
+    /// <summary>CChar::Use_Repair (CCharUse.cpp:748-880): a smith mends a damaged weapon,
+    /// shield or piece of armor at an anvil. Every outcome is a public emote built from
+    /// DEFMSG_REPAIR_MSG; a piece worn down to nothing is destroyed.</summary>
     public static bool RepairItem(IActiveSkillSink sink, Item? target)
     {
         var ch = sink.Self;
-        if (target == null)
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.RepairUnk));
-            return false;
-        }
 
-        if (!CanReachItem(ch, target, sink.World, SkillType.Tinkering, 2))
+        // Armor_IsRepairable (CItem.cpp:4846): CAN_I_REPAIR or one of the repairable
+        // types - plate, chain and ring armor, shields, maces, swords, fencing weapons,
+        // axes, throwing weapons, whips and crossbows. The old gate asked for the
+        // definition's REPAIR flag alone and refused plate mail.
+        if (target == null || !InfoSkillEngine.ArmorIsRepairable(target))
         {
-            sink.SysMessage("You must have that item in your possession.");
+            sink.SysMessage(ServerMessages.Get(Msg.RepairNot));
             return false;
         }
 
@@ -2534,21 +2535,18 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        // ATTR_CANNOTREPAIR fails Armor_IsRepairable first (CItem.cpp:4851, Use_Repair
-        // CCharUse.cpp:748).
-        var def = DefinitionLoader.GetItemDef(target.BaseId);
-        if (target.IsAttr(ObjAttributes.CannotRepair) || (def != null && !def.Repair))
+        // CanUse(pItemArmor, true) failing is DEFMSG_REPAIR_REACH (:760).
+        if (!CanReachItem(ch, target, sink.World, SkillType.Tinkering, 2))
         {
-            sink.SysMessage(ServerMessages.Get(Msg.RepairNot));
+            sink.SysMessage(ServerMessages.Get(Msg.RepairReach));
             return false;
         }
 
         // Arms Lore comes first and is its own stage: the smith has to recognise the
         // piece before working on it, and failing that ends the repair before the
-        // craft skill is ever rolled (Use_Repair, CCharUse.cpp:764). SphereNet went
-        // straight to the craft skill, so a smith with no Arms Lore repaired anyway.
-        // The gain is applied afterwards, as the reference does - negative on the
-        // failure that stops here.
+        // craft skill is ever rolled (Use_Repair, CCharUse.cpp:764). The gain is
+        // applied afterwards, as the reference does - negative on the failure that
+        // stops here.
         int armsLoreDiff = sink.Random.Next(30);
         if (!SkillEngine.UseQuick(ch, SkillType.ArmsLore, armsLoreDiff, allowGain: false))
         {
@@ -2558,99 +2556,133 @@ public static class ActiveSkillEngine
         }
 
         // Source-X Use_Repair: only items that actually have hitpoints can be
-        // repaired. Inventing (and persisting) a 50-point pool here permanently
-        // turned a never-wearing item into breakable gear.
+        // repaired (an item with none reads as "already in full repair", :773). Inventing
+        // (and persisting) a 50-point pool here permanently turned a never-wearing item
+        // into breakable gear.
         int maxHits = target.GetHitsMax();
-        if (maxHits <= 0)
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.RepairFull));
-            return false;
-        }
-
         int curHits = target.GetHitsCur();
-        if (curHits >= maxHits)
+        if (maxHits <= 0 || curHits >= maxHits)
         {
             sink.SysMessage(ServerMessages.Get(Msg.RepairFull));
             return false;
         }
 
-        // Source-X Use_Repair (CCharUse.cpp:792-852): difficulty is the item's
-        // SKILLMAKE main-skill level scaled by the damage percent (floor: a
-        // quarter of that level), rolled against THAT craft skill. Success is
-        // a FULL repair; failure has a 1/6 chance to lower max durability and
-        // otherwise a 1/3 chance to chip a point.
         // Work needs an anvil within two tiles (:781) - the reference looks for a
         // dynamic item, a static or the terrain of that type.
-        if (!HasAnvilNearby(sink, ch))
+        if (!TryFindAnvilNearby(sink, ch, out Point3D anvil))
         {
             sink.SysMessage(ServerMessages.Get(Msg.RepairAnvil));
             return false;
         }
 
-        int damagePercent = (maxHits - curHits) * 100 / Math.Max(1, maxHits);
+        var def = DefinitionLoader.GetItemDef(target.BaseId);
+        int damagePercent = InfoSkillEngine.IMulDiv(100, maxHits - curHits, maxHits);
 
         // Raw materials: half the damage percentage of what the piece is made of,
-        // tested before any work is done and spent afterwards (:794/:854). SphereNet
-        // repaired out of thin air and charged nothing at all.
+        // tested before any work is done and spent afterwards (:794/:854). A component
+        // that falls short is named (DEFMSG_REPAIR_LACK_1, :797-800).
         var recipe = sink.Crafting?.TryGetRecipe(target.BaseId)
             ?? (def != null ? sink.Crafting?.GetRecipe(def.Id.Index) : null);
-        if (recipe != null &&
-            !Crafting.CraftingEngine.TryConsumeResourcePart(ch, recipe, damagePercent / 2, test: true))
+        if (recipe != null)
         {
-            sink.SysMessage(ServerMessages.Get(Msg.RepairLack2));
-            return false;
+            int missing = Crafting.CraftingEngine.ConsumeResourcePart(ch, recipe, damagePercent / 2, test: true);
+            if (missing >= 0)
+            {
+                string component = Crafting.CraftingEngine.ResourceDisplayName(recipe.Resources[missing])
+                    ?? ServerMessages.Get(Msg.RepairLack2);
+                sink.SysMessage(ServerMessages.GetFormatted(Msg.RepairLack1, component));
+                return false;
+            }
         }
 
-        var (repairSkill, skillLevel) = ResolveRepairSkill(def);
-        int difficulty = Math.Max(skillLevel * damagePercent / 100, skillLevel / 4);
+        // The smith turns to the anvil and swings the hammer (:803-804,
+        // ANIM_ATTACK_1H_SLASH).
+        FaceSkillTarget(ch, anvil);
+        sink.Animation((ushort)AnimationType.AttackWeapon);
+
+        // No SKILLMAKE main skill: the repair ends here without a word (:812).
+        if (!TryResolveRepairSkill(def, out SkillType repairSkill, out int skillLevel))
+            return false;
+
+        // quarter the skill to make it, harder the more damaged (:816-821).
+        int difficulty = InfoSkillEngine.IMulDiv(skillLevel, damagePercent, 100);
+        if (difficulty < skillLevel / 4)
+            difficulty = skillLevel / 4;
 
         SkillEngine.GainExperience(ch, SkillType.ArmsLore, armsLoreDiff);
 
-        if (!SkillEngine.UseQuick(ch, repairSkill, difficulty))
+        bool success = SkillEngine.UseQuick(ch, repairSkill, difficulty);
+        string text;
+        if (success)
         {
+            target.HitsCur = maxHits; // Source-X: success restores to full
+            text = ServerMessages.Get(Msg.Repair1);
+        }
+        else
+        {
+            // Failure: 1/6 chance to lower max durability, otherwise a 1/3 chance to
+            // chip a point (:837-851).
             if (sink.Random.Next(6) == 0)
             {
-                target.HitsMax = Math.Max(1, maxHits - 1);
-                target.HitsCur = Math.Max(0, curHits - 1);
-                sink.SysMessage(ServerMessages.Get(Msg.Repair2));
+                text = ServerMessages.Get(Msg.Repair2);
+                target.HitsMax = Math.Max(0, maxHits - 1);
+                target.HitsCur = curHits - 1;
             }
             else if (sink.Random.Next(3) == 0)
             {
-                target.HitsCur = Math.Max(0, curHits - 1);
-                sink.SysMessage(ServerMessages.Get(Msg.Repair3));
+                text = ServerMessages.Get(Msg.Repair3);
+                target.HitsCur = curHits - 1;
             }
             else
             {
-                sink.SysMessage(ServerMessages.Get(Msg.Repair4));
+                text = ServerMessages.Get(Msg.Repair4);
             }
 
             // A botched repair still costs materials, on a random part of the damage
-            // (:850/:854).
-            if (recipe != null)
-                Crafting.CraftingEngine.TryConsumeResourcePart(
-                    ch, recipe, sink.Random.Next(damagePercent) / 2, test: false);
-            return false;
+            // (:851/:854).
+            damagePercent = sink.Random.Next(Math.Max(1, damagePercent));
         }
 
-        target.HitsCur = maxHits; // Source-X: success restores to full
         if (recipe != null)
             Crafting.CraftingEngine.TryConsumeResourcePart(ch, recipe, damagePercent / 2, test: false);
-        sink.SysMessage(ServerMessages.GetFormatted(Msg.RepairMsg, "You repair", target.Name ?? "the item"));
-        return true;
+
+        bool destroyed = target.GetHitsCur() <= 0;
+        if (destroyed)
+            text = ServerMessages.Get(Msg.Repair5);
+
+        // Emote(REPAIR_MSG, text, item name): the result is said aloud, not whispered
+        // to the smith (:869-871).
+        sink.Emote(ServerMessages.GetFormatted(Msg.RepairMsg, text, target.GetName()));
+
+        // A piece worn down to nothing is gone (:873-876).
+        if (destroyed)
+            sink.World.RemoveItem(target);
+
+        return success;
     }
 
-    /// <summary>An anvil within two tiles - dynamic item, static or terrain, as
-    /// Source-X FindItemTypeNearby searches (CWorldMap.cpp:663).</summary>
-    private static bool HasAnvilNearby(IActiveSkillSink sink, Character ch)
+    /// <summary>The nearest anvil within two tiles - dynamic item, static or terrain, as
+    /// Source-X FindItemTypeNearby searches (CWorldMap.cpp:663); the point it stands on
+    /// is m_Act_p, which the smith then faces.</summary>
+    private static bool TryFindAnvilNearby(IActiveSkillSink sink, Character ch, out Point3D found)
     {
+        found = default;
+        int best = int.MaxValue;
         foreach (var near in sink.World.GetItemsInRange(ch.Position, 2))
         {
-            if (near.ItemType == ItemType.Anvil)
-                return true;
+            if (near.ItemType != ItemType.Anvil)
+                continue;
+            int dist = GetDistance(ch.Position, near.Position);
+            if (dist < best)
+            {
+                best = dist;
+                found = near.Position;
+            }
         }
 
         var md = sink.World.MapData;
-        if (md == null) return false;
+        if (md == null)
+            return best != int.MaxValue;
 
         for (short dx = -2; dx <= 2; dx++)
         {
@@ -2659,27 +2691,39 @@ public static class ActiveSkillEngine
                 short x = (short)(ch.X + dx), y = (short)(ch.Y + dy);
                 foreach (var st in md.GetStatics(ch.MapIndex, x, y))
                 {
-                    if (DefinitionLoader.GetItemDef(st.TileId)?.Type == ItemType.Anvil)
-                        return true;
+                    if (DefinitionLoader.GetItemDef(st.TileId)?.Type != ItemType.Anvil)
+                        continue;
+                    int dist = Math.Max(Math.Abs(dx), Math.Abs(dy));
+                    if (dist < best)
+                    {
+                        best = dist;
+                        found = new Point3D(x, y, ch.Z, ch.MapIndex);
+                    }
                 }
             }
         }
-        return false;
+        return best != int.MaxValue;
     }
 
-    /// <summary>The item's SKILLMAKE main craft skill and its level on the
-    /// 0-100 scale (Source-X Use_Repair reads m_SkillMake). No SKILLMAKE →
-    /// Tinkering at 50, the pre-parity blanket.</summary>
-    private static (SkillType Skill, int Level) ResolveRepairSkill(SphereNet.Scripting.Definitions.ItemDef? def)
+    /// <summary>The item's SKILLMAKE main craft skill and its level on the 0-100 scale
+    /// (Source-X Use_Repair reads the first skill entry of m_SkillMake, CCharUse.cpp:812).
+    /// False when the definition has none: there is no fallback skill.</summary>
+    private static bool TryResolveRepairSkill(SphereNet.Scripting.Definitions.ItemDef? def,
+        out SkillType skill, out int level)
     {
-        if (def != null && !string.IsNullOrWhiteSpace(def.SkillMakeRaw))
+        skill = SkillType.Tinkering;
+        level = 0;
+        if (def == null || string.IsNullOrWhiteSpace(def.SkillMakeRaw))
+            return false;
+        foreach (var part in SphereNet.Scripting.Resources.ResourceQtyList.Parse(def.SkillMakeRaw))
         {
-            foreach (var part in SphereNet.Scripting.Resources.ResourceQtyList.Parse(def.SkillMakeRaw))
+            if (SphereNet.Game.Definitions.SkillNames.TryResolve(part.Name, out var sk))
             {
-                if (SphereNet.Game.Definitions.SkillNames.TryResolve(part.Name, out var sk))
-                    return (sk, SphereNet.Scripting.Resources.ResourceQtyList.SkillValue(part) / 10);
+                skill = sk;
+                level = SphereNet.Scripting.Resources.ResourceQtyList.SkillValue(part) / 10;
+                return true;
             }
         }
-        return (SkillType.Tinkering, 50);
+        return false;
     }
 }

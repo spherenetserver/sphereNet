@@ -269,6 +269,18 @@ public sealed partial class GameClient
             return;
         var options = _pendingMenuOptions;
         if (index > options.Count) return;
+        // A skill menu re-reads its entry's TEST lines when the entry is picked; one that
+        // no longer holds ends the menu with DEFMSG_CANT_MAKE (Cmd_Skill_Menu,
+        // CClientUse.cpp:707-712).
+        if (index > 0 && options[index - 1].Recheck is { } stillAllowed && !stillAllowed())
+        {
+            _pendingMenuOptions = null;
+            _pendingMenuDefname = "";
+            _pendingMenuSubject = null;
+            _pendingMenuCancel = [];
+            SysMessage(Messages.ServerMessages.Get(Messages.Msg.CantMake));
+            return;
+        }
         var subject = _pendingMenuSubject ?? _character;
         var body = index == 0 ? _pendingMenuCancel : options[index - 1].Script;
         _pendingMenuOptions = null;

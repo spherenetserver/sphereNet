@@ -201,8 +201,18 @@ public class SkillMagicPhase4Tests
         anvil.ItemType = ItemType.Anvil;
         world.PlaceItem(anvil, new Point3D(100, 100, 0, 0));
 
+        // The craft skill comes from the piece's SKILLMAKE; without one the repair ends
+        // silently (Use_Repair, CCharUse.cpp:812).
+        var def = new SphereNet.Scripting.Definitions.ItemDef(new ResourceId(ResType.ItemDef, 0x13BB))
+        {
+            Type = ItemType.Armor,
+            SkillMakeRaw = "Tinkering 50.0",
+        };
+        SphereNet.Game.Definitions.DefinitionLoader.SetItemDef(0x13BB, def);
+
         var item = world.CreateItem();
         item.BaseId = 0x13BB;
+        item.ItemType = ItemType.Armor;
         item.SetTag("HITSMAX", "50");
         item.SetTag("HITS", "10");
         world.PlaceItem(item, new Point3D(101, 100, 0, 0));

@@ -135,7 +135,35 @@ public sealed class ClientCombatHandler
     private void TickPendingSkill() => _client.TickPendingSkill();
     private void TickPendingCraft() => _client.TickPendingCraft();
 
-    private uint _lastCombatNotifyTarget;
+    /// <summary>Attacker_Add's announcement (CCharAttacker.cpp:57-81), made when a
+    /// target joins my attacker list - not on the first damaging blow. Both lines
+    /// render over the ATTACKER: "*X is attacking Y!*" to every observer except the
+    /// victim's client, in the emote hue (EMOTECOLOROVERRIDE when set), unless
+    /// EMOTEF_ATTACKER hides it; the victim's client alone gets "*X is attacking
+    /// you!*".</summary>
+    private void AnnounceAttackStart(Character target)
+    {
+        if (_character == null) return;
+        ushort emoteHue = SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Emote);
+        var emote = CombatHelper.FormatAttackEmotes(_character, target);
+        bool showOthers = (Character.EmoteFlags & Character.EmoteFlagAttacker) == 0;
+        var emoteOthers = new PacketSpeechUnicodeOut(
+            _character.Uid.Value, _character.BodyId, 2,
+            _character.EmoteColorOverride != 0 ? _character.EmoteColorOverride : emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
+            emote.AttackerName, emote.OthersText);
+        var emoteVictim = new PacketSpeechUnicodeOut(
+            _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
+            emote.AttackerName, emote.VictimText);
+        uint victimUid = target.Uid.Value;
+        ForEachClientInRange?.Invoke(_character.Position, UpdateRange, 0,
+            (obsCh, obsClient) =>
+            {
+                if (obsCh.Uid.Value == victimUid)
+                    obsClient.Send(emoteVictim);
+                else if (showOthers)
+                    obsClient.Send(emoteOthers);
+            });
+    }
 
     /// <summary>Movement throttle state (decomposition phase 1). Token bucket
     /// seeded with WalkBufferMax at construction — same timing as the former
@@ -883,6 +911,9 @@ public sealed class ClientCombatHandler
         // Firing the trigger with no arguments and no list write meant a script
         // could veto the attack but never weight it, and the engagement left no
         // trace on the list an NPC picks its next target from.
+        // Attacker_Add announces the fight only when the target is NEW on my list; an
+        // entry that already exists returns early (CCharAttacker.cpp:17-21).
+        bool newOnAttackerList = _character.CombatState.IndexOfAttacker(target.Uid) < 0;
         if (!_character.CombatState.BeginFightWith(target, toldByMaster: false))
         {
             Send(new PacketAttackResponse(0));
@@ -902,22 +933,12 @@ public sealed class ClientCombatHandler
             }
         }
 
-        // COMBAT_NOPETDESERT (Source-X OnHarmedBy, CCharFight.cpp:312):
-        // attacking your own pet makes it desert you — unless the flag allows
-        // friendly fire. @PetDesert may still RETURN 1 to keep it serving.
-        if (target.CanDesertOwner && target.OwnerSerial == _character.Uid &&
-            !CombatHelper.IsCombatFlagSet(CombatFlags.NoPetDesert))
-        {
-            if (Character.OnPetDesert == null || !Character.OnPetDesert(target, _character))
-            {
-                SysMessage(ServerMessages.GetFormatted("pet_gone_wild", target.GetName()));
-                target.ClearOwnership(clearFriends: false);
-            }
-        }
+        // No pet desertion here: declaring an attack on one's own pet harms nothing.
+        // Source-X deserts it from OnHarmedBy (CCharFight.cpp:312-313), when a blow
+        // or harmful spell actually reaches the pet - see Character.OnHarmedBy.
 
         // Repeated 0x05 packets for the active target are acknowledgements,
-        // not new attacks. Pet-desert is checked above because the combat flag
-        // may be changed at runtime; crime and start triggers must not repeat.
+        // not new attacks; crime and start triggers must not repeat.
         if (_character.IsInWarMode && _character.FightTarget == target.Uid)
         {
             Send(new PacketAttackResponse(target.Uid.Value));
@@ -954,6 +975,8 @@ public sealed class ClientCombatHandler
         _character.FightTarget = target.Uid;
         _character.Memory_Fight_Start(target);
         target.Memory_Fight_Start(_character);
+        if (newOnAttackerList)
+            AnnounceAttackStart(target);
         Send(new PacketSwing(_character.Uid.Value, target.Uid.Value));
         Send(new PacketAttackResponse(target.Uid.Value));
 
@@ -967,8 +990,8 @@ public sealed class ClientCombatHandler
             bool instantFirst = (Character.CombatFlags & (int)CombatFlags.FirstHitInstant) != 0;
             if (!instantFirst)
             {
-                var w = _character.GetEquippedItem(Layer.OneHanded)
-                     ?? _character.GetEquippedItem(Layer.TwoHanded);
+                // m_uidWeapon: a weapon-typed item only (CCharAct.cpp:308-311).
+                var w = _character.FightWeapon();
                 _character.BeginEquipSwingWait(Environment.TickCount64,
                     CombatHelper.GetInitialSwingWaitMs(GetSwingDelayMs(_character, w)), noWait: false);
             }
@@ -979,8 +1002,7 @@ public sealed class ClientCombatHandler
         }
 
         // Range check — only swing now if already close enough
-        var atkWeapon = _character.GetEquippedItem(Layer.OneHanded)
-                     ?? _character.GetEquippedItem(Layer.TwoHanded);
+        var atkWeapon = _character.FightWeapon();
         int atkMaxRange = CombatHelper.GetWeaponRange(atkWeapon).Max;
         int atkDist = CombatHelper.GetChebyshevDistance(_character, target);
         if (atkDist > atkMaxRange)
@@ -1034,8 +1056,11 @@ public sealed class ClientCombatHandler
             return;
         }
 
-        var weapon = _character.GetEquippedItem(Layer.OneHanded)
-                  ?? _character.GetEquippedItem(Layer.TwoHanded);
+        // The swing weapon is m_uidWeapon, which LayerAdd sets only for an item that
+        // IsTypeWeapon (CCharAct.cpp:308-311): a spellbook, torch or shield in hand is
+        // not a weapon, the swing is unarmed (CCharFight.cpp:1213-1233) and a parry
+        // reads m_uidWeapon alone (CResourceCalc.cpp:311-318).
+        var weapon = _character.FightWeapon();
         int maxRange = CombatHelper.GetWeaponRange(weapon).Max;
         int dist = CombatHelper.GetChebyshevDistance(_character, target);
         // COMBAT_SWING_NORANGE: a swing may start even when out of range. A
@@ -1111,8 +1136,11 @@ public sealed class ClientCombatHandler
             return;
         }
 
-        var weapon = _character.GetEquippedItem(Layer.OneHanded)
-                  ?? _character.GetEquippedItem(Layer.TwoHanded);
+        // The swing weapon is m_uidWeapon, which LayerAdd sets only for an item that
+        // IsTypeWeapon (CCharAct.cpp:308-311): a spellbook, torch or shield in hand is
+        // not a weapon, the swing is unarmed (CCharFight.cpp:1213-1233) and a parry
+        // reads m_uidWeapon alone (CResourceCalc.cpp:311-318).
+        var weapon = _character.FightWeapon();
         int swingDelayMs = GetSwingDelayMs(_character, weapon);
 
         // Source-X @HitCheck (Fight_Hit entry, BEFORE Fight_CanHit's range/LoS
@@ -1247,14 +1275,13 @@ public sealed class ClientCombatHandler
             // resource (CCharFight.cpp:1864); a TDATA3=0 bow fires without one.
             if (ammo.Value.RequiresAmmo && !HasAmmoInPack(ammo.Value.BaseId, ammo.Value.FallbackType))
             {
+                // A player with no ammo gets the message and WAR_SWING_INVALID
+                // (CCharFight.cpp:1866-1873); Fight_HitTry answers that with
+                // Fight_Clear(target) (:1582-1589), which ends the fight with this
+                // target - the message is said once, not on every swing, and the
+                // combat tick has no target left to re-enter on.
                 SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
-                // Advance the swing timer even though no swing happened. Without
-                // this NextAttackTime never moves, so the combat tick re-enters
-                // every server tick — spamming the "no ammo" message and burning
-                // CPU in a tight loop (the reported "infinite loop when out of
-                // arrows"). Source-X returns WAR_SWING_INVALID, which its fight
-                // loop still paces by the swing timer.
-                _character.NextAttackTime = now + swingDelayMs;
+                _character.FightClear(target);
                 return;
             }
         }
@@ -1306,7 +1333,7 @@ public sealed class ClientCombatHandler
                 : null;
         Item? weapon = weaponCaptured
             ? (committedWeaponUid.IsValid ? _world.FindItem(committedWeaponUid) : null)
-            : _character.GetEquippedItem(Layer.OneHanded) ?? _character.GetEquippedItem(Layer.TwoHanded);
+            : _character.FightWeapon();
         if (weaponCaptured && committedWeaponUid.IsValid && (weapon == null || weapon.IsDeleted))
         {
             _character.ClearPendingHit();
@@ -1364,7 +1391,11 @@ public sealed class ClientCombatHandler
                     ammoStack = FindAmmoInPack(ammoSpec.BaseId, ammoSpec.FallbackType);
                     if (ammoStack == null)
                     {
+                        // Fight_Hit looks the ammo up on every pass, the blow's as
+                        // well: none left is WAR_SWING_INVALID again -> Fight_Clear
+                        // (CCharFight.cpp:1866-1873, :1582-1589).
                         SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
+                        _character.FightClear(target);
                         return;
                     }
                 }
@@ -1386,51 +1417,50 @@ public sealed class ClientCombatHandler
         // @Hit-chain LOCAL.ArrowHandled=1 hands the ammo to the script instead
         // (Source-X nulls pAmmo); the miss branch below handles its own
         // consumption the same way via the @HitMiss locals.
+        // A connecting blow - damaging or fully absorbed - handles the ammo: an NPC
+        // target keeps the arrow 41% of the time (`40 >= Get16ValFast(100)`), as an
+        // UnStackSplit(1) item bounced into its pack (or dropped at its feet when it
+        // has none); otherwise the stack loses one (CCharFight.cpp:2210-2218). The
+        // roll does not depend on the damage that survived the armour.
+        bool blowConnected = damage >= 0 || damage == CombatEngine.AttackResolvedByProc;
         Item? recoveredAmmo = null;
-        if (damage > 0 && ammoStack != null && !ammoHandled &&
-            !target.IsPlayer && target.Backpack != null && Random.Shared.Next(100) < 40)
+        if (blowConnected && ammoStack != null && !ammoHandled &&
+            !target.IsPlayer && Random.Shared.Next(100) <= 40)
             recoveredAmmo = CreateRecoveredAmmo(ammoStack);
 
-        if ((damage >= 0 || damage == CombatEngine.AttackResolvedByProc) &&
-            ammoStack != null && !ammoHandled)
+        if (blowConnected && ammoStack != null && !ammoHandled)
             ConsumeFromStack(ammoStack);
+
+        if (recoveredAmmo != null)
+        {
+            if (target.Backpack != null)
+            {
+                var actual = target.Backpack.AddItemWithStack(recoveredAmmo);
+                if (actual != recoveredAmmo || recoveredAmmo.ContainedIn != target.Backpack.Uid)
+                    _world.RemoveItem(recoveredAmmo);
+            }
+            else
+            {
+                // ItemBounce with no pack: the arrow lands where the target stands.
+                _world.PlaceItemWithDecay(recoveredAmmo, target.Position);
+            }
+        }
+
+        // OnTakeDamage rolls the cast disturb before its `iDmg <= 0` return
+        // (CCharFight.cpp:880-916), so a blow whose damage armour took entirely
+        // still breaks a spell; DAMAGE_NODISTURB and a bounce do not (see
+        // SpellEngine.TryInterruptFromBlow).
+        if (damage >= 0)
+            _spellEngine?.TryInterruptFromBlow(target, damage,
+                swingDamageType ?? CombatEngine.GetWeaponDamageType(weapon), _character);
+
+        // Fight_Hit's healing fix: the only skill a connecting blow cancels
+        // (CCharFight.cpp:2203-2208); DEFMSG_HEALING_INTERRUPT goes to the victim.
+        if (blowConnected && !target.IsDead)
+            target.InterruptHealingOnHit();
 
         if (damage > 0)
         {
-            if (_lastCombatNotifyTarget != target.Uid.Value)
-            {
-                _lastCombatNotifyTarget = target.Uid.Value;
-                // Reference Attacker_Add messaging: BOTH lines render over the
-                // ATTACKER. "*X is attacking Y!*" goes to every observer except
-                // the victim's client, in the emote hue; the victim's client
-                // alone gets "*X is attacking you!*" (%s = attacker). The old
-                // code formatted the "attacking you" template with the
-                // VICTIM's name and broadcast it to everyone.
-                ushort emoteHue = SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Emote);
-                var emote = CombatHelper.FormatAttackEmotes(_character, target);
-                // EMOTECOLOROVERRIDE colours the line the bystanders see
-                // (Attacker_Add, CCharAttacker.cpp:68); the victim's line keeps its hue.
-                var emoteOthers = new PacketSpeechUnicodeOut(
-                    _character.Uid.Value, _character.BodyId, 2,
-                    _character.EmoteColorOverride != 0 ? _character.EmoteColorOverride : emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
-                    emote.AttackerName, emote.OthersText);
-                var emoteVictim = new PacketSpeechUnicodeOut(
-                    _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
-                    emote.AttackerName, emote.VictimText);
-                uint victimUid = target.Uid.Value;
-                ForEachClientInRange?.Invoke(_character.Position, UpdateRange, 0,
-                    (obsCh, obsClient) => obsClient.Send(
-                        obsCh.Uid.Value == victimUid ? emoteVictim : emoteOthers));
-            }
-
-            _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false, source: _character);
-            if (target.HasActiveSkillPending())
-            {
-                int abortedSkill = target.ClearActiveSkillPending();
-                if (abortedSkill >= 0)
-                    Character.ActiveSkillAborted?.Invoke(target, abortedSkill);
-            }
-
             if (!target.IsPlayer && !target.IsDead && !target.FightTarget.IsValid)
             {
                 target.FightTarget = _character.Uid;
@@ -1476,16 +1506,6 @@ public sealed class ClientCombatHandler
             BroadcastNearby?.Invoke(target.Position, UpdateRange, healthPacket, 0);
 
             GameClient.EmitBloodSplat(_world, target);
-
-            // Source-X hit economy: 40% of arrows that strike an NPC stick in
-            // the body — they ride in its pack and surface on the corpse loot.
-            // Skipped when a @Hit script took the ammo over (ArrowHandled).
-            if (recoveredAmmo != null)
-            {
-                var actual = target.Backpack!.AddItemWithStack(recoveredAmmo);
-                if (actual != recoveredAmmo || recoveredAmmo.ContainedIn != target.Backpack.Uid)
-                    _world.RemoveItem(recoveredAmmo);
-            }
 
             if (target.Hits <= 0 && !target.IsDead && _deathEngine != null)
             {

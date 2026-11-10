@@ -91,30 +91,48 @@ public static class CombatHelper
         return false;
     }
 
+    /// <summary>The plain planar (largest axis) distance. Combat reach and swing checks
+    /// use <see cref="GetCombatDistance"/> instead, which also counts height.</summary>
     public static int GetChebyshevDistance(Character a, Character b)
     {
         if (a.MapIndex != b.MapIndex) return int.MaxValue;
         return Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
     }
 
-    /// <summary>Source-X safe/nopvp region combat blocks for f_combat_hit.</summary>
+    /// <summary>Source-X CPointBase::GetDist3D (CPointBase.cpp:236-264): under the default
+    /// DISTANCEFORMULAs the larger of the planar distance and the height difference in
+    /// half player heights (PLAYER_HEIGHT / 2 = 8); under formula 2 the rounded 3D
+    /// euclidean distance, which <see cref="Point3D.GetDistanceTo"/> already is.</summary>
+    public static int GetDist3D(Point3D a, Point3D b)
+    {
+        int dist = a.GetDistanceTo(b);
+        if (Point3D.DistanceFormula == 2)
+            return dist;
+        int dz = Math.Abs(a.Z - b.Z) / 8;
+        return Math.Max(dz, dist);
+    }
+
+    /// <summary>The distance every swing check measures: Source-X GetTopDist3D
+    /// (CObjBaseTemplate.cpp:141-148), used by Fight_CanHit and Fight_Hit
+    /// (CCharFight.cpp:1711, 1844). A target standing several floors above or below
+    /// is out of a melee weapon's reach even when it is straight over the attacker.</summary>
+    public static int GetCombatDistance(Character a, Character b)
+    {
+        if (a.MapIndex != b.MapIndex) return int.MaxValue;
+        return GetDist3D(a.Position, b.Position);
+    }
+
+    /// <summary>Source-X region combat blocks for Fight_CanHit. Only the TARGET's area
+    /// being SAFE refuses a swing (CCharFight.cpp:1703) - the attacker may strike out of
+    /// a safe area. NO_PVP is not a swing gate at all: it bounces the damage on the
+    /// victim's area when the victim is a player (OnTakeDamage, :658-678), which
+    /// <see cref="CombatEngine.IsRegionProtected"/> already does.</summary>
     public static bool IsCombatBlockedByRegion(GameWorld world, Character attacker, Character target)
     {
         var atkRegion = world.FindRegion(attacker.Position);
-        if (atkRegion != null && atkRegion.IsFlag(RegionFlag.Safe))
-            return true;
-
         var tgtRegion = world.FindRegion(target.Position);
         if (tgtRegion != null && tgtRegion.IsFlag(RegionFlag.Safe))
             return true;
-
-        if (attacker.IsPlayer && target.IsPlayer)
-        {
-            if (atkRegion != null && atkRegion.IsFlag(RegionFlag.NoPvP))
-                return true;
-            if (tgtRegion != null && tgtRegion.IsFlag(RegionFlag.NoPvP))
-                return true;
-        }
 
         // Source-X Fight_CanHit ship gate (CCharFight.cpp:1725): combat across
         // a ship boundary — one side aboard, the other not (different regions)
@@ -229,7 +247,7 @@ public static class CombatHelper
             // reach + LoS are re-checked when the hit resolves instead.
             if (!ignoreRangeLos)
             {
-                int dist = GetChebyshevDistance(attacker, target);
+                int dist = GetCombatDistance(attacker, target); // GetTopDist3D (CCharFight.cpp:1844)
                 var (minRange, maxRange) = effectiveRange ?? GetWeaponRange(weapon);
                 NormaliseRange(ref minRange, ref maxRange);
                 if (dist < minRange)
@@ -247,7 +265,11 @@ public static class CombatHelper
 
             // COMBAT_ARCHERYCANMOVE lets an archer fire while/just after moving,
             // bypassing the post-move settle delay.
-            if (Character.CombatArcheryMovementDelay > 0 && attacker.LastMoveTick > 0 &&
+            // The settle delay only binds a character with a client attached
+            // (`m_pClient && ... m_timeLastEventWalk`, CCharFight.cpp:1858); an NPC
+            // or a server-driven bot has no client, so it shoots straight after a step.
+            if (Character.CombatArcheryMovementDelay > 0 && attacker.HasClient &&
+                attacker.LastMoveTick > 0 &&
                 !IsCombatFlagSet(CombatFlags.ArcheryCanMove) &&
                 !attacker.IsStatFlag(StatFlag.ArcherCanMove))
             {
@@ -265,7 +287,7 @@ public static class CombatHelper
             {
                 var (minRange, maxRange) = effectiveRange ?? GetWeaponRange(weapon);
                 NormaliseRange(ref minRange, ref maxRange);
-                int distance = GetChebyshevDistance(attacker, target);
+                int distance = GetCombatDistance(attacker, target); // GetTopDist3D (CCharFight.cpp:1844)
                 if (distance < minRange || distance > maxRange)
                     return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
 
@@ -411,7 +433,7 @@ public static class CombatHelper
         PrivLevel privLevel, Func<Point3D, Point3D, bool>? canSeeLos = null,
         (int Min, int Max)? effectiveRange = null)
     {
-        int dist = GetChebyshevDistance(attacker, target);
+        int dist = GetCombatDistance(attacker, target); // GetTopDist3D (CCharFight.cpp:1844)
         var (min, max) = effectiveRange ?? GetWeaponRange(weapon);
         NormaliseRange(ref min, ref max);
         if (dist < min || dist > max)
@@ -464,8 +486,10 @@ public static class CombatHelper
         //
         // Ranged only: SphereNet's melee movement delay in ValidateSwingPrep has no
         // Source-X counterpart, so it is deliberately not repeated here.
+        // Client attackers only - see ValidateSwingPrep (CCharFight.cpp:1858).
         if (IsRangedWeapon(weapon) &&
-            Character.CombatArcheryMovementDelay > 0 && attacker.LastMoveTick > 0 &&
+            Character.CombatArcheryMovementDelay > 0 && attacker.HasClient &&
+            attacker.LastMoveTick > 0 &&
             !IsCombatFlagSet(CombatFlags.ArcheryCanMove) &&
             !attacker.IsStatFlag(StatFlag.ArcherCanMove) &&
             nowMs - attacker.LastMoveTick < Character.CombatArcheryMovementDelay)

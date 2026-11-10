@@ -53,6 +53,10 @@ public sealed class AdminCommandProcessor
 
     /// <summary>The script profiler the P / P# / E commands read (Source-X console).</summary>
     public SphereNet.Scripting.Execution.ScriptProfiler? Profiler { get; set; }
+    /// <summary>ACCOUNT &lt;name&gt; KICK: drops the account's connected clients (without
+    /// blocking it). Wired by the host; null = nobody to kick from here.</summary>
+    public Action<string>? KickAccountClients { get; set; }
+
     /// <summary>Runs a line this processor does not know as a server verb; null = not a verb.</summary>
     public Func<string, string?>? ServerVerbFallback { get; set; }
 
@@ -440,17 +444,28 @@ public sealed class AdminCommandProcessor
             return;
         }
 
-        // ACCOUNT ADD <name> <pass>
-        if (parts[0].Equals("ADD", StringComparison.OrdinalIgnoreCase))
+        // ACCOUNT ADD <name> <pass> / ADDMD5 <name> <md5hash> (Cmd_AddNew: ADDMD5 stores
+        // a 32-character digest as given, CAccount.cpp:515).
+        bool addMd5 = parts[0].Equals("ADDMD5", StringComparison.OrdinalIgnoreCase);
+        if (addMd5 || parts[0].Equals("ADD", StringComparison.OrdinalIgnoreCase))
         {
             if (parts.Length < 3)
             {
-                output("Usage: ACCOUNT ADD <name> <password>");
+                output(addMd5 ? "Usage: ACCOUNT ADDMD5 <name> <md5hash>" : "Usage: ACCOUNT ADD <name> <password>");
                 return;
             }
             string name = parts[1];
             string pass = parts[2];
-            var created = _accounts.CreateAccount(name, pass);
+            var created = _accounts.CreateAccount(name, addMd5 ? Guid.NewGuid().ToString("N") : pass);
+            if (created != null && addMd5)
+            {
+                if (created.UseMd5Passwords)
+                {
+                    if (pass.Length == 32) created.PasswordHash = pass;
+                }
+                else
+                    created.SetPassword(pass);
+            }
             if (created != null)
                 output($"Account '{name}' created.");
             else
@@ -556,9 +571,59 @@ public sealed class AdminCommandProcessor
 
             case "BAN":
             case "BLOCK":
+            {
                 if (account == null) { output($"Account '{accountName}' not found."); return; }
-                _accounts.SetAccountBlocked(accountName, true);
-                output($"Account '{accountName}' banned.");
+                // No argument, or a non-zero one, blocks; zero unblocks (CAccount.cpp:1382-1392,
+                // :1697-1704: !HasArgs || ArgVal).
+                bool block = parts.Length < 3 ||
+                    !SphereNet.Core.Types.ScriptNumber.TryParseToken(parts[2], out long blockArg) || blockArg != 0;
+                _accounts.SetAccountBlocked(accountName, block);
+                output(block ? $"Account '{accountName}' banned." : $"Account '{accountName}' unbanned.");
+                break;
+            }
+
+            case "JAIL":
+            case "GUEST":
+            {
+                if (account == null) { output($"Account '{accountName}' not found."); return; }
+                // As BLOCK, the flag is on without an argument or with a non-zero one
+                // (CAccount.cpp:1433-1441). JAIL is PRIV_JAILED; GUEST is the Guest level,
+                // and leaving it only lifts an account that is still a guest to Player.
+                bool on = parts.Length < 3 ||
+                    !SphereNet.Core.Types.ScriptNumber.TryParseToken(parts[2], out long flagArg) || flagArg != 0;
+                if (subCmd == "JAIL")
+                    account.Jail = on;
+                else if (on)
+                {
+                    _accounts.SetAccountPrivLevel(accountName, PrivLevel.Guest);
+                    OnAccountPrivLevelChanged?.Invoke(accountName, account.PrivLevel);
+                }
+                else if (account.PrivLevel == PrivLevel.Guest)
+                {
+                    _accounts.SetAccountPrivLevel(accountName, PrivLevel.Player);
+                    OnAccountPrivLevelChanged?.Invoke(accountName, account.PrivLevel);
+                }
+                output($"{subCmd} for '{accountName}' set to {(on ? 1 : 0)}.");
+                break;
+            }
+
+            case "MAXCHARS":
+                if (account == null) { output($"Account '{accountName}' not found."); return; }
+                if (parts.Length < 3 || !int.TryParse(parts[2], out int maxChars))
+                {
+                    output("Usage: ACCOUNT <name> MAXCHARS <1-7>");
+                    return;
+                }
+                account.MaxChars = maxChars;
+                output($"MAXCHARS for '{accountName}' set to {account.MaxChars}.");
+                break;
+
+            case "KICK":
+                // AV_KICK (CAccount.cpp:1706-1719): an online account is dropped, the
+                // account itself is left alone.
+                if (account == null) { output($"Account '{accountName}' not found."); return; }
+                KickAccountClients?.Invoke(accountName);
+                output($"Account '{accountName}' kicked.");
                 break;
 
             case "UNBAN":

@@ -69,10 +69,13 @@ public sealed class MoveToAndSkillMenuVerbTests
     {
         string path = Path.Combine(Path.GetTempPath(), $"sphnet_sm_{Guid.NewGuid():N}.scp");
         File.WriteAllText(path, """
+            [ITEMDEF 0e00]
+            DEFNAME=i_probe_dagger
+
             [SKILLMENU sm_probe]
             Make an item
             ON=0 A dagger
-            MAKEITEM=0
+            MAKEITEM=i_probe_dagger
 
             """);
         var lf = LoggerFactory.Create(_ => { });

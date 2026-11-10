@@ -93,6 +93,36 @@ public static class GlobalHookCalls
         return true;
     }
 
+    /// <summary>Source-X <c>f_multi_onplacement_check</c>, the first thing Multi_Create
+    /// runs (CItemMulti.cpp:3258-3270): default object and SRC the placing character,
+    /// LOCAL.ID the multi's defname, LOCAL.P the chosen point, LOCAL.CHECK_BLOCKRADIUS
+    /// and LOCAL.CHECK_MULTIRADIUS preset to the engine margins. RETURN 1 vetoes; RETURN
+    /// 6 (TRIGRET_RET_HALFBAKED) skips the geometry checks; the margins read back.
+    /// Default (no veto, no skip, no margins) when the pack has no such function.</summary>
+    public static Housing.HousingEngine.PlacementCheck RunMultiPlacementCheck(TriggerRunner? runner,
+        Character placer, string multiName, Core.Types.Point3D point, ITextConsole? console)
+    {
+        const string Function = "f_multi_onplacement_check";
+        if (runner == null || !runner.HasFunction(Function))
+            return default;
+
+        var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.SetStr("check_blockradius", false, "-1, -1, 1, 1");
+        locals.SetStr("check_multiradius", false, "0, -5, 0, 5");
+        locals.SetStr("id", false, multiName);
+        locals.SetStr("p", false, point.ToString());
+        var args = new ScriptArgs(placer) { SharedLocals = locals };
+        if (!runner.TryRunFunctionNumeric(Function, placer, console, args, out long? numeric))
+            return default;
+
+        const long HalfBaked = 6;   // TRIGRET_RET_HALFBAKED (CScriptObj.h:34-47)
+        return new Housing.HousingEngine.PlacementCheck(
+            Veto: numeric == 1,
+            SkipGeometry: numeric == HalfBaked,
+            BlockRadius: locals.GetKeyStr("check_blockradius", zero: false),
+            MultiRadius: locals.GetKeyStr("check_multiradius", zero: false));
+    }
+
     /// <summary>Sphere 56T custom-version compatibility: <c>f_onmulti_create</c>, run once
     /// a house or ship has been placed from its deed. Source-X has no such hook.
     ///

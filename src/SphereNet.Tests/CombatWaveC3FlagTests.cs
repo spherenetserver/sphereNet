@@ -118,14 +118,22 @@ public class CombatWaveC3FlagTests
             pet.SetTag("OWNER_UID", owner.Uid.Value.ToString());
             Assert.Equal(owner.Uid, pet.OwnerSerial);
 
-            // COMBAT_NOPETDESERT: friendly fire allowed, the pet stays owned.
-            Character.CombatFlags = (int)CombatFlags.NoPetDesert;
-            client.HandleAttack(pet.Uid.Value);
-            Assert.Equal(owner.Uid, pet.OwnerSerial);
-
-            // Without the flag the pet deserts its owner on the attack.
+            // Desertion moved from the attack declaration to OnHarmedBy
+            // (CCharFight.cpp:312-313): declaring an attack harms nothing.
             Character.CombatFlags = 0;
             client.HandleAttack(pet.Uid.Value);
+            Assert.Equal(owner.Uid, pet.OwnerSerial);
+            pet.FightTarget = Serial.Invalid;
+
+            // COMBAT_NOPETDESERT: friendly fire allowed, the pet stays owned.
+            Character.CombatFlags = (int)CombatFlags.NoPetDesert;
+            pet.OnAttackedBy(owner);
+            Assert.Equal(owner.Uid, pet.OwnerSerial);
+            pet.FightTarget = Serial.Invalid;
+
+            // Without the flag the pet deserts its owner once he harms it.
+            Character.CombatFlags = 0;
+            pet.OnAttackedBy(owner);
             Assert.False(pet.OwnerSerial.IsValid);
         }
         finally

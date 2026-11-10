@@ -157,6 +157,16 @@ public static partial class Program
             // The account file is rendered from live state, so the write runs on the
             // main loop whichever console asked for it.
             _consoleProcessor.OnAccountUpdateRequested += () => _mainLoopActions.Enqueue(SaveAccountsToDisk);
+            // ACCOUNT <name> KICK: drop that account's connected clients, on the main loop.
+            Action<string> kickAccountClients = accountName => _mainLoopActions.Enqueue(() =>
+            {
+                foreach (var kicked in _clients.Values.ToList())
+                    if (kicked.Account != null &&
+                        kicked.Account.Name.Equals(accountName, StringComparison.OrdinalIgnoreCase))
+                        kicked.NetState.MarkClosing();
+            });
+            _consoleProcessor.KickAccountClients = kickAccountClients;
+            _telnet.Processor.KickAccountClients = kickAccountClients;
             _telnet.Processor.OnAccountUpdateRequested += () => _mainLoopActions.Enqueue(SaveAccountsToDisk);
             SphereNet.Game.Speech.CommandHandler.AccountCommandBridge = (gm, args) =>
             {

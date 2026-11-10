@@ -324,7 +324,10 @@ public sealed class CraftPipelineStageParityTests : IDisposable
         var previousAct = b.World.CreateItem();
         previousAct.BaseId = 0x1EB8;
         Assert.True(b.Pack.TryAddItem(previousAct));
-        b.Crafter.Act = previousAct.Uid;
+        // ACT of a craft is the object the menu was opened with - the client's TARG
+        // (Skill_MakeItem START, CCharSkill.cpp:960-964) - and @SkillMakeItem gets it back
+        // as ARGO; it used to be whatever ACT happened to hold.
+        b.Crafter.SetTag("TARG.UID", $"0{previousAct.Uid.Value:x}");
 
         Assert.True(b.Client.BeginPendingCraft(Recipe(b, "i_audit_blade"), SkillType.Tinkering, reopenGump: false));
         FinishCraft(b);

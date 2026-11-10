@@ -370,6 +370,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.FigurineDeletedHook = null;
         SphereNet.Game.Housing.House.OnRedeed = null;
         SphereNet.Game.Housing.HousingEngine.OnHouseCheck = null;
+        SphereNet.Game.Housing.HousingEngine.OnPlacementCheck = null;
         SphereNet.Game.AI.NpcAI.PetFollowMaxDistance = SphereNet.Game.AI.NpcAI.DefaultMapViewRadar;
         SphereNet.Game.Objects.Characters.Character.SpellbookRequiredEnabled = true;
         SphereNet.Game.Objects.Characters.Character.PacketDeathAnimationEnabled = false;
@@ -389,6 +390,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Clients.GameClient.ServerChatFlags = 0;
         SphereNet.Game.Clients.GameClient.ServerOptionFlags =
             SphereNet.Core.Enums.OptionFlags.FileCommands | SphereNet.Core.Enums.OptionFlags.Buffs;
+        // The fastloot window between two pickups is real time; tests that lift
+        // several items back to back run with it off (the one that tests it sets it).
+        SphereNet.Game.Clients.ClientInventoryHandler.PickupMinIntervalMs = 0;
         SphereNet.Network.Packets.Outgoing.PacketCharList.AosTooltipsEnabled = true;
         SphereNet.Game.Components.SpawnComponent.OnSpawnTrigger = null;
         SphereNet.Game.Components.SpawnComponent.OnNpcScriptInit = null;

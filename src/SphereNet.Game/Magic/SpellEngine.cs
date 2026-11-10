@@ -680,6 +680,23 @@ public sealed partial class SpellEngine
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
     }
 
+    /// <summary>The disturb stage of Source-X CChar::OnTakeDamage for a blow that
+    /// CONNECTED (CCharFight.cpp:880-916). The reference rolls it before
+    /// <c>if (iDmg &lt;= 0) return 0</c>, so a hit that armour or a resist absorbed
+    /// completely still breaks the victim's cast; only a bounce (invulnerable, stone,
+    /// fire-immune, SAFE / NO_PVP, :640-677) returns ahead of it. The damage entry
+    /// answers 0 for both, so a zero is told apart here by asking the same bounce
+    /// questions. DAMAGE_NODISTURB (:881) skips the stage outright.</summary>
+    public bool TryInterruptFromBlow(Character victim, int damageDone, DamageType type, Character source)
+    {
+        if ((type & DamageType.NoDisturb) != 0)
+            return false;
+        if (damageDone <= 0 &&
+            (CombatEngine.IsDamageImmune(victim, type) || CombatEngine.IsRegionProtected(victim, source)))
+            return false;
+        return TryInterruptFromDamage(victim, damageDone, breakParalyze: false, source: source);
+    }
+
     public bool TryInterruptFromDamage(Character caster, int damage, bool breakParalyze = true,
         Character? source = null)
     {
@@ -2526,11 +2543,14 @@ public sealed partial class SpellEngine
                 splitPhysical, splitFire, splitCold, splitPoison, splitEnergy,
                 spell: (int)effectDef.Id, feedback: DamageFeedback.Caller);
 
+            // The disturb is rolled for a connecting spell even when the resist or
+            // armour took all of it (CCharFight.cpp:880-916 sits before the
+            // `iDmg <= 0` return); DAMAGE_NODISTURB is honoured inside.
+            if (effect > 0 && !target.IsDead && !target.IsDeleted)
+                TryInterruptFromBlow(target, damage, dmgType, caster);
+
             if (damage > 0)
             {
-                if ((dmgType & DamageType.NoDisturb) == 0)
-                    TryInterruptFromDamage(target, damage, breakParalyze: false, source: caster);
-
                 // Victim feedback: spell damage used to apply silently — no
                 // 0x0B damage number, no health-bar update — while the melee
                 // and breath paths broadcast both. Without these the hit is

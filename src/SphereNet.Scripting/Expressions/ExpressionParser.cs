@@ -1063,18 +1063,9 @@ public sealed partial class ExpressionParser
             return sexVal == "1" ? female : male;
         }
 
-        // FORMATMINUTES N — format a minute count as "HH:MM" for admin panels.
-        if (varExpr.StartsWith("FORMATMINUTES ", StringComparison.OrdinalIgnoreCase))
-        {
-            string inner = ResolveAngleBrackets(varExpr[14..].Trim());
-            if (long.TryParse(inner, out long mins))
-            {
-                long hours = mins / 60;
-                long rem = mins % 60;
-                return $"{hours}:{rem:D2}";
-            }
-            return inner;
-        }
+        // FormatMinutes is NOT an engine key: the name falls through to the pack's
+        // [FUNCTION FormatMinutes] (functions_time.scp), which answers "2m 9d 10h 40m".
+        // An intrinsic here shadowed it with "H:MM".
 
         // STRCMP — case-sensitive string compare. Accepts both Sphere
         // forms: angle-bracket variable <STRCMP a,b> AND bare expression
@@ -1726,6 +1717,16 @@ public sealed partial class ExpressionParser
         // long RAND form was implemented. Guarded, as CScriptObj.cpp:563 is, to R
         // followed by a digit or '-' (<R-7,-7>), so RAND/RANDBELL and real
         // defnames never match; a bare <R> is the 0..999 fallback further down.
+        // A nested operand (<R<x>>, <R<a>,<b>>) is expanded first, so the guard sees
+        // what Source-X sees after its inner-first expansion (<R3>, <R3,7>); the
+        // text is left alone when the expansion is not a number (a name that merely
+        // starts with R).
+        if (varExpr.Length > 1 && (varExpr[0] == 'R' || varExpr[0] == 'r') && varExpr[1] == '<')
+        {
+            string expandedR = ResolveAngleBrackets(varExpr);
+            if (expandedR.Length > 1 && (char.IsAsciiDigit(expandedR[1]) || expandedR[1] == '-'))
+                varExpr = expandedR;
+        }
         if (varExpr.Length > 1 && (varExpr[0] == 'R' || varExpr[0] == 'r') &&
             (char.IsAsciiDigit(varExpr[1]) || varExpr[1] == '-'))
         {

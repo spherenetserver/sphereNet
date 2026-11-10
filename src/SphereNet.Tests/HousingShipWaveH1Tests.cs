@@ -102,10 +102,11 @@ public class HousingShipWaveH1Tests
         var housing = new HousingEngine(world, multiRegistry);
         var def = multiRegistry.Get(0x407C)!;
 
-        // NoBuild region 3 tiles away — inside the Source-X +5 margin.
+        // NoBuild region 3 tiles south — inside the Source-X check_multiradius margin
+        // (0,-5,0,5: north and south only, CItemMulti.cpp:3263).
         var noBuild = new SphereNet.Game.World.Regions.Region
         { Name = "nobuild_test", Flags = Core.Enums.RegionFlag.NoBuild, MapIndex = 0 };
-        noBuild.AddRect(303, 300, 305, 302);
+        noBuild.AddRect(300, 303, 302, 305);
         world.AddRegion(noBuild);
         Assert.False(housing.CanPlaceHouse(new Point3D(300, 300, 0, 0), def));
 

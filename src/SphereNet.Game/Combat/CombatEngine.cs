@@ -381,10 +381,15 @@ public static class CombatEngine
     {
         if (IsInstantKillGuard(attacker))
             return 100;
-        int attackSkill = GetHitChanceSkill(attacker, attackerWeaponSkill);
-        int targetSkill = GetHitChanceSkill(target, GetWeaponSkill(target));
-        int tacticsAtk = GetHitChanceTactics(attacker, attackSkill);
-        int tacticsDef = GetHitChanceTactics(target, targetSkill);
+        // Calc_CombatChanceToHit reads Skill_GetAdjusted (base + the stat share of the
+        // skill's BONUS_STATS + SkillMod) for the weapon skill, the attacker's tactics
+        // and the target's tactics in the era 0 formula (CResourceCalc.cpp:158,161,167),
+        // while the era 1 and era 2 formulas read Skill_GetBase (:201-202, :210-216).
+        bool adjusted = era is not (1 or 2);
+        int attackSkill = GetHitChanceSkill(attacker, attackerWeaponSkill, adjusted);
+        int targetSkill = GetHitChanceSkill(target, GetWeaponSkill(target), adjusted);
+        int tacticsAtk = GetHitChanceTactics(attacker, adjusted);
+        int tacticsDef = GetHitChanceTactics(target, adjusted);
 
         switch (era)
         {
@@ -457,18 +462,18 @@ public static class CombatEngine
         }
     }
 
-    private static int GetHitChanceSkill(Character ch, SkillType skill)
+    private static int GetHitChanceSkill(Character ch, SkillType skill, bool adjusted)
     {
         // Source-X uses the raw chardef/@Create skill — an NPC whose def grants
         // no weapon skill fights at 0 and almost never lands a hit. The old
         // stat*10 inference (floor 25.0) had no reference basis and silently
         // buffed every under-scripted NPC.
-        return ch.GetSkill(skill);
+        return adjusted ? Skills.SkillEngine.GetAdjustedSkill(ch, skill) : ch.GetSkill(skill);
     }
 
-    private static int GetHitChanceTactics(Character ch, int weaponSkill)
+    private static int GetHitChanceTactics(Character ch, bool adjusted)
     {
-        return ch.GetSkill(SkillType.Tactics);
+        return GetHitChanceSkill(ch, SkillType.Tactics, adjusted);
     }
 
     /// <summary>
@@ -566,13 +571,15 @@ public static class CombatEngine
                 dmgMax = 1;
             }
 
-            // The weapon's MODAR shifts both ends: Weapon_GetAttack(false/true) is
-            // m_attackBase (+ m_attackRange) + m_ModAr, floored at 0 (CItem.cpp:4922).
-            if (weapon.ModAr != 0)
-            {
-                dmgMin = (int)Math.Max(0L, (long)dmgMin + weapon.ModAr);
-                dmgMax = (int)Math.Max(0L, (long)dmgMax + weapon.ModAr);
-            }
+            // Weapon_GetAttack(false/true) (CItem.cpp:4918-4937) is m_attackBase
+            // (+ m_attackRange) + m_ModAr, scaled to 50%..100% by the weapon's wear
+            // under OF_ScaleDamageByDurability (:4925-4929), plus the Enchant spell
+            // effect of a magic non-wand weapon (:4930-4931), floored at 0. The
+            // shared tail is the one the ArmsLore damage readout already uses.
+            dmgMin = Skills.Information.InfoSkillExtensions.FinishRating(weapon,
+                (long)dmgMin + weapon.ModAr, enchant: Skills.Information.InfoSkillExtensions.IsWeapon(weapon.ItemType));
+            dmgMax = Skills.Information.InfoSkillExtensions.FinishRating(weapon,
+                (long)dmgMax + weapon.ModAr, enchant: Skills.Information.InfoSkillExtensions.IsWeapon(weapon.ItemType));
         }
 
         // The whole bonus is a player's (or every NPC's under COMBAT_NPC_BONUSDAMAGE):
@@ -602,7 +609,7 @@ public static class CombatEngine
                     dmgBonus += lj / 50;
                     if (lj >= 1000) dmgBonus += 10;
                 }
-                dmgBonus += EffectiveStr(attacker) * 20 / 100;
+                dmgBonus += GetCombatBonusStatValue(attacker, 20);
                 break;
             case 2: // AOS
                 dmgBonus += tactics / 16;
@@ -615,14 +622,40 @@ public static class CombatEngine
                     dmgBonus += lj / 50;
                     if (lj >= 1000) dmgBonus += 10;
                 }
-                if (EffectiveStr(attacker) >= 100) dmgBonus += 5;
-                dmgBonus += EffectiveStr(attacker) * 30 / 100;
+                if (GetCombatBonusStat(attacker) >= 100) dmgBonus += 5;
+                dmgBonus += GetCombatBonusStatValue(attacker, 30);
                 break;
-            default: // era 0 — Sphere custom: STR% only, no tactics/anatomy
-                dmgBonus += EffectiveStr(attacker) * 10 / 100;
+            default: // era 0 — Sphere custom: stat% only, no tactics/anatomy
+                dmgBonus += GetCombatBonusStatValue(attacker, 10);
                 break;
         }
         return NormalizeDamageRange(dmgMin, dmgMax, dmgBonus);
+    }
+
+    /// <summary>The stat the damage bonus is taken from: the character's COMBATBONUSSTAT
+    /// (0 STR, 1 INT, 2 DEX - STAT_TYPE, uofiles_enums.h:447), STR when unset
+    /// (CCharFight.cpp:1211, 1261-1263). The property is the character's own key plus
+    /// what its equipped items carry, as upstream folds items into the character at equip.</summary>
+    private static int GetCombatBonusStat(Character attacker)
+    {
+        int stat = GetEquipmentPropertyValue(attacker, "COMBATBONUSSTAT");
+        return stat switch
+        {
+            1 => EffectiveInt(attacker),
+            2 => EffectiveDex(attacker),
+            _ => EffectiveStr(attacker),
+        };
+    }
+
+    /// <summary>The era's stat share of the damage bonus: stat * COMBATBONUSPERCENT / 100,
+    /// the percent being the era default when the character has none (era 0 10, era 1 20,
+    /// era 2 30 - CCharFight.cpp:1212, 1263-1265, 1288-1289, 1311-1318).</summary>
+    private static int GetCombatBonusStatValue(Character attacker, int eraDefaultPercent)
+    {
+        int percent = GetEquipmentPropertyValue(attacker, "COMBATBONUSPERCENT");
+        if (percent == 0)
+            percent = eraDefaultPercent;
+        return (int)((long)GetCombatBonusStat(attacker) * percent / 100);
     }
 
     private static (int Min, int Max) NormalizeDamageRange(int dmgMin, int dmgMax, int dmgBonus)
@@ -1297,10 +1330,14 @@ public static class CombatEngine
     private static bool RollParry(Character defender, Character attacker, int chance,
         SkillType parrySkill, Item? parryItem, int itemDamageChance, DamageType swingType)
     {
-        if (defender.IsPlayer)
-            Skills.SkillEngine.GainExperience(defender, parrySkill, chance);
-
-        if (_rand.Next(100) >= chance)
+        // pCharTarg->Skill_UseQuick(ParrySkill, iParryChance, true, false)
+        // (CCharFight.cpp:2122): a flat percent check (no bell curve) that fires
+        // @SkillUseQuick and then trains on the OUTCOME - a success at the chance, a
+        // failure at the negated chance, which Skill_Experience clamps up to the minimum
+        // credit (CCharSkill.cpp:381-385, 593) - instead of training at full difficulty
+        // before the roll. The GM auto-success exemption leaves Parrying out
+        // (CCharSkill.cpp:526), which SkillEngine.CheckSuccess mirrors.
+        if (!Skills.SkillEngine.UseQuick(defender, parrySkill, chance, allowGain: true, useBellCurve: false))
             return false;
 
         bool seWeaponParry = (Character.FeatureSE & 0x02) != 0 &&
@@ -1334,7 +1371,11 @@ public static class CombatEngine
         int chance = -1;
         var twoHand = defender.GetEquippedItem(Layer.TwoHanded);
         bool hasShield = CombatHelper.HasShieldEquipped(defender);
+        // Parry considers only the fight weapon (CResourceCalc.cpp:311-318), so a
+        // spellbook or torch in the main hand does not block.
         var oneHand = defender.GetEquippedItem(Layer.OneHanded);
+        if (oneHand != null && !ObjBase.IsTypeWeapon(oneHand.ItemType))
+            oneHand = null;
         Item? weapon = oneHand ?? (hasShield ? null : twoHand);
 
         if (seFormula)
@@ -1398,7 +1439,9 @@ public static class CombatEngine
 
         if (chance < 0)
             return 0;
-        int dex = defender.Dex;
+        // The DEX penalty reads the adjusted stat (base + modifiers) - Stat_GetAdjusted
+        // (CResourceCalc.cpp:333) - so a DEX bonus or curse moves it.
+        int dex = EffectiveDex(defender);
         if (dex < 80)
             chance = (int)(chance * (1.0f - ((80 - dex) / 100.0f)));
         return Math.Max(0, chance);
@@ -1735,8 +1778,9 @@ public static class CombatEngine
 
     public static SkillType GetWeaponSkill(Character ch)
     {
-        var weapon = ch.GetEquippedItem(Layer.OneHanded) ?? ch.GetEquippedItem(Layer.TwoHanded);
-        return GetWeaponSkill(ch, weapon);
+        // m_uidWeapon is set only for a weapon-typed item (CCharAct.cpp:308-311): a
+        // spellbook or torch in hand leaves the wrestler fighting bare-handed.
+        return GetWeaponSkill(ch, ch.FightWeapon());
     }
 
     /// <summary>Weapon-snapshot overload used by delayed swings. The character
@@ -2058,7 +2102,10 @@ public static class CombatEngine
 
     /// <summary>Effective elemental resist: base resist plus the suit contribution
     /// from equipped items, derived on read (no equip-time mutation, no persistence
-    /// risk). Clamped to a valid 0-100 percent.</summary>
+    /// risk). Not clamped: the reference multiplies by <c>100 - PROPCH_RES*</c> as the
+    /// property stands (CCharFight.cpp:724-730, and the status packet writes it the
+    /// same way, send.cpp:308), so a negative resist (a vulnerability) raises the damage
+    /// taken and a resist past 100 drives that element's share below zero.</summary>
     public static int EffectiveResist(Character ch, DamageType type)
     {
         (string prop, int baseVal) = type switch
@@ -2069,7 +2116,7 @@ public static class CombatEngine
             DamageType.Energy => ("RESENERGY", (int)ch.ResEnergy),
             _ => ("RESPHYSICAL", (int)ch.ResPhysical),
         };
-        return Math.Clamp(baseVal + SumEquippedItemProperty(ch, prop), 0, 100);
+        return (int)Math.Clamp((long)baseVal + SumEquippedItemProperty(ch, prop), int.MinValue, int.MaxValue);
     }
 
     public static int EffResPhysical(Character ch) => EffectiveResist(ch, DamageType.Physical);

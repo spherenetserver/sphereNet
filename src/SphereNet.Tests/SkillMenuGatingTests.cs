@@ -43,7 +43,9 @@ public sealed class SkillMenuGatingTests : IDisposable
     {
         Directory.CreateDirectory(_dir);
         string file = Path.Combine(_dir, "sm.scp");
-        File.WriteAllText(file, menuBody);
+        // A MAKEITEM line names an item definition that has to exist, or the SELECT stage
+        // hides the entry (Skill_MakeItem, CCharSkill.cpp:880).
+        File.WriteAllText(file, "[ITEMDEF 0e00]" + Nl + "DEFNAME=i_gate_thing" + Nl + Nl + menuBody);
 
         using var lf = LoggerFactory.Create(_ => { });
         var resources = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = _dir };
@@ -85,10 +87,10 @@ public sealed class SkillMenuGatingTests : IDisposable
         "Make something" + Nl +
         "ON=0 An easy thing" + Nl +
         "TEST=BLACKSMITHING 1.0" + Nl +
-        "MAKEITEM=0" + Nl +
+        "MAKEITEM=i_gate_thing" + Nl +
         "ON=0 A hard thing" + Nl +
         "TEST=BLACKSMITHING 90.0" + Nl +
-        "MAKEITEM=0" + Nl;
+        "MAKEITEM=i_gate_thing" + Nl;
 
     /// <summary>"1.0" is ten tenths. A smith at 5.0 clears the easy entry and not the
     /// hard one - the whole point of the gate.</summary>
@@ -124,10 +126,10 @@ public sealed class SkillMenuGatingTests : IDisposable
             "Make something" + Nl +
             "ON=0 Always" + Nl +
             "TESTIF=1" + Nl +
-            "MAKEITEM=0" + Nl +
+            "MAKEITEM=i_gate_thing" + Nl +
             "ON=0 Never" + Nl +
             "TESTIF=0" + Nl +
-            "MAKEITEM=0" + Nl;
+            "MAKEITEM=i_gate_thing" + Nl;
 
         Assert.Equal(1, EntriesOffered(body, blacksmithingTenths: 1000));
     }

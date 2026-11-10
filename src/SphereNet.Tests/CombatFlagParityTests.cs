@@ -71,6 +71,7 @@ public class CombatFlagParityTests
             world.PlaceCharacter(target, new Point3D(105, 100, 0, 0));
             var bow = new Item { ItemType = ItemType.WeaponBow, BaseId = 0x13B2 };
 
+            attacker.IsOnline = true; // only a client's walk is throttled (CCharFight.cpp:1858)
             attacker.LastMoveTick = Environment.TickCount64;
             long now = attacker.LastMoveTick + 100; // 100ms into the 500ms settle
 

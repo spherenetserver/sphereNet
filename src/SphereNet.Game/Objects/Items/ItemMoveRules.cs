@@ -22,6 +22,9 @@ public static class ItemMoveRules
         None = 0,
         MoverDead,      // a ghost can't carry items
         MoverFrozen,    // paralysed / frozen movers can't act
+        MoverIncapacitated, // stone / insubstantial / sleeping mover or a statue body
+        ItemInTrade,    // item sits in somebody else's trade window (msg_trade_cantmove)
+        ItemLayerLocked, // equipped hair / beard / pack / non-visible layer
         ItemImmovable,  // ATTR_MOVE_NEVER (corpses, static furniture)
         ItemCursed,     // ATTR_CURSED/CURSED2 while equipped (Source-X cantmove_cursed)
     }
@@ -39,6 +42,12 @@ public static class ItemMoveRules
 
         if (mover.IsDead) { denial = MoveDenial.MoverDead; return false; }
         if (mover.IsStatFlag(StatFlag.Freeze)) { denial = MoveDenial.MoverFrozen; return false; }
+        // CChar::CanMoveItem refuses STATF_STONE|FREEZE|INSUBSTANTIAL|DEAD|SLEEPING and
+        // CAN_C_STATUE movers alike (CCharStatus.cpp:1602-1607).
+        if (mover.IsStatFlag(StatFlag.Stone) || mover.IsStatFlag(StatFlag.Insubstantial) ||
+            mover.IsStatFlag(StatFlag.Sleeping) ||
+            (Definitions.CharDefHelper.GetCanFlags(mover) & CanFlags.C_Statue) != 0)
+        { denial = MoveDenial.MoverIncapacitated; return false; }
         if (item.IsAttr(ObjAttributes.Move_Never) && !item.IsAttr(ObjAttributes.Move_Always))
         { denial = MoveDenial.ItemImmovable; return false; }
 
@@ -63,6 +72,29 @@ public static class ItemMoveRules
             }
         }
 
+        // Equipped or in a container (CCharStatus.cpp:1619-1686).
+        if (item.ContainedIn.IsValid)
+        {
+            // Nothing can be lifted out of a trade window (client limitation,
+            // CCharStatus.cpp:1621-1629). Deliberate deviation: the side's own
+            // owner may still withdraw their own offer (the trade layer clears both
+            // check marks when that happens), so only the OTHER party's window is
+            // closed to the mover.
+            var trade = FindEnclosingTradeWindow(item);
+            if (trade != null && trade.ContainedIn != mover.Uid)
+            { denial = MoveDenial.ItemInTrade; return false; }
+
+            // An equipped hair / beard / pack is never lifted, nor is any layer
+            // that isn't a visible worn slot (bank box, vendor boxes, trade layer);
+            // LAYER_DRAGGING is the one layer that always passes
+            // (CCharStatus.cpp:1669-1686; staff already returned above).
+            if (item.IsEquipped && item.EquipLayer != Layer.Dragging &&
+                item.ItemType != ItemType.EqTradeWindow &&
+                (item.EquipLayer is Layer.Hair or Layer.FacialHair or Layer.Pack ||
+                 !Item.IsVisibleLayer(item.EquipLayer)))
+            { denial = MoveDenial.ItemLayerLocked; return false; }
+        }
+
         // Source-X CChar::CanMoveItem: an equipped cursed item cannot be removed
         // (ATTR_CURSED | ATTR_CURSED2 while on a layer → "appears to be cursed.").
         if (item.IsEquipped &&
@@ -70,5 +102,22 @@ public static class ItemMoveRules
         { denial = MoveDenial.ItemCursed; return false; }
 
         return true;
+    }
+
+    /// <summary>The trade-window container <paramref name="item"/> is in (or is),
+    /// walking up the container chain like CItemContainer::IsItemInTrade
+    /// (CItemContainer.cpp:118); null when it is not inside one.</summary>
+    public static Item? FindEnclosingTradeWindow(Item item, int maxDepth = 16)
+    {
+        var world = Item.ResolveWorld?.Invoke();
+        if (world == null) return null;
+        var current = item.ContainedIn.IsValid ? world.FindObject(item.ContainedIn) as Item : null;
+        for (int i = 0; i < maxDepth && current != null; i++)
+        {
+            if (current.ItemType == ItemType.EqTradeWindow) return current;
+            if (!current.ContainedIn.IsValid) return null;
+            current = world.FindObject(current.ContainedIn) as Item;
+        }
+        return null;
     }
 }

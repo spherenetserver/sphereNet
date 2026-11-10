@@ -502,6 +502,131 @@ public sealed class CommandHandler
     private const PrivLevel DefaultScriptCommandPrivLevel = PrivLevel.Owner;
     private GameWorld? _registeredWorld;
 
+    /// <summary>CClient::sm_szCmd_Redirect (CClientEvent.cpp:28-42): a staff verb typed
+    /// with no target of its own raises a target cursor and runs on the pick, with the
+    /// rest of the line as its argument (".jail 3" passes the cell).</summary>
+    private void RedirectToTarget(Character gm, string verb, string args)
+    {
+        OnAddVerbTargetRequested?.Invoke(gm, verb, args);
+        OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_xverb_target", verb));
+    }
+
+    /// <summary>A leading object id on a command line: 0x-prefixed, a plain run of six or
+    /// more hex digits, or the first of several words (a lone short number is the verb's
+    /// own argument - the jail cell). Without one the verb asks for a target instead.</summary>
+    private static bool TryLeadingUid(string args, out uint uid)
+    {
+        uid = 0;
+        var words = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+            return false;
+        bool prefixed = words[0].StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+        string digits = prefixed ? words[0][2..] : words[0];
+        if (!prefixed && words.Length == 1 && digits.Length < 6)
+            return false;
+        return uint.TryParse(digits, System.Globalization.NumberStyles.HexNumber, null, out uid);
+    }
+
+    /// <summary>CChar::SetPrivLevel (CCharAct.cpp:5473-5511), the one operation behind the
+    /// PRIVSET verb and SETPRIV. The target must be a player (it may be offline), the
+    /// setter an Admin or better and not below the target. The level - a name or a
+    /// number - is written up OR down on the account; at Counsel and above the account
+    /// gains the GM-page (and, from GM, the GM) privilege flags, the character turns
+    /// invulnerable and wears the coloured GM robe, with everything else it wore moved
+    /// to its pack; below Counsel those flags, the invulnerability and the robe go.</summary>
+    public static bool SetPrivLevel(Character target, ITextConsole? src, string text)
+    {
+        text = text.Trim();
+        if (!target.IsPlayer || text.Length == 0)
+            return false;
+        var srcLevel = src?.GetPrivLevel() ?? PrivLevel.Owner;
+        if (srcLevel < PrivLevel.Admin || srcLevel < target.PrivLevel)
+            return false;
+        if (!(Enum.TryParse(text, true, out PrivLevel wanted) && Enum.IsDefined(wanted) && !char.IsDigit(text[0])) &&
+            Core.Types.ScriptNumber.TryParseToken(text, out long wantedN) && wantedN > (long)srcLevel)
+            return false;
+        if (Enum.TryParse(text, true, out wanted) && Enum.IsDefined(wanted) && !char.IsDigit(text[0]) && wanted > srcLevel)
+            return false;   // a caller never hands out a level above its own
+        var account = Character.ResolveAccountForChar?.Invoke(target.Uid);
+        if (account == null)
+            return false;
+
+        // CAccount::GetPrivLevelText: a level name, else a number clamped to the range.
+        PrivLevel level;
+        if (Enum.TryParse(text, true, out PrivLevel named) && Enum.IsDefined(named) && !char.IsDigit(text[0]))
+            level = named;
+        else if (Core.Types.ScriptNumber.TryParseToken(text, out long n))
+            level = (PrivLevel)Math.Clamp(n, (long)PrivLevel.Guest, (long)PrivLevel.Owner);
+        else
+            level = PrivLevel.Guest;
+
+        const ushort ItemIdGmRobe = 0x204F;          // ITEMID_GM_ROBE
+        const uint PrivGm = 0x0002, PrivGmPage = 0x0008;   // PRIV_GM, PRIV_GM_PAGE (CAccount.h:19-21)
+        RemoveItemsById(target, ItemIdGmRobe);
+
+        if (level >= PrivLevel.Counsel)
+        {
+            account.Priv |= PrivGmPage | (level >= PrivLevel.GM ? PrivGm : 0);
+            target.SetStatFlag(StatFlag.Invul);
+
+            // UnEquipAllItems(): worn things go to the pack; hair, beard, pack, mount
+            // (and the face) stay.
+            for (var layer = Layer.OneHanded; layer <= Layer.Legs; layer++)
+            {
+                if (layer is Layer.Hair or Layer.FacialHair or Layer.Face or Layer.Pack)
+                    continue;
+                var worn = target.GetEquippedItem(layer);
+                if (worn == null) continue;
+                target.Unequip(layer);
+                if (target.Backpack == null || !target.Backpack.TryAddItem(worn))
+                    Objects.ObjBase.ResolveWorld?.Invoke()?.PlaceItem(worn, target.Position);
+            }
+
+            var robe = Objects.ObjBase.ResolveWorld?.Invoke()?.CreateItem();
+            if (robe != null)
+            {
+                robe.BaseId = ItemIdGmRobe;
+                robe.SetAttr(ObjAttributes.Move_Never | ObjAttributes.Newbie | ObjAttributes.Magic);
+                // HUE_RED for GM and above, HUE_BLUE_NAVY for a counselor / seer.
+                robe.Hue = new Core.Types.Color(level >= PrivLevel.GM ? (ushort)0x0022 : (ushort)0x0003);
+                if (!target.Equip(robe, Layer.Robe))
+                    robe.Delete();
+            }
+        }
+        else
+        {
+            account.Priv &= ~(PrivGmPage | PrivGm);
+            target.ClearStatFlag(StatFlag.Invul);
+        }
+
+        account.PrivLevel = level;
+        Character.NotoSaveUpdate?.Invoke(target);
+        Character.OnUpdateMode?.Invoke(target);
+        return true;
+    }
+
+    /// <summary>ContentConsume of every item with the given id the character carries,
+    /// worn or inside its containers.</summary>
+    private static void RemoveItemsById(Character ch, ushort baseId)
+    {
+        void Scan(Item container)
+        {
+            foreach (var child in container.Contents.ToList())
+            {
+                Scan(child);
+                if (child.BaseId == baseId) child.Delete();
+            }
+        }
+        for (var layer = Layer.OneHanded; layer <= Layer.BankBox; layer++)
+        {
+            if (layer == Layer.BankBox) continue;   // the bank is not carried
+            var worn = ch.GetEquippedItem(layer);
+            if (worn == null) continue;
+            Scan(worn);
+            if (worn.BaseId == baseId) worn.Delete();
+        }
+    }
+
     /// <summary>Null console for TryExecuteCommand calls that don't need output.</summary>
     private sealed class NullConsole : ITextConsole
     {
@@ -612,9 +737,6 @@ public sealed class CommandHandler
     /// <summary>Source-X parity: <c>.BANK</c> with no UID opens cursor;
     /// picked character's bank is opened on the GM client.</summary>
     public event Action<Character>? OnBankTargetRequested;
-    /// <summary>Source-X parity: <c>.BANK</c> with no args opens the
-    /// caller's own bank box on the GM client.</summary>
-    public event Action<Character>? OnBankSelfRequested;
     /// <summary><c>.OPENPAPERDOLL</c> — open target's paperdoll on the GM client.</summary>
     public event Action<Character, Character>? OnOpenPaperdollRequested;
     /// <summary><c>.SHOWSKILLS</c> — send skill list to the target's client.</summary>
@@ -755,6 +877,18 @@ public sealed class CommandHandler
             return false;
 
         var actor = gm as ITextConsole ?? NullConsole.Instance;
+        // CServerConfig::CanUsePrivVerb (CServerConfig.cpp:2644-2669): a character
+        // may not be targeted by someone of a lower privilege. The privilege itself
+        // is never writable through a verb line - PRIVSET alone changes it, and
+        // only for an Admin (CCharAct.cpp:5477).
+        if (target is Character targetChar && !CanStaffActOn(gm, targetChar))
+            return false;
+        if (target is Character &&
+            (verb.Equals("PRIVLEVEL", StringComparison.OrdinalIgnoreCase) ||
+             verb.Equals("PLEVEL", StringComparison.OrdinalIgnoreCase)))
+            return false;
+        if (verb.Equals("PRIVSET", StringComparison.OrdinalIgnoreCase) && gm.PrivLevel < PrivLevel.Admin)
+            return false;
         // A world object takes the verb as its r_Verb does (CClient.cpp:921 ->
         // CObjBase::r_Verb): the verb table, then a script [FUNCTION] run on it with
         // the staff member as SRC, then a property assignment. A function name was
@@ -846,8 +980,24 @@ public sealed class CommandHandler
     /// <summary>A command as a verb on the speaker (CChar::r_Verb, CChar.cpp:4391):
     /// the client's own verbs first (LINK, the target-cursor tools), then the
     /// character's, then - for staff - a property assignment.</summary>
+    /// <summary>CanUsePrivVerb's first rule: "Target is more privileged than you".
+    /// A character is always allowed to act on itself.</summary>
+    private bool CanStaffActOn(Character gm, Character target)
+    {
+        if (ReferenceEquals(gm, target) || gm.PrivLevel >= target.PrivLevel)
+            return true;
+        OnSysMessage?.Invoke(gm, "Target is more privileged than you");
+        return false;
+    }
+
     private bool TryObjectVerb(Character gm, string verb, string args)
     {
+        // A typed verb acts on the speaker; the privilege is not one a speaker may
+        // raise for itself (PRIVSET is Admin-only, CCharAct.cpp:5477).
+        if (verb.Equals("PRIVSET", StringComparison.OrdinalIgnoreCase) ||
+            verb.Equals("PRIVLEVEL", StringComparison.OrdinalIgnoreCase) ||
+            verb.Equals("PLEVEL", StringComparison.OrdinalIgnoreCase))
+            return false;
         var console = SphereNet.Game.Objects.ObjBase.ResolveClientConsole?.Invoke(gm);
         if (console != null && console.TryExecuteScriptCommand(gm, verb, args, null))
             return true;
@@ -1139,9 +1289,11 @@ public sealed class CommandHandler
         Register("KILL", PrivLevel.GM, (gm, args) =>
         {
             string raw = args.Trim();
+            // KILL is one of the redirect verbs: with no target of its own it asks
+            // for one (CClientEvent.cpp:28-42, :1117-1124), it does not strike the speaker.
             if (string.IsNullOrEmpty(raw))
             {
-                OnKillRequested?.Invoke(gm, null);
+                RedirectToTarget(gm, "KILL", "");
                 return;
             }
 
@@ -1149,6 +1301,8 @@ public sealed class CommandHandler
             if (uint.TryParse(uidText, System.Globalization.NumberStyles.HexNumber, null, out uint uid)
                 || uint.TryParse(raw, out uid))
             {
+                if (world.FindChar(new Core.Types.Serial(uid)) is { } killTarget && !CanStaffActOn(gm, killTarget))
+                    return;
                 OnKillRequested?.Invoke(gm, new Core.Types.Serial(uid));
             }
             else
@@ -1177,6 +1331,8 @@ public sealed class CommandHandler
             if (uint.TryParse(uidText, System.Globalization.NumberStyles.HexNumber, null, out uint uid)
                 || uint.TryParse(raw, out uid))
             {
+                if (world.FindChar(new Core.Types.Serial(uid)) is { } resTarget && !CanStaffActOn(gm, resTarget))
+                    return;
                 OnResurrectRequested?.Invoke(gm, new Core.Types.Serial(uid));
             }
             else
@@ -1225,6 +1381,8 @@ public sealed class CommandHandler
                     OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_cant_remove_self"));
                     return;
                 }
+                if (!CanStaffActOn(gm, ch))
+                    return;
                 world.DeleteObject(ch);
                 return;
             }
@@ -1562,12 +1720,17 @@ public sealed class CommandHandler
         // Source-X's data-driven GetRegionPoint("jail"/"jailN").
         Register("JAIL", PrivLevel.GM, (gm, args) =>
         {
+            // A bare JAIL (or one carrying only a cell) asks for a target, as the
+            // redirect verbs do (CClientEvent.cpp:28-42): ".jail 3" passes the cell on.
+            if (!TryLeadingUid(args, out uint uid))
+            {
+                RedirectToTarget(gm, "JAIL", args.Trim());
+                return;
+            }
             var parts = args.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0) return;
-            if (uint.TryParse(parts[0].Replace("0x", ""), System.Globalization.NumberStyles.HexNumber, null, out uint uid))
             {
                 var target = world.FindChar(new Core.Types.Serial(uid));
-                if (target != null)
+                if (target != null && CanStaffActOn(gm, target))
                 {
                     int cell = 0;
                     if (parts.Length > 2 && int.TryParse(parts[2], out int c) && c > 0)
@@ -1586,10 +1749,13 @@ public sealed class CommandHandler
         // Shared release path for UNJAIL / FORGIVE / PARDON.
         void ReleaseJailedChar(Character gm, string args)
         {
-            if (!uint.TryParse(args.Replace("0x", ""), System.Globalization.NumberStyles.HexNumber, null, out uint uid))
+            if (!TryLeadingUid(args, out uint uid))
+            {
+                RedirectToTarget(gm, "FORGIVE", args.Trim());   // CClientEvent.cpp:28-42
                 return;
+            }
             var target = world.FindChar(new Core.Types.Serial(uid));
-            if (target == null)
+            if (target == null || !CanStaffActOn(gm, target))
                 return;
             if (!ReleaseJailedCharacter(world, target, gm))
                 return;
@@ -1600,6 +1766,18 @@ public sealed class CommandHandler
         // Source-X spells the pardon verb FORGIVE (CHV_FORGIVE); PARDON is a common alias.
         Register("FORGIVE", PrivLevel.GM, ReleaseJailedChar);
         Register("PARDON", PrivLevel.GM, ReleaseJailedChar);
+
+        // The rest of sm_szCmd_Redirect (CClientEvent.cpp:28-42, :1117-1124): typed
+        // without a target they raise a cursor and run on the pick. They had no entry
+        // here, so each fell through to the speaker's own verb and acted on the speaker.
+        // Unlisted commands are Owner-level, as upstream's default; a pack's [PLEVEL]
+        // sections set the real level.
+        foreach (string redirectVerb in new[] { "KICK", "PRIVSET", "SHRINK", "DESTROY", "NUDGEUP", "NUDGEDOWN" })
+        {
+            string verbName = redirectVerb;
+            Register(verbName, DefaultScriptCommandPrivLevel, (gm, args) =>
+                RedirectToTarget(gm, verbName, args.Trim()));
+        }
 
         Register("UNSTICK", PrivLevel.Counsel, (gm, _) =>
         {
@@ -1637,9 +1815,13 @@ public sealed class CommandHandler
                 Enum.TryParse<PrivLevel>(parts[1], true, out var level))
             {
                 var target = world.FindChar(new Core.Types.Serial(uid));
-                if (target != null)
+                // CCharAct.cpp:5473-5511: a player target, source at least Admin and
+                // at least as privileged as the target - and it cannot hand out a
+                // level above its own.
+                // The same operation as the PRIVSET verb (CChar::SetPrivLevel).
+                if (target != null && CanStaffActOn(gm, target) && level <= gm.PrivLevel &&
+                    SetPrivLevel(target, new ShowConsole(gm), level.ToString()))
                 {
-                    target.PrivLevel = level;
                     OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_priv_set", target.Name, level));
                 }
             }
@@ -1881,13 +2063,9 @@ public sealed class CommandHandler
         // .BANK [target] — open own bank, or open picked char's bank.
         Register("BANK", PrivLevel.GM, (gm, args) =>
         {
-            string raw = args.Trim();
-            if (string.IsNullOrEmpty(raw))
-            {
-                OnBankSelfRequested?.Invoke(gm);
-                OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_bank_opened"));
-                return;
-            }
+            // BANK is a redirect verb: typed without a target of its own it asks for one,
+            // and the picked character's bank opens on the speaker's client
+            // (CClientEvent.cpp:28-42, :1117-1124). It no longer opens the speaker's own.
             OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_bank_target"));
             OnBankTargetRequested?.Invoke(gm);
         });

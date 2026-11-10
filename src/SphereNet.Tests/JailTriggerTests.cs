@@ -84,7 +84,7 @@ public class JailTriggerTests
         Assert.True(account.TryGetTag("JailCell", out string cell) && cell == "2");
         var jailedAt = target.Position;
 
-        cmds.TryExecute(gm, $"FORGIVE {target.Uid.Value:X}");
+        cmds.TryExecute(gm, $"FORGIVE 0x{target.Uid.Value:X}");
 
         Assert.False(account.Jail);
         Assert.False(account.TryGetTag("JailCell", out _));
@@ -101,7 +101,7 @@ public class JailTriggerTests
         int minutes = -1;
         Character.OnJailed = (_, _, _, _, m) => { minutes = m; return false; };
 
-        cmds.TryExecute(gm, $"JAIL {target.Uid.Value:X}"); // no duration → indefinite
+        cmds.TryExecute(gm, $"JAIL 0x{target.Uid.Value:X}"); // no duration → indefinite
 
         Assert.Equal(0, minutes);
     }

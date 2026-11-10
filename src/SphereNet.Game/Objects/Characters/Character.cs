@@ -276,6 +276,10 @@ public partial class Character : ObjBase
     /// <summary>sphere.ini EMOTEFLAGS (Source-X m_iEmoteFlags).</summary>
     public static int EmoteFlags { get; set; }
 
+    /// <summary>EMOTEF_ATTACKER (CServerConfig.h:187): the "X is attacking Y!" line is
+    /// shown only to the attacked character.</summary>
+    public const int EmoteFlagAttacker = 0x01;
+
     /// <summary>Dotted client version text ("7.0.20.0") of the active session
     /// of <paramref name="ch"/>, or "" when offline. Wired in Program.cs.</summary>
     public static Func<Character, string>? ResolveClientVersionText;
@@ -1529,9 +1533,10 @@ public partial class Character : ObjBase
                 MarkDirty(DirtyFlag.Stats);
                 if (tookDamage)
                 {
-                    int abortedSkill = ClearActiveSkillPending();
-                    if (abortedSkill >= 0)
-                        ActiveSkillAborted?.Invoke(this, abortedSkill);
+                    // Losing hit points does not end a pending skill: the reference
+                    // cancels only a Healing skill, and only from a connecting swing
+                    // (Fight_Hit, CCharFight.cpp:2203-2208 - InterruptHealingOnHit);
+                    // OnTakeDamage itself never touches the active skill.
                     InterruptMeditation();
                     OnDamageActionInterrupt?.Invoke(this);
                 }
@@ -3705,10 +3710,53 @@ public partial class Character : ObjBase
             if (fightActive && Random.Shared.Next(10) != 0)
                 return;
         }
+
+        // A pet harmed by its own master deserts him - for ANY harm, whatever the
+        // source of the blow was: `!COMBAT_NOPETDESERT && NPC_IsOwnedBy(pCharSrc)`
+        // -> NPC_PetDesert() sits in OnHarmedBy ahead of the auto-defence
+        // (CCharFight.cpp:312-313). Declaring an attack alone does not do it - only
+        // harm reaches this method. @PetDesert may still RETURN 1 to keep it serving.
+        if ((CombatFlags & (int)SphereNet.Game.Combat.CombatFlags.NoPetDesert) == 0 && HasOwner(src.Uid))
+            PetDesert();
+
         FightTarget = src.Uid;
         NextNpcActionTime = 0;
         NextNpcReacquireTime = 0;
         WakeNpc?.Invoke(this);
+    }
+
+    /// <summary>CChar::Fight_Clear for a player (CCharFight.cpp:1361-1380): "I no
+    /// longer want to attack this char". The target leaves my attacker list, a fight or
+    /// irritated-by memory of it is forgotten and, when it was my fight target, the
+    /// swing state is reset and the target dropped. War mode is left as it is - only
+    /// Fight_ClearAll turns that off. The NPC half of the reference (pick the best next
+    /// target, else clear all) belongs to the NPC fight loop.</summary>
+    internal void FightClear(Character target)
+    {
+        CombatState.Delete(target.Uid);
+        var memory = Memory_FindObj(target.Uid);
+        if (memory != null && memory.IsMemoryTypes(MemoryType.Fight | MemoryType.IrritatedBy))
+            Memory_Delete(memory);
+        if (FightTarget == target.Uid)
+        {
+            SetCombatSwingState(SwingState.Ready);
+            ClearPendingHit();
+            FightTarget = Serial.Invalid;
+        }
+    }
+
+    /// <summary>The "BAD BAD Healing fix" of Fight_Hit (CCharFight.cpp:2203-2208): a
+    /// blow that connects with a character who is applying a bandage (SKILL_HEALING)
+    /// interrupts it - DEFMSG_HEALING_INTERRUPT, then Skill_Cleanup. It is the ONLY skill
+    /// a hit cancels there; every other skill carries on through damage.</summary>
+    public void InterruptHealingOnHit()
+    {
+        if (_skillPendingId != (int)SkillType.Healing)
+            return;
+        SendOwnerMessage?.Invoke(this, ServerMessages.Get(Msg.HealingInterrupt));
+        int aborted = ClearActiveSkillPending();
+        if (aborted >= 0)
+            ActiveSkillAborted?.Invoke(this, aborted);
     }
 
     /// <summary>FORCHARMEMORYTYPE: every memory carrying any of the flags, as the
@@ -9460,11 +9508,8 @@ public partial class Character : ObjBase
                 return true;
             }
             case "PRIVSET":
-            {
-                if (int.TryParse(args.Trim(), out int plv))
-                    PrivLevel = (PrivLevel)plv;
-                return true;
-            }
+                // CHV_PRIVSET -> CChar::SetPrivLevel (CChar.cpp:4852).
+                return SphereNet.Game.Speech.CommandHandler.SetPrivLevel(this, source, args);
             case "FORGIVE":
             {
                 RemoveTag("JAIL");

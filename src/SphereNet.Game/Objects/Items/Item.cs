@@ -4283,6 +4283,14 @@ public class Item : ObjBase
                 return source.GetSourceChar() is Characters.Character equipSource &&
                     Characters.Character.ScriptEquipItem?.Invoke(equipSource, this) == true;
 
+            // CIV_REPAIR (CItem.cpp:3676): the source character repairs THIS item
+            // (CChar::Use_Repair, CCharUse.cpp:748). Nothing without a source.
+            case "REPAIR":
+                return source.GetSourceChar() is Characters.Character repairer &&
+                    source is Clients.IClientContext repairClient &&
+                    Skills.Information.ActiveSkillEngine.RepairItem(
+                        new Clients.GameClient.InfoSkillSink(repairClient, repairer), this);
+
             // CONTP x,y — reposition a CONTAINED item at (x,y) inside its
             // container (Source-X CItem IC_CONTP). A ground/equipped item is
             // a no-op like the reference. GM item-creation scripts use it to

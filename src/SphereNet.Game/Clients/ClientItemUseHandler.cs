@@ -82,6 +82,18 @@ public sealed class ClientItemUseHandler
     private void SendPaperdoll(Character ch) => _client.SendPaperdoll(ch);
     private void SendSelfRedraw() => _client.SendSelfRedraw();
     private void OpenCraftingGump(SkillType craftSkill) => _client.OpenCraftingGump(craftSkill);
+
+    /// <summary>Skill_Menu(skill, menu, used->GetID()) for a menu opened by using an
+    /// object (CClientUse.cpp:382, 540-549, 1290; CClientTarg.cpp:1900, 2392-2400): the
+    /// object becomes the client's TARG (m_Targ_UID) - MAKEITEM later copies it into
+    /// ACT (CChar.cpp:4720) and the SELECT stage filters the menu on it - and its id
+    /// is LOCAL.ItemUsed of @SkillMenu.</summary>
+    private void OpenCraftingMenuFor(SkillType skill, Item used, string? menu = null)
+    {
+        if (_character == null) return;
+        _character.SetTag("TARG.UID", $"0{used.Uid.Value:x}");
+        _client.OpenCraftingMenu(skill, menu ?? ClientWorldFeaturesHandler.DefaultSkillMenu(skill), used.BaseId);
+    }
     private void OpenGuildStoneGump(Item stone) => _client.OpenGuildStoneGump(stone);
     private void OpenHouseSignGump(Item signOrMulti) => _client.OpenHouseSignGump(signOrMulti);
     private void OpenBook(Item book, bool writable) => _client.OpenBook(book, writable);
@@ -1306,6 +1318,12 @@ public sealed class ClientItemUseHandler
                             new Point3D(x, y, z, _character.MapIndex), item);
                         return;
                     }
+                    // IT_LOG (CClientTarg.cpp:1866-1941).
+                    if (targetObj is Item log && log.ItemType == ItemType.Log)
+                    {
+                        UseBladeOnLog(item, log);
+                        return;
+                    }
                     // Anything else is smashed (default, CClientTarg.cpp:1966-1983): a
                     // blade neither starts Poisoning on a weapon nor repairs.
                     if (targetObj is Item smashed)
@@ -1412,21 +1430,30 @@ public sealed class ClientItemUseHandler
                 break;
 
             // ---- crafting tools → default crafting gump (overridable via @DClick trigger) ----
+            // Skill_Menu(skill, menu, pItem->GetID()) with the tool as the client's
+            // target (CClientUse.cpp:142, :382, :540-549): the menu is told which tool
+            // opened it (LOCAL.ItemUsed) and only lists what that tool can make.
             case ItemType.Mortar:
-                OpenCraftingGump(SkillType.Alchemy);
+                OpenCraftingMenuFor(SkillType.Alchemy, item);
                 break;
             case ItemType.Carpentry:
+                OpenCraftingMenuFor(SkillType.Carpentry, item);
+                break;
+            // IT_CARPENTRY_CHOP asks what to chop instead of opening a menu
+            // (CClientUse.cpp:420-424); the log it is aimed at opens sm_carpentry
+            // (OnTarg_Use_Item, CClientTarg.cpp:1866-1941).
             case ItemType.CarpentryChop:
-                OpenCraftingGump(SkillType.Carpentry);
+                SysMessage(ServerMessages.Get("target_promt"));
+                SetPendingItemTarget(item, ChopToolTarget(item));
                 break;
             case ItemType.CartographyTool:
-                OpenCraftingGump(SkillType.Cartography);
+                OpenCraftingMenuFor(SkillType.Cartography, item);
                 break;
             case ItemType.CookingTool:
-                OpenCraftingGump(SkillType.Cooking);
+                OpenCraftingMenuFor(SkillType.Cooking, item);
                 break;
             case ItemType.TinkerTools:
-                OpenCraftingGump(SkillType.Tinkering);
+                OpenCraftingMenuFor(SkillType.Tinkering, item);
                 break;
             case ItemType.SewingKit:
                 // IT_SEWING_KIT asks what to sew (CClientUse.cpp:551-557); the menu
@@ -1435,6 +1462,9 @@ public sealed class ClientItemUseHandler
                 SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
             case ItemType.ScrollBlank:
+                // The scroll is the client's target while the menu is open
+                // (m_Targ_UID = pItem, CClientUse.cpp:142).
+                _character.SetTag("TARG.UID", $"0{item.Uid.Value:x}");
                 _client.InscriptionMenu();   // Cmd_Skill_Inscription (CClientUse.cpp:559)
                 break;
 
@@ -2067,7 +2097,7 @@ public sealed class ClientItemUseHandler
             case ItemType.Fletching:
             case ItemType.Shaft:
             case ItemType.Feather:
-                _client.OpenCraftingMenu(SkillType.Bowcraft, "sm_bolts", item.BaseId);
+                OpenCraftingMenuFor(SkillType.Bowcraft, item, "sm_bolts");
                 break;
 
             case ItemType.EqBankBox:
@@ -2736,6 +2766,58 @@ public sealed class ClientItemUseHandler
             or ItemType.WeaponWhip;
     }
 
+    /// <summary>What a carpentry chopping tool does with the object it is aimed at: the
+    /// logs and trees of the sharp-weapon group (OnTarg_Use_Item IT_CARPENTRY_CHOP shares
+    /// that case, CClientTarg.cpp:1842-1941). Only a log opens a menu; a tree is
+    /// chopped; a creature is attacked.</summary>
+    private Action<uint, short, short, sbyte, ushort> ChopToolTarget(Item tool) => (serial, x, y, z, gfx) =>
+    {
+        if (_character == null) return;
+        var targetSerial = new Serial(serial);
+        var targetObj = targetSerial.IsValid ? _world.FindObject(targetSerial) : null;
+        if (targetObj is Item log && log.ItemType == ItemType.Log)
+        {
+            UseBladeOnLog(tool, log);
+            return;
+        }
+        if (targetObj == null && DefinitionLoader.GetItemDef(gfx)?.Type is ItemType.Tree or ItemType.Foliage)
+        {
+            RouteSkillTarget(SkillType.Lumberjacking, targetSerial,
+                new Point3D(x, y, z, _character.MapIndex), tool);
+            return;
+        }
+        if (targetObj is Item smashed)
+            SmashWithBlade(smashed);
+    };
+
+    /// <summary>A chop tool, axe, sword or dagger aimed at a log (IT_LOG,
+    /// CClientTarg.cpp:1866-1941). A log out of reach or fixed in place is refused
+    /// (DEFMSG_ITEMUSE_LOG_UNABLE); a carpentry chop tool opens sm_carpentry; a dagger
+    /// opens sm_bowcraft with the log as the target; anything else is told what a
+    /// dagger is for (DEFMSG_ITEMUSE_LOG_USE).</summary>
+    private void UseBladeOnLog(Item tool, Item log)
+    {
+        if (_character == null) return;
+        if (!CanReachTargetItem(log) || !ItemMoveRules.CanMove(_character, log, out _))
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseLogUnable));
+            return;
+        }
+        if (tool.ItemType == ItemType.CarpentryChop)
+        {
+            _character.SetTag("TARG.UID", $"0{log.Uid.Value:x}");
+            _client.OpenCraftingMenu(SkillType.Carpentry, "sm_carpentry", tool.BaseId);
+            return;
+        }
+        if (tool.DispIdFull is 0x0F51 or 0x0F52)      // ITEMID_DAGGER and its flipped art (IsSameDispID)
+        {
+            _character.SetTag("TARG.UID", $"0{log.Uid.Value:x}");
+            _client.OpenCraftingMenu(SkillType.Bowcraft, "sm_bowcraft", tool.BaseId);
+            return;
+        }
+        SysMessage(ServerMessages.Get(Msg.ItemuseLogUse));
+    }
+
     /// <summary>The sharp-weapon default (CClientTarg.cpp:1966-1983): refuse what
     /// cannot be moved (itemuse_weapon_immune) or would be a theft (itemuse_steal),
     /// else OnTakeDamage(1, user, DAMAGE_HIT_BLUNT) (CItem.cpp:5792-5987, see
@@ -3215,7 +3297,9 @@ public sealed class ClientItemUseHandler
             SysMessage(ServerMessages.Get(Msg.SmithingForge));
             return;
         }
-        OpenCraftingGump(SkillType.Blacksmithing);
+        // Skill_Menu(SKILL_BLACKSMITHING, "sm_blacksmith", pIngots->GetID()) with the
+        // ingots as m_Targ_UID (Cmd_Skill_Smith, CClientUse.cpp:1265-1289).
+        OpenCraftingMenuFor(SkillType.Blacksmithing, ingots);
     }
 
     /// <summary>CWorldMap::FindItemTypeNearby(pt, IT_FORGE, range) (CWorldMap.cpp:663):
@@ -3483,63 +3567,62 @@ public sealed class ClientItemUseHandler
     {
         if (_character == null) return;
         var obj = target.IsValid ? _world.FindObject(target) as Item : null;
-        if (obj == null || !CanReachTargetItem(obj)) { SysMessage(ServerMessages.Get(Msg.ItemuseCantthink)); return; }
-        // A locked-down / Move_Never fixture (a placed cloth/hide decoration) must
-        // not be cut or type-converted by scissors.
-        if (!ItemMoveRules.CanMove(_character, obj, out _)) { SysMessage(ServerMessages.Get(Msg.ItemuseCantthink)); return; }
-
-        // IT_CLOTH_BOLT (CClientTarg.cpp:2147-2151): the bolt becomes its RESOURCES
-        // and the scissors snip, whatever the conversion made of it.
-        if (obj.ItemType == ItemType.ClothBolt)
+        if (obj != null)
         {
-            ConvertBoltToCloth(_world, obj);
-            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                new PacketSound(0x0248, _character.X, _character.Y, _character.Z), 0);  // SOUND_SNIP
-            return;
-        }
-
-        ushort outId = CleanBandageId;
-        int outQty;
-        string message;
-        switch (obj.ItemType)
-        {
-            case ItemType.Cloth:
-                outQty = Math.Max(1, (int)obj.Amount);
-                message = "You cut the cloth into bandages.";
-                break;
-            case ItemType.Clothing:
-                // Worth its weight in bandages, as the reference measures it.
-                outQty = obj.Weight / Item.WeightUnits;
-                message = "You cut the clothing into bandages.";
-                break;
-            case ItemType.Hide:
-                outId = ResolveHideOutput(obj);
-                outQty = Math.Max(1, (int)obj.Amount);
-                message = "You cut the hide into leather.";
-                break;
-            default:
-                SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
+            // CanUse(pItemTarg, true) (CClientTarg.cpp:2138): out of reach, fixed in
+            // place or someone else's - it ends there without a word.
+            if (!CanReachTargetItem(obj) || !ItemMoveRules.CanMove(_character, obj, out _))
                 return;
+
+            // IT_CLOTH_BOLT (CClientTarg.cpp:2147-2151): the bolt becomes its RESOURCES
+            // and the scissors snip, whatever the conversion made of it.
+            if (obj.ItemType == ItemType.ClothBolt)
+            {
+                ConvertBoltToCloth(_world, obj);
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketSound(0x0248, _character.X, _character.Y, _character.Z), 0);  // SOUND_SNIP
+                return;
+            }
+
+            ushort outId = CleanBandageId;
+            int outQty = 0;
+            switch (obj.ItemType)
+            {
+                case ItemType.Cloth:
+                    outQty = Math.Max(1, (int)obj.Amount);
+                    break;
+                case ItemType.Clothing:
+                    // Worth its weight in bandages, as the reference measures it.
+                    outQty = obj.Weight / Item.WeightUnits;
+                    break;
+                case ItemType.Hide:
+                    outId = ResolveHideOutput(obj);
+                    outQty = Math.Max(1, (int)obj.Amount);
+                    break;
+            }
+
+            if (outQty > 0)
+            {
+                var hue = obj.Hue;
+                _world.RemoveItem(obj);
+
+                var made = _world.CreateItem();
+                made.BaseId = outId;
+                made.Hue = hue;
+                made.Amount = (ushort)Math.Min(outQty, ushort.MaxValue);
+                // ItemBounce(pItemNew) then SOUND_SNIP, and no line of its own: a
+                // successful cut is silent (CClientTarg.cpp:2175-2178). The invented
+                // "You cut the cloth into bandages" lines are gone.
+                new GameClient.InfoSkillSink(_client, _character).DeliverItem(made);
+
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketSound(0x0248, _character.X, _character.Y, _character.Z), 0);  // SOUND_SNIP
+                return;
+            }
         }
 
-        if (outQty <= 0)
-        {
-            SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
-            return;
-        }
-
-        var hue = obj.Hue;
-        _world.RemoveItem(obj);
-
-        var made = _world.CreateItem();
-        made.BaseId = outId;
-        made.Hue = hue;
-        made.Amount = (ushort)Math.Min(outQty, ushort.MaxValue);
-        PlaceItemInPack(_character, made);
-
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-            new PacketSound(0x0248, _character.X, _character.Y, _character.Z), 0);  // SOUND_SNIP
-        SysMessage(message);
+        // Not an item, or nothing to cut it into (CClientTarg.cpp:2181-2183).
+        SysMessage(ServerMessages.Get(Msg.ItemuseScissorsUse));
     }
 
     /// <summary>CItem::ConvertBolttoCloth (CItem.cpp:4287-4346): a bolt showing one of
@@ -4636,10 +4719,10 @@ public sealed class ClientItemUseHandler
         {
             case ItemType.Leather:
             case ItemType.Hide:
-                _client.OpenCraftingMenu(SkillType.Tailoring, "sm_tailor_leather", material.BaseId);
+                OpenCraftingMenuFor(SkillType.Tailoring, material, "sm_tailor_leather");
                 return;
             case ItemType.Cloth:
-                _client.OpenCraftingMenu(SkillType.Tailoring, "sm_tailor_cloth", material.BaseId);
+                OpenCraftingMenuFor(SkillType.Tailoring, material, "sm_tailor_cloth");
                 return;
         }
         SysMessage(ServerMessages.Get(Msg.ItemuseSkitUnable));
@@ -4769,6 +4852,11 @@ public sealed class ClientItemUseHandler
             return;
         }
         if (!CanReachTargetItem(obj)) { SysMessage(ServerMessages.Get(Msg.MsgKeyCantreach)); return; }
+        // A key cut for the house the holder stands in locks a loose item down, and
+        // releases it again (CChar::Use_Key, CCharUse.cpp:1399-1405).
+        if (_housingEngine?.FindHouseAt(_character.Position) is { } areaHouse &&
+            Item.KeyIsFor(key, areaHouse.MultiItem.Uid) && UseMultiLockDown(areaHouse, obj))
+            return;
         // A key cut to the lock's own UID fits it even when the lock names no code.
         bool fits = KeyFits(key, obj);
         if (!fits && !Item.HasLockCode(obj)) { SysMessage(ServerMessages.Get(Msg.MsgKeyNolock)); return; }
@@ -4805,6 +4893,35 @@ public sealed class ClientItemUseHandler
         SysMessage(ServerMessages.Get(msg));
         var at = obj.GetTopLevelObj().Position;
         BroadcastNearby?.Invoke(at, UpdateRange, new PacketSound(0x049, at.X, at.Y, at.Z), 0);
+    }
+
+    /// <summary>CChar::Use_MultiLockDown (CCharUse.cpp:23-47): on a movable, top-level
+    /// item that is not a key, the first use links it to the house the character is in
+    /// (locked down) and the second, from the same house, lets it go. The key itself
+    /// is the authority here, not a house privilege, so the house's own standing is
+    /// what does the work.</summary>
+    private bool UseMultiLockDown(House house, Item item)
+    {
+        if (item.ItemType == ItemType.Key || item.ContainedIn.IsValid)
+            return false;
+
+        if (house.Lockdowns.Contains(item.Uid))
+        {
+            if (!house.ReleaseLockdown(item.Uid, house.Owner)) return false;
+            SysMessage(ServerMessages.Get(Msg.MultiLockup));
+            return true;
+        }
+        if (item.Link == house.MultiItem.Uid)
+        {
+            item.Link = Serial.Invalid;
+            SysMessage(ServerMessages.Get(Msg.MultiLockup));
+            return true;
+        }
+        if (!item.IsMovableType || item.Link.IsValid)
+            return false;
+        if (!house.Lockdown(item.Uid, house.Owner)) return false;
+        SysMessage(ServerMessages.Get(Msg.MultiLockdown));
+        return true;
     }
 
     /// <summary>Ask for an item's new name (the CLIMODE_PROMPT_NAME_* modes,

@@ -129,6 +129,10 @@ public sealed class WorldSaver
         internal SaveFormat Format { get; }
         internal int ShardCount { get; }
 
+        /// <summary>The ground statics, captured when one was deleted since the
+        /// statics file was last written; null when that file is left alone.</summary>
+        internal IReadOnlyList<SaveRecord>? Statics { get; set; }
+
         /// <summary>The generation token this save will stamp into every file it
         /// writes. Public because the account snapshot is staged against it before
         /// the write phase starts, on the main thread, where the saver's live field
@@ -153,8 +157,57 @@ public sealed class WorldSaver
         _generation = DateTime.UtcNow.Ticks ^ ((long)Random.Shared.Next() << 20);
         var snapshot = CaptureSnapshot(world);
         string serverData = BuildServerData(world);
-        return new PreparedWorldSave(snapshot, serverData, _saveIndex,
+        var prepared = new PreparedWorldSave(snapshot, serverData, _saveIndex,
             Format, ShardCount, _generation);
+        if (world.StaticsDirty || _staticsRetry)
+        {
+            // A static item deleted at run time must not return at the next boot: the
+            // statics file is otherwise only rewritten by SAVESTATICS, so refresh it
+            // with this save (a SphereNet addition; the reference leaves the item in
+            // the file until SAVESTATICS is run).
+            world.StaticsDirty = false;
+            prepared.Statics = CaptureStatics(world);
+        }
+        return prepared;
+    }
+
+    private volatile bool _staticsRetry;
+
+    private List<SaveRecord> CaptureStatics(GameWorld world)
+    {
+        long now = Environment.TickCount64;
+        var records = new List<SaveRecord>();
+        using var writer = new SnapshotSaveWriter();
+        foreach (var obj in world.GetAllObjects())
+        {
+            if (obj is not Item item || item.IsDeleted || !IsStaticsFileItem(item))
+                continue;
+            WriteItem(writer, item, now);
+            records.Add(writer.ToRecord(item.Uid.Value));
+        }
+        return records;
+    }
+
+    private void WriteStaticsFile(string savePath, IReadOnlyList<SaveRecord> records)
+    {
+        try
+        {
+            string path = Path.Combine(savePath, "spherestatics.scp");
+            RotateBackups(path);
+            WriteTextExportAtomic(path, writer =>
+            {
+                writer.WriteHeaderComment($"SphereNet statics export at {DateTime.UtcNow:u}");
+                foreach (var record in records)
+                    WriteRecord(writer, record);
+                return records.Count;
+            });
+            _staticsRetry = false;
+        }
+        catch (Exception ex)
+        {
+            _staticsRetry = true;
+            _logger.LogError(ex, "Statics file refresh failed; retried with the next save");
+        }
     }
 
     /// <summary>WRITE phase: shard, encode and commit the captured records.
@@ -182,6 +235,8 @@ public sealed class WorldSaver
             // so an interruption at any point leaves either the old generation or
             // the new one loadable in full. See PublishGeneration.
             PublishGeneration(savePath, [itemPending, charPending, dataPending]);
+            if (prepared.Statics != null)
+                WriteStaticsFile(savePath, prepared.Statics);
 
             _logger.LogInformation("World save #{Index} complete: {Items} items, {Chars} chars in {Elapsed}s",
                 prepared.SaveIndex, itemCount, charCount, sw.Elapsed.TotalSeconds.ToString("F1"));

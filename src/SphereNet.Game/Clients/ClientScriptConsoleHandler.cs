@@ -1606,13 +1606,17 @@ public sealed class ClientScriptConsoleHandler
 
             case "REPAIR":
             {
-                // Source-X CV_REPAIR — target an item, run the repair path.
-                SysMessage("What item do you want to repair?");
+                // Source-X CV_REPAIR (CClient.cpp:1506) arms CLIMODE_TARG_REPAIR with
+                // DEFMSG_SELECT_ITEM_REPAIR; the pick runs CChar::Use_Repair on the item
+                // (CClientEvent.cpp:2556), which answers a non-item with REPAIR_NOT.
+                // The item verb of the same name was missing, so the cursor did nothing.
+                SysMessage(ServerMessages.Get(Msg.SelectItemRepair));
                 _client.SetPendingTarget((serial, _, _, _, _) =>
                 {
+                    if (_character == null) return;
                     var item = _world.FindItem(new Serial(serial));
-                    if (item == null) { SysMessage("You can't repair that."); return; }
-                    item.TryExecuteCommand("REPAIR", "", (ITextConsole)_client);
+                    Skills.Information.ActiveSkillEngine.RepairItem(
+                        new GameClient.InfoSkillSink(_client, _character), item);
                 }, 0);
                 return true;
             }
@@ -1943,11 +1947,36 @@ public sealed class ClientScriptConsoleHandler
         }
     }
 
+    /// <summary>The object a craft menu was opened with (CClient::m_Targ_UID): the tool
+    /// that was double-clicked or the material that was picked. None for the skill
+    /// button, which starts over (CClientEvent.cpp:651).</summary>
+    private Item? SkillMenuUsedItem() =>
+        _character != null && ClientWorldFeaturesHandler.TargUid(_character) is { IsValid: true } uid
+            ? _world.FindItem(uid)
+            : null;
+
+    /// <summary>Depth guard of the nested SKILLMENU test (CClient::Cmd_Skill_Menu_Build
+    /// stops at 1024 and reports it through fLimitReached, CClientUse.cpp:925-948). Each
+    /// level here builds a whole menu, so the ceiling is lower.</summary>
+    private const int SkillMenuNestLimit = 64;
+
+    /// <summary>CClient::Cmd_Skill_Menu's own re-entry cap for the one-entry auto-open
+    /// (CClientUse.cpp:729-745).</summary>
+    private const int SkillMenuAutoOpenLimit = 12;
+    private int _skillMenuAutoOpenDepth;
+
     /// <summary>Open a [SKILLMENU name] section as a 0x7C selection menu.
     /// Entries: first non-ON line is the title; each ON=&lt;itemdef&gt; [text]
     /// shows the itemdef's art ("&lt;name&gt;" or empty text = itemdef name);
     /// TEST=SKILL value gates the entry on the character's skills; remaining
-    /// lines run as script verbs on selection.</summary>
+    /// lines run as script verbs on selection.
+    ///
+    /// The list is built the way CClient::Cmd_Skill_Menu_Build builds it
+    /// (CClientUse.cpp:749-975): a MAKEITEM line is asked as Skill_MakeItem's SELECT
+    /// stage (the skills, the tools, the stock and the object the menu was opened
+    /// with), and a nested SKILLMENU line only counts when something in it is
+    /// makable. Nothing left is DEFMSG_CANT_MAKE_RES; a single nested menu is opened
+    /// without asking.</summary>
     internal bool OpenSkillMenu(string menuName)
     {
         if (_character == null || string.IsNullOrWhiteSpace(menuName))
@@ -1963,10 +1992,62 @@ public sealed class ClientScriptConsoleHandler
         if (keys == null || keys.Count == 0)
             return false;
 
-        string title = menuName;
+        var used = SkillMenuUsedItem();
+        bool showMenu = false, limitReached = false;
+        var options = BuildSkillMenuOptions(resources, keys, used, 0, ref showMenu, ref limitReached, out string title);
+        if (title.Length == 0)
+            title = menuName;
+
+        if (options.Count == 0)
+        {
+            SysMessage(ServerMessages.Get(Msg.CantMakeRes));
+            return true;
+        }
+        if (options.Count > MenuMaxItems)
+            options.RemoveRange(MenuMaxItems, options.Count - MenuMaxItems);
+
+        _pendingMenuId = (ushort)(Math.Abs(menuName.GetHashCode()) & 0xFFFF);
+        _pendingMenuDefname = menuName;
+        _pendingMenuOptions = options;
+        _client.SetPendingMenuContext(_character, keys);
+
+        // One entry left and a nested menu behind it: take it without asking
+        // (CClientUse.cpp:729-745), as long as the chain of menus stays short.
+        if (options.Count == 1 && showMenu && !limitReached &&
+            _skillMenuAutoOpenDepth < SkillMenuAutoOpenLimit && _client is GameClient gameClient)
+        {
+            _skillMenuAutoOpenDepth++;
+            try
+            {
+                gameClient.HandleMenuChoice(_character.Uid.Value, _pendingMenuId, 1, 0);
+            }
+            finally
+            {
+                _skillMenuAutoOpenDepth--;
+            }
+            return true;
+        }
+
+        var items = new List<MenuItemEntry>(options.Count);
+        foreach (var opt in options)
+            items.Add(new MenuItemEntry(opt.ModelId, opt.Hue, opt.Text));
+        _netState.Send(new PacketMenuDisplay(_character.Uid.Value, _pendingMenuId, title, items));
+        return true;
+    }
+
+    /// <summary>The entries of one [SKILLMENU] as the viewer may pick them. A nested
+    /// SKILLMENU is built the same way and kept only if it has an entry of its own
+    /// (the iSelect = -2 test of Cmd_Skill_Menu_Build).</summary>
+    private List<MenuOptionEntry> BuildSkillMenuOptions(
+        SphereNet.Scripting.Resources.ResourceHolder resources,
+        IReadOnlyList<SphereNet.Scripting.Parsing.ScriptKey> keys, Item? used, int depth,
+        ref bool showMenu, ref bool limitReached, out string title)
+    {
+        title = "";
         bool titleSeen = false;
         var options = new List<MenuOptionEntry>();
         MenuOptionEntry? current = null;
+        List<SphereNet.Scripting.Parsing.ScriptKey>? currentTests = null;
         bool skipping = false;
 
         foreach (var k in keys)
@@ -2028,59 +2109,103 @@ public sealed class ClientScriptConsoleHandler
                             : SphereNet.Game.Definitions.ResourceText.Names(idef.ResourcesRaw),
                         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-                current = new MenuOptionEntry(modelId, 0, text, []);
+                currentTests = [];
+                var tests = currentTests;
+                current = new MenuOptionEntry(modelId, 0, text, [],
+                    () => tests.All(SkillMenuTestPasses));
                 continue;
             }
 
             if (current == null)
                 continue;
 
-            if (k.Key.Equals("TEST", StringComparison.OrdinalIgnoreCase))
+            if (k.Key.Equals("TEST", StringComparison.OrdinalIgnoreCase) ||
+                k.Key.Equals("TESTIF", StringComparison.OrdinalIgnoreCase))
             {
-                if (!PassesSkillMenuTest(k.Arg))
+                // TEST: skills and tools the viewer needs. TESTIF: a script expression
+                // (Source-X TESTIF hides the entry when it is false). Both are asked
+                // again when the entry is picked.
+                currentTests?.Add(k);
+                if (!SkillMenuTestPasses(k))
                 {
                     current = null;
                     skipping = true;
                 }
                 continue;
             }
-            if (k.Key.Equals("TESTIF", StringComparison.OrdinalIgnoreCase))
+
+            if (k.Key.Equals("SKILLMENU", StringComparison.OrdinalIgnoreCase))
             {
-                // Source-X TESTIF: hide the entry when the expression is false.
-                // (_character is non-null here — guarded at method entry.)
-                var interp = _triggerDispatcher?.Runner?.Interpreter;
-                if (interp != null &&
-                    !interp.EvaluateConditionForTarget(k.Arg, _character, _client))
+                // A menu with nothing makable in it is not offered (:925-951).
+                if (depth >= SkillMenuNestLimit)
+                {
+                    limitReached = true;
+                }
+                else
+                {
+                    var nestedRid = resources.ResolveDefName(k.Arg.Trim());
+                    var nestedKeys = nestedRid.IsValid && nestedRid.Type == Core.Enums.ResType.SkillMenu
+                        ? resources.GetResource(nestedRid)?.StoredKeys : null;
+                    bool nestedShow = false;
+                    bool anything = nestedKeys is { Count: > 0 } &&
+                        BuildSkillMenuOptions(resources, nestedKeys, used, depth + 1,
+                            ref nestedShow, ref limitReached, out _).Count > 0;
+                    if (!anything)
+                    {
+                        current = null;
+                        skipping = true;
+                        continue;
+                    }
+                    showMenu = true;
+                }
+            }
+            else if (k.Key.Equals("MAKEITEM", StringComparison.OrdinalIgnoreCase))
+            {
+                // Skill_MakeItem(id, m_Targ_UID, SKTRIG_SELECT) (:954-962).
+                if (!CanSelectMakeItem(resources, k.Arg, used))
                 {
                     current = null;
                     skipping = true;
+                    continue;
                 }
-                continue;
             }
 
             current.Script.Add(k);
         }
         if (current != null && !skipping)
             options.Add(current);
+        return options;
+    }
 
-        if (options.Count == 0)
-        {
-            SysMessage("You are not able to use any of those options.");
-            return true;
-        }
-        if (options.Count > MenuMaxItems)
-            options.RemoveRange(MenuMaxItems, options.Count - MenuMaxItems);
+    /// <summary>Skill_MakeItem's SELECT stage for a MAKEITEM line (CCharSkill.cpp:870-923).
+    /// An item definition that does not exist is never makable; one without a
+    /// SKILLMAKE recipe has nothing to test.</summary>
+    private bool CanSelectMakeItem(SphereNet.Scripting.Resources.ResourceHolder resources, string arg, Item? used)
+    {
+        if (_character == null)
+            return false;
+        string[] parts = arg.Split([' ', ',', '\t'], 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return false;
+        var irid = resources.ResolveDefName(parts[0]);
+        if (!irid.IsValid || irid.Type != Core.Enums.ResType.ItemDef ||
+            DefinitionLoader.GetItemDef(irid.Index) == null)
+            return false;
+        var craftE = _client.CraftE;
+        var recipe = craftE?.TryGetRecipe(irid.Index);
+        return recipe == null || craftE!.CanSelect(_character, recipe, used);
+    }
 
-        _pendingMenuId = (ushort)(Math.Abs(menuName.GetHashCode()) & 0xFFFF);
-        _pendingMenuDefname = menuName;
-        _pendingMenuOptions = options;
-        _client.SetPendingMenuContext(_character, keys);
-
-        var items = new List<MenuItemEntry>(options.Count);
-        foreach (var opt in options)
-            items.Add(new MenuItemEntry(opt.ModelId, opt.Hue, opt.Text));
-        _netState.Send(new PacketMenuDisplay(_character.Uid.Value, _pendingMenuId, title, items));
-        return true;
+    /// <summary>One TEST or TESTIF line of a skill menu entry.</summary>
+    private bool SkillMenuTestPasses(SphereNet.Scripting.Parsing.ScriptKey k)
+    {
+        if (_character == null)
+            return false;
+        if (k.Key.Equals("TEST", StringComparison.OrdinalIgnoreCase))
+            return PassesSkillMenuTest(k.Arg);
+        // (_character is non-null here.)
+        var interp = _triggerDispatcher?.Runner?.Interpreter;
+        return interp == null || interp.EvaluateConditionForTarget(k.Arg, _character, _client);
     }
 
     /// <summary>TEST= line of a skill menu entry: comma-separated
@@ -2165,6 +2290,13 @@ public sealed class ClientScriptConsoleHandler
         var irid = resources.ResolveDefName(defname.Trim());
         if (!irid.IsValid)
             return;
+
+        // CHV_MAKEITEM (CChar.cpp:4720): with a client attached ACT becomes the
+        // client's TARG - the tool or the material the menu was opened with - before
+        // anything is tested, and the START stage carries it on to @SkillMakeItem as
+        // ARGO (CCharSkill.cpp:960-964, :811-827).
+        _character.Act = ClientWorldFeaturesHandler.TargUid(_character);
+
         // The recipe's identity is the ITEMDEF resource id, the same id Source-X
         // carries through Skill_MakeItem (CCharSkill.cpp:870). Reducing it to the
         // display graphic first meant a defname could build a DIFFERENT item that
@@ -2173,12 +2305,11 @@ public sealed class ClientScriptConsoleHandler
         var recipe = craftE?.TryGetRecipe(irid.Index);
         if (craftE == null || recipe == null)
         {
-            SysMessage("You don't know how to make that.");
-            return;
-        }
-        if (!craftE.CanCraft(_character, recipe))
-        {
-            SysMessage("You lack the skill, materials or work site for that.");
+            // An item with no SKILLMAKE skill is an error in the log and nothing more
+            // (Skill_MakeItem START, CCharSkill.cpp:951-955); the invented "You don't
+            // know how to make that" is gone, as is the skills/materials line below -
+            // a craft that cannot start says only what its own stage says.
+            _logger.LogWarning("[menu] MAKEITEM {Item} has no SKILLMAKE recipe", defname);
             return;
         }
 

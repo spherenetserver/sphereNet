@@ -745,6 +745,15 @@ public sealed class ClientInventoryHandler
         return item.ContainedIn != wearer.Uid || Character.CanUndressPets;
     }
 
+    /// <summary>Fastloot protection window between two pickups, in ms
+    /// (CClient::Event_Item_Pickup: m_tNextPickup = now + MSECS_PER_SEC/3,
+    /// CClientEvent.cpp:209). Zero disables it (tests, scripted bulk moves).</summary>
+    public static int PickupMinIntervalMs = 1000 / 3;
+
+    /// <summary>Monotonic ms before which the next pickup is cancelled
+    /// (CClient::m_tNextPickup).</summary>
+    private long _nextPickupMs;
+
     public void HandleItemPickup(uint serial, ushort amount)
     {
         if (_character == null) return;
@@ -761,6 +770,24 @@ public sealed class ClientInventoryHandler
             return;
         }
 
+        // Fastloot / empty-container protection: a pickup that arrives inside the
+        // window opened by the previous one is cancelled and does not extend it
+        // (CClientEvent.cpp:201-209, 236-237).
+        long nowMs = Environment.TickCount64;
+        if (PickupMinIntervalMs > 0)
+        {
+            if (_nextPickupMs > nowMs)
+            {
+                SendPickupFailed(1);
+                return;
+            }
+            _nextPickupMs = nowMs + PickupMinIntervalMs;
+            // A stack of more than one slows the client by another 100 ms
+            // (CClientEvent.cpp:236-237; the lifted amount is what ItemPickup returns).
+            ushort liftedAmount = amount > 0 && amount < item.Amount ? amount : item.Amount;
+            if (liftedAmount > 1) _nextPickupMs += 100;
+        }
+
         if (_housingEngine != null && !_housingEngine.CanPickupHouseItem(_character, item))
         {
             SendPickupFailed(1);
@@ -775,6 +802,11 @@ public sealed class ClientInventoryHandler
         {
             if (moveDenial == ItemMoveRules.MoveDenial.ItemCursed)
                 SysMessage(ServerMessages.Get(Msg.CantmoveCursed));
+            else if (moveDenial is ItemMoveRules.MoveDenial.MoverFrozen
+                     or ItemMoveRules.MoveDenial.MoverIncapacitated)
+                SysMessage(ServerMessages.Get(Msg.CantmoveDead)); // CCharStatus.cpp:1604-1606
+            else if (moveDenial == ItemMoveRules.MoveDenial.ItemInTrade)
+                SysMessage(ServerMessages.Get(Msg.MsgTradeCantmove)); // CCharStatus.cpp:1627
             SendPickupFailed(1);
             return;
         }
@@ -1342,6 +1374,87 @@ public sealed class ClientInventoryHandler
 
     // ==================== Item Drop ====================
 
+    /// <summary>
+    /// Item-count and weight limits for a drop into <paramref name="container"/>,
+    /// asked of the target and then of every container it sits in, up to the worn
+    /// pack / bank box (Source-X Event_Item_Drop walks CanContainerHold up the
+    /// chain, CClientEvent.cpp:359-405). Returns the refusal message key, or null
+    /// when every container on the way up has room.
+    /// </summary>
+    private string? ContainerChainRefusal(Item container, Item item)
+    {
+        var topContainer = GetTopContainer(container) ?? container;
+        bool targetInBank = topContainer.EquipLayer == Layer.BankBox;
+
+        int guard = 0;
+        for (var link = container; link != null && guard < 16;
+             link = link.ContainedIn.IsValid ? _world.FindItem(link.ContainedIn) : null, guard++)
+        {
+            bool isTarget = guard == 0;
+            bool linkIsBank = link.IsEquipped && link.EquipLayer == Layer.BankBox;
+            bool linkIsPack = link.IsEquipped && link.EquipLayer == Layer.Pack;
+            if (link.IsEquipped && !linkIsBank && !linkIsPack) break;   // not a container the chain climbs through
+
+            // Direct contents cap, applied to every container including the bank
+            // box (CItemContainer.cpp:897-903). OVERRIDE.MAXITEMS replaces the
+            // global default for THIS container (e.g. a small pouch, a vendor crate).
+            int directMax = _world.MaxContainerItems;
+            if (link.TryGetTag("OVERRIDE.MAXITEMS", out string? maxItemsRaw) &&
+                ScriptNumber.TryParseInt(maxItemsRaw, out int overrideMax) && overrideMax >= 0)
+                directMax = overrideMax;
+            if (link.ContentCount >= directMax)
+                return Msg.ContFullItems;
+
+            // A drop anywhere in the bank tree (the box itself or a nested bag)
+            // counts against the bank cap, computed over the WHOLE tree from the
+            // bank root so nested bags can't bypass the limit. The incoming
+            // container's children count too (CItemContainer.cpp:941-955).
+            if (isTarget && targetInBank)
+            {
+                int incomingChildren = item.ContentCount > 0
+                    ? _world.GetContainerItemCountDeep(item.Uid) : 0;
+                if (_world.GetContainerItemCountDeep(topContainer.Uid) + incomingChildren >= _world.MaxBankItems)
+                    return Msg.BvboxFullItems;
+            }
+
+            // Weight. A container's own MODMAXWEIGHT is its limit, and the reference
+            // has no other for an ordinary chest (CItemContainer.cpp:906); the
+            // configured value is a shard's optional global for the target only.
+            // A worn pack adds what its owner can carry plus BACKPACKOVERLOAD
+            // (:907-914); the bank box adds its MODMAXWEIGHT to the bank cap
+            // (:962-963).
+            int weightLimit;
+            if (linkIsBank)
+            {
+                weightLimit = _world.MaxBankWeight > 0 ? _world.MaxBankWeight + link.ModMaxWeight : 0;
+            }
+            else if (linkIsPack)
+            {
+                weightLimit = link.ModMaxWeight;
+                if (Item.BackpackOverload >= 0 && _world.FindChar(link.ContainedIn) is { } packOwner)
+                    weightLimit += packOwner.MaxWeight + Item.BackpackOverload;
+            }
+            else if (isTarget && targetInBank)
+            {
+                weightLimit = _world.MaxBankWeight;
+            }
+            else
+            {
+                weightLimit = link.ModMaxWeight > 0 ? link.ModMaxWeight
+                    : isTarget ? _world.MaxContainerWeight : 0;
+            }
+            if (weightLimit > 0)
+            {
+                int totalWeightTenths = 0;
+                foreach (var b in _world.GetContainerContents(link.Uid))
+                    totalWeightTenths += b.TotalWeightTenths;
+                if (totalWeightTenths + item.TotalWeightTenths > weightLimit * Item.WeightUnits)
+                    return (linkIsBank || (isTarget && targetInBank)) ? Msg.BvboxFullWeight : Msg.ContFullWeight;
+            }
+        }
+        return null;
+    }
+
     public void HandleItemDrop(uint serial, short x, short y, sbyte z, uint containerUid)
     {
         if (_character == null) return;
@@ -1379,6 +1492,33 @@ public sealed class ClientInventoryHandler
                 (on.ContainedIn.IsValid && _world.FindItem(on.ContainedIn)?.ItemType == ItemType.GameBoard));
             if (!onBoard)
             {
+                RestoreToOrigin(item);
+                _netState.Send(new PacketDropReject());
+                return;
+            }
+        }
+
+        // A quest item may only go into its holder's own backpack or onto a trash can,
+        // which deletes it; any other drop is refused and the item bounces, unless the
+        // dropper is staff (CClientEvent.cpp:295-310).
+        if (item.IsAttr(ObjAttributes.QuestItem))
+        {
+            var questOn = containerUid is not 0 and not 0xFFFFFFFF
+                ? _world.FindItem(new Serial(containerUid)) : null;
+            if (questOn?.ItemType == ItemType.TrashCan)
+            {
+                var canPos = questOn.GetTopLevelPosition();
+                _netState.Send(new PacketSound(item.GetDropSound(ontoSomething: true),
+                    canPos.X, canPos.Y, canPos.Z));
+                _netState.Send(new PacketDropAck());
+                _client.BroadcastDeleteObject(item.Uid.Value);
+                _world.DeleteObject(item);
+                return;
+            }
+            if (_character.PrivLevel < PrivLevel.GM &&
+                (questOn == null || questOn != _character.Backpack))
+            {
+                SysMessage(ServerMessages.Get(Msg.ItemCantdroptrade));
                 RestoreToOrigin(item);
                 _netState.Send(new PacketDropReject());
                 return;
@@ -1569,6 +1709,16 @@ public sealed class ClientInventoryHandler
                         ItemType.Keyring when item.More1 == 0 => Msg.MsgErrNoblankring,
                         _ => null,
                     };
+                    // Unless the shard allows containers in containers, a container that
+                    // is not worn refuses one whose definition is as big or bigger
+                    // ("can't put barrels in barrels"): volume is the definition weight in
+                    // stones (CItemContainer.cpp:922-929, CItemBase.h:350). A worn pack is
+                    // exempt.
+                    if (holdRefusal == null &&
+                        (GameClient.ServerOptionFlags & OptionFlags.AllowContainerInsideContainer) == 0 &&
+                        !container.IsEquipped && item.IsContainerType &&
+                        item.DefinitionWeightRaw / Item.WeightUnits >= container.DefinitionWeightRaw / Item.WeightUnits)
+                        holdRefusal = Msg.ContToosmall;
                     if (holdRefusal != null)
                     {
                         if (holdRefusal.Length > 0)
@@ -1599,72 +1749,13 @@ public sealed class ClientInventoryHandler
 
                 if (!isPileMerge && !isSpellbook && _character.PrivLevel < PrivLevel.GM)
                 {
-                    // A drop anywhere in the bank tree (the box itself or a nested
-                    // bag) counts against the bank cap, computed over the WHOLE
-                    // tree from the bank root so nested bags can't bypass the limit
-                    // (Source-X). A normal container counts only its own slot.
-                    var topContainer = GetTopContainer(container) ?? container;
-                    bool isBank = topContainer.EquipLayer == Layer.BankBox;
-                    int currentCount = isBank
-                        ? _world.GetContainerItemCountDeep(topContainer.Uid)
-                        : _world.GetContainerContents(container.Uid).Count();
-                    int maxItems = isBank ? _world.MaxBankItems : _world.MaxContainerItems;
-                    // Source-X OVERRIDE.MAXITEMS: a per-container item cap (e.g. a
-                    // small pouch, a quest box, a vendor crate) overrides the
-                    // global default for THIS container.
-                    if (container.TryGetTag("OVERRIDE.MAXITEMS", out string? maxItemsRaw) &&
-                        ScriptNumber.TryParseInt(maxItemsRaw, out int overrideMax) && overrideMax >= 0)
-                        maxItems = overrideMax;
-                    // Source-X CItemContainer::CanContainerHold adds the INCOMING
-                    // container's children to the bank's own count
-                    // (CItemContainer.cpp:941: ContentCountAll() + iItemsInContainer).
-                    // Counting only what was already in the bank let a player pack
-                    // items into a bag first and walk the bag past the item limit.
-                    // The check is bank-specific in the reference: a normal container
-                    // caps its own slots, not the depth of what goes into one.
-                    int incomingChildren = isBank && item.ContentCount > 0
-                        ? _world.GetContainerItemCountDeep(item.Uid)
-                        : 0;
-
-                    if (currentCount + incomingChildren >= maxItems)
+                    string? chainRefusal = ContainerChainRefusal(container, item);
+                    if (chainRefusal != null)
                     {
-                        SysMessage(ServerMessages.Get(isBank ? Msg.BvboxFullItems : Msg.ContFullItems));
+                        SysMessage(ServerMessages.Get(chainRefusal));
                         RestoreToOrigin(item);
                         _netState.Send(new PacketDropReject());
                         return;
-                    }
-                    // A container's own MODMAXWEIGHT is its limit, and the reference
-                    // has no other for an ordinary chest (CItemContainer.cpp:906). The
-                    // configured value is a shard's optional global, consulted only when
-                    // the container says nothing; zero from both means no limit.
-                    int weightLimit = isBank
-                        ? _world.MaxBankWeight
-                        : container.ModMaxWeight > 0 ? container.ModMaxWeight : _world.MaxContainerWeight;
-                    // A player's OWN pack is not bounded by the flat container cap:
-                    // upstream lets it hold what its owner can carry plus
-                    // BACKPACKOVERLOAD (CItemContainer.cpp:907), so a strong character
-                    // carries more than a weak one and the setting is what says how far
-                    // past their limit the pack may go. A flat cap for everybody made
-                    // strength meaningless here and ignored the setting entirely.
-                    if (!isBank && container.IsEquipped && container.EquipLayer == Layer.Pack &&
-                        _world.FindChar(container.ContainedIn) is { } packOwner)
-                    {
-                        weightLimit = Item.BackpackOverload < 0
-                            ? 0                                  // below zero: no limit
-                            : packOwner.MaxWeight + Item.BackpackOverload;
-                    }
-                    if (weightLimit > 0)
-                    {
-                        int totalWeightTenths = 0;
-                        foreach (var b in _world.GetContainerContents(container.Uid))
-                            totalWeightTenths += b.TotalWeightTenths;
-                        if (totalWeightTenths + item.TotalWeightTenths > weightLimit * Item.WeightUnits)
-                        {
-                            SysMessage(ServerMessages.Get(isBank ? Msg.BvboxFullWeight : Msg.ContFullWeight));
-                            RestoreToOrigin(item);
-                            _netState.Send(new PacketDropReject());
-                            return;
-                        }
                     }
                 }
 

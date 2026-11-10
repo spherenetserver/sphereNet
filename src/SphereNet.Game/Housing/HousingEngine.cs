@@ -367,14 +367,28 @@ public sealed class House
         RevokeListedPrivileges(uid);
         return _coOwners.Add(uid);
     }
-    public bool RemoveCoOwner(Serial uid) => _coOwners.Remove(uid);
+    /// <summary>CItemMulti::DeleteCoowner (CItemMulti.cpp:776-804): leaving the list
+    /// also takes the removed person's keys to this house (RemoveKeys).</summary>
+    public bool RemoveCoOwner(Serial uid)
+    {
+        if (!_coOwners.Remove(uid)) return false;
+        Engine?.RemoveKeysOf(uid, _multiItem.Uid);
+        return true;
+    }
     public bool AddFriend(Serial uid)
     {
         if (!uid.IsValid || uid == _owner || _friends.Contains(uid)) return false;
         RevokeListedPrivileges(uid);
         return _friends.Add(uid);
     }
-    public bool RemoveFriend(Serial uid) => _friends.Remove(uid);
+    /// <summary>CItemMulti::DeleteFriend (CItemMulti.cpp:854-880): as co-owners, the
+    /// removed friend's keys go with the entry.</summary>
+    public bool RemoveFriend(Serial uid)
+    {
+        if (!_friends.Remove(uid)) return false;
+        Engine?.RemoveKeysOf(uid, _multiItem.Uid);
+        return true;
+    }
     public bool AddBan(Serial uid)
     {
         if (!uid.IsValid || uid == _owner || _bans.Contains(uid)) return false;
@@ -1144,7 +1158,15 @@ public sealed class HousingEngine
         // CItemMulti::Delete hands the multi back out of the owner's storage, which
         // runs @DelMulti (CItemMulti.cpp:146).
         if (owner is { IsPlayer: true }) OnDelMulti?.Invoke(owner, it);
-        RemoveStructureKeys(owner, it.Uid);
+        // CItemMulti::RemoveAllKeys (CItemMulti.cpp:1159-1188), only when AUTOHOUSEKEYS
+        // is on: the owner's keys and those of every co-owner, friend and access-list
+        // entry go with the house.
+        if (AutoHouseKeys)
+        {
+            RemoveStructureKeys(owner, it.Uid);
+            foreach (var listed in house.CoOwners.Concat(house.Friends).Concat(house.AccessList).ToList())
+                RemoveKeysOf(listed, it.Uid);
+        }
         var ownerMemory = owner?.Memory_FindObjTypes(it.Uid, MemoryType.Guard);
         if (owner != null && ownerMemory != null)
             owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
@@ -1192,6 +1214,36 @@ public sealed class HousingEngine
     /// placement (the engine's own NoBuild/footprint/terrain checks ran first).</summary>
     public static Func<Character, Point3D, bool>? OnHouseCheck { get; set; }
 
+    /// <summary>What the pack's <c>f_multi_onplacement_check</c> answered: RETURN 1
+    /// vetoes the placement, RETURN HALFBAKED (6) skips the engine's geometry checks,
+    /// and the function may rewrite the two margins it is given (LOCAL.CHECK_BLOCKRADIUS
+    /// "west, north, east, south" and LOCAL.CHECK_MULTIRADIUS), which arrive here as
+    /// raw text.</summary>
+    public readonly record struct PlacementCheck(bool Veto, bool SkipGeometry,
+        string? BlockRadius, string? MultiRadius);
+
+    /// <summary>Source-X Multi_Create runs <c>f_multi_onplacement_check</c> first, on the
+    /// placing character, before any geometric check (CItemMulti.cpp:3258-3270). The
+    /// host calls it; null means the pack has no such function. Args: placer, multi id,
+    /// the point the player chose (before the anchor correction).</summary>
+    public static Func<Character, ushort, Point3D, PlacementCheck>? OnPlacementCheck { get; set; }
+
+    internal static (int W, int N, int E, int S) DefaultBlockRadius => (-1, -1, 1, 1);
+    internal static (int W, int N, int E, int S) DefaultMultiRadius => (0, -5, 0, 5);
+
+    /// <summary>CRect::Read of the four margin numbers a placement check hands back;
+    /// the default stands when the text isn't four integers.</summary>
+    internal static (int W, int N, int E, int S) ParseRadius(string? text, (int W, int N, int E, int S) fallback)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return fallback;
+        var parts = text.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 4) return fallback;
+        var v = new int[4];
+        for (int i = 0; i < 4; i++)
+            if (!Core.Types.ScriptNumber.TryParseInt(parts[i], out v[i])) return fallback;
+        return (v[0], v[1], v[2], v[3]);
+    }
+
     public House? PlaceHouse(Character owner, ushort multiId, Point3D position,
         bool customFoundation = false, bool magic = false)
         => PlaceHouse(owner, multiId, position, out _, customFoundation, magic);
@@ -1221,8 +1273,21 @@ public sealed class HousingEngine
             position.X + def.MaxX >= mapWidth || position.Y + def.MaxY >= mapHeight)
         { failure = PlacementFailure.OutOfMap; return null; }
 
-        // Check placement area
-        if (!magic && !CanPlaceHouse(position, def))
+        // f_multi_onplacement_check comes before every geometric check (Multi_Create,
+        // CItemMulti.cpp:3258-3270). The point it sees is the one the player clicked,
+        // so the anchor correction (pt.m_y -= rect.bottom - 1) is undone for it.
+        var placement = OnPlacementCheck?.Invoke(owner, multiId,
+            def.MaxY > 0 ? new Point3D(position.X, (short)(position.Y + def.MaxY - 1), position.Z, position.Map)
+                         : position) ?? default;
+        if (placement.Veto)
+        { failure = PlacementFailure.ScriptVeto; return null; }
+
+        // Staff and magic deeds skip the placement geometry, as does a pack function
+        // that answers HALFBAKED (CItemMulti.cpp:3291, :3296).
+        if (!magic && owner.PrivLevel < PrivLevel.GM && !placement.SkipGeometry &&
+            !CanPlaceHouse(position, def,
+                ParseRadius(placement.BlockRadius, DefaultBlockRadius),
+                ParseRadius(placement.MultiRadius, DefaultMultiRadius)))
         { failure = PlacementFailure.LocationBlocked; return null; }
 
         // @HouseCheck (Source-X) — a script may veto placement after the engine's
@@ -1454,6 +1519,11 @@ public sealed class HousingEngine
                 UnlinkGuild(house);
     }
 
+    /// <summary>CItemMulti::RemoveKeys(uid): every key to <paramref name="structureUid"/>
+    /// the character carries in pack or bank is destroyed.</summary>
+    internal void RemoveKeysOf(Serial charUid, Serial structureUid) =>
+        RemoveStructureKeys(charUid.IsValid ? _world.FindChar(charUid) : null, structureUid);
+
     private void RemoveStructureKeys(Character? owner, Serial structureUid)
     {
         if (owner == null) return;
@@ -1482,15 +1552,23 @@ public sealed class HousingEngine
 
     /// <summary>Check if a house can be placed at the given position
     /// (Source-X CItemMulti::Multi_Create intensive loop).</summary>
-    public bool CanPlaceHouse(Point3D position, MultiDef def)
+    public bool CanPlaceHouse(Point3D position, MultiDef def) =>
+        CanPlaceHouse(position, def, DefaultBlockRadius, DefaultMultiRadius);
+
+    /// <summary>The placement check with the two margins the pack may rewrite:
+    /// <paramref name="blockRadius"/> widens the footprint for the terrain / blocker
+    /// loop (default one tile all round) and <paramref name="multiRadius"/> the NOBUILD
+    /// region scan (default 5 tiles north and south), west / north / east / south.</summary>
+    public bool CanPlaceHouse(Point3D position, MultiDef def,
+        (int W, int N, int E, int S) blockRadius, (int W, int N, int E, int S) multiRadius)
     {
         var md = _world.MapData;
 
-        // Source-X re-checks REGION_FLAG_NOBUILDING over the footprint plus a
-        // +5-tile margin (CItemMulti.cpp:3404-3429) — not just the anchor.
-        for (short mx = (short)(def.MinX - 5); mx <= def.MaxX + 5; mx++)
+        // Source-X re-checks REGION_FLAG_NOBUILDING over the footprint widened by
+        // check_multiradius (CItemMulti.cpp:3404-3429) — not just the anchor.
+        for (int mx = def.MinX + multiRadius.W; mx <= def.MaxX + multiRadius.E; mx++)
         {
-            for (short my = (short)(def.MinY - 5); my <= def.MaxY + 5; my++)
+            for (int my = def.MinY + multiRadius.N; my <= def.MaxY + multiRadius.S; my++)
             {
                 var marginPos = new Point3D(
                     (short)(position.X + mx), (short)(position.Y + my),
@@ -1501,21 +1579,27 @@ public sealed class HousingEngine
             }
         }
 
-        for (short dx = def.MinX; dx <= def.MaxX; dx++)
+        // The terrain / blocker loop runs over the footprint widened by
+        // check_blockradius (CItemMulti.cpp:3350-3378); who stands on it, other
+        // houses and hulls matter for the footprint itself.
+        for (int dx = def.MinX + blockRadius.W; dx <= def.MaxX + blockRadius.E; dx++)
         {
-            for (short dy = def.MinY; dy <= def.MaxY; dy++)
+            for (int dy = def.MinY + blockRadius.N; dy <= def.MaxY + blockRadius.S; dy++)
             {
+                if (position.X + dx < 0 || position.Y + dy < 0)
+                    return false;   // off the map (ptn.IsValidPoint, :3358)
                 var checkPos = new Point3D(
                     (short)(position.X + dx),
                     (short)(position.Y + dy),
                     position.Z,
                     position.Map
                 );
+                bool inFootprint = dx >= def.MinX && dx <= def.MaxX && dy >= def.MinY && dy <= def.MaxY;
 
-                if (FindHouseAt(checkPos) != null)
+                if (inFootprint && FindHouseAt(checkPos) != null)
                     return false;
                 // A docked ship hull blocks the footprint too.
-                if (IsShipAt != null && IsShipAt(checkPos))
+                if (inFootprint && IsShipAt != null && IsShipAt(checkPos))
                     return false;
 
                 // Reject blocked terrain (water, mountains, impassable statics)
@@ -1537,7 +1621,7 @@ public sealed class HousingEngine
                 // (Source-X CItemMulti.cpp:3330). NOTE: range 1 + exact X/Y
                 // filter; the old GetCharsInRange(pos, 0) returned nothing,
                 // so the char check was silently a no-op.
-                foreach (var ch in _world.GetCharsInRange(checkPos, 1))
+                foreach (var ch in inFootprint ? _world.GetCharsInRange(checkPos, 1) : Enumerable.Empty<Character>())
                 {
                     if (ch.X != checkPos.X || ch.Y != checkPos.Y) continue;
                     if (ch.IsDead || ch.PrivLevel >= PrivLevel.GM) continue;

@@ -117,7 +117,25 @@ public sealed class ClientWorldFeaturesHandler
     private const int CraftButtonPrevPage = 2;
     private const int CraftButtonRecipeBase = 100;
 
-    public void OpenCraftingGump(SkillType craftSkill) => OpenCraftingMenu(craftSkill, DefaultSkillMenu(craftSkill), 0);
+    /// <summary>The skill button of a crafting skill: the client's target starts over
+    /// (Event_Skill_Use, CClientEvent.cpp:651 m_Targ_UID.InitUID), so the menu is
+    /// opened with no used object.</summary>
+    public void OpenCraftingGump(SkillType craftSkill)
+    {
+        _character?.RemoveTag("TARG.UID");
+        OpenCraftingMenu(craftSkill, DefaultSkillMenu(craftSkill), 0);
+    }
+
+    /// <summary>The client's TARG (CClient::m_Targ_UID): the object the last pick or
+    /// double-click left on the character. Invalid when there is none.</summary>
+    internal static Serial TargUid(Character ch)
+    {
+        if (!ch.TryGetTag("TARG.UID", out string? raw) || string.IsNullOrWhiteSpace(raw))
+            return Serial.Invalid;
+        if (!ScriptNumber.TryParseUInt(raw, out uint uid) || uid == 0 || uid == 0xFFFFFFFF)
+            return Serial.Invalid;
+        return new Serial(uid);
+    }
 
     /// <summary>CClient::Cmd_Skill_Inscription (CClientUse.cpp:1293-1312), from the skill
     /// button and a blank scroll double-clicked: a blank scroll must be among the
@@ -125,17 +143,22 @@ public sealed class ClientWorldFeaturesHandler
     internal void InscriptionMenu()
     {
         if (_character == null) return;
-        if (new GameClient.InfoSkillSink(_client, _character).FindBackpackItem(ItemType.ScrollBlank) == null)
+        // ContentFind(RES_TYPEDEF IT_SCROLL_BLANK) (CClientUse.cpp:1301) looks through
+        // everything the character carries - worn, held and in every container - not
+        // only the backpack.
+        if (ResourceMatch.ConsumeTest(_character, ResourceMatch.ForType(ItemType.ScrollBlank), 1) != 0)
         {
             SysMessage(ServerMessages.Get(Msg.InscriptionFail));
             return;
         }
-        OpenCraftingGump(SkillType.Inscription);
+        // Skill_Menu(SKILL_INSCRIPTION, "sm_inscription") with no used item id (:1311);
+        // the scroll the caller double-clicked, if any, is already the client's TARG.
+        OpenCraftingMenu(SkillType.Inscription, DefaultSkillMenu(SkillType.Inscription), 0);
     }
 
     /// <summary>The menu a crafting tool opens (CClientUse.cpp:382-549, 1290, 1311,
     /// CClientTarg.cpp:2396).</summary>
-    private static string DefaultSkillMenu(SkillType skill) => skill switch
+    internal static string DefaultSkillMenu(SkillType skill) => skill switch
     {
         SkillType.Blacksmithing => "sm_blacksmith",
         SkillType.Alchemy => "sm_alchemy",
@@ -332,6 +355,12 @@ public sealed class ClientWorldFeaturesHandler
             Math.Clamp(replicationQty, 1, ushort.MaxValue));
         if (craftAmount <= 0)
             return false;
+
+        // Skill_MakeItem SKTRIG_START keeps the object the make was started with as ACT
+        // (m_Act_UID = uidTarg, CCharSkill.cpp:960-964): the client's TARG, which is the
+        // tool or material the menu was opened with. @SkillMakeItem receives it back as
+        // ARGO when the item is finished (:811-827); a pack colours cloth from it.
+        _character.Act = TargUid(_character);
 
         // No @SkillMakeItem here: it belongs to the finished item, and fires from
         // CompleteCraft once that item exists. Nor @SkillSelect / @Select: they belong
@@ -3184,7 +3213,10 @@ public sealed class ClientWorldFeaturesHandler
         if (!SkillEngine.HasFlag(skill, SkillFlag.Scripted) && skill is SkillType.Inscription or SkillType.Cartography)
         {
             if (skill == SkillType.Inscription)
+            {
+                _character.RemoveTag("TARG.UID");   // m_Targ_UID.InitUID (CClientEvent.cpp:651)
                 InscriptionMenu();
+            }
             return;
         }
 

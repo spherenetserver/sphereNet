@@ -4,6 +4,69 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-10] - Yetkili komut yetki kapisi, vurus ve hasar kurallari, savas akisi, tamir ve skill menuleri, kap sinirlari, ev yerlestirme, ic ice rastgele
+------------------------------------------------------------------------
+DUZELTME - Bir yetkili kendi yetkisini yukseltebiliyordu: .xplevel ve .xprivset konusana hicbir
+       kontrol olmadan uygulaniyordu. Bir karaktere yonlendirilen komut, hedef cagiranin
+       ustundeyse reddedilir; PLEVEL / PRIVLEVEL komut satiriyla yazilamaz; PRIVSET Admin
+       ister. UID ile .kill, .remove, .jail, .forgive, .resurrect ve .setpriv ayni kurala
+       uyar (CanUsePrivVerb, CServerConfig.cpp:2644-2669).
+DUZELTME - SETPRIV / PRIVSET tek uygulamayi paylasir: oyuncu hedef, hedef kadar yetkili Admin
+       kaynak, seviye yukari ya da asagi yazilir, GM bayraklari, dokunulmazlik ve GM cuppesi
+       eklenir ya da alinir (CCharAct.cpp:5473-5511). Cagiran kendi seviyesinin ustunu veremez.
+DUZELTME - Varsayilan cagda vurus sansi ve parry DEX'i ayarlanmis skill / stat kullanir; silah
+       hasari dayaniklilik olceklemesinden ve Enchant etkisinden gecer; negatif direnc hasar
+       ekler; COMBATBONUSSTAT / COMBATBONUSPERCENT okunur (CResourceCalc.cpp:158-167, 333,
+       CItem.cpp:4918-4937, CCharFight.cpp:724-730, 1211-1318).
+DUZELTME - Savas mesafesi yuksekligi de sayar; yalnizca hedefin SAFE alani vurusu reddeder;
+       okculuk hareket gecikmesi sadece istemci saldirganlara uygulanir; basarisiz parry en
+       dusuk skill kazancini verir ve @SkillUseQuick atesler (CCharFight.cpp:1703, 1711, 1844,
+       1858, 2122).
+DUZELTME - Elde buyu kitabi, mesale ya da yalniz kalkan artik savas silahi sayilmaz: vurus
+       silahsizdir ve parry yapmaz (CCharAct.cpp:308-311, CResourceCalc.cpp:311-318).
+DUZELTME - Cephanesi bitmis yay, her vurusta mesaj tekrarlamak yerine mesaj verip dovusu
+       bitirir (CCharFight.cpp:1866-1873, 1582-1589).
+DUZELTME - Zirhin tamamen emdigi vurus yine de buyucuyu bozar; vuran darbe yalniz Healing'i
+       mesajiyla keser, her bekleyen skill'i degil (CCharFight.cpp:880-916, 2203-2208).
+DUZELTME - Pet, sahibi ona gercekten zarar verince kacar (her hasar kaynagindan); yalnizca
+       saldiri ilan etmek yetmez (CCharFight.cpp:312-313).
+EKLENDI - Guard cagrilmis yaratigi dovmek yerine siler; NPC'ye isabet eden ok cantasina ya da
+       ayaginin dibine geri doner; saldiri emote'u hedef saldirgan listesine girerken
+       gosterilir (CCharFight.cpp:1818-1822, 2210-2218, CCharAttacker.cpp:57-81).
+DUZELTME - Tamir cogu zirh ve silahi reddediyordu, tamir menusu girdisi ve REPAIR verb'u hicbir
+       sey yapmiyordu, 0 dayanikliliga inen parca kaliyordu. Tamir Use_Repair'i izler: herkese
+       gorunen emote, adi sayilan eksik malzeme, 0'da yok olan esya, tarifsiz esya tamir
+       edilmez (CCharUse.cpp:760-880, CItem.cpp:4846-4894).
+DUZELTME - Uretilen esyanin @SkillMakeItem'daki ARGO'su oyuncunun kullandigi alet ya da
+       malzemedir; boyali kumastan boyali esya cikar (CChar.cpp:4720, CCharSkill.cpp:811-827,
+       960-964).
+DUZELTME - Skill menuleri karakterin yapamayacagi tarifleri ve yapilacak bir sey olmayan ic
+       menuleri gizler, tek kalan girdiyi acar, bos kalinca defmessage soyler
+       (CClientUse.cpp:749-975, CCharSkill.cpp:870-923).
+EKLENDI - Kutuge bicak ya da balta kullanimi marangoz ya da yay menusunu acar; cift tiklanan
+       marangoz baltasi hedef sorar; makas basarida sessizdir (CClientTarg.cpp:1866-1941,
+       2135-2184, CClientUse.cpp:420-424).
+DUZELTME - Gorev esyasi yalnizca sahibinin cantasina ya da cop kutusuna birakilabilir; tas,
+       cisimsiz ya da uyuyan karakter esya kaldiramaz; giyili sac, sakal, canta ve gorunmez
+       katmanlar yetkili olmayanca kaldirilamaz (CClientEvent.cpp:295-310, CCharStatus.cpp:
+       1588-1687).
+DUZELTME - Agirlik ve esya sinirlari tum kap zincirinde denetlenir, banka kutusunun
+       MODMAXWEIGHT'i eklenir, kap kendisine esit ya da kucuk bir kabin icine konamaz ve
+       saniyenin ucte birinden sik kaldirmalar iptal edilir (CClientEvent.cpp:201-237,
+       359-405, CItemContainer.cpp:897-929, 975).
+DUZELTME - Ev yerlestirme paketin f_multi_onplacement_check fonksiyonunu calistirir (RETURN 1
+       veto, 6 geometriyi atlar, yaricaplar geri okunur); GM'ler geometri kontrolunu atlar;
+       ev anahtari yerdeki esyayi kilitler ve birakir; ortak sahip ya da arkadas cikarilinca
+       anahtarlari da alinir (CItemMulti.cpp:776-880, 3258-3296, CCharUse.cpp:23-47,
+       1330-1410).
+DUZELTME - KICK, PRIVSET, SHRINK, DESTROY, NUDGEUP, NUDGEDOWN, JAIL, FORGIVE, KILL ve BANK
+       hedefsiz yazilinca imlec acar, .jail 3 hucreyi tasir; ACCOUNT BLOCK / BAN 0/1
+       argumani alir, JAIL, GUEST, MAXCHARS, KICK ve ADDMD5 eklendi (CClientEvent.cpp:28-42,
+       CAccount.cpp:1382-1441, 1697-1704).
+DUZELTME - <R<x>> ve <R<a>,<b>> bos metin donuyordu; dungeon sandik sans testi hep geciyor,
+       spawner zamanlayicisi ve shuriken hasari bos kaliyordu. FormatMinutes paketin
+       [FUNCTION FormatMinutes] fonksiyonunu artik golgelemez (CScriptObj.cpp:563).
+
 [2026-11-10] - Esya kullanimlari, pet komutlari, tooltip'ler, kitaplar, profil, parti, karakter olusturma, skill'ler, mevsim ve isik
 ------------------------------------------------------------------------
 EKLENDI - Makas, kumas topunu RESOURCES'ina keser (CItem::ConvertBolttoCloth).
@@ -182,6 +245,10 @@ EKLENDI - Oyuncu anahtarlari REFUSETRADES (okuma, yazma, cplak anahtar olarak ka
        (CCharPlayer.cpp:243-267, 375-485).
 EKLENDI - Bir oldurme, olduren kisiyi baska bir notoriety unvanina tasidiginda "You are now
        ..." mesaji (Noto_ChangeNewMsg, CCharNotoriety.cpp:465-473).
+DUZELTME - Calisirken silinen statik esya bir sonraki acilista geri geliyordu, cunku statics
+       dosyasini yalnizca SAVESTATICS yeniden yazar. Dunya kaydi, son yazimdan beri yerde
+       duran bir statik silindiyse bu dosyayi tazeler; basarisiz tazeleme bir sonraki kayitta
+       yeniden denenir. (SphereNet eklentisi: referans esyayi dosyada birakir.)
 
 [2026-11-10] - Klasik spheremultis dosyasi artik kaldirilan yapilari geri getirmiyor
 ------------------------------------------------------------------------

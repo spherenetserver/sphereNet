@@ -340,8 +340,10 @@ public sealed class CraftingEngine
             // that bit was in the enum with nothing reading it. The old invented
             // "exceptional" rename + 20% durability boost had no reference basis
             // (durability comes solely from the def).
+            // The line itself is DEFMSG_GRANDMASTER_MARK (item name, maker name),
+            // so a shard's [DEFMESSAGE] rewrite of it reaches the new name.
             if (EarnsMakersMark(skillVal, quality))
-                item.Name = $"{item.Name} crafted by {crafter.Name}";
+                item.Name = Messages.ServerMessages.GetFormatted(Messages.Msg.GrandmasterMark, item.GetName(), crafter.Name);
         }
 
         return new CraftOutcome(item, extras, quality, qualityRolled, amount);
@@ -449,7 +451,9 @@ public sealed class CraftingEngine
         if (Random.Shared.Next(2) == 0)
             variance = -variance;
 
-        int bandSelector = skillLevel * 2 / 10;
+        // quality = IMulDiv(iSkillLevel, 2, 10) (CCharSkill.cpp:726): rounded, not
+        // truncated, so a skill of 124 already reads as band selector 25.
+        int bandSelector = Skills.Information.InfoSkillEngine.IMulDiv(skillLevel, 2, 10);
         int band =
             bandSelector < 25 ? 0 :   // shoddy
             bandSelector < 50 ? 1 :   // poor
@@ -506,6 +510,14 @@ public sealed class CraftingEngine
     /// by a percentage, and a test reports the first entry that falls short instead
     /// of spending anything. Repair uses it for half the damage percentage.</summary>
     public static bool TryConsumeResourcePart(Character ch, CraftRecipe recipe,
+        int percent, bool test) =>
+        ConsumeResourcePart(ch, recipe, percent, test) < 0;
+
+    /// <summary>The same walk as <see cref="TryConsumeResourcePart"/> but answering
+    /// WHICH entry fell short: the index into <c>recipe.Resources</c> of the last
+    /// short entry, or -1 when everything was covered. Repair names that component
+    /// to the smith (Use_Repair, CCharUse.cpp:817-820).</summary>
+    public static int ConsumeResourcePart(Character ch, CraftRecipe recipe,
         int percent, bool test)
     {
         // ResourceConsumePart has neither MATOVERRIDE nor the skill-entry check that
@@ -514,8 +526,72 @@ public sealed class CraftingEngine
         var list = recipe.Resources
             .Select(r => new ResourceMatch.ResourceQty(r.Rid, r.Amount))
             .ToList();
-        return ResourceMatch.ResourceConsumePart(ch, list, 1, percent, test) < 0;
+        return ResourceMatch.ResourceConsumePart(ch, list, 1, percent, test);
     }
+
+    /// <summary>The name a resource entry goes by in a message
+    /// (<c>pCompDef->GetName()</c>, Use_Repair CCharUse.cpp:819): an ITEMDEF is its
+    /// item name (its tile's when the definition has none), anything else the
+    /// resource's own defname. Null when neither is known.</summary>
+    public static string? ResourceDisplayName(CraftResource resource)
+    {
+        var rid = resource.Rid;
+        if (rid.Type == ResType.ItemDef && DefinitionLoader.GetItemDef(rid.Index) is { } def)
+        {
+            string name = def.Name;
+            if (string.IsNullOrEmpty(name))
+            {
+                int tile = def.DispIndex != 0 ? def.DispIndex : rid.Index;
+                name = Objects.Items.Item.ResolveWorld?.Invoke()?.MapData?.GetItemTileData(tile).Name ?? "";
+            }
+            if (!string.IsNullOrEmpty(name))
+                return DefinitionLoader.ResolveNames(name);
+        }
+        string? defName = DefinitionLoader.StaticResources?.GetResource(rid)?.DefName;
+        return string.IsNullOrWhiteSpace(defName) ? null : defName;
+    }
+
+    /// <summary>The used-object filter of Skill_MakeItem's SELECT stage
+    /// (CCharSkill.cpp:900-909). When the definition names a TYPE or an ITEMDEF in
+    /// its SKILLMAKE, or a TYPE in its RESOURCES, the object the menu was opened with
+    /// (the tool double-clicked, the material picked) has to match one of the
+    /// SKILLMAKE or RESOURCES entries (CItem::IsResourceMatch), otherwise the entry
+    /// is not offered. A recipe naming neither takes any object, or none.</summary>
+    public static bool MatchesUsedItem(CraftRecipe recipe, Item? used)
+    {
+        if (used == null)
+            return true;
+
+        bool restricted = recipe.RequiredToolTypes.Count > 0 || recipe.RequiredItemIds.Count > 0 ||
+            recipe.Resources.Any(r => r.Rid.Type == ResType.TypeDef);
+        if (!restricted)
+            return true;
+
+        foreach (var toolType in recipe.RequiredToolTypes)
+        {
+            if (ResourceMatch.IsMatch(used, ResourceMatch.ForType(toolType)))
+                return true;
+        }
+        foreach (var required in recipe.RequiredItemIds)
+        {
+            if (ResourceMatch.IsMatch(used, required.Rid))
+                return true;
+        }
+        foreach (var res in recipe.Resources)
+        {
+            if (ResourceMatch.IsMatch(used, res.Rid))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Skill_MakeItem(id, uidTarg, SKTRIG_SELECT) (CCharSkill.cpp:870-923) as
+    /// the SKILLMENU build asks it: the used-object filter, then the SKILLMAKE
+    /// skills and tools, then the stock - the stage tests the materials too
+    /// (ResourceConsume in test mode, :920), and the work site is NOT part of it,
+    /// that is the skill's own START.</summary>
+    public bool CanSelect(Character crafter, CraftRecipe recipe, Item? used) =>
+        MatchesUsedItem(recipe, used) && CanCraft(crafter, recipe, checkWorkSite: false);
 
     /// <summary>
     /// How much of a resource the character's reachable stock holds — the same walk

@@ -4,6 +4,68 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-10] - Staff verb privilege gate, hit and damage rules, combat flow, repair and skill menus, container limits, house placement, nested random
+------------------------------------------------------------------------
+FIX - A staff member could raise their own privilege: .xplevel and .xprivset acted on the
+      speaker with no check. A verb aimed at a character is now refused when the target
+      out-ranks the caller, PLEVEL / PRIVLEVEL cannot be written through a verb line, and
+      PRIVSET needs an Admin. .kill, .remove, .jail, .forgive and .resurrect by UID and
+      .setpriv follow the same rule (CanUsePrivVerb, CServerConfig.cpp:2644-2669).
+FIX - SETPRIV / PRIVSET share one implementation: player target, Admin source at least as
+      privileged as the target, level written up or down, GM flags, invulnerability and the
+      GM robe set or removed (CCharAct.cpp:5473-5511). A caller cannot hand out a level above
+      its own.
+FIX - Hit chance and parry DEX use the adjusted skill / stat in the default era; weapon damage
+      goes through durability scaling and the Enchant effect; a negative resist adds damage;
+      COMBATBONUSSTAT / COMBATBONUSPERCENT are read (CResourceCalc.cpp:158-167, 333,
+      CItem.cpp:4918-4937, CCharFight.cpp:724-730, 1211-1318).
+FIX - Combat distance includes height; only the target's SAFE area refuses a swing; the archery
+      move delay applies to client attackers only; a failed parry earns the minimum skill
+      credit and fires @SkillUseQuick (CCharFight.cpp:1703, 1711, 1844, 1858, 2122).
+FIX - A spellbook, torch or lone shield in hand is no longer the fight weapon: the swing is
+      bare-handed and does not parry (CCharAct.cpp:308-311, CResourceCalc.cpp:311-318).
+FIX - A bow with no ammunition ends the fight after one message instead of repeating it every
+      swing (CCharFight.cpp:1866-1873, 1582-1589).
+FIX - A blow that armour absorbs completely still disturbs a caster; only Healing is cut by a
+      connecting blow, with its message, instead of every pending skill (CCharFight.cpp:
+      880-916, 2203-2208).
+FIX - A pet deserts when its owner actually harms it, from any damage source, not when the
+      owner only declares an attack (CCharFight.cpp:312-313).
+ADD - A guard removes a conjured creature instead of fighting it; an arrow that hits an NPC
+      is recovered into its pack or at its feet; the attack emote is shown when the target
+      joins the attacker list (CCharFight.cpp:1818-1822, 2210-2218, CCharAttacker.cpp:57-81).
+FIX - Repair refused most armour and weapons, the repair menu entry and the REPAIR verb did
+      nothing, and a piece taken to 0 hits stayed. Repair follows Use_Repair: public emote,
+      named missing component, item destroyed at 0 hits, no repair without a recipe
+      (CCharUse.cpp:760-880, CItem.cpp:4846-4894).
+FIX - A crafted item's ARGO in @SkillMakeItem is the tool or material the player used, so
+      coloured cloth gives a coloured item (CChar.cpp:4720, CCharSkill.cpp:811-827, 960-964).
+FIX - Skill menus hide recipes the character cannot make and nested menus with nothing makable,
+      open a lone remaining entry, and say the defmessage when empty (CClientUse.cpp:749-975,
+      CCharSkill.cpp:870-923).
+ADD - A blade or chop tool on logs opens the carpentry or bowcraft menu; a double-clicked
+      carpentry chop asks for a target; scissors are silent on success (CClientTarg.cpp:
+      1866-1941, 2135-2184, CClientUse.cpp:420-424).
+FIX - A quest item can only be dropped into its holder's pack or on a trash can; a mover who
+      is stone, insubstantial or asleep cannot lift; worn hair, beard, pack and non-visible
+      layers cannot be lifted by a non-GM (CClientEvent.cpp:295-310, CCharStatus.cpp:
+      1588-1687).
+FIX - Weight and item limits are checked up the whole container chain, the bank adds the box's
+      MODMAXWEIGHT, a container cannot be put in an equal or smaller one, and pickups closer
+      than a third of a second are cancelled (CClientEvent.cpp:201-237, 359-405,
+      CItemContainer.cpp:897-929, 975).
+FIX - House placement runs the pack's f_multi_onplacement_check (RETURN 1 vetoes, 6 skips the
+      geometry, radii read back); GMs skip the geometry checks; a house key on a loose item
+      locks it down and releases it; removing a co-owner or friend removes their keys
+      (CItemMulti.cpp:776-880, 3258-3296, CCharUse.cpp:23-47, 1330-1410).
+FIX - KICK, PRIVSET, SHRINK, DESTROY, NUDGEUP, NUDGEDOWN, JAIL, FORGIVE, KILL and BANK typed
+      without a target raise a cursor, and .jail 3 passes the cell; ACCOUNT BLOCK / BAN take
+      a 0/1 argument and JAIL, GUEST, MAXCHARS, KICK and ADDMD5 are added (CClientEvent.cpp:
+      28-42, CAccount.cpp:1382-1441, 1697-1704).
+FIX - <R<x>> and <R<a>,<b>> resolved to an empty string, so the dungeon chest odds test always
+      passed and spawner timers and shuriken damage were empty. FormatMinutes no longer
+      shadows the pack's [FUNCTION FormatMinutes] (CScriptObj.cpp:563).
+
 [2026-11-10] - Item uses, pet commands, tooltips, books, profile, party, character creation, skills, seasons and light
 ------------------------------------------------------------------------
 ADD - Scissors on a bolt of cloth cut it into its RESOURCES (CItem::ConvertBolttoCloth).
@@ -174,6 +236,10 @@ ADD - Player keys REFUSETRADES (read, write, saved as a bare key), LASTUSED and
       ADDSHIP, DELSHIP, MAXHOUSES, MAXSHIPS accepted (CCharPlayer.cpp:243-267, 375-485).
 ADD - "You are now ..." when a kill moves the killer to another notoriety title
       (Noto_ChangeNewMsg, CCharNotoriety.cpp:465-473).
+FIX - A static item deleted at run time came back at the next boot, because the statics
+      file is only rewritten by SAVESTATICS. The world save now refreshes that file when a
+      ground static was deleted since it was last written; a failed refresh is retried with
+      the next save. (SphereNet addition: the reference leaves the item in the file.)
 
 [2026-11-10] - Classic spheremultis file no longer restores removed structures
 ------------------------------------------------------------------------

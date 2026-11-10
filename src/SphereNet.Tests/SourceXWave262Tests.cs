@@ -54,12 +54,13 @@ public sealed class SourceXWave262Tests
     }
 
     [Fact]
-    public void EffectiveResist_ClampedToHundred()
+    public void EffectiveResist_IsNotCapped()
     {
+        // The reference reads PROPCH_RES* raw in `100 - res` (CCharFight.cpp:724-730).
         var (world, ch) = Make();
         ch.ResPoison = 90;
         ch.Equip(ResistPiece(world, "RESPOISON", 40), Layer.Chest);
-        Assert.Equal(100, CombatEngine.EffResPoison(ch)); // 130 -> clamped
+        Assert.Equal(130, CombatEngine.EffResPoison(ch));
     }
 
     [Fact]

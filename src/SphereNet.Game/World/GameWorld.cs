@@ -572,6 +572,10 @@ public sealed class GameWorld
     }
     private bool _suppressDirtyNotify;
 
+    /// <summary>A ground ATTR_STATIC item was deleted since the statics file was last
+    /// written; the next world save rewrites that file (cleared by the saver).</summary>
+    public volatile bool StaticsDirty;
+
     /// <summary>Called by ObjBase on clean→dirty transition. Thread-safe.</summary>
     public void NotifyDirty(ObjBase obj)
     {
@@ -1040,6 +1044,14 @@ public sealed class GameWorld
             else if (obj is Character staleChar) staleChar.CompleteDeletion();
             return;
         }
+
+        // A ground static leaving the world: the statics file is rewritten only by
+        // SAVESTATICS upstream, so a deleted one came back at the next boot. The
+        // world save sees this flag and refreshes that file.
+        if (!SuppressDirtyNotify && obj is Item staticGone && staticGone.IsOnGround &&
+            staticGone.IsAttr(ObjAttributes.Static) &&
+            staticGone.ItemType is not (ItemType.Multi or ItemType.MultiCustom or ItemType.Ship))
+            StaticsDirty = true;
 
         NotifySpawnerOfLoss(obj);
         ObjectDeleting?.Invoke(obj);

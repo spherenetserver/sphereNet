@@ -160,7 +160,7 @@ internal static class InfoSkillExtensions
     }
 
     /// <summary>The tail both ratings share (CItem.cpp:4906-4913 / :4928-4935).</summary>
-    private static int FinishRating(Item it, long value, bool enchant)
+    internal static int FinishRating(Item it, long value, bool enchant)
     {
         int max = it.HitsMax, cur = it.HitsCur;
         if ((Clients.GameClient.ServerOptionFlags & OptionFlags.ScaleDamageByDurability) != 0 &&

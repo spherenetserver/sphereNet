@@ -66,7 +66,17 @@ public class ItemUseParityTests
         tool.ItemType = ItemType.WeaponMaceSmith;
         pack.AddItem(tool);
 
+        // The craft skill comes from the piece's SKILLMAKE; without one the repair ends
+        // silently (Use_Repair, CCharUse.cpp:812).
+        var damagedDef = new SphereNet.Scripting.Definitions.ItemDef(new ResourceId(ResType.ItemDef, 0x13BB))
+        {
+            Type = ItemType.Armor,
+            SkillMakeRaw = "Tinkering 50.0",
+        };
+        SphereNet.Game.Definitions.DefinitionLoader.SetItemDef(0x13BB, damagedDef);
+
         var damaged = world.CreateItem();
+        damaged.BaseId = 0x13BB;
         damaged.ItemType = ItemType.Armor;
         damaged.HitsMax = 50;
         damaged.HitsCur = 10;

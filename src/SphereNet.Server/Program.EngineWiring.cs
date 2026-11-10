@@ -1027,11 +1027,6 @@ public static partial class Program
                 foreach (var c in _clients.Values)
                     if (c.Character == gm) { c.BeginBankTarget(); break; }
             };
-            _commands.OnBankSelfRequested += gm =>
-            {
-                foreach (var c in _clients.Values)
-                    if (c.Character == gm) { c.OpenBankBox(); break; }
-            };
             _commands.OnUnmountRequested += gm =>
             {
                 foreach (var c in _clients.Values)
@@ -1987,16 +1982,14 @@ public static partial class Program
                     BroadcastNearby(attacker.Position, 18,
                         new PacketSound(strikeSound, attacker.X, attacker.Y, attacker.Z), 0);
 
-                if (damage > 0)
-                {
-                    _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false, source: attacker);
-                    if (target.HasActiveSkillPending())
-                    {
-                        int abortedSkill = target.ClearActiveSkillPending();
-                        if (abortedSkill >= 0)
-                            Character.ActiveSkillAborted?.Invoke(target, abortedSkill);
-                    }
-                }
+                // The disturb is rolled for every connecting blow, a fully absorbed one
+                // included (OnTakeDamage, CCharFight.cpp:880-916, sits before the
+                // `iDmg <= 0` return), and the only skill a connecting blow cancels is
+                // Healing, with its own message (Fight_Hit, :2203-2208).
+                _spellEngine?.TryInterruptFromBlow(target, damage,
+                    CombatEngine.GetWeaponDamageType(weapon), attacker);
+                if (!target.IsDead)
+                    target.InterruptHealingOnHit();
 
                 if (damage > 0)
                 {
@@ -2032,6 +2025,8 @@ public static partial class Program
                 const ushort emoteHue = 0x0022;
                 var emote = CombatHelper.FormatAttackEmotes(attacker, target);
                 // EMOTECOLOROVERRIDE colours the bystanders' line (CCharAttacker.cpp:68).
+                // EMOTEF_ATTACKER hides the bystanders' line (CCharAttacker.cpp:60).
+                bool showOthers = (Character.EmoteFlags & Character.EmoteFlagAttacker) == 0;
                 var emoteOthers = new PacketSpeechUnicodeOut(
                     attacker.Uid.Value, attacker.BodyId, 2,
                     attacker.EmoteColorOverride != 0 ? attacker.EmoteColorOverride : emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
@@ -2041,8 +2036,13 @@ public static partial class Program
                     emote.AttackerName, emote.VictimText);
                 uint victimUid = target.Uid.Value;
                 ForEachClientInRange(attacker.Position, 18, 0,
-                    (obsCh, obsClient) => obsClient.Send(
-                        obsCh.Uid.Value == victimUid ? emoteVictim : emoteOthers));
+                    (obsCh, obsClient) =>
+                    {
+                        if (obsCh.Uid.Value == victimUid)
+                            obsClient.Send(emoteVictim);
+                        else if (showOthers)
+                            obsClient.Send(emoteOthers);
+                    });
             };
             _npcAI.OnNpcKill = (killer, victim) =>
             {
@@ -2697,6 +2697,14 @@ public static partial class Program
                 _triggerDispatcher?.IsItemTriggerUsed(ItemTrigger.Redeed) == true
                     ? _triggerDispatcher.FireItemTrigger(multi, ItemTrigger.Redeed, args)
                     : null;
+            // f_multi_onplacement_check — the pack's own placement function runs before
+            // the engine's geometry checks (CItemMulti.cpp:3258-3270).
+            SphereNet.Game.Housing.HousingEngine.OnPlacementCheck = (placer, multiId, pt) =>
+                SphereNet.Game.Scripting.GlobalHookCalls.RunMultiPlacementCheck(
+                    _triggerDispatcher?.Runner, placer,
+                    SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(multiId)?.GetResourceName()
+                        ?? $"0{multiId:x}",
+                    pt, null);
             // @HouseCheck — a script may veto house placement (RETURN 1) after the
             // engine's NoBuild / footprint / terrain checks pass; ARGN1/2/3 = x/y/z.
             SphereNet.Game.Housing.HousingEngine.OnHouseCheck = (placer, pos) =>
@@ -4126,19 +4134,14 @@ public static partial class Program
     /// <summary>An NPC special (breath / thrown object) lands through the shared
     /// OnTakeDamage path (CombatEngine.ApplyScriptDamage): invulnerability, fire
     /// immunity, @GetHit and the resists apply, and the damage feedback, wake-up and
-    /// death come from OnDirectCharacterDamageApplied. The struck target's active
-    /// skill is interrupted like any other blow.</summary>
+    /// death come from OnDirectCharacterDamageApplied. Like every OnTakeDamage it
+    /// leaves the target's active skill alone (only a connecting swing cancels
+    /// Healing, CCharFight.cpp:2203-2208).</summary>
     private static void ApplyNpcSpecialDamage(Character npc, Character target, int damage,
         DamageType type, int physical, int fire, int cold, int poison, int energy)
     {
-        int dealt = CombatEngine.ApplyScriptDamage(target, damage, type, npc,
+        CombatEngine.ApplyScriptDamage(target, damage, type, npc,
             physical, fire, cold, poison, energy);
-        if (dealt > 0 && !target.IsDead && target.HasActiveSkillPending())
-        {
-            int abortedSkill = target.ClearActiveSkillPending();
-            if (abortedSkill >= 0)
-                Character.ActiveSkillAborted?.Invoke(target, abortedSkill);
-        }
     }
 
     private static void FaceAndBroadcastToward(Character actor, Character target, int range = 18)

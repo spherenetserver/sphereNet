@@ -163,6 +163,7 @@ public sealed class CombatParity03CTests
         {
             Character.CombatArcheryMovementDelay = 10_000;
             Character.CombatFlags = 0;
+            archer.IsOnline = true;             // only a client's walk is throttled (CCharFight.cpp:1858)
             archer.LastMoveTick = 100_000;      // just moved
 
             // Miss = a SPENT swing (Source-X WAR_SWING_EQUIPPING), which is also how

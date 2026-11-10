@@ -33,8 +33,11 @@ using ScriptSystemHooks = SphereNet.Scripting.Execution.ScriptSystemHooks;
 
 namespace SphereNet.Game.Clients;
 
-/// <summary>Parsed ON-block from a [MENU] section: item visuals + script lines to execute.</summary>
-internal record MenuOptionEntry(ushort ModelId, ushort Hue, string Text, List<SphereNet.Scripting.Parsing.ScriptKey> Script);
+/// <summary>Parsed ON-block from a [MENU] section: item visuals + script lines to execute.
+/// <paramref name="Recheck"/> asks again, at pick time, whether the entry is still allowed
+/// (a SKILLMENU entry re-reads its TEST lines).</summary>
+internal record MenuOptionEntry(ushort ModelId, ushort Hue, string Text, List<SphereNet.Scripting.Parsing.ScriptKey> Script,
+    Func<bool>? Recheck = null);
 
 /// <summary>
 /// Game logic per-client handler. Maps to CClient in Source-X.

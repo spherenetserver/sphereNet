@@ -431,7 +431,8 @@ public sealed partial class NpcAI
             return;
 
         // Melee / ranged
-        var weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+        // m_uidWeapon is a weapon-typed item only (CCharAct.cpp:308-311).
+        var weapon = npc.FightWeapon();
         var range = GetFightRange(npc, weapon);
 
         // Ranged kiting (Source-X NPC_FightArchery, CCharNPCAct_Fight.cpp:17-58): only
@@ -1223,7 +1224,10 @@ public sealed partial class NpcAI
             }
         }
 
-        Item? weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+        // A spellbook / torch / shield in hand is not the weapon: the swing is unarmed
+        // (m_uidWeapon is set only for IsTypeWeapon, CCharAct.cpp:308-311;
+        // CCharFight.cpp:1213-1233).
+        Item? weapon = npc.FightWeapon();
         var effectiveRange = GetFightRange(npc, weapon);
         bool swingNoRange = CombatHelper.SwingIgnoresStartRange();
         DamageType? swingDamageType = null;
@@ -1266,6 +1270,18 @@ public sealed partial class NpcAI
             case CombatHelper.SwingPrepResult.RetryLater:
                 npc.NextAttackTime = now + Math.Max(prep.RetryMs, 250);
                 return false;
+        }
+
+        // Guards remove conjured NPCs: a guard whose target is a conjured creature
+        // deletes it instead of fighting, and the swing is spent (Fight_Hit, after
+        // Fight_CanHit passed - CCharFight.cpp:1818-1822).
+        if (npc.NpcBrain == NpcBrainType.Guard && !target.IsPlayer &&
+            target.IsStatFlag(StatFlag.Conjured))
+        {
+            target.Delete();
+            npc.FightTarget = Serial.Invalid;
+            npc.NextAttackTime = now + swingDelayMs;
+            return true;
         }
 
         CombatHelper.RevealOnAttack(npc, PrivLevel.Player);
@@ -1391,7 +1407,7 @@ public sealed partial class NpcAI
                 : null;
         Item? weapon = weaponCaptured
             ? (committedWeaponUid.IsValid ? _world.FindItem(committedWeaponUid) : null)
-            : npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+            : npc.FightWeapon();
         if (weaponCaptured && committedWeaponUid.IsValid && (weapon == null || weapon.IsDeleted))
         {
             npc.ClearPendingHit();
@@ -1464,7 +1480,7 @@ public sealed partial class NpcAI
 
     private static int GetAttackRange(Character npc, Item? weapon = null)
     {
-        weapon ??= npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+        weapon ??= npc.FightWeapon();
         return GetFightRange(npc, weapon).Max;
     }
 

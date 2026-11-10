@@ -243,6 +243,55 @@ public sealed class ClientTargetingHandler
             return;
         }
 
+        // Event_Target's one gate ahead of every target mode (CClientEvent.cpp:
+        // 2495-2534). A GM only needs the object to exist. Anyone else must be able
+        // to see what was picked - a character flagged CAN_C_NONSELECTABLE is never a
+        // target - and a bare point has to lie inside the visual range. A picked
+        // object then REPLACES the client's coordinates with its top-level point, so
+        // a forged x/y riding on a visible serial cannot move an area spell or a
+        // field somewhere else.
+        bool hasSerial = serial != 0 && serial != 0xFFFFFFFF;
+        IScriptObj? gatePick = hasSerial ? _world.FindObject(new Serial(serial)) : null;
+        bool gateRefused = false, gateRemove = false;
+        if (_character.PrivLevel >= PrivLevel.GM)
+        {
+            if (hasSerial && gatePick == null)
+                gateRefused = gateRemove = true;
+        }
+        else if (hasSerial)
+        {
+            if (gatePick is Character gateChar &&
+                (SphereNet.Game.Definitions.CharDefHelper.GetCanFlags(gateChar) & CanFlags.C_NonSelectable) != 0)
+                gateRefused = true;
+            else if (gatePick is Character seenChar
+                         ? seenChar != _character && !_character.CanSeeCharacter(seenChar)
+                         : gatePick is not Item seenItem || !_client.ItemUse.CanSeeItem(seenItem))
+                gateRefused = gateRemove = true;
+        }
+        else if (_character.Position.GetDistSight(new Point3D(x, y, z, _character.MapIndex)) >
+                 (_character.VisualRange > 0 ? _character.VisualRange : 18))
+        {
+            gateRefused = true;
+        }
+        if (gateRefused)
+        {
+            if (gateRemove)
+            {
+                // addObjectRemoveCantSee(uid, "the target") (CClientMsg.cpp:276-284).
+                SysMessage("You can't see the target");
+                _netState.Send(new PacketDeleteObject(serial));
+            }
+            AbandonSpellCursor();
+            CancelPrecastTarget();
+            ClearPendingTargetState();
+            return;
+        }
+        if (gatePick is ObjBase gateObj)
+        {
+            var top = gateObj is Item gateItem ? gateItem.GetTopLevelPosition() : gateObj.Position;
+            x = top.X; y = top.Y; z = top.Z;
+        }
+
         // Remember the picked object for LAST / GOTARG (Source-X m_Targ_UID);
         // survives ClearPendingTargetState by design.
         if (serial != 0 && serial != 0xFFFFFFFF)

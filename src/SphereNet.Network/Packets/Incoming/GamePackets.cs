@@ -699,12 +699,15 @@ public sealed class PacketBookHeader : PacketHandler
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
         uint serial = buffer.ReadUInt32();
-        byte writable = buffer.ReadByte();
+        // The client's own "writable" byte is skipped, not trusted (receive.cpp:1719-1721):
+        // the client always sends 0 there, and whether the book may be retitled is the
+        // server's answer alone (Event_Book_Title, CClientEvent.cpp:171).
+        buffer.ReadByte(); // writable
         buffer.ReadByte(); // unknown
-        ushort pages = buffer.ReadUInt16();
+        buffer.ReadUInt16(); // pages
         string title = buffer.ReadAsciiFixed(60);
         string author = buffer.ReadAsciiFixed(30);
-        state.OnBookHeader(serial, writable != 0, title.TrimEnd('\0'), author.TrimEnd('\0'));
+        state.OnBookHeader(serial, true, title.TrimEnd('\0'), author.TrimEnd('\0'));
     }
 }
 
@@ -888,8 +891,9 @@ public sealed class PacketAllNamesReq : PacketHandler
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
-        uint serial = buffer.Remaining >= 4 ? buffer.ReadUInt32() : 0;
-        state.OnAllNamesRequest(serial);
+        // Every serial in the packet gets its own answer (receive.cpp:1784-1793).
+        while (buffer.Remaining >= 4)
+            state.OnAllNamesRequest(buffer.ReadUInt32());
     }
 }
 
@@ -963,11 +967,13 @@ public sealed class PacketNewBookHeader : PacketHandler
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
-        if (buffer.Remaining < 9) return;
+        if (buffer.Remaining < 10) return;
         uint serial = buffer.ReadUInt32();
-        byte flag = buffer.ReadByte();
-        bool writable = flag == 1;
-        buffer.ReadUInt16(); // page count (unused for header change)
+        // unknown(1), writable(1), pages(2) - all skipped (receive.cpp:3549-3551).
+        // Reading a single flag byte here left every later field one byte early.
+        buffer.ReadByte(); // unknown
+        buffer.ReadByte(); // writable
+        buffer.ReadUInt16(); // pages
 
         ushort titleLen = Math.Min(buffer.ReadUInt16(), (ushort)256);
         string title = "";
@@ -984,7 +990,7 @@ public sealed class PacketNewBookHeader : PacketHandler
         else if (authorLen > 0)
             return;
 
-        state.OnBookHeader(serial, writable, title, author);
+        state.OnBookHeader(serial, true, title, author);
     }
 }
 

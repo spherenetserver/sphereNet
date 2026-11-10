@@ -272,6 +272,13 @@ public sealed class DeathEngine
             {
                 _world.DeleteObject(victim);
             }
+            else
+            {
+                // CChar::Death (CCharAct.cpp:4427-4497): a null corpse only skips
+                // @DeathCorpse - the player still turns into a ghost, and with no
+                // corpse there is no DropAll, so everything stays on the body.
+                OnDeath?.Invoke(victim, effectiveKiller);
+            }
             return null;
         }
 
@@ -380,10 +387,9 @@ public sealed class DeathEngine
     /// <summary>Source-X MakeCorpse: no corpse for DEATH_NOCORPSE (0x02), or for a
     /// conjured creature (STATF_CONJURED - a summon, or an NPC a guard killed)
     /// unless DEATH_NOCONJUREDEFFECT (0x08) / DEATH_HASCORPSE (0x10) is set.
-    /// Players always leave a corpse.</summary>
+    /// MakeCorpse (CItemCorpse.cpp:168-179) makes no player/NPC distinction.</summary>
     private static bool ShouldLeaveNoCorpse(Character victim, int deathFlags)
     {
-        if (victim.IsPlayer) return false;
         if ((deathFlags & 0x02) != 0) return true;
         if ((victim.IsSummoned || victim.IsStatFlag(StatFlag.Conjured)) &&
             (deathFlags & (0x08 | 0x10)) == 0)
@@ -479,6 +485,8 @@ public sealed class DeathEngine
         byte notoThem = 1)
     {
         if (attackerCount < 1) attackerCount = 1;
+        var notoTable = Definitions.DefinitionLoader.StaticResources;
+        int previousLevel = notoTable?.GetNotoLevel(killer.Karma, killer.Fame) ?? 0;
 
         // Fame: Source-X Calc_FameKill — PC kill /10, NPC kill /200 — then split by
         // the attacker count. No per-kill magnitude cap (Source-X only clamps the
@@ -512,6 +520,13 @@ public sealed class DeathEngine
         // passes Calc_KarmaKill / iTotalKillers into Noto_Karma, which then scales).
         karmaChange = ScaleKarma(killer.Karma, karmaChange / attackerCount);
         ApplyKarma(killer, karmaChange);
+
+        // Noto_ChangeNewMsg at the end of Noto_Kill (CCharNotoriety.cpp:465-473,
+        // :648): a kill that moved the killer to another title level says so.
+        if (killer.IsPlayer && notoTable != null &&
+            notoTable.GetNotoLevel(killer.Karma, killer.Fame) != previousLevel)
+            Character.SendOwnerMessage?.Invoke(killer, ServerMessages.GetFormatted(
+                Msg.MsgNotoGettitle, Clients.PaperdollText.BuildParts(killer).FullName));
     }
 
     // Config-driven fame/karma limits (sphere.ini MaxFame / MaxKarma / MinKarma).

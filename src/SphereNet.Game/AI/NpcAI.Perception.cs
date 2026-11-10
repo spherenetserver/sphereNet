@@ -210,6 +210,36 @@ public sealed partial class NpcAI
         return best ?? poisoned;
     }
 
+    /// <summary>Source-X NPC_LookAround (CCharNPCAct.cpp:1131-1158): the look reaches
+    /// min(visual range, MAPVIEWRADAR), but only UO_MAP_VIEW_SIGHT (14) of it is
+    /// sharp - 7 under 50 INT. An NPC that cannot move and has no distance attack
+    /// looks 2 tiles. One random number is drawn per look.</summary>
+    private (int blur, int rand) LookBlur(Character npc, ref int range)
+    {
+        int radar = Math.Max(1, Character.MapViewRadarTiles);
+        range = Math.Min(range, radar);
+        int blur = ViewSight;
+        bool immobile = (CharDefHelper.GetCanFlags(npc) & CanFlags.C_NonMover) != 0 ||
+                        npc.IsStatFlag(StatFlag.Freeze) || npc.IsStatFlag(StatFlag.Stone);
+        if (immobile)
+        {
+            if (!NpcFightMayCast(npc))
+                range = blur = Math.Min(range, 2);
+        }
+        else if (npc.Int < 50)
+            blur /= 2;
+        return (blur, _rand.Next(radar));
+    }
+
+    /// <summary>"if (iDist > iRangeBlur) if (iRand % iDist) continue; // can't see
+    /// them" (CCharNPCAct.cpp:1176-1181): beyond the sharp range a character is
+    /// noticed only now and then.</summary>
+    private static bool IsBlurred(Character npc, Character ch, int blur, int rand)
+    {
+        int dist = npc.Position.GetDistanceTo(ch.Position);
+        return dist > blur && dist > 0 && rand % dist != 0;
+    }
+
     /// <summary>
     /// Find the best target in sight range by motivation score.
     /// Source-X: NPC_LookAround → NPC_LookAtCharMonster loop.
@@ -241,11 +271,14 @@ public sealed partial class NpcAI
         if ((_world.GetSector(npc.Position)?.GetCharComplexity() ?? 0) > World.Sectors.Sector.MaxCharComplexity / 2)
             sightRange /= 4;
 
+        var (blur, blurRand) = LookBlur(npc, ref sightRange);
+
         Character? t1 = null, t2 = null, t3 = null;
         int m1 = 0, m2 = 0, m3 = 0;
         foreach (var ch in _world.GetCharsInRange(npc.Position, sightRange))
         {
             if (ch == npc || !IsAttackable(ch)) continue;
+            if (IsBlurred(npc, ch, blur, blurRand)) continue;
             if (!FightModeAllows(npc, fightMode, ch)) continue;
             // Never cap by sector insertion order: a dense neutral/allied
             // crowd must not hide a valid enemy. Motivation is cheap; only the

@@ -63,21 +63,23 @@ public sealed class SourceXShipSpeedWave243Tests
 
     /// <summary>Only a wheel order re-selects the speed mode (Source-X guards
     /// that assignment with fWheelMove). A ship that has never been steered from
-    /// the wheel therefore keeps the constructor's mode, which upstream sets to
-    /// SMS_NORMAL — not the SLOW mode — so a tillerman/script command sails at
-    /// the halved interval, not the full period.</summary>
+    /// the wheel keeps its definition's mode: the CItemMulti constructor copies
+    /// m_SpeedMode over the SMS_NORMAL CCMultiMovable started with
+    /// (CItemMulti.cpp:30), and a definition that names none is SMS_SLOW
+    /// (CItemBase.cpp:1896) - so a tillerman/script command sails at the full
+    /// period.</summary>
     [Fact]
-    public void ScriptedCommand_KeepsTheDefaultMode_AndSailsAtTheHalvedInterval()
+    public void ScriptedCommand_KeepsTheDefinitionMode_AndSailsAtTheFullPeriod()
     {
         var (engine, ship) = MakeShip();
-        Assert.Equal(ShipSpeedMode.OneTile, ship.SpeedMode); // Source-X SMS_NORMAL
+        Assert.Equal(ShipSpeedMode.Slow, ship.SpeedMode);
 
         long before = Environment.TickCount64;
         Assert.True(engine.SetMoveDir(ship, Direction.North, ShipMovementType.Normal));
 
-        Assert.Equal(ShipSpeedMode.OneTile, ship.SpeedMode); // untouched by a script order
+        Assert.Equal(ShipSpeedMode.Slow, ship.SpeedMode); // untouched by a script order
         long delay = ship.NextMoveTick - before;
-        Assert.InRange(delay, 500, 700);
+        Assert.InRange(delay, 1000, 1200);
     }
 
     /// <summary>Source-X CCMultiMovable.cpp:78 drops a wheel order that arrives

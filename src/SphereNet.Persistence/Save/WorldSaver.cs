@@ -320,6 +320,17 @@ public sealed class WorldSaver
     /// same reason: a statics export is the kind of thing an operator runs twice in a
     /// row while getting a region right, and the second run must not be able to
     /// destroy the first.</summary>
+    /// <summary>The items the world save leaves to the statics file - Source-X
+    /// CSector::r_Write (CSector.cpp:499-510): multis are written first, whatever
+    /// their attributes, and of the other GROUND items only the ATTR_STATIC ones
+    /// are held back. An ATTR_STATIC item inside a container, or a static
+    /// structure, belongs to the world save; leaving them out lost them at the
+    /// next boot.</summary>
+    private static bool IsStaticsFileItem(Item item) =>
+        item.IsAttr(Core.Enums.ObjAttributes.Static) && item.IsOnGround &&
+        item.ItemType is not (Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom
+            or Core.Enums.ItemType.Ship);
+
     public int ExportStatics(GameWorld world, string path, WorldExportScope? scope = null)
     {
         long now = Environment.TickCount64;
@@ -408,7 +419,7 @@ public sealed class WorldSaver
                 var obj = allObjects[i];
                 if (obj is Item item)
                 {
-                    if (item.IsDeleted || item.IsAttr(Core.Enums.ObjAttributes.Static))
+                    if (item.IsDeleted || IsStaticsFileItem(item))
                         return writer;
                     // A fight/aggressor memory is rebuilt from its owner's MEMORY= record.
                     if (item.IsSavedWithOwner)
@@ -473,7 +484,7 @@ public sealed class WorldSaver
                 return s.IncludeChars && s.Contains(ch.Position);
 
             if (parent is not Item parentItem || parentItem.IsDeleted ||
-                parentItem.IsAttr(Core.Enums.ObjAttributes.Static))
+                IsStaticsFileItem(parentItem))
                 return false;
 
             if (!parentItem.ContainedIn.IsValid)
@@ -1706,7 +1717,7 @@ public sealed class WorldSaver
                 continue;
             }
             if (upper is "DSPEECH" or "EMOTECOLOR" or "VIRTUALGOLD"
-                or "LASTUSED" or "LASTDISCONNECTED" or "NEED" or "SPAWNITEM")
+                or "LASTUSED" or "LASTDISCONNECTED" or "NEED" or "SPAWNITEM" or "REFUSETRADES")
             {
                 w.WriteProperty(upper, ch.Tags.Get(key)!);
                 continue;
@@ -1767,6 +1778,19 @@ public sealed class WorldSaver
                 foreach (var (key, val) in globals)
                     w.WriteProperty(key, world.GetGlobalVarSaveText(key)
                         ?? SphereNet.Scripting.Variables.VarMap.FormatAutoSaveValue(val));
+            }
+
+            // Regions a script changed at run time (CWorld.cpp:852-861): one
+            // [WORLDSCRIPT defname] record each, holding only the modified groups. A
+            // structure's region is saved with its item instead.
+            foreach (var region in world.Regions)
+            {
+                if (region.ModifiedFlags == 0 || string.IsNullOrEmpty(region.DefName) ||
+                    region.IsFlag(Core.Enums.RegionFlag.House) || region.IsFlag(Core.Enums.RegionFlag.Ship))
+                    continue;
+                w.BeginRecord($"WORLDSCRIPT {region.DefName}");
+                foreach (var line in region.ModifiedLines())
+                    w.WriteProperty(line.Key, line.Value);
             }
 
             // LISTs

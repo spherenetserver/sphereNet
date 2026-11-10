@@ -114,8 +114,10 @@ public sealed class ClientItemUseHandler
         ItemType.Lockpick => (serial, _, _, _, _) => RouteSkillTarget(SkillType.Lockpicking, new Serial(serial), tool: item),
         ItemType.Scissors => (serial, _, _, _, _) => HandleScissorsTarget(item, new Serial(serial)),
         ItemType.BandageBlood => (serial, x, y, _, _) => UseBloodyBandage(item, serial, x, y),
-        ItemType.Tracker => (serial, _, _, _, _) => item.SetTag("LINK", serial.ToString()),
-        ItemType.Key or ItemType.Keyring => (serial, _, _, _, _) => HandleKeyUse(item, new Serial(serial)),
+        ItemType.Potion => (serial, x, y, z, _) => ThrowExplosionPotion(item, serial, x, y, z),
+        ItemType.Key => (serial, _, _, _, _) => HandleKeyUse(item, new Serial(serial)),
+        ItemType.Keyring => (serial, _, _, _, _) => HandleKeyringUse(item, new Serial(serial)),
+        ItemType.SewingKit => (serial, _, _, _, _) => UseSewingKit(item, new Serial(serial)),
         ItemType.Dye => (serial, _, _, _, _) => HandleDyePickup(item, new Serial(serial)),
         ItemType.DyeVat => (serial, _, _, _, _) => HandleDyeApply(item, new Serial(serial)),
         ItemType.WeaponMacePick => (serial, x, y, z, _) => RouteSkillTarget(SkillType.Mining, new Serial(serial),
@@ -1099,7 +1101,7 @@ public sealed class ClientItemUseHandler
 
             // ---- consumables / potions / books ----
             case ItemType.Potion:
-                UsePotion(item);
+                UsePotionItem(item);
                 break;
             case ItemType.Food:
             case ItemType.Fruit:
@@ -1196,8 +1198,7 @@ public sealed class ClientItemUseHandler
                 break;
 
             case ItemType.Tracker:
-                SysMessage(ServerMessages.Get(Msg.ItemuseTrackerAttune));
-                SetPendingItemTarget(item, NativeTargetUse(item)!);
+                UseTracker(item);
                 break;
 
             case ItemType.Key:
@@ -1354,11 +1355,17 @@ public sealed class ClientItemUseHandler
                 SysMessage(ServerMessages.Get(Msg.ItemuseTelescope));
                 break;
             case ItemType.Sextant:
-                // Source-X Use_Sextant: real UO sextant coordinates in degrees
-                // and minutes N/S–E/W relative to the world center (Lord
-                // British's throne 1323,1624; map plane 5120x4096), not raw
-                // map integers.
-                SysMessage(FormatSextant(_character.Position));
+                // Do_Use_Item IT_SEXTANT (CCharUse.cpp:1951-1965): the reading is
+                // spoken over the user - "I am in <region>, <coordinates>" - and the
+                // lost lands and dungeons east of the real map give no reading at all.
+                // The coordinates are Use_Sextant's: degrees and minutes N/S-E/W from
+                // the world center (Lord British's throne 1323,1624; plane 5120x4096).
+                if (_character.MapIndex <= 1 && _character.X > 5120)    // UO_SIZE_X_REAL
+                    ObjectMessage(_character, ServerMessages.Get(Msg.ItemuseSextantT2a));
+                else
+                    ObjectMessage(_character, ServerMessages.GetFormatted(Msg.ItemuseSextant,
+                        _world.FindRegion(_character.Position)?.Name ?? "",
+                        FormatSextant(_character.Position)));
                 break;
 
             // ---- spider web (Do_Use_Item IT_WEB, CCharUse.cpp:1905-1911) ----
@@ -1422,7 +1429,10 @@ public sealed class ClientItemUseHandler
                 OpenCraftingGump(SkillType.Tinkering);
                 break;
             case ItemType.SewingKit:
-                OpenCraftingGump(SkillType.Tailoring);
+                // IT_SEWING_KIT asks what to sew (CClientUse.cpp:551-557); the menu
+                // depends on the material picked (UseSewingKit).
+                SysMessage(ServerMessages.GetFormatted(Msg.ItemuseSewkitPromt, item.GetName()));
+                SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
             case ItemType.ScrollBlank:
                 _client.InscriptionMenu();   // Cmd_Skill_Inscription (CClientUse.cpp:559)
@@ -1465,16 +1475,14 @@ public sealed class ClientItemUseHandler
                     SysMessage(ServerMessages.Get("itemuse_shrine"));
                 break;
             case ItemType.Rune:
-            {
-                // Source-X: dclicking a marked rune tells where it leads (name
-                // + sextant coordinates); a blank rune just gives the name hint.
-                var mark = item.MoreP;
-                if (mark.X > 0 || mark.Y > 0)
-                    SysMessage($"{(string.IsNullOrEmpty(item.Name) ? "a recall rune" : item.Name)}: {FormatSextant(mark)}");
-                else
-                    SysMessage(ServerMessages.Get(Msg.ItemuseRuneName));
+                // IT_RUNE (CClientUse.cpp:373-379): a rune the user may move is
+                // renamed - CLIMODE_PROMPT_NAME_RUNE asks DEFMSG_ITEMUSE_RUNE_NAME and
+                // the answer goes behind DEFMSG_RUNE_TO (CClientEvent.cpp:1742-1745).
+                if (!ItemMoveRules.CanMove(_character, item, out _))
+                    break;
+                RenamePrompt(item, ServerMessages.Get(Msg.RuneName), ServerMessages.Get(Msg.RuneTo),
+                    ServerMessages.Get(Msg.ItemuseRuneName));
                 break;
-            }
 
             // ---- bulletin / game / clock / spawn / animations ----
             case ItemType.BBoard:
@@ -1640,8 +1648,15 @@ public sealed class ClientItemUseHandler
                 break;
             case ItemType.Multi:
             case ItemType.MultiCustom:
-            case ItemType.SignGump:
                 OpenHouseSignGump(item);
+                break;
+            case ItemType.SignGump:
+                // A house's sign opens the house menu; any other sign is read
+                // (IT_SIGN_GUMP, CClientUse.cpp:251-257).
+                if (IsHouseSign(item))
+                    OpenHouseSignGump(item);
+                else
+                    ShowSignGump(item);
                 break;
 
             case ItemType.Deed:
@@ -2046,12 +2061,13 @@ public sealed class ClientItemUseHandler
                 break;
 
             // ---- fletching tool and its materials ----
-            // Source-X opens the Bowcraft menu from the shaft and the feather as
-            // well as the tool (CClientUse.cpp:160); they printed a hint instead.
+            // Source-X opens the sm_bolts menu from the shaft and the feather as
+            // well as the tool (Skill_Menu(SKILL_BOWCRAFT, "sm_bolts", id),
+            // CClientUse.cpp:160-163).
             case ItemType.Fletching:
             case ItemType.Shaft:
             case ItemType.Feather:
-                OpenCraftingGump(SkillType.Bowcraft);
+                _client.OpenCraftingMenu(SkillType.Bowcraft, "sm_bolts", item.BaseId);
                 break;
 
             case ItemType.EqBankBox:
@@ -2558,9 +2574,22 @@ public sealed class ClientItemUseHandler
     private void UseLockedDoor(Item door)
     {
         if (_character == null) return;
+        // Do_Use_Item IT_DOOR_LOCKED (CCharUse.cpp:1796-1811).
         if (FindBackpackKeyFor(door) == null)
         {
-            SysMessage(ServerMessages.Get(Msg.ItemuseLocked));
+            SysMessage(ServerMessages.Get(Msg.MsgKeyDoorlocked));
+            if (door.ContainedIn.IsValid)       // !IsTopLevel
+                return;
+            if (door.IsAttr(ObjAttributes.Magic))
+            {
+                // A magically locked door shows its face for four seconds. The
+                // reference picks the face by DOOR_NORTHSOUTH (0x08) of the graphic.
+                var face = _world.CreateItem();
+                face.BaseId = (door.DispIdFull & 0x08) != 0
+                    ? (ushort)0x1ED9        // ITEMID_DOOR_MAGIC_SI_NS
+                    : (ushort)0x1EEC;       // ITEMID_DOOR_MAGIC_SI_EW
+                _world.PlaceItemWithDecay(face, door.Position, 4000);
+            }
             if (_character.PrivLevel < PrivLevel.GM)
                 return;
         }
@@ -3449,8 +3478,7 @@ public sealed class ClientItemUseHandler
     /// SphereNet only rewrote the type field, so cloth stayed cloth-shaped with a
     /// bolt's type on it and no bandage was ever produced. Bloody bandages are not
     /// part of this branch at all: they are washed in water (see UseBloodyBandage).
-    /// A cloth bolt needs ConvertBolttoCloth, which reads the RESOURCES definition
-    /// - left alone rather than guessed at.</summary>
+    /// A cloth bolt becomes its RESOURCES (ConvertBoltToCloth).</summary>
     private void HandleScissorsTarget(Item scissors, Serial target)
     {
         if (_character == null) return;
@@ -3459,6 +3487,16 @@ public sealed class ClientItemUseHandler
         // A locked-down / Move_Never fixture (a placed cloth/hide decoration) must
         // not be cut or type-converted by scissors.
         if (!ItemMoveRules.CanMove(_character, obj, out _)) { SysMessage(ServerMessages.Get(Msg.ItemuseCantthink)); return; }
+
+        // IT_CLOTH_BOLT (CClientTarg.cpp:2147-2151): the bolt becomes its RESOURCES
+        // and the scissors snip, whatever the conversion made of it.
+        if (obj.ItemType == ItemType.ClothBolt)
+        {
+            ConvertBoltToCloth(_world, obj);
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                new PacketSound(0x0248, _character.X, _character.Y, _character.Z), 0);  // SOUND_SNIP
+            return;
+        }
 
         ushort outId = CleanBandageId;
         int outQty;
@@ -3502,6 +3540,58 @@ public sealed class ClientItemUseHandler
         BroadcastNearby?.Invoke(_character.Position, UpdateRange,
             new PacketSound(0x0248, _character.X, _character.Y, _character.Z), 0);  // SOUND_SNIP
         SysMessage(message);
+    }
+
+    /// <summary>CItem::ConvertBolttoCloth (CItem.cpp:4287-4346): a bolt showing one of
+    /// the eight bolt graphics (ITEMID_CLOTH_BOLT1..8) whose definition names RESOURCES
+    /// is deleted and replaced by them - for each ITEMDEF resource, the bolt's amount
+    /// times the resource quantity, split into piles of the new item's MaxAmount. An
+    /// IT_CLOTH product takes the bolt's hue. The products go where the bolt was: its
+    /// container, or the ground under it with the usual decay.</summary>
+    internal static void ConvertBoltToCloth(GameWorld world, Item bolt)
+    {
+        if (bolt.DispIdFull is < 0x0F95 or > 0x0F9C)
+            return;
+        var boltDef = DefinitionLoader.GetItemDef(bolt.BaseId);
+        var resources = ResourceMatch.LoadList(boltDef?.ResourcesRaw, DefinitionLoader.StaticResources);
+        if (boltDef == null || resources.Count == 0)
+            return;
+
+        int outAmount = bolt.Amount;
+        var hue = bolt.Hue;
+        var container = !bolt.IsEquipped && bolt.ContainedIn.IsValid ? world.FindItem(bolt.ContainedIn) : null;
+        var ground = bolt.GetTopLevelPosition();
+        world.RemoveItem(bolt);
+
+        foreach (var res in resources)
+        {
+            if (res.Rid.Type != ResType.ItemDef || DefinitionLoader.GetItemDef(res.Rid.Index) == null)
+                continue;
+
+            long total = outAmount * res.Qty;
+            while (total > 0)
+            {
+                var made = world.CreateItem();
+                if (!ItemDefHelper.ApplyInstanceMetadata(made, res.Rid.Index))
+                {
+                    world.RemoveItem(made);
+                    break;
+                }
+                // A product that does not pile has MaxAmount 0; it is made one at a time.
+                ushort stack = (ushort)Math.Min(total, Math.Max(1, made.MaxAmount));
+                made.Amount = stack;
+                if (made.ItemType == ItemType.Cloth)
+                    made.Hue = hue;
+                if (container != null)
+                {
+                    container.AddItem(made);
+                    Item.OnVisualUpdate?.Invoke(made);
+                }
+                else
+                    world.PlaceItemWithDecay(made, ground);
+                total -= stack;
+            }
+        }
     }
 
     /// <summary>What a hide cuts into. Source-X reads the hide definition's TDATA1
@@ -4400,6 +4490,253 @@ public sealed class ClientItemUseHandler
         PlaceItemInPack(_character, bolt);
     }
 
+    /// <summary>A key ring used on something (IT_KEYRING, CClientTarg.cpp:2097-2132). On
+    /// itself it gives its keys back to the pack. On anything else it tries the key
+    /// it holds for that lock and uses it as that key (Use_Key); with none, the
+    /// answer is that the thing has no lock (DEFMSG_ITEMUSE_KEY_NOLOCK) or that no
+    /// key on the ring fits (DEFMSG_ITEMUSE_KEY_NOKEY). The ring is never a key
+    /// itself.</summary>
+    private void HandleKeyringUse(Item ring, Serial target)
+    {
+        if (_character == null) return;
+        var obj = target.IsValid ? _world.FindObject(target) as Item : null;
+        if (obj == null) return;
+
+        if (obj == ring)
+        {
+            // ContentsTransfer(m_pChar->GetPack(), false)
+            foreach (var held in ring.Contents.ToArray())
+                PlaceItemInPack(_character, held);
+            return;
+        }
+
+        bool lockable = IsLockableType(obj.ItemType);
+        bool hasLock = lockable && Item.HasLockCode(obj);
+        Item? key = null;
+        if (hasLock)
+        {
+            foreach (var held in ring.Contents)
+            {
+                if (held.ItemType == ItemType.Key && KeyFits(held, obj))
+                {
+                    key = held;
+                    break;
+                }
+            }
+        }
+        if (key == null)
+        {
+            SysMessage(ServerMessages.Get(hasLock ? Msg.ItemuseKeyNokey : Msg.ItemuseKeyNolock));
+            return;
+        }
+        HandleKeyUse(key, target);
+    }
+
+    /// <summary>CItem::IsTypeLockable / IsTypeLocked (CItem.cpp): what can carry a lock.</summary>
+    private static bool IsLockableType(ItemType type) => type is
+        ItemType.Container or ItemType.Door or ItemType.DoorOpen or ItemType.ShipTiller or
+        ItemType.ShipPlank or ItemType.ShipHold or
+        ItemType.DoorLocked or ItemType.ContainerLocked or ItemType.ShipSideLocked or
+        ItemType.ShipHoldLock;
+
+    /// <summary>IT_POTION double-clicked (CClientUse.cpp:272-293). A potion the user may
+    /// not move is not used (DEFMSG_ITEMUSE_POTION_FAIL). An explosion potion is not
+    /// drunk: one is taken into the hand (ItemPickup(pItem, 1), LAYER_DRAGGING), its
+    /// fuse is lit with the user as its LINK, and a cursor asks where to throw it.
+    /// Anything else is drunk.</summary>
+    private void UsePotionItem(Item potion)
+    {
+        if (_character == null) return;
+        if (!ItemMoveRules.CanMove(_character, potion, out _))
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemusePotionFail));
+            return;
+        }
+        if (ItemDamageEngine.ResolvePotionSpell(potion) != SpellType.Explosion)
+        {
+            UsePotion(potion);
+            return;
+        }
+
+        if (!IsHeldOnCursor(potion))
+        {
+            _client.HandleItemPickup(potion.Uid.Value, 1);
+            if (potion.IsDeleted || !IsHeldOnCursor(potion))
+                return;
+            // The client did not lift it itself, so it is told the potion left the pack.
+            Send(new PacketDeleteObject(potion.Uid.Value));
+        }
+
+        potion.IgniteExplosionPotion(_character);
+        SysMessage(ServerMessages.Get(Msg.SelectPotionTarget));
+        SetPendingItemTarget(potion, NativeTargetUse(potion)!);
+    }
+
+    /// <summary>The item is what this character holds on the cursor (LAYER_DRAGGING).</summary>
+    private bool IsHeldOnCursor(Item item) =>
+        _character != null && item.ContainedIn == _character.Uid && !item.IsEquipped &&
+        _character.TryGetTag("DRAGGING", out string? held) && held == item.Uid.Value.ToString();
+
+    /// <summary>A lit explosion potion thrown (OnTarg_Use_Item IT_POTION,
+    /// CClientTarg.cpp:1766-1782). It must still be in the thrower's hand. With a
+    /// clear line to the spot (CanSeeLOS over UO_MAP_VIEW_SIGHT, windows not
+    /// blocking) and no wall standing on it, the potion becomes immovable, lands
+    /// there and is seen flying from the thrower; otherwise nothing happens and it
+    /// goes on burning where it is.</summary>
+    private void ThrowExplosionPotion(Item potion, uint targetSerial, short x, short y, sbyte z)
+    {
+        if (_character == null) return;
+        if (ItemDamageEngine.ResolvePotionSpell(potion) != SpellType.Explosion)
+            return;
+        if (!IsHeldOnCursor(potion))
+            return;
+
+        var targetObj = _world.FindObject(new Serial(targetSerial));
+        Point3D pt = targetObj != null
+            ? targetObj.GetTopLevelPosition()
+            : new Point3D(x, y, z, _character.MapIndex);
+
+        const int mapViewSight = 14;    // UO_MAP_VIEW_SIGHT
+        if (!_world.CanSeeLOSFor(_character, _character.Position, pt, LosFlags.NbWindows, mapViewSight) ||
+            SphereNet.Game.World.NaturalResourceTiles.IsItemTypeAt(_world, pt, ItemType.Wall))
+            return;
+
+        potion.SetAttr(ObjAttributes.Move_Never);
+        _character.RemoveTag("DRAGGING");
+        potion.ContainedIn = Serial.Invalid;
+        _world.PlaceItem(potion, pt);
+        Item.OnVisualUpdate?.Invoke(potion);
+
+        // Effect(EFFECT_BOLT, dispid, m_pChar, 7, 0, false, hue - 1)
+        uint effectHue = potion.Hue.Value > 0 ? (uint)(potion.Hue.Value - 1) : 0;
+        BroadcastNearby?.Invoke(pt, UpdateRange, new PacketEffectHued(
+            0, _character.Uid.Value, potion.Uid.Value, potion.DispIdFull,
+            _character.X, _character.Y, _character.Z, pt.X, pt.Y, pt.Z,
+            7, 0, false, false, effectHue, 0), 0);
+    }
+
+    /// <summary>A sewing kit used on a material (IT_SEWING_KIT, CClientTarg.cpp:
+    /// 2383-2402): leather and hides open sm_tailor_leather, cloth opens
+    /// sm_tailor_cloth, anything else cannot be sewn (DEFMSG_ITEMUSE_SKIT_UNABLE).
+    /// A pick that is no item is the generic DEFMSG_ITEMUSE_UNABLE.</summary>
+    private void UseSewingKit(Item kit, Serial target)
+    {
+        if (_character == null) return;
+        var material = target.IsValid ? _world.FindObject(target) as Item : null;
+        if (material == null)
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseUnable));
+            return;
+        }
+        // CanUse(pItemTarg, true): within reach and the user's to move.
+        if (!CanReachTargetItem(material) || !ItemMoveRules.CanMove(_character, material, out _))
+            return;
+
+        switch (material.ItemType)
+        {
+            case ItemType.Leather:
+            case ItemType.Hide:
+                _client.OpenCraftingMenu(SkillType.Tailoring, "sm_tailor_leather", material.BaseId);
+                return;
+            case ItemType.Cloth:
+                _client.OpenCraftingMenu(SkillType.Tailoring, "sm_tailor_cloth", material.BaseId);
+                return;
+        }
+        SysMessage(ServerMessages.Get(Msg.ItemuseSkitUnable));
+    }
+
+    /// <summary>IT_TRACKER (CClientUse.cpp:148-158): a tracker attuned to something
+    /// points at it (Skill_Tracking on its LINK). Only when that fails - nothing
+    /// linked, or the quarry cannot be found - does it ask to be attuned, saying
+    /// first that it is unable to track if it had a link.</summary>
+    private void UseTracker(Item tracker)
+    {
+        if (_character == null) return;
+        if (TrackLinked(tracker))
+            return;
+
+        if (tracker.Link.IsValid)
+            SysMessage(ServerMessages.Get(Msg.TrackingUnable));
+        SysMessage(ServerMessages.Get(Msg.ItemuseTrackerAttune));
+        // CLIMODE_TARG_LINK -> OnTarg_Item_Link (CClientTarg.cpp:396-466).
+        SetPendingTarget((serial, _, _, _, _) =>
+        {
+            var picked = _world.FindObject(new Serial(serial));
+            if (picked == null)
+            {
+                SysMessage(ServerMessages.Get(Msg.MsgTargDynamic));
+                return;
+            }
+            if (tracker.IsDeleted)
+                return;
+            if (picked == tracker)
+            {
+                SysMessage(ServerMessages.Get(Msg.MsgTargLinkSame));
+                return;
+            }
+            tracker.Link = picked.Uid;
+            if (picked is Item pickedItem && !pickedItem.Link.IsValid)
+                pickedItem.Link = tracker.Uid;
+            SysMessage(ServerMessages.Get(Msg.MsgTargLinks));
+        }, cursorType: 0);
+    }
+
+    /// <summary>CChar::Skill_Tracking(uid, dir) for a tracker's LINK (CCharSkill.cpp:
+    /// 1289-1343): false when there is nothing to find.</summary>
+    private bool TrackLinked(Item tracker)
+    {
+        if (_character == null || !tracker.Link.IsValid) return false;
+        var quarry = _world.FindObject(tracker.Link);
+        if (quarry == null || quarry.IsDeleted) return false;
+
+        var sink = new GameClient.InfoSkillSink(_client, _character);
+        if (quarry is Character person)
+            return Skills.Information.ActiveSkillEngine.TrackingStroke(sink, person, short.MaxValue);
+
+        // An item is tracked to wherever its top-level object is, under its own name.
+        var top = quarry.GetTopLevelObj();
+        if (top.Position.Map != _character.MapIndex) return false;
+        if (top is Character carrier && carrier.IsStatFlag(StatFlag.Insubstantial) &&
+            carrier.PrivLevel > _character.PrivLevel)
+            return false;
+        int dist = Math.Max(_character.Position.GetDistanceTo(top.Position),
+            Math.Abs(_character.Z - top.Z) / 8);
+        string key = dist <= 0 ? Msg.TrackingResult0
+            : dist < 16 ? Msg.TrackingResult1
+            : dist < 32 ? Msg.TrackingResult2
+            : dist < 100 ? Msg.TrackingResult3
+            : Msg.TrackingResult4;
+        if (ServerMessages.Get(key).Length > 0)
+            ObjectMessage(_character, ServerMessages.GetFormatted(key, quarry.GetName(),
+                MapDirName(_character.Position, top.Position)));
+        return true;
+    }
+
+    /// <summary>Whether a sign belongs to a house: it is one, or it is linked to one.</summary>
+    private bool IsHouseSign(Item sign)
+    {
+        if (_housingEngine == null) return false;
+        if (_housingEngine.GetHouse(sign.Uid) != null) return true;
+        if (sign.Link.IsValid && _housingEngine.GetHouse(sign.Link) != null) return true;
+        return sign.TryGetTag("HOUSE_UID", out string? raw) &&
+               ScriptNumber.TryParseUInt(raw, out uint houseUid) &&
+               _housingEngine.GetHouse(new Serial(houseUid)) != null;
+    }
+
+    /// <summary>IT_SIGN_GUMP (CClientUse.cpp:251-257): the sign's gump - its
+    /// definition's TDATA2 - with the sign's name on it, and the name again as the
+    /// text when the sign was given one of its own (addGumpTextDisp, packet 0x8B).
+    /// A sign whose definition names no gump shows nothing.</summary>
+    private void ShowSignGump(Item sign)
+    {
+        uint gump = DefinitionLoader.GetItemDef(sign.BaseId)?.TData2 ?? 0;
+        if (gump == 0 || gump > ushort.MaxValue)
+            return;
+        string name = sign.GetName() ?? "";
+        Send(new PacketSignGump(sign.Uid.Value, (ushort)gump, name,
+            string.IsNullOrEmpty(sign.Name) ? null : name));
+    }
+
     /// <summary>A key used on something (Source-X CChar::Use_Key, CCharUse.cpp:1330): on
     /// another key it copies the cut onto the blank one, on itself it asks for a name,
     /// on a lock it fits it locks or unlocks it, saying which (Use_KeyChange).</summary>
@@ -4535,16 +4872,42 @@ public sealed class ClientItemUseHandler
         return true;
     }
 
-    /// <summary>Apply a DyeVat hue to a target item.</summary>
+    /// <summary>A dye vat used on something (IT_DYE_VAT, CClientTarg.cpp:2319-2362).
+    /// The target must be the user's own - itself, or something it carries - unless
+    /// the user is staff (DEFMSG_ITEMUSE_DYE_REACH). A character has its hair and its
+    /// beard dyed; an item must be dyeable (CanDyeTarget). The vat's hue is set as it
+    /// is, plain included, and nothing is said about it.</summary>
     private void HandleDyeApply(Item vat, Serial target)
     {
-        var dest = target.IsValid ? _world.FindObject(target) as Item : null;
-        if (dest == null || !CanReachTargetItem(dest)) { SysMessage(ServerMessages.Get(Msg.ItemuseDyeReach)); return; }
+        if (_character == null) return;
+        var obj = target.IsValid ? _world.FindObject(target) : null;
+        if (obj == null) return;
+
+        if (!ReferenceEquals(obj.GetTopLevelObj(), _character) && _character.PrivLevel < PrivLevel.GM)
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseDyeReach));
+            return;
+        }
+
+        if (obj is Character person)
+        {
+            if (person.GetEquippedItem(Layer.Hair) is { } hair)
+                SetHueFromVat(hair, vat);
+            if (person.GetEquippedItem(Layer.FacialHair) is { } beard)
+                SetHueFromVat(beard, vat);
+            return;
+        }
+
+        var dest = (Item)obj;
+        if (!CanReachTargetItem(dest)) { SysMessage(ServerMessages.Get(Msg.ItemuseDyeReach)); return; }
         if (!CanDyeTarget(dest)) return;
+        SetHueFromVat(dest, vat);
+    }
 
-        ushort hue = ResolveVatHue(vat);
-        if (hue == 0) return;
-
+    /// <summary>pObjTarg->SetHue(vat hue, false, char, vat, 0x23e) and Update()
+    /// (CClientTarg.cpp:2359-2360; CObjBase::SetHue, CObjBase.cpp:326).</summary>
+    private void SetHueFromVat(Item dest, Item vat)
+    {
         // Source-X SetHue seeds ARGN1 with the colour and ARGN2 with the sound, and
         // takes BOTH back from the script when it falls through (CObjBase.cpp:324).
         // The args object was thrown away here, so a script could veto the dye but
@@ -4554,7 +4917,7 @@ public sealed class ClientItemUseHandler
             CharSrc = _character,
             ItemSrc = dest,
             O1 = vat,
-            N1 = hue,
+            N1 = ResolveVatHue(vat),
             N2 = 0x23E,     // the reference's dye sound
         };
         if (_triggerDispatcher?.FireItemTrigger(dest, ItemTrigger.Dye, args) == TriggerResult.True)
@@ -4574,7 +4937,6 @@ public sealed class ClientItemUseHandler
         // resync. OnVisualUpdate → SendItemVisualUpdate emits 0x2E for worn
         // items, 0x1A for ground, 0x25 for the owner's pack.
         Item.OnVisualUpdate?.Invoke(dest);
-        SysMessage("The item changes color.");
     }
 
     /// <summary>
@@ -4876,18 +5238,22 @@ public sealed class ClientItemUseHandler
         if (!pet.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(verb)))
             return false;
 
-        // Source-X: conjured/summoned NPCs can't be transferred or friended
-        if (pet.IsSummoned && verb is "transfer" or "friend" or "unfriend")
-        {
-            NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetFailure));
-            return true;
-        }
-
         // A dead bonded pet is still in the world and still hears its owner; it only
         // ignores the orders a ghost cannot carry out (CCharNPCPet.cpp:154-160). The
         // command counts as heard, so nothing is said.
         if (pet.IsDead && IsDeadPetRefusedVerb(verb))
             return true;
+
+        // A conjured creature is neither befriended nor handed over: the speaker is
+        // told so and no cursor opens (CCharNPCPet.cpp:197-201, :225-229). UNFRIEND
+        // has no such gate (:204-206).
+        if (verb is "friend" or "transfer" && IsConjuredPet(pet))
+        {
+            SysMessage(ServerMessages.Get(verb == "friend"
+                ? Msg.NpcPetTargFriendSummoned
+                : Msg.NpcPetTargTransferSummoned));
+            return false;
+        }
 
         switch (verb)
         {
@@ -4899,7 +5265,7 @@ public sealed class ClientItemUseHandler
                 // @Follow (Source-X) — pet begins following its master. <src> = master.
                 _triggerDispatcher?.FireCharTrigger(pet, CharTrigger.Follow,
                     new TriggerArgs { CharSrc = _character, O1 = _character });
-                NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
+                PetAck(pet, true);
                 return true;
 
             case "come":
@@ -4909,7 +5275,7 @@ public sealed class ClientItemUseHandler
                 pet.SetTag("FOLLOW_TARGET", _character.Uid.Value.ToString());
                 _triggerDispatcher?.FireCharTrigger(pet, CharTrigger.Follow,
                     new TriggerArgs { CharSrc = _character, O1 = _character });
-                NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
+                PetAck(pet, true);
                 return true;
 
             case "stay":
@@ -4922,28 +5288,32 @@ public sealed class ClientItemUseHandler
                 // cast does not land. A pending breath/throw needs no extra step - it
                 // resolves against FightTarget, cleared above.
                 _client.Spells?.CancelCast(pet);
-                NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
+                PetAck(pet, true);
                 return true;
 
             case "guard me":
                 SupersedePendingPetOrder(pet);
                 pet.PetAIMode = PetAIMode.Guard;
                 pet.SetTag("GUARD_TARGET", _character.Uid.Value.ToString());
-                NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
+                PetAck(pet, true);
                 return true;
 
             case "speak":
-                NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
+                PetAck(pet, true);
                 return true;
 
             case "drop":
-                if (pet.Backpack == null || pet.Backpack.Contents.Count == 0)
+                // PC_DROP (CCharNPCPet.cpp:240-251): a pet with a pack dumps it and
+                // acknowledges, whether or not anything was in it; only one with no
+                // pack at all says it carries nothing - if it can talk.
+                if (pet.Backpack == null)
                 {
-                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetCarrynothing));
+                    if (SphereNet.Game.AI.NpcAI.NpcCanSpeak(pet))
+                        NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetCarrynothing));
                     return true;
                 }
                 DumpPetPack(pet);
-                NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
+                PetAck(pet, true);
                 return true;
 
             case "drop all":
@@ -4959,61 +5329,55 @@ public sealed class ClientItemUseHandler
                 // gear leaves with it.
                 if (pet.IsStatFlag(StatFlag.Conjured))
                 {
-                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
+                    PetAck(pet, true);
                     return true;
                 }
 
-                bool droppedAny = DumpPetPack(pet);
+                DumpPetPack(pet);
 
                 // The order matters: the pack is emptied FIRST and the equipment lands
                 // in it afterwards. Stripping into the pack before the dump would put
                 // the worn gear on the ground with everything else.
-                droppedAny |= UnequipPetIntoPack(pet);
+                UnequipPetIntoPack(pet);
 
-                NpcSpeech(pet, ServerMessages.Get(droppedAny
-                    ? Msg.NpcPetSuccess
-                    : Msg.NpcPetCarrynothing));
+                // Acknowledged whatever came off (break -> NPC_OnPetCommand(true),
+                // CCharNPCPet.cpp:254-256, :376).
+                PetAck(pet, true);
                 return true;
             }
 
             case "equip":
             {
-                if (pet.Backpack == null)
+                // PC_EQUIP (CCharNPCPet.cpp:263-266): ItemEquipWeapon(false) and
+                // ItemEquipArmor(false), then the acknowledgement - there is no
+                // failure answer for a pet that found nothing to put on.
+                if (pet.Backpack != null)
                 {
-                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetFailure));
-                    return true;
+                    foreach (var carried in pet.Backpack.Contents.ToArray())
+                        TryPetEquip(pet, carried);
                 }
-                bool equippedAny = false;
-                foreach (var carried in pet.Backpack.Contents.ToArray())
-                {
-                    if (TryPetEquip(pet, carried))
-                        equippedAny = true;
-                }
-                NpcSpeech(pet, ServerMessages.Get(equippedAny ? Msg.NpcPetSuccess : Msg.NpcPetFailure));
+                PetAck(pet, true);
                 return true;
             }
 
             case "status":
-                if (pet.TryGetTag("HIRE_DAYS_LEFT", out string? days))
-                    NpcSpeech(pet, ServerMessages.GetFormatted(Msg.NpcPetDaysLeft, days ?? "0"));
-                else
-                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetEmployed));
+                PetStatus(pet);
                 return true;
 
             case "cash":
             {
-                // Source-X NPC_VendorGetChkVerb PC_CASH: only an owned vendor's
-                // real earnings are dispensed to the owner (restock never tops
-                // up an owned purse, so this cannot mint gold).
+                // PC_CASH (CCharNPCPet.cpp:304-326): only a vendor understands it -
+                // anyone else stays silent (return false). The purse above one day's
+                // wage goes to the speaker (DEFMSG_NPC_PET_GETGOLD_1), a purse that
+                // does not exceed it is only reported (_2). Restock never tops up an
+                // owned purse, so this cannot mint gold.
                 if (!SphereNet.Game.Trade.VendorEngine.IsVendorLike(pet))
-                {
-                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetConfused));
-                    return true;
-                }
+                    return false;
+                long purse = SphereNet.Game.Trade.VendorEngine.GetVendorGold(pet);
                 int dispensed = SphereNet.Game.Trade.VendorEngine.DispenseVendorGold(pet, _character);
                 NpcSpeech(pet, dispensed > 0
-                    ? $"Here is thy gold: {dispensed}"
-                    : "I have no gold for thee.");
+                    ? ServerMessages.GetFormatted(Msg.NpcPetGetgold1, dispensed)
+                    : ServerMessages.GetFormatted(Msg.NpcPetGetgold2, purse));
                 return true;
             }
 
@@ -5025,11 +5389,10 @@ public sealed class ClientItemUseHandler
                 // the vendor names the box and opens it for its owner - BOUGHT is
                 // LAYER_VENDOR_EXTRA (what it bought from players), SAMPLES is
                 // LAYER_VENDOR_BUYS, STOCK is LAYER_VENDOR_STOCK (what it sells).
+                // Anything that is no vendor does not know the word (return false,
+                // :329/:342/:350) and says nothing.
                 if (!SphereNet.Game.Trade.VendorEngine.IsVendorLike(pet))
-                {
-                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetConfused));
-                    return true;
-                }
+                    return false;
                 (Layer layer, string msg) = verb switch
                 {
                     "bought" => (Layer.VendorExtra, Msg.NpcPetItemsBuy),
@@ -5040,6 +5403,7 @@ public sealed class ClientItemUseHandler
                 var box = SphereNet.Game.Trade.VendorEngine.GetVendorBox(pet, layer);
                 if (box != null)
                     SendOpenContainer(box);
+                PetAck(pet, true);      // break -> NPC_OnPetCommand(true), :376
                 return true;
             }
 
@@ -5056,12 +5420,9 @@ public sealed class ClientItemUseHandler
 
             case "price":
                 // Source-X PC_PRICE (CCharNPCPet.cpp:335): a vendor verb - any other
-                // pet does not understand it.
+                // pet does not know it and says nothing (return false, :336).
                 if (!SphereNet.Game.Trade.VendorEngine.IsVendorLike(pet))
-                {
-                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetConfused));
-                    return true;
-                }
+                    return false;
                 EmitPetTargetPrompt(pet, verb);
                 return true;
 
@@ -5079,6 +5440,102 @@ public sealed class ClientItemUseHandler
                 return false;
         }
     }
+
+    /// <summary>STATF_CONJURED as the pet commands ask it (CCharNPCPet.cpp:197, :225,
+    /// :412): a summoned creature, by its flag or by the engine's summon record.</summary>
+    private static bool IsConjuredPet(Character pet) =>
+        pet.IsStatFlag(StatFlag.Conjured) || pet.IsSummoned;
+
+    /// <summary>CChar::NPC_OnPetCommand (CCharNPCPet.cpp:15-31): how a pet shows it
+    /// heard an order. Nothing at all when the shard runs its own SPEECHPET, or when
+    /// the pet cannot see who spoke. A creature with speech of its own says
+    /// DEFMSG_NPC_PET_SUCCESS / _FAILURE; any other makes its notice sound for a yes
+    /// and its idle sound for a no - an animal does not answer in words.</summary>
+    internal void PetAck(Character pet, bool success)
+    {
+        if (_character == null) return;
+        if (!string.IsNullOrEmpty(SphereNet.Game.Scripting.ScriptTouchAccess.Configuration.SpeechPet))
+            return;
+        if (!pet.CanSee(_character))
+            return;
+
+        if (SphereNet.Game.AI.NpcAI.NpcCanSpeak(pet))
+        {
+            NpcSpeech(pet, ServerMessages.Get(success ? Msg.NpcPetSuccess : Msg.NpcPetFailure));
+            return;
+        }
+        ushort sound = CharacterSounds.Resolve(pet,
+            success ? SphereNet.Game.AI.CreatureSoundType.Notice : SphereNet.Game.AI.CreatureSoundType.Idle);
+        if (sound != 0)
+            BroadcastNearby?.Invoke(pet.Position, UpdateRange,
+                new PacketSound(sound, pet.X, pet.Y, pet.Z), 0);
+    }
+
+    /// <summary>A line of system text for <paramref name="target"/>'s own client
+    /// (pChar->SysMessage): this client when it is the speaker, else whoever plays
+    /// that character.</summary>
+    private void SysMessageTo(Character target, string text)
+    {
+        if (target == _character)
+        {
+            SysMessage(text);
+            return;
+        }
+        SendToChar?.Invoke(target.Uid, new PacketSpeechUnicodeOut(
+            0xFFFFFFFF, 0xFFFF, 6, ServerMessages.HueOf(ServerMessages.TalkDefault.System),
+            ServerMessages.FontOf(ServerMessages.TalkDefault.System),
+            PacketSpeechUnicodeOut.SystemLanguage, "System", text));
+    }
+
+    /// <summary>PC_STATUS (CCharNPCPet.cpp:268-302). A pet that cannot speak only
+    /// acknowledges. A vendor reports its purse, then either how many days of wages
+    /// that is or what it restocks to and when, then how many kinds of goods it has;
+    /// a hireling reports the days its pay still covers. Anything else says
+    /// nothing.</summary>
+    private void PetStatus(Character pet)
+    {
+        if (!SphereNet.Game.AI.NpcAI.NpcCanSpeak(pet))
+        {
+            PetAck(pet, true);
+            return;
+        }
+
+        uint wage = DefinitionLoader.GetCharDef(pet.CharDefIndex)?.HireDayWage ?? 0;
+        if (VendorEngine.IsVendorLike(pet))
+        {
+            long purse = VendorEngine.GetVendorGold(pet);
+            int stock = VendorEngine.GetVendorBox(pet, Layer.VendorStock)?.Contents.Count ?? 0;
+            string second;
+            if (wage != 0)
+                second = ServerMessages.GetFormatted(Msg.NpcVendorStatGold2, purse / wage);
+            else
+            {
+                // m_Check_Restock and the bank box's remaining timer in minutes.
+                var bank = pet.GetEquippedItem(Layer.BankBox);
+                long left = bank != null && bank.Timeout > 0
+                    ? Math.Max(0, (bank.Timeout - Environment.TickCount64) / 1000) / 60
+                    : 0;
+                second = ServerMessages.GetFormatted(Msg.NpcVendorStatGold4,
+                    VendorEngine.RestockGoldFor(pet), left);
+            }
+            NpcSpeech(pet, string.Join(' ',
+                ServerMessages.GetFormatted(Msg.NpcVendorStatGold1, purse),
+                second,
+                ServerMessages.GetFormatted(Msg.NpcVendorStatGold3, stock)));
+        }
+        else if (wage != 0)
+        {
+            NpcSpeech(pet, ServerMessages.GetFormatted(Msg.NpcPetDaysLeft, HirelingPurse(pet) / wage));
+        }
+    }
+
+    /// <summary>What a hireling has been paid in advance - upstream's bank
+    /// m_Check_Amount, which this engine keeps in HIRE_BALANCE for a creature that is
+    /// no vendor (Character.CheckHirelingStatus).</summary>
+    private static long HirelingPurse(Character pet) =>
+        pet.TryGetTag("HIRE_BALANCE", out string? raw) && ScriptNumber.TryParseLong(raw, out long paid)
+            ? Math.Max(0, paid)
+            : 0;
 
     /// <summary>Source-X NPC_PetRelease (CCharNPCPet.cpp:860). @PetRelease runs first
     /// on the pet with the owner as SRC and may keep it (RETURN 1). A conjured
@@ -5147,6 +5604,25 @@ public sealed class ClientItemUseHandler
             _ => Msg.NpcPetSuccess,
         };
 
+        // Each pet hears the command for itself: a conjured one answers FRIEND and
+        // TRANSFER with its refusal and opens no cursor (CCharNPCPet.cpp:197-201,
+        // :225-229), so the cursor comes up only if some other pet asked for it.
+        if (verb is "friend" or "transfer")
+        {
+            int asking = 0;
+            foreach (var pet in pets)
+            {
+                if (IsConjuredPet(pet))
+                    SysMessage(ServerMessages.Get(verb == "friend"
+                        ? Msg.NpcPetTargFriendSummoned
+                        : Msg.NpcPetTargTransferSummoned));
+                else
+                    asking++;
+            }
+            if (asking == 0)
+                return;
+        }
+
         var petUids = pets.Select(p => p.Uid).ToList();
         SysMessage(ServerMessages.Get(promptKey));
         SetPendingTarget((serial, x, y, z, gfx) =>
@@ -5189,136 +5665,163 @@ public sealed class ClientItemUseHandler
             return;
 
         var obj = uid.IsValid ? _world.FindObject(uid) : null;
+        var charTarg = obj as Character;
+
+        // What NPC_OnHearPetCmdTarg hands NPC_OnPetCommand at its end (:549): every
+        // targeted order is answered by the pet, yes or no, and by nothing else.
+        bool success = false;
 
         switch (verb)
         {
             case "attack":
             case "kill":
-                if (obj is Character victim && victim != pet &&
-                    !victim.IsDead && !victim.IsStatFlag(StatFlag.Invul) &&
-                    !victim.IsStatFlag(StatFlag.Ridden) &&
-                    victim != _character && victim.Uid != pet.NpcMaster)
-                {
-                    // The victim learns who gave the order before the pet moves:
-                    // OnAttackedBy(owner, fCommandPet=true) records the owner as the
-                    // aggressor (HARMEDBY / IRRITATEDBY / AGGREIVED, attacker list,
-                    // crime) and reveals the owner, and a victim that refuses it - STONE, dead - is not
-                    // attacked at all and the pet keeps its previous order
-                    // (CCharNPCPet.cpp:447).
-                    if (!victim.OnAttackedBy(_character, commandPet: true))
-                    {
-                        SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
-                        break;
-                    }
+            {
+                // Only no creature, the speaker and the pet itself are turned away
+                // here (CCharNPCPet.cpp:445). Everything else is for OnAttackedBy and
+                // Fight_Attack to decide.
+                if (charTarg == null || charTarg == _character || charTarg == pet)
+                    break;
+                var victim = charTarg;
 
-                    // Clear the previous order FIRST. Superseding drops
-                    // PREV_PET_MODE along with the stale GO it belonged to, so writing
-                    // the fallback before it destroyed the very value the attack path
-                    // saves - the pet then fell back to Follow and trailed its master
-                    // instead of returning to Guard or Stay.
-                    SupersedePendingPetOrder(pet);
+                // The victim learns who gave the order before the pet moves:
+                // OnAttackedBy(owner, fCommandPet=true) records the owner as the
+                // aggressor (HARMEDBY / IRRITATEDBY / AGGREIVED, attacker list,
+                // crime) and reveals the owner, and a victim that refuses it - STONE,
+                // dead - is not attacked at all and the pet keeps its previous order
+                // (CCharNPCPet.cpp:447).
+                if (!victim.OnAttackedBy(_character, commandPet: true))
+                    break;
 
-                    // Remember the mode to fall back to once the target dies,
-                    // so the pet returns to Guard/Follow instead of trailing the
-                    // master (ModernUO DoOrderNone behavior).
-                    if (pet.PetAIMode != PetAIMode.Attack)
-                        pet.SetTag("PREV_PET_MODE", ((int)pet.PetAIMode).ToString());
+                // Fight_Attack's own refusals (CCharFight.cpp:1403, :1415): a dead,
+                // invulnerable or stone target, a dead attacker, or a target the pet
+                // cannot see. They come AFTER the owner has been recorded.
+                if (victim.IsDead || victim.IsStatFlag(StatFlag.Invul) ||
+                    victim.IsStatFlag(StatFlag.Stone) || pet.IsDead || !pet.CanSee(victim))
+                    break;
 
-                    // Told by the master: the order goes on the pet's own attacker
-                    // list carrying ATTACKER_THREAT_TOLDBYMASTER on top of whatever
-                    // threat is already there (Source-X Fight_Attack fToldByMaster,
-                    // CCharFight.cpp:1425), so nothing on that list can outbid it and
-                    // the pet does not wander off to whoever hit it last.
-                    if (!pet.CombatState.BeginFightWith(victim, toldByMaster: true))
-                    {
-                        SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
-                        break;
-                    }
+                // Clear the previous order FIRST. Superseding drops
+                // PREV_PET_MODE along with the stale GO it belonged to, so writing
+                // the fallback before it destroyed the very value the attack path
+                // saves - the pet then fell back to Follow and trailed its master
+                // instead of returning to Guard or Stay.
+                SupersedePendingPetOrder(pet);
 
-                    pet.SetTag("ATTACK_TARGET", victim.Uid.Value.ToString());
-                    pet.FightTarget = victim.Uid;
-                    pet.PetAIMode = PetAIMode.Attack;
-                    OnWakeNpc?.Invoke(pet);
-                    SysMessage(ServerMessages.Get(Msg.NpcPetSuccess));
-                }
-                else
-                    SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
+                // Remember the mode to fall back to once the target dies,
+                // so the pet returns to Guard/Follow instead of trailing the
+                // master (ModernUO DoOrderNone behavior).
+                if (pet.PetAIMode != PetAIMode.Attack)
+                    pet.SetTag("PREV_PET_MODE", ((int)pet.PetAIMode).ToString());
+
+                // Told by the master: the order goes on the pet's own attacker
+                // list carrying ATTACKER_THREAT_TOLDBYMASTER on top of whatever
+                // threat is already there (Source-X Fight_Attack fToldByMaster,
+                // CCharFight.cpp:1425), so nothing on that list can outbid it and
+                // the pet does not wander off to whoever hit it last.
+                if (!pet.CombatState.BeginFightWith(victim, toldByMaster: true))
+                    break;
+
+                pet.SetTag("ATTACK_TARGET", victim.Uid.Value.ToString());
+                pet.FightTarget = victim.Uid;
+                pet.PetAIMode = PetAIMode.Attack;
+                OnWakeNpc?.Invoke(pet);
+                success = true;
                 break;
+            }
 
             case "guard":
-                if (obj is Character guarded)
-                {
-                    SupersedePendingPetOrder(pet);
-                    pet.SetTag("GUARD_TARGET", guarded.Uid.Value.ToString());
-                    pet.PetAIMode = PetAIMode.Guard;
-                    SysMessage(ServerMessages.GetFormatted(Msg.NpcPetTargGuardSuccess, pet.Name));
-                }
-                else
-                    SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
+                if (charTarg == null)
+                    break;
+                // The one being guarded is told, not the one who gave the order
+                // (pCharTarg->SysMessagef, CCharNPCPet.cpp:514).
+                SysMessageTo(charTarg, ServerMessages.GetFormatted(Msg.NpcPetTargGuardSuccess, pet.GetName()));
+                SupersedePendingPetOrder(pet);
+                pet.SetTag("GUARD_TARGET", charTarg.Uid.Value.ToString());
+                pet.PetAIMode = PetAIMode.Guard;
+                success = true;
                 break;
 
             case "follow":
-                if (obj is Character followee)
-                {
-                    SupersedePendingPetOrder(pet);
-                    pet.SetTag("FOLLOW_TARGET", followee.Uid.Value.ToString());
-                    pet.PetAIMode = PetAIMode.Follow;
-                    SysMessage(ServerMessages.Get(Msg.NpcPetSuccess));
-                }
-                else
-                    SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
+                if (charTarg == null)
+                    break;
+                PetFollow(pet, charTarg);
+                success = true;
                 break;
 
             case "friend":
-                if (obj is Character friend && friend.IsPlayer)
+            {
+                // PC_FRIEND (CCharNPCPet.cpp:460-480): only another player can be made
+                // a friend - anything else, the speaker included, confuses the pet.
+                if (charTarg == null || !charTarg.IsPlayer || charTarg == _character)
                 {
-                    if (pet.IsSummoned)
-                    {
-                        SysMessage(ServerMessages.Get(Msg.NpcPetTargFriendSummoned));
-                    }
-                    else if (pet.IsFriendOf(friend.Uid))
-                        SysMessage(ServerMessages.Get(Msg.NpcPetTargFriendAlready));
-                    else
-                    {
-                        pet.AddFriend(friend);
-                        SysMessage(ServerMessages.GetFormatted(Msg.NpcPetTargFriendSuccess1, friend.Name));
-                        if (friend != _character)
-                            SendToChar?.Invoke(friend.Uid, new PacketSpeechUnicodeOut(
-                                0xFFFFFFFF, 0xFFFF, 6, SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System),
-                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), PacketSpeechUnicodeOut.SystemLanguage, "System",
-                                ServerMessages.GetFormatted(Msg.NpcPetTargFriendSuccess2, pet.Name)));
-                    }
+                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetConfused));
+                    break;
                 }
+                if (pet.IsFriendOf(charTarg.Uid))
+                {
+                    SysMessage(ServerMessages.Get(Msg.NpcPetTargFriendAlready));
+                    break;
+                }
+                SysMessage(ServerMessages.GetFormatted(Msg.NpcPetTargFriendSuccess1,
+                    pet.GetName(), charTarg.GetName()));
+                SysMessageTo(charTarg, ServerMessages.GetFormatted(Msg.NpcPetTargFriendSuccess2,
+                    _character.GetName(), pet.GetName()));
+                pet.AddFriend(charTarg);
+                PetFollow(pet, charTarg);       // m_Act_UID = friend; NPCACT_FOLLOW_TARG
+                success = true;
                 break;
+            }
 
             case "unfriend":
-                if (obj is Character unfriend && pet.IsFriendOf(unfriend.Uid))
+            {
+                // PC_UNFRIEND (CCharNPCPet.cpp:482-502). A conjured pet is not turned
+                // away here.
+                if (charTarg == null || !charTarg.IsPlayer)
                 {
-                    pet.RemoveFriend(unfriend);
-                    SysMessage(ServerMessages.GetFormatted(Msg.NpcPetTargUnfriendSuccess1, unfriend.Name));
+                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetConfused));
+                    break;
                 }
-                else
+                if (!pet.IsFriendOf(charTarg.Uid))
+                {
                     SysMessage(ServerMessages.Get(Msg.NpcPetTargUnfriendNotfriend));
+                    break;
+                }
+                SysMessage(ServerMessages.GetFormatted(Msg.NpcPetTargUnfriendSuccess1,
+                    pet.GetName(), charTarg.GetName()));
+                SysMessageTo(charTarg, ServerMessages.GetFormatted(Msg.NpcPetTargUnfriendSuccess2,
+                    _character.GetName(), pet.GetName()));
+                pet.RemoveFriend(charTarg);
+                PetFollow(pet, _character);     // m_Act_UID = the speaker
+                success = true;
                 break;
+            }
 
             case "transfer":
-                if (obj is Character newOwner && newOwner.IsPlayer)
+            {
+                // Checked again at the click (CCharNPCPet.cpp:410-417).
+                if (IsConjuredPet(pet))
                 {
-                    if (pet.IsSummoned)
-                    {
-                        SysMessage(ServerMessages.Get(Msg.NpcPetTargTransferSummoned));
-                    }
-                    else if (pet.TryAssignOwnership(newOwner, newOwner, summoned: false, enforceFollowerCap: true))
-                    {
-                        pet.PetAIMode = PetAIMode.Follow;
-                        SysMessage(ServerMessages.GetFormatted(Msg.NpcPetTargFriendSuccess2, newOwner.Name));
-                    }
-                    else
-                    {
-                        SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
-                    }
+                    SysMessage(ServerMessages.Get(Msg.NpcPetTargTransferSummoned));
+                    return;
+                }
+                // PC_TRANSFER (:519-532): the new owner must be a character somebody
+                // is playing right now. Under OF_PetSlots a new owner without the
+                // room is the speaker's DEFMSG_PETSLOTS_TRY_TRANSFER; a transfer that
+                // goes through is answered by the pet alone.
+                if (charTarg == null || !charTarg.IsPlayer || !charTarg.IsOnline)
+                    break;
+                if (Character.FollowerCapApplies(charTarg) && !pet.HasOwner(charTarg.Uid) &&
+                    charTarg.CurFollower + pet.ControlSlots > charTarg.MaxFollower)
+                {
+                    SysMessage(ServerMessages.Get(Msg.PetslotsTryTransfer));
+                    break;
+                }
+                if (pet.TryAssignOwnership(charTarg, charTarg, summoned: false, enforceFollowerCap: true))
+                {
+                    pet.PetAIMode = PetAIMode.Follow;
+                    success = true;
                 }
                 break;
+            }
 
             case "go":
                 // Remember the order state so the pet resumes it on arrival
@@ -5327,7 +5830,7 @@ public sealed class ClientItemUseHandler
                     pet.SetTag("PREV_PET_MODE", ((int)pet.PetAIMode).ToString());
                 pet.SetTag("GO_TARGET", $"{x},{y},{z},{_character.MapIndex}");
                 pet.PetAIMode = PetAIMode.Come;
-                SysMessage(ServerMessages.Get(Msg.NpcPetSuccess));
+                success = true;
                 break;
 
             case "price":
@@ -5353,8 +5856,20 @@ public sealed class ClientItemUseHandler
                 }
                 else
                     NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetInvOnly));
-                break;
+                return;
         }
+
+        // Make some sound to confirm we heard it (CCharNPCPet.cpp:548-549).
+        PetAck(pet, success);
+    }
+
+    /// <summary>m_Act_UID = whom; Skill_Start(NPCACT_FOLLOW_TARG): the pet drops what
+    /// it was told before and follows <paramref name="whom"/>.</summary>
+    private static void PetFollow(Character pet, Character whom)
+    {
+        SupersedePendingPetOrder(pet);
+        pet.SetTag("FOLLOW_TARGET", whom.Uid.Value.ToString());
+        pet.PetAIMode = PetAIMode.Follow;
     }
 
     /// <summary>Items a pet keeps rather than throwing on the ground.
@@ -5575,7 +6090,10 @@ public sealed class ClientItemUseHandler
 
         // Auto-restock if needed (TAG.VENDORINV path — used by GM-set
         // inventory definitions).
-        if (VendorEngine.NeedsRestock(vendor))
+        // Cmd_VendorBuy runs the timed NPC_Vendor_Restock before the list goes out
+        // (CClientMsg.cpp:2405): nothing happens until the timer is due.
+        bool restockDue = VendorEngine.NeedsRestock(vendor);
+        if (restockDue)
             VendorEngine.RestockVendor(vendor);
 
         // Source-X parity: vendors restock from their @NPCRestock
@@ -5592,10 +6110,14 @@ public sealed class ClientItemUseHandler
         var stockContainer = vendor.GetEquippedItem(Layer.VendorStock);
         // A player vendor sells only what its owner stocked: Source-X never restocks
         // a pet (NPC_Vendor_Restock, CCharNPCAct_Vendor.cpp:41).
-        if (!VendorEngine.HasRealStock(vendor) &&
+        // A vendor sold out between restocks stays sold out: Event_VendorBuy only
+        // lowers the stock amount (CClientEvent.cpp:1319) and it returns on the
+        // timer alone.
+        if (restockDue && !VendorEngine.HasRealStock(vendor) &&
             (stockContainer == null ||
              !_world.GetContainerContents(stockContainer.Uid).Any()))
         {
+            vendor.SetTag("RESTOCK_TIME", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());
             // Rebuild the virtual stock from the persisted SELL template
             // (the stock items themselves are not saved). Covers vendors
             // loaded from a prior world save and those drained to empty.
@@ -5736,6 +6258,11 @@ public sealed class ClientItemUseHandler
     private void SendVendorSellList(Character vendor)
     {
         if (_character == null) return;
+
+        // Cmd_VendorSell also runs the timed restock (CClientMsg.cpp:2456); the
+        // purse is the part of it a sale depends on.
+        if (VendorEngine.NeedsRestock(vendor))
+            VendorEngine.RestockPurse(vendor);
 
         var backpack = _character.Backpack;
         if (backpack == null)

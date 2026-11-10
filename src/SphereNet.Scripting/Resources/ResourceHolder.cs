@@ -1102,14 +1102,20 @@ public sealed class ResourceHolder
 
     /// <summary>Source-X CChar::Noto_GetLevel + CServerConfig::GetNotoTitle —
     /// map karma/fame to a title slot, honoring the "male,female" split.</summary>
-    public string GetNotoTitle(int karma, int fame, bool female)
+    /// <summary>Source-X CChar::Noto_GetLevel (CCharNotoriety.cpp:341-356): the
+    /// [NOTOTITLES] slot of a karma/fame pair.</summary>
+    public int GetNotoLevel(int karma, int fame)
     {
         int i = 0;
         while (i < _notoKarmaLevels.Count && karma < _notoKarmaLevels[i]) i++;
         int j = 0;
         while (j < _notoFameLevels.Count && fame > _notoFameLevels[j]) j++;
+        return i * (_notoFameLevels.Count + 1) + j;
+    }
 
-        int level = i * (_notoFameLevels.Count + 1) + j;
+    public string GetNotoTitle(int karma, int fame, bool female)
+    {
+        int level = GetNotoLevel(karma, fame);
         if (level < 0 || level >= _notoTitles.Count)
             return "";
 

@@ -113,7 +113,9 @@ public class ParityWaveH10Tests
         for (int i = 0; i < 34; i++)
             client.HandleBulletinBoardPost(board.Uid.Value, 0, $"msg {i}", new[] { "b" });
 
-        Assert.Equal(32, board.Contents.Count);
+        // A message rolls off when the board already holds MORE than 32
+        // (receive.cpp:1232-1233), so it settles at 33.
+        Assert.Equal(33, board.Contents.Count);
         Assert.Equal("msg 33", board.Contents[^1].Name);   // newest kept
         Assert.DoesNotContain(board.Contents, m => m.Name == "msg 0"); // oldest rolled off
     }

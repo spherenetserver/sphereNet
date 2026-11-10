@@ -148,7 +148,9 @@ public sealed class ItemCombatRatingTests : IDisposable
         var plate = Make(world, 0x1410, new Point3D(100, 100, 0, 0));
 
         Assert.Equal("4,6", Read(plate, "ARMOR"));
-        Assert.Equal(5, plate.GetArmorDefense());          // upstream averages the pair
+        // Armor_GetDefense is m_defenseBase + m_ModAr (CItem.cpp:4905): the low value
+        // of the pair, which is what "4,6" stores as its base (CObjBase.cpp:1849).
+        Assert.Equal(4, plate.GetArmorDefense());
 
         Assert.True(plate.TrySetProperty("ARMOR", "20,20"));
         Assert.Equal("20,20", Read(plate, "ARMOR"));

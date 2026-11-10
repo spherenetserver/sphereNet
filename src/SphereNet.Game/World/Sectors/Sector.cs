@@ -34,8 +34,53 @@ public sealed class Sector : IScriptObj
     /// set when a GM or script pinned it (Source-X LIGHT_OVERRIDE,
     /// CSectorEnviron.h:14).</summary>
     private byte _light = 0;
+    /// <summary>When the stored light was last set or stepped; 0 = never. A sector
+    /// nobody has stood in for a while is not ticked, so its stored light is stale
+    /// and is set afresh rather than faded from wherever it was left.</summary>
+    private long _lightStampMs;
     private short _rainChance = 15;
     private short _coldChance = 5;
+
+    /// <summary>The untouched RAINCHANCE / COLDCHANCE pair: a sector still holding it
+    /// rolls its weather with the chances of its latitude
+    /// (<see cref="EffectiveRainChance"/>).</summary>
+    public const short DefaultRainChance = 15, DefaultColdChance = 5;
+
+    /// <summary>Sector rows of this sector's map (0 = unknown), for the latitude the
+    /// default weather chances depend on.</summary>
+    public int MapSectorRows { get; init; }
+
+    private bool HasDefaultWeatherChance =>
+        _rainChance == DefaultRainChance && _coldChance == DefaultColdChance && MapSectorRows > 0;
+
+    /// <summary>Source-X CSector::SetDefaultWeatherChance (CSector.cpp:836-855): how
+    /// far south the sector lies, 0..100.</summary>
+    private int LatitudePercent => _y * 100 / MapSectorRows;
+
+    /// <summary>RAINCHANCE as the weather roll reads it. A sector whose chances were
+    /// never set has Source-X's default for its latitude (CSector.cpp:841-854): 15 in
+    /// the north half, 15 + (percent - 50) / 10 in the south.</summary>
+    public int EffectiveRainChance
+    {
+        get
+        {
+            if (!HasDefaultWeatherChance) return _rainChance;
+            int percent = LatitudePercent;
+            return percent < 50 ? 15 : 15 + (percent - 50) / 10;
+        }
+    }
+
+    /// <summary>COLDCHANCE as the weather roll reads it: 1 + (49 - percent) * 2 north
+    /// of the middle of the map, 1 south of it (CSector.cpp:841-854).</summary>
+    public int EffectiveColdChance
+    {
+        get
+        {
+            if (!HasDefaultWeatherChance) return _coldChance;
+            int percent = LatitudePercent;
+            return percent < 50 ? 1 + (49 - percent) * 2 : 1;
+        }
+    }
     /// <summary>Sectors start ASLEEP, as upstream's do — CSector::CSector calls
     /// GoSleep() with the comment "Every sector is sleeping at start, they only
     /// awake when any player enter (this eases the load at startup)".
@@ -179,11 +224,13 @@ public sealed class Sector : IScriptObj
         byte next = light is < 0 or > 30
             ? GetLightCalc(quickSet: true)
             : (byte)((light & ~LightOverrideBit) | LightOverrideBit);
+        _lightStampMs = Environment.TickCount64;
         if (_light == next) return;
         _light = next;
+        byte shown = GetLightShown();
         foreach (var character in _characters)
             if (character.IsPlayer && character.IsOnline)
-                SendLight?.Invoke(character, GetLightCalc());
+                SendLight?.Invoke(character, shown);
     }
 
     /// <summary>Drop a pinned light and go back to following the clock.</summary>
@@ -478,10 +525,75 @@ public sealed class Sector : IScriptObj
         // A pinned light does not drift back to the clock on its own.
         if (IsLightOverridden && (AllowLightOverride?.Invoke() ?? true))
             return false;
+        _lightStampMs = Environment.TickCount64;
         byte next = GetLightCalc(quickSet: false);
         if (next == _light) return false;
         _light = next;
         return true;
+    }
+
+    /// <summary>How long a stored light stays current without a sector tick: two
+    /// SECTOR_TICKING_PERIODs and some slack.</summary>
+    internal const long LightStaleMs = 65_000;
+
+    private bool IsLightStale(long now) => _lightStampMs == 0 || now - _lightStampMs > LightStaleMs;
+
+    /// <summary>Give a sector that has not been ticked lately a current light: the
+    /// stored light of a neighbour that is being ticked, so a fade in progress carries
+    /// across the sector line, else the calculated level outright (the fQuickSet
+    /// "initializing the sector" reading, CSector.cpp:776).</summary>
+    private void SeedLight(long now)
+    {
+        _lightStampMs = now;
+        if (IsDungeon?.Invoke() != true && GetAdjacentSector != null)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    var near = GetAdjacentSector(_x + dx, _y + dy);
+                    if (near == null || near.IsLightStale(now) || near.IsLightOverridden ||
+                        near.IsDungeon?.Invoke() == true)
+                        continue;
+                    _light = near._light;
+                    return;
+                }
+        }
+        _light = GetLightCalc(quickSet: true);
+    }
+
+    /// <summary>The light a client standing here is shown: the STORED sector light
+    /// (CSector::GetLight), which the sector tick moves one level at a time toward the
+    /// calculated one (CSector.cpp:778-782, :1238) - not a fresh calculation, which
+    /// snapped day to night in one packet. A position whose region is underground
+    /// while the sector is not (or the reverse) keeps the direct answer.</summary>
+    public byte GetLightShown(bool? dungeonOverride = null)
+    {
+        if (IsLightOverridden && (AllowLightOverride?.Invoke() ?? true))
+            return (byte)(_light & ~LightOverrideBit);
+        bool sectorDungeon = IsDungeon?.Invoke() == true;
+        if ((dungeonOverride ?? sectorDungeon) != sectorDungeon)
+            return GetLightCalc(quickSet: true, dungeonOverride: dungeonOverride);
+        long now = Environment.TickCount64;
+        if (IsLightStale(now))
+            SeedLight(now);
+        return (byte)(_light & ~LightOverrideBit);
+    }
+
+    /// <summary>The light half of the 30-second sector tick (CSector::_OnTick,
+    /// CSector.cpp:1236-1243): the stored light takes one step toward the calculated
+    /// one. True when the light changed; the caller tells the players.</summary>
+    public bool TickLight()
+    {
+        if (IsLightOverridden && (AllowLightOverride?.Invoke() ?? true))
+            return false;
+        long now = Environment.TickCount64;
+        byte before = _light;
+        if (IsLightStale(now))
+            SeedLight(now);
+        else
+            RefreshLight();
+        return _light != before;
     }
 
     /// <summary>Source-X CSector::LightFlash: briefly send full brightness and
@@ -489,7 +601,7 @@ public sealed class Sector : IScriptObj
     /// Night Sight.</summary>
     public void LightFlash()
     {
-        byte normal = GetLightCalc();
+        byte normal = GetLightShown();
         foreach (var character in _characters)
         {
             if (!character.IsPlayer || !character.IsOnline || character.IsDead ||
@@ -743,10 +855,10 @@ public sealed class Sector : IScriptObj
                 value = (_light & ~LightOverrideBit).ToString();
                 return true;
             case "RAINCHANCE":
-                value = _rainChance.ToString();
+                value = EffectiveRainChance.ToString();
                 return true;
             case "COLDCHANCE":
-                value = _coldChance.ToString();
+                value = EffectiveColdChance.ToString();
                 return true;
             case "ISSLEEPING":
                 value = _isSleeping ? "1" : "0";

@@ -125,7 +125,9 @@ public sealed class ItemPropertyTooltipTests : IDisposable
             Set(i, "WEIGHTREDUCTION", "50");
         });
 
-        var tail = props.Where(p => p.Cliloc != 1050045).ToArray();
+        // The component lines close the list, after the name and the weapon's own
+        // default lines (weight, damage, speed, handedness).
+        var tail = props.Skip(props.Length - 6).ToArray();
         Assert.Equal(new (uint, string)[]
         {
             (1072210, "50"),   // weight reduction (item-char component)
@@ -238,21 +240,25 @@ public sealed class ItemPropertyTooltipTests : IDisposable
     [Fact]
     public void WeaponDamageAndSpeedArgumentsHaveNoLeadingTab()
     {
-        var props = Build(i => { i.SetTag("DAM", "3,15"); i.SetTag("SPEED", "40"); });
+        // The weapon's own DAM and its definition's SPEED, not tags of those names
+        // (m_attackBase / GetSpeed, CClientMsg_AOSTooltip.cpp:537-541).
+        var props = Build(i => Set(i, "DAM", "3,15"), ItemType.WeaponSword, "SPEED=40");
 
         Assert.Contains((1061168u, "3\t15"), props);
         Assert.Contains((1061167u, "40"), props);
     }
 
-    /// <summary>1050044 is "~1_COUNT~ items, ~2_WEIGHT~ stones": count then weight.</summary>
+    /// <summary>Under FEATURE_ML_UPDATE a container with no weight limit shows 1073841
+    /// "Contents: ~1_COUNT~/~2_MAXCOUNT~ items, ~3_WEIGHT~ stones"
+    /// (CClientMsg_AOSTooltip.cpp:466-467): count, the item ceiling, then weight.</summary>
     [Fact]
     public void ContainerContentsLineIsCountThenWeight()
     {
         var props = Build(_ => { }, ItemType.Container);
 
-        var contents = Assert.Single(props, p => p.Cliloc == 1050044);
+        var contents = Assert.Single(props, p => p.Cliloc == 1073841);
         var parts = contents.Args.Split('\t');
-        Assert.Equal(2, parts.Length);
+        Assert.Equal(3, parts.Length);
         Assert.Equal("0", parts[0]);
         Assert.DoesNotContain(props, p => p.Args.StartsWith('\t'));
     }

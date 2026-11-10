@@ -133,7 +133,7 @@ public sealed partial class NpcAI
         bool strikeNow = false;
         if (guard.MapIndex == target.MapIndex && guard.Position.GetDistanceTo(target.Position) > 1)
         {
-            if (_config.GuardsInstantKill || guard.GetSkill(SkillType.Magery) > 0)
+            if (_config.GuardsInstantKill || target.GetSkill(SkillType.Magery) > 0 /* the criminal's Magery, CCharNPCAct.cpp:741 */)
             {
                 _world.MoveCharacter(guard, target.Position);
                 OnNpcTeleport?.Invoke(guard);
@@ -400,6 +400,9 @@ public sealed partial class NpcAI
         }
 
         OnVendorRestock?.Invoke(npc);
+        // "GetBank()->Restock()" (CCharNPCAct_Vendor.cpp:89): the purse the vendor
+        // buys with comes back on the same timer as the goods.
+        Trade.VendorEngine.RestockPurse(npc);
         npc.SetTag("RESTOCK_TIME", now.ToString());
     }
 
@@ -839,7 +842,7 @@ public sealed partial class NpcAI
         if ((_world.GetSector(npc.Position)?.GetCharComplexity() ?? 0) > World.Sectors.Sector.MaxCharComplexity / 2)
             range /= 4;
         int blur = npc.Int < 50 ? ViewSight / 2 : ViewSight;
-        int rand = _rand.Next(Math.Max(1, range * 2));
+        int rand = _rand.Next(Math.Max(1, Character.MapViewRadarTiles)); // rand(MAPVIEWRADAR), :1131
         bool hooked = OnNpcLookAtChar != null;
         bool healer = !asHuman && npc.NpcBrain == NpcBrainType.Healer;
         bool guard = !asHuman && npc.NpcBrain == NpcBrainType.Guard;

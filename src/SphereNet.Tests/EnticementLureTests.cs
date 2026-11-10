@@ -50,11 +50,19 @@ public sealed class EnticementLureTests
     {
         var (world, bard, sink) = Setup();
         var deer = Creature(world, 102);
+        var steps = new List<(Character Npc, Point3D To, bool Run)>();
+        ActiveSkillEngine.NpcWalkToPoint = (npc, to, run) => { steps.Add((npc, to, run)); return true; };
 
         Assert.True(ActiveSkillEngine.Enticement(sink, deer));
 
+        // m_Act_p = the bard, and ONE NPC_WalkToPoint step (CCharSkill.cpp:1987-1988):
+        // the creature's own action is not replaced by a walk all the way there.
         Assert.Equal(bard.Position, deer.ActP);
-        Assert.Equal(NpcAction.GoTo, (NpcAction)deer.Action);
+        var step = Assert.Single(steps);
+        Assert.Same(deer, step.Npc);
+        Assert.Equal(bard.Position, step.To);
+        Assert.False(step.Run);
+        Assert.Equal(SkillType.None, deer.Action);
     }
 
     [Fact]
@@ -62,10 +70,12 @@ public sealed class EnticementLureTests
     {
         var (world, _, sink) = Setup();
         var deer = Creature(world, 106);
+        bool? ran = null;
+        ActiveSkillEngine.NpcWalkToPoint = (_, _, run) => { ran = run; return true; };
 
         Assert.True(ActiveSkillEngine.Enticement(sink, deer));
 
-        Assert.Equal(NpcAction.RunTo, (NpcAction)deer.Action);
+        Assert.True(ran);   // further than RANGE: NPC_WalkToPoint(true)
     }
 
     [Fact]

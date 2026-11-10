@@ -472,6 +472,7 @@ public static partial class Program
             // MORE2) and shows through Character.OnTeleportEffect ->
             // ShowTeleportEffect with the configured TELEPORTEFFECT*/TELEPORTSOUND*
             // (CCharSpell.cpp:178-196, 236-245).
+            _movement.MoongatePoints = () => _resources.Moongates.Select(m => m.Point).ToList();
             _movement.OnTeleport = (mover, dest, oldMap) =>
             {
                 if (TryGetClientFor(mover, out var c))
@@ -518,10 +519,10 @@ public static partial class Program
 
                 // @EnvironChange — the perceived light level differs between surface
                 // and dungeon regions (mirrors WeatherEngine.GetLightLevel).
-                byte regionLight = mover.IsDead ? (byte)0 : _world.GetLightLevel(mover.Position);
+                byte regionLight = _world.GetLightLevelFor(mover);
                 var (weatherType, weatherIntensity, weatherTemp) = _weatherEngine.GetWeatherAt(mover.Position);
                 mover.UpdateEnvironment(regionLight, (byte)weatherType,
-                    mover.IsDead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
+                    mover.IsDead ? (byte)SeasonType.Desolation : _world.SeasonAt(mover.Position));
 
                 if (!TryGetClientFor(mover, out var gc)) { _log.LogDebug("[REGION_CHANGE] no GameClient for {Name}", mover.Name); return; }
 
@@ -532,7 +533,7 @@ public static partial class Program
                 // stall. Upstream returns early on a repeat (CClientMsg.cpp:509).
                 gc.SendSeason(mover.IsDead
                     ? (byte)SeasonType.Desolation
-                    : (byte)_weatherEngine.CurrentSeason, playSound: false);
+                    : _world.SeasonAt(mover.Position), playSound: false);
                 if (!SphereNet.Game.World.WeatherEngine.NoWeather)
                     gc.Send(new PacketWeather((byte)weatherType, weatherIntensity, weatherTemp));
 
@@ -1258,7 +1259,7 @@ public static partial class Program
             // change a field nothing ever published.
             _world.OnSectorEnvironment = (sector, character) =>
             {
-                byte light = character.IsDead ? (byte)0 : _world.GetLightLevel(character.Position);
+                byte light = _world.GetLightLevelFor(character);
                 byte season = character.IsDead
                     ? (byte)SeasonType.Desolation
                     : (sector.Season != 0 ? sector.Season : (byte)_weatherEngine.CurrentSeason);
@@ -1298,11 +1299,9 @@ public static partial class Program
                 if (_deathEngine != null && _deathEngine.IsLootingCriminal(caster, corpse))
                     _deathEngine.ReportCorpseCrime(caster, corpse);
             };
-            _spellEngine.OnSpellInterrupt = (caster, _) =>
-            {
-                _triggerDispatcher?.FireCharTrigger(caster, CharTrigger.SpellInterrupt,
-                    new TriggerArgs { CharSrc = caster });
-            };
+            _spellEngine.OnSpellInterrupt = (source, caster, spell, chance) =>
+                _triggerDispatcher?.FireCharTrigger(source, CharTrigger.SpellInterrupt,
+                    new TriggerArgs { CharSrc = caster, N1 = spell, N2 = chance }) == TriggerResult.True;
             // @SpellSuccess / [SPELL] @Success and @SpellFail / [SPELL] @Fail are
             // fired by SpellEngine itself at the points Source-X fires them - before
             // the cast is paid for (Spell_CastDone, CCharSpell.cpp:2961-2971) and
@@ -1738,6 +1737,7 @@ public static partial class Program
                 _world.RemoveItem(trade.PartnerContainer);
             };
             _npcAI = new NpcAI(_world, _config);
+            SphereNet.Game.Skills.Information.ActiveSkillEngine.NpcWalkToPoint = _npcAI.WalkOneStepToward;
             _npcTimerWheel = new SphereNet.Game.Scheduling.TimerWheel(Environment.TickCount64);
             _recordingEngine = new SphereNet.Game.Recording.RecordingEngine(
                 Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "recordings"));
@@ -1989,7 +1989,7 @@ public static partial class Program
 
                 if (damage > 0)
                 {
-                    _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false);
+                    _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false, source: attacker);
                     if (target.HasActiveSkillPending())
                     {
                         int abortedSkill = target.ClearActiveSkillPending();
@@ -2063,6 +2063,14 @@ public static partial class Program
                 if (isResurrect && target.IsDead)
                     _spellEngine.ApplyDirectEffect(healer, target, SpellType.Resurrection, 1000);
             };
+            if (_movement != null)
+                _spellEngine.OnTakePets = (owner, dest) => _movement.TakePetsAlong(owner, dest, true);
+            _npcAI.OnNpcStepped = (npc, from) => _movement?.ApplyNpcStep(npc, from) ?? true;
+            if (_movement != null)
+            {
+                _movement.OnNpcFleeThreat = npc => _npcAI?.FleeThreat(npc);
+                Character.StandingEffectsHook = ch => _movement.CheckStandingEffects(ch);
+            }
             _npcAI.OnVendorRestock = vendor =>
             {
                 _triggerDispatcher?.FireVendorRestock(vendor, new TriggerArgs { CharSrc = vendor });
@@ -2350,7 +2358,7 @@ public static partial class Program
                 // unparalyze already ran inside the damage entry, gated on its own
                 // DAMAGE_NOUNPARALYZE flag.
                 if (!damageType.HasFlag(DamageType.NoDisturb))
-                    _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false);
+                    _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false, source: source);
                 BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, source?.Uid.Value ?? 0);
                 BroadcastNearby(target.Position, 18,
                     new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits), 0);
@@ -2760,9 +2768,9 @@ public static partial class Program
                     ip = client.NetState.RemoteEndPoint?.Address.ToString() ?? "",
                 });
                 var weather = _weatherEngine.GetWeatherAt(ch.Position).Type;
-                ch.UpdateEnvironment(ch.IsDead ? 0 : _world.GetLightLevel(ch.Position),
+                ch.UpdateEnvironment(_world.GetLightLevelFor(ch),
                     (byte)weather,
-                    ch.IsDead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
+                    ch.IsDead ? (byte)SeasonType.Desolation : _world.SeasonAt(ch.Position));
             };
             SphereNet.Game.Clients.GameClient.OnCharacterOffline = ch =>
             {

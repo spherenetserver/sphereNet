@@ -897,6 +897,33 @@ public sealed partial class NpcAI
         }
     }
 
+    /// <summary>What a taken step sets off (CheckLocationEffects); false puts the
+    /// NPC back. Wired to the movement engine.</summary>
+    public Func<Character, Point3D, bool>? OnNpcStepped { get; set; }
+
+    /// <summary>NPC_WalkToPoint's "if (!MoveToChar(pMe, false, true)) return 2"
+    /// (CCharNPCAct.cpp:601-605): the step, then whatever lies on the tile.</summary>
+    private bool StepNpc(Character npc, Point3D dest)
+    {
+        var from = npc.Position;
+        _world.MoveCharacter(npc, dest);
+        return OnNpcStepped?.Invoke(npc, from) ?? true;
+    }
+
+    /// <summary>"m_Act_p.Move(rand dir); NPC_WalkToPoint(true); // run away from the
+    /// threat" (CCharAct.cpp:5005-5043): one running step in a random direction.</summary>
+    public void FleeThreat(Character npc)
+    {
+        if (npc.IsDead || npc.IsDeleted)
+            return;
+        var dir = (Direction)_rand.Next(8);
+        if (!TryNpcStep(npc, dir, out var pos))
+            return;
+        npc.Direction = dir | Direction.Running;
+        if (StepNpc(npc, pos))
+            ApplyStepDelay(npc, true);
+    }
+
     private bool TeleportNpc(Character npc, Point3D dest)
     {
         if (dest.X < 0 || dest.Y < 0 || _world.GetSector(dest) == null)
@@ -952,7 +979,8 @@ public sealed partial class NpcAI
         if (!TryNpcStep(npc, sideDir, out var pos))
             return false;
         npc.Direction = run ? sideDir | Direction.Running : sideDir;
-        _world.MoveCharacter(npc, pos);
+        if (!StepNpc(npc, pos))
+            return false;
         ApplyStepDelay(npc, run);
         return true;
     }
@@ -1301,7 +1329,8 @@ public sealed partial class NpcAI
         }
 
         npc.Direction = run ? dir | Direction.Running : dir;
-        _world.MoveCharacter(npc, dest);
+        if (!StepNpc(npc, dest))
+            return 2;
         ApplyStepDelay(npc, run);
         if (!usePath)
         {
@@ -1313,6 +1342,12 @@ public sealed partial class NpcAI
         }
         return 1;
     }
+
+    /// <summary>One NPC_WalkToPoint step for a caller outside the brain - Source-X
+    /// Skill_Enticement moves the lured creature a single step (CCharSkill.cpp:1988).
+    /// True when the creature moved.</summary>
+    public bool WalkOneStepToward(Character npc, Point3D target, bool run) =>
+        !npc.IsPlayer && !npc.IsDead && !npc.IsDeleted && MoveToward(npc, target, run) == 1;
 
     /// <summary>Serial A* search toward <paramref name="target"/>, throttled per NPC
     /// (a success allows the next one after PathThrottleMs, a failure backs off for

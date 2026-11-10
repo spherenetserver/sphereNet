@@ -1467,13 +1467,11 @@ public static partial class Program
         {
             if (!client.IsPlaying || client.Character == null) continue;
             bool dead = client.Character.IsDead;
-            byte light = dead ? (byte)0 : _world.GetLightLevel(client.Character.Position);
+            byte light = _world.GetLightLevelFor(client.Character);
             var weather = _weatherEngine.GetWeatherAt(client.Character.Position);
-            client.Character.UpdateEnvironment(light, (byte)weather.Type,
-                dead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
-            client.SendSeason(dead
-                ? (byte)SeasonType.Desolation
-                : (byte)_weatherEngine.CurrentSeason, playSound);
+            byte season = dead ? (byte)SeasonType.Desolation : _world.SeasonAt(client.Character.Position);
+            client.Character.UpdateEnvironment(light, (byte)weather.Type, season);
+            client.SendSeason(season, playSound);
             client.Send(new PacketGlobalLight(light));
 
             // The weather is the sector's and does not change with the season; Source-X

@@ -4,6 +4,177 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-10] - Item uses, pet commands, tooltips, books, profile, party, character creation, skills, seasons and light
+------------------------------------------------------------------------
+ADD - Scissors on a bolt of cloth cut it into its RESOURCES (CItem::ConvertBolttoCloth).
+ADD - An explosion potion is lit and thrown instead of drunk: it goes to the cursor, counts
+      down aloud, and is thrown at a point in sight (CClientUse.cpp:272-293,
+      CClientTarg.cpp:1766-1782, CItem.cpp:6360-6380).
+ADD - Double-clicking a rune asks for its name (CClientUse.cpp:373-379).
+FIX - A sewing kit asks for a target and opens the leather menu for leather and hides, the
+      cloth menu for cloth; shafts, feathers and fletching open sm_bolts
+      (CClientTarg.cpp:2383-2402, CClientUse.cpp:160-163).
+FIX - A tracker tracks the creature it is attuned to and only asks to be attuned when that
+      fails; the link is the item's LINK, not a tag (CClientUse.cpp:148-158).
+FIX - A key ring was treated as a blank key. On a lock it uses the key that fits, on itself
+      it empties its keys into the pack, and its graphic follows the key count
+      (CClientTarg.cpp:2097-2132, CItemContainer.cpp:863-887).
+ADD - A plain sign shows its sign gump (packet 0x8B); a house sign still opens the house gump.
+FIX - A dye vat used on a character dyes hair and beard; hue 0 is applied like any other,
+      and no line is printed (CClientTarg.cpp:2332-2360).
+FIX - Sextant and locked-door answers use the reference text and behaviour; a magic locked
+      door shows its face (CCharUse.cpp:1796-1808, 1956-1963).
+FIX - Pet commands: a creature that cannot speak answers with its sound instead of "Yes
+      Master", and nothing is answered when it cannot see its master. STATUS and CASH use
+      their defmessages; FRIEND, UNFRIEND, TRANSFER and GUARD send the right text to the
+      right party and follow the reference rules for who may be picked; vendor-only orders
+      are ignored by a non-vendor (CCharNPCPet.cpp:15-532).
+FIX - Book title and author edits were dropped: the client's "writable" byte is always 0
+      and is not a condition. The 0xD4 header was read one byte out of step
+      (receive.cpp:1719-1721, 3549-3551).
+FIX - A book whose MORE1 names a [BOOK] section opened blank and writable. It shows the
+      section's title, author and pages, read-only (send.cpp:1688-1697, 2883-2910).
+FIX - Profile packet 0xB8 lacked a string: it is name, "title, trade title" and the body.
+      The text is kept in PROFILE, which is what the save carries; an earlier tag is read
+      once (send.cpp:3828-3841, CClientEvent.cpp:1617-1621).
+FIX - Item tooltips showed only the name for weapons and armour. Damage, speed, range,
+      strength requirement, handedness, skill, durability, armour rating, weight, crafter,
+      uses, contents, "Locked", wand charges, rune destination and spell count are listed
+      as the reference lists them (CClientMsg_AOSTooltip.cpp:400-707).
+FIX - Character tooltips carry the fame title, guild abbreviation and title, and the
+      summoned / tame / bonded lines (CClientMsg_AOSTooltip.cpp:253-352).
+FIX - Party members receive each other's mana and stamina; a private tell goes to its
+      target only, with no echo; the loot toggle sets the party flag and uses its
+      defmessages (CClientMsg.cpp:2248-2268, CParty.cpp:78-82, 242-277).
+ADD - "Rename" in an owned pet's context menu; no context menu for a dead requester or an
+      object that cannot be seen (CClientEvent.cpp:2575, 2670).
+FIX - Arms Lore, Item Identification, Taste Identification and Animal Lore use the
+      reference wording and values: repair state from the item-status messages, a weapon's
+      top damage, an identified item's blessed/cursed/magic prefix and "of <spell> (N
+      charges)", the creature's trade name and a pronoun by body
+      (CItem.cpp:1774-1902, 4905-4936, 5779-5794).
+FIX - An armour's defence is its base value (the low figure of ARMOR=lo,hi) plus MODAR and
+      enchantment, not the average of the pair (Armor_GetDefense, CItem.cpp:4905-4912).
+FIX - Bulletin board reach and messages; a board holds 32 posts before the oldest goes.
+      The all-names request answers every serial in the packet, and only what is seen.
+FIX - New characters got the plain newbie kit only. The race page of the default kit and the
+      [NEWBIE PROFESSION_x] kit are applied; every skill starts at a random value below
+      MAXBASESKILL before the chosen ones are set (CChar.cpp:1768-1773, 2084-2137).
+FIX - Character names: an obscene name or one starting with a staff title is replaced from
+      the name pool, and @Rename fires. @LogIn RETURN 1 refuses the login and ARGN2 is the
+      quick-relog flag (CChar.cpp:1737-1756, CClientMsg.cpp:2825-2829).
+ADD - A character logging in on water is moved to the nearest shore; the game time packet
+      0x5B is sent at login (CClientMsg.cpp:2876).
+FIX - Spirit Speak lasted 24 seconds; it lasts 40 minutes (CCharSkill.cpp:2644).
+FIX - A tamed creature follows its tamer at once and drops its fight; full pet slots refuse
+      the attempt up front (CCharSkill.cpp:2332-2398).
+FIX - Enticement moves the creature one step per success; Poisoning has no possession rule;
+      Herding and Musicianship cannot be started from the skill list; a spent campfire
+      turns to embers (CCharSkill.cpp:1988, CItem.cpp:6403-6412).
+FIX - A hungry player is told so (at 40% food and below) on each food tick
+      (CCharAct.cpp:5790-5806).
+CHG - Seasons no longer cycle by default: the code default is manual, Summer, and a sector's
+      own season is sent when one is set. SEASONMODE=Auto in sphere.ini keeps the cycle
+      (CSectorEnviron.cpp:8, CClientMsg.cpp:1506).
+FIX - Day and night no longer snap: a sector's light moves one level per 30-second tick
+      (CSector.cpp:778-782, 1238).
+ADD - Rain, wind and thunder sounds with the weather; elves see in the dark when the racial
+      flag is set (CSector.cpp:836-855, 1280-1336).
+
+[2026-11-10] - Attacker timeout, target gate, NPC steps, vendor purse, decay, ship speed, region save
+------------------------------------------------------------------------
+FIX - An attacker entry only expired while the victim held a fight memory for it, so a
+      single spell hit stayed on the list for good and earned kill credit - and a murder
+      count - on a death hours later. The list is checked once a second for every
+      character: an entry with no hit for longer than ATTACKERTIMEOUT, or whose character
+      is gone, is removed (Attacker_CheckTimeout, CCharAttacker.cpp:392-424).
+ADD - When STR goes down (Weaken, Curse, stat loss, a script), worn items whose strength
+      requirement is no longer met are announced and dropped into the pack; staff are
+      exempt (Stat_StrCheckEquip, CCharStat.cpp:793-804).
+FIX - DEATHFLAGS no-corpse (0x02) was ignored for players. A player with it leaves no
+      corpse, keeps everything and still becomes a ghost (CItemCorpse.cpp:168-179).
+FIX - A summoned creature was deleted the moment its summoner died. It lives as long as
+      its summon timer, like any other pet (CCharSpell.cpp:595-606).
+FIX - Helping a criminal: the test was the target's criminal/murderer flag alone. It is the
+      target's notoriety as the helper sees it - criminal, guild-war enemy or evil is a
+      crime, a criminal guildmate or party member is not (CCharSpell.cpp:3344-3359).
+FIX - Monsters noticed everything inside their full sight range every time. Beyond 14 tiles
+      (7 under 50 INT) a character is noticed only now and then, and a creature that
+      cannot move and has no ranged attack looks 2 tiles (NPC_LookAround,
+      CCharNPCAct.cpp:1131-1181).
+FIX - A guard teleports to a criminal when the CRIMINAL has Magery, not when the guard has
+      it (CCharNPCAct.cpp:741).
+FIX - A shopkeeper's gold was only refilled when a buy list was opened on an unstocked
+      vendor, which the periodic restock made almost never; vendors ran dry and stopped
+      buying. The purse is refilled by the timed restock, and the sell list runs the same
+      check (NPC_Vendor_Restock, CCharNPCAct_Vendor.cpp:32-95).
+FIX - A vendor sold out completely restocked the instant the next buy list was opened. It
+      stays sold out until its restock timer is due (CClientEvent.cpp:1319).
+FIX - @NPCAction fired on every purchase and sale. It belongs to the NPC's own action tick
+      (CCharNPCAct.cpp:2683-2687).
+FIX - NPC steps set nothing off. They now run the same location effects as a player's:
+      region, room and item @Step, spell fields and fire on entry, traps, step switches and
+      map teleporters; a refused step puts the NPC back (CCharAct.cpp:4888-5119).
+ADD - The standing pass of the location effects, once a second: items underfoot get @Step
+      with ARGN1 = 1, a trap goes off, a step switch is used, and an NPC hurt by fire, a
+      field or a trap runs one step off the tile (CCharAct.cpp:4946-5046).
+FIX - Target answers went straight to their handlers. Ahead of every cursor: a non-staff
+      player must be able to see the picked object, a non-selectable character is never a
+      target, a bare point must lie inside the visual range, and a picked object's own
+      position replaces the coordinates the client sent - a forged x/y on a visible serial
+      could place an area spell or a field anywhere (Event_Target, CClientEvent.cpp:2495-2534).
+FIX - Area spells never touched items. A spell without the damage flag reaches every item in
+      its radius, which is how Mass Dispel clears field tiles (CCharSpell.cpp:2182-2192).
+FIX - Recall left pets behind. Pets following the caster within 14 tiles travel first; the
+      same range now applies to telepads, moongates and planks (CCharSpell.cpp:203-221, 421).
+FIX - A harmful field laid by a caster standing in a guarded region did not flag the caster
+      (Spell_Field, CCharSpell.cpp:2211-2212).
+FIX - Moongates always led to their own MOREP. An IT_MOONGATE picks its destination from the
+      [MOONGATES] list by the two moon phases; a linked object's position replaces MOREP for
+      a telepad; an NPC does not use a player-only gate, a guard only goes to guarded
+      ground and a criminal NPC never does (Use_MoonGate, CCharUse.cpp:201-282).
+FIX - A cast disturbed by a hit was priced as an abort and fired @SpellInterrupt on the
+      caster afterwards. It is a failure (@SkillFail, MANALOSSFAIL / REAGENTLOSSFAIL), and
+      @SpellInterrupt fires first, on the attacker, with ARGN1 = spell, ARGN2 = chance;
+      RETURN 1 lets the cast go on. One's own damage disturbs nothing
+      (CCharFight.cpp:881-915).
+FIX - Changing equipment fizzled a cast; the reference has no such rule. Removed.
+FIX - Toggling war mode did not drop the action in progress. It cancels the cast or skill
+      unless @UserWarmode clears ARGN2 (Event_CombatMode, CClientEvent.cpp:1047-1052).
+FIX - Spell_TargCheck ran only when the cast completed: a cast at something out of sight was
+      spoken, animated and waited out before it failed. It also runs at the cast start
+      (CCharSpell.cpp:3526-3530). The line-of-sight refusal uses its defmessage.
+FIX - MAGICF_NODIRCHANGE was not read; with it set a caster no longer turns to the target.
+      A cast from a wand leaves both hands as they are (CCharSpell.cpp:2728, 3546-3556).
+FIX - Anything placed on the ground got a decay timer. An item that is ATTR_MOVE_NEVER,
+      static, locked down, secure or not of a movable type never rots, and a structure
+      lasts 14 days (CItem::GetDecayTime, CItem.cpp:1407-1439).
+ADD - MAXITEMCOMPLEXITY on a ground drop: past that many items on one spot the item says
+      "Too many items here!" and is gone in a minute, a no-decay region included
+      (MoveToCheck, CItem.cpp:1664-1684).
+FIX - MULTIDEF SPEEDMODE was not read and every ship ran in the one-tile mode, so a classic
+      ship (SPEEDMODE=3) sailed twice as fast as it should and reported the wrong speed to
+      the client. The definition's mode is used, 3 when it names none; a saved mode of 1
+      from the old default is replaced by the definition's (CItemMulti.cpp:28-30,
+      CItemBase.cpp:1474-1486, 1896).
+FIX - Wheel steering (0xBF 0x33): an accepted order moves the ship at once, a new cardinal
+      facing turns it, and the heading changes even when the order is dropped as too soon
+      (receive.cpp:3404-3450, CCMultiMovable.cpp:60-105).
+FIX - The world save left out every ATTR_STATIC item. Only static GROUND items belong to the
+      statics file: a static structure, and a static item inside a container, are written
+      to the world save again - they were lost at the next boot (CSector.cpp:499-510).
+FIX - Loading an older save generation looked for a statics and a multis file of the same
+      generation; neither rotates with the world save, so both fall back to the current file.
+ADD - A region changed by a script at run time (flags, events, tags, name, group) is saved
+      as a [WORLDSCRIPT defname] record holding the changed groups and restored on load.
+      Such a record used to be read into SCRIPT.* global variables nothing used
+      (CWorld.cpp:852-861, CRegion.cpp:650-671).
+ADD - Player keys REFUSETRADES (read, write, saved as a bare key), LASTUSED and
+      LASTDISCONNECTED (seconds since, stamped on login and logout), and ADDHOUSE, DELHOUSE,
+      ADDSHIP, DELSHIP, MAXHOUSES, MAXSHIPS accepted (CCharPlayer.cpp:243-267, 375-485).
+ADD - "You are now ..." when a kill moves the killer to another notoriety title
+      (Noto_ChangeNewMsg, CCharNotoriety.cpp:465-473).
+
 [2026-11-10] - Classic spheremultis file no longer restores removed structures
 ------------------------------------------------------------------------
 FIX - A classic spheremultis file is read at every boot and never rewritten: once the

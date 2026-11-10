@@ -188,6 +188,12 @@ public sealed class SkillHandlers
         if (SkillEngine.HasFlag(skill, SkillFlag.Scripted))
             return true;
 
+        // Herding and Musicianship have no case in Event_Skill_Use
+        // (CClientEvent.cpp:670-725) and fall to its default answer: Herding is
+        // started from the crook, Musicianship from an instrument.
+        if (skill is SkillType.Herding or SkillType.Musicianship)
+            return false;
+
         if (IsInfoSkill(skill) || GetActiveSkillTarget(skill) != ActiveSkillTargetKind.Unsupported)
             return true;
 

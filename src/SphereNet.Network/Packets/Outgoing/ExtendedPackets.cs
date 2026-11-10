@@ -1292,22 +1292,29 @@ public sealed class PacketOpenPaperdoll : PacketWriter
 public sealed class PacketProfileResponse : PacketWriter
 {
     private readonly uint _serial;
+    private readonly string _name;
     private readonly string _title;
     private readonly string _profileText;
 
-    public PacketProfileResponse(uint serial, string title, string profileText = "")
+    public PacketProfileResponse(uint serial, string name, string title, string profileText)
         : base(0xB8)
     {
         _serial = serial;
+        _name = name ?? "";
         _title = title ?? "";
         _profileText = profileText ?? "";
     }
 
     public override PacketBuffer Build()
     {
-        var buf = CreateVariable(64 + (_title.Length * 2) + (_profileText.Length * 2));
+        // PacketProfile (send.cpp:3828-3841): uid, the ASCII name, the unicode title
+        // line, the unicode body. The title line was written as the ASCII string and
+        // the body as the only unicode one, so the client read the body as the title
+        // and found no body at all.
+        var buf = CreateVariable(64 + _name.Length + (_title.Length * 2) + (_profileText.Length * 2));
         buf.WriteUInt32(_serial);
-        buf.WriteAsciiNull(_title);
+        buf.WriteAsciiNull(_name);
+        buf.WriteUnicodeNullBE(_title);
         buf.WriteUnicodeNullBE(_profileText);
         buf.WriteLengthAt(1);
         return buf;

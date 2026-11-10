@@ -1514,10 +1514,10 @@ public static partial class Program
                 // weather and underground regions can all change perceived light.
                 var ch = client.Character;
                 if (ch == null) continue;
-                byte light = ch.IsDead ? (byte)0 : _world.GetLightLevel(ch.Position);
+                byte light = _world.GetLightLevelFor(ch);
                 var weather = _weatherEngine.GetWeatherAt(ch.Position).Type;
                 ch.UpdateEnvironment(light, (byte)weather,
-                    ch.IsDead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
+                    ch.IsDead ? (byte)SeasonType.Desolation : _world.SeasonAt(ch.Position));
                 client.Send(new PacketGlobalLight(light));
             }
         }

@@ -99,6 +99,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Clients.GameClient.GuestsMax = 0;
         SphereNet.Game.Clients.GameClient.AccountInUse = null;
         SphereNet.Game.Clients.GameClient.ArriveDepartMsg = 1;
+        SphereNet.Game.Clients.GameClient.MaxBaseSkill = 200;
         SphereNet.Game.Clients.GameClient.ServerName = "SphereNet";
         SphereNet.Game.Clients.GameClient.SextantZeroX = 1323;
         SphereNet.Game.Clients.GameClient.SextantZeroY = 1624;
@@ -163,6 +164,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         // test's worn memories ticking through that engine instance.
         SphereNet.Game.Objects.Items.Item.SpellMemoryTimerHandler = null;
         SphereNet.Game.Objects.Characters.Character.FieldTouchHook = null;
+        SphereNet.Game.Objects.Characters.Character.StandingEffectsHook = null;
         SphereNet.Game.Objects.Characters.Character.MagicFlags = 0;
         SphereNet.Game.Objects.Characters.Character.EmoteFlags = 0;
         SphereNet.Game.Objects.Characters.Character.ResolveSpellDef = null;
@@ -399,6 +401,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Skills.SkillHandlers.OnCraftSkillUsed = null;
         SphereNet.Game.Skills.SkillHandlers.OnScriptedSkillUse = null;
         SphereNet.Game.Skills.Information.ActiveSkillEngine.DamageToolsEnabled = false;
+        SphereNet.Game.Skills.Information.ActiveSkillEngine.NpcWalkToPoint = null;
         SphereNet.Game.Objects.Items.ResourceMatch.StrictComparison = false;
         SphereNet.Game.Skills.SkillEngine.SkillMaxOverrides.Clear();
         SphereNet.Game.Skills.SkillEngine.SkillSumMaxOverride = 10000;

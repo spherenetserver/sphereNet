@@ -414,6 +414,17 @@ public sealed class WorldLoader
         var statics = ResolveSaveFiles(savePath, "spherestatics", bakLevel, out bool incStatics, out bool sizeStatics);
         var multis = ResolveSaveFiles(savePath, "spheremultis", bakLevel, out bool incMultis, out bool sizeMultis);
         var data = ResolveSaveFiles(savePath, "spheredata", bakLevel, out bool incData, out bool sizeData);
+        // The statics file is rewritten only by SAVESTATICS and a classic multis file
+        // never, so neither rotates with the world save: an older generation that has
+        // no copy of its own falls back to the current file instead of losing every
+        // static item and structure.
+        if (bakLevel > 0)
+        {
+            if (statics.Count == 0)
+                statics = ResolveSaveFiles(savePath, "spherestatics", 0, out incStatics, out sizeStatics);
+            if (multis.Count == 0)
+                multis = ResolveSaveFiles(savePath, "spheremultis", 0, out incMultis, out sizeMultis);
+        }
         return new GenerationPaths(items, chars, statics, multis, data,
             incItems || incChars || incStatics || incMultis || incData,
             sizeItems || sizeChars || sizeStatics || sizeMultis || sizeData);
@@ -2327,12 +2338,21 @@ public sealed class WorldLoader
             }
             else if (upper.StartsWith("WORLDSCRIPT ", StringComparison.OrdinalIgnoreCase))
             {
+                // [WORLDSCRIPT defname] (CServerConfig.cpp:3291): the saved lines are
+                // replayed through the region's own property setter, which marks it
+                // modified again so the next save keeps them. They used to become
+                // SCRIPT.* global variables nothing read.
                 string scriptName = section[12..].Trim();
+                SphereNet.Game.World.Regions.Region? scriptRegion = null;
+                foreach (var candidate in world.Regions)
+                    if (string.Equals(candidate.DefName, scriptName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        scriptRegion = candidate;
+                        break;
+                    }
                 while (reader.NextProperty(out string key, out string val))
-                {
-                    world.SetGlobalVar($"SCRIPT.{scriptName}.{key}",
+                    scriptRegion?.TrySetProperty(key,
                         SphereNet.Scripting.Variables.VarMap.UnquoteSaveValue(val, out _));
-                }
             }
             else if (upper == "SPHERE")
             {

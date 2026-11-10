@@ -349,6 +349,7 @@ public static partial class Program
         GameClient.VerboseItemBounce = cfg.VerboseItemBounce;
         GameClient.GuestsMax = cfg.GuestsMax;
         GameClient.ArriveDepartMsg = cfg.ArriveDepartMsg;
+        GameClient.MaxBaseSkill = cfg.MaxBaseSkill;
         GameClient.ServerName = cfg.ServName;
         GameClient.SetSextantZeroPoint(cfg.ZeroPoint);
         SphereNet.Game.Accounts.AccountManager.DefaultPrivFlags = (uint)cfg.AutoPrivFlags;

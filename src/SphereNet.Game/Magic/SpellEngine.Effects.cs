@@ -1505,7 +1505,7 @@ public sealed partial class SpellEngine
         // left is the disturb, which DAMAGE_NODISTURB and a blow of one's own skip
         // (:881).
         if ((type & DamageType.NoDisturb) == 0 && source != null && source != victim)
-            TryInterruptFromDamage(victim, dealt, breakParalyze: false);
+            TryInterruptFromDamage(victim, dealt, breakParalyze: false, source: source);
 
         Character.BroadcastDamageNearby?.Invoke(victim.Position, 18, victim.Uid.Value, dealt, source?.Uid.Value ?? 0);
         Character.BroadcastNearby?.Invoke(victim.Position, 18,

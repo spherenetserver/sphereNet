@@ -73,6 +73,9 @@ public sealed class MultiDef
     /// distance moved per step. 0 = unset (a placed ship keeps the engine default).</summary>
     public int ShipSpeedPeriodTenths { get; set; }
     public int ShipSpeedTiles { get; set; }
+    /// <summary>MULTIDEF SPEEDMODE, 1..4 (CItemBase.cpp:1474-1486); a definition
+    /// that names none is SMS_SLOW, 3 (CItemBaseMulti constructor, :1896).</summary>
+    public int ShipSpeedMode { get; set; } = 3;
 
     /// <summary>Script [MULTIDEF] REGIONFLAGS - the base region flags a placed multi
     /// starts from (Source-X CItemBase.cpp:2073, applied in MultiRealizeRegion,
@@ -945,6 +948,10 @@ public sealed class MultiRegistry
                                                     Math.Max(rx1, rx2), Math.Max(ry1, ry2));
                             }
                         }
+                        break;
+                    case "SPEEDMODE":
+                        if (int.TryParse(arg.Trim(), out int speedMode))
+                            def.ShipSpeedMode = Math.Clamp(speedMode, 1, 4);
                         break;
                     case "SHIPSPEED":
                         {

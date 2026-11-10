@@ -68,6 +68,7 @@ public sealed class TownStoneTests
         var citizen = world.CreateCharacter();
         citizen.IsPlayer = true;
         citizen.Name = "Peasant";
+        citizen.IsOnline = true;   // a logged-out player cannot be seen, so not picked
         world.PlaceCharacter(citizen, new Point3D(101, 100, 0, 0));
         town.AddRecruit(citizen.Uid);
         Assert.Equal(GuildPriv.Candidate, town.FindMember(citizen.Uid)?.Priv);

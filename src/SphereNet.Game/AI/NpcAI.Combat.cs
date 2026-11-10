@@ -231,10 +231,12 @@ public sealed partial class NpcAI
 
         Character? nearest = null;
         int nearestDist = int.MaxValue;
+        var (blur, blurRand) = LookBlur(npc, ref sightRange);
 
         foreach (var ch in _world.GetCharsInRange(npc.Position, sightRange))
         {
             if (ch == npc || !IsAttackable(ch)) continue;
+            if (IsBlurred(npc, ch, blur, blurRand)) continue;
             if (!_world.CanSeeLOSFor(npc, ch, LosFlags.NbWindows)) continue;
             int dist = npc.Position.GetDistanceTo(ch.Position);
             if (dist < nearestDist)

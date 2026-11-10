@@ -677,9 +677,11 @@ public sealed class SphereConfig
     /// CSector::GetLightCalc). Off means the sector always follows the clock.</summary>
     public bool AllowLightOverride { get; set; } = true;
 
-    // Season
-    public SeasonMode SeasonMode { get; set; } = SeasonMode.Auto;
-    public byte SeasonDefault { get; set; } = 0;
+    // Season. Source-X has no shard-wide season clock: every sector starts in
+    // SEASON_Summer (CSectorEnviron.cpp:8) and changes only through its own SEASON
+    // verb, so the defaults are a fixed Summer. SeasonMode=Auto still cycles.
+    public SeasonMode SeasonMode { get; set; } = SeasonMode.Manual;
+    public byte SeasonDefault { get; set; } = 1;
     public int SeasonChangeIntervalMinutes { get; set; } = 30;
 
     // Item Durability

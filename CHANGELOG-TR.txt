@@ -4,6 +4,185 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-10] - Esya kullanimlari, pet komutlari, tooltip'ler, kitaplar, profil, parti, karakter olusturma, skill'ler, mevsim ve isik
+------------------------------------------------------------------------
+EKLENDI - Makas, kumas topunu RESOURCES'ina keser (CItem::ConvertBolttoCloth).
+EKLENDI - Patlama iksiri icilmek yerine yakilir ve firlatilir: imlece gecer, sesli geri sayar
+       ve gorus icindeki bir noktaya atilir (CClientUse.cpp:272-293,
+       CClientTarg.cpp:1766-1782, CItem.cpp:6360-6380).
+EKLENDI - Rune cift tiklaninca adini sorar (CClientUse.cpp:373-379).
+DUZELTME - Dikis kiti hedef ister; deri ve post icin deri menusunu, kumas icin kumas menusunu
+       acar; sap, tuy ve fletching sm_bolts'u acar (CClientTarg.cpp:2383-2402,
+       CClientUse.cpp:160-163).
+DUZELTME - Tracker, bagli oldugu yaratigi izler ve yalnizca bu basarisiz olunca baglanmayi
+       ister; bag esyanin LINK'idir, tag degil (CClientUse.cpp:148-158).
+DUZELTME - Anahtarlik bos anahtar sayiliyordu. Kilitte uyan anahtari kullanir, kendi uzerinde
+       anahtarlarini cantaya bosaltir, grafigi anahtar sayisini izler
+       (CClientTarg.cpp:2097-2132, CItemContainer.cpp:863-887).
+EKLENDI - Duz tabela kendi tabela gump'ini gosterir (paket 0x8B); ev tabelasi yine ev gump'ini
+       acar.
+DUZELTME - Karakter uzerinde kullanilan boya kuveti sac ve sakali boyar; 0 rengi de digerleri
+       gibi uygulanir ve satir yazilmaz (CClientTarg.cpp:2332-2360).
+DUZELTME - Sekstant ve kilitli kapi yanitlari referans metin ve davranisini kullanir; buyulu
+       kilitli kapi yuzunu gosterir (CCharUse.cpp:1796-1808, 1956-1963).
+DUZELTME - Pet komutlari: konusamayan yaratik "Yes Master" yerine sesiyle yanit verir, sahibini
+       goremiyorsa hic yanit vermez. STATUS ve CASH defmessage'larini kullanir; FRIEND,
+       UNFRIEND, TRANSFER ve GUARD dogru metni dogru tarafa yollar ve kimin secilebilecegi
+       konusunda referans kurallarini izler; yalniz-vendor emirlerini vendor olmayan yok
+       sayar (CCharNPCPet.cpp:15-532).
+DUZELTME - Kitap basligi ve yazar duzenlemeleri dusuyordu: istemcinin "yazilabilir" bayti hep
+       0'dir ve bir kosul degildir. 0xD4 basligi bir bayt kayik okunuyordu
+       (receive.cpp:1719-1721, 3549-3551).
+DUZELTME - MORE1'i bir [BOOK] bolumunu gosteren kitap bos ve yazilabilir aciliyordu. Bolumun
+       basligini, yazarini ve sayfalarini salt okunur gosterir (send.cpp:1688-1697,
+       2883-2910).
+DUZELTME - Profil paketi 0xB8'de bir metin eksikti: ad, "unvan, meslek unvani" ve govde. Metin,
+       kaydin tasidigi PROFILE'da tutulur; onceki tag bir kez okunur (send.cpp:3828-3841,
+       CClientEvent.cpp:1617-1621).
+DUZELTME - Esya tooltip'leri silah ve zirhta yalnizca adi gosteriyordu. Hasar, hiz, menzil, guc
+       sarti, el sayisi, skill, dayaniklilik, zirh degeri, agirlik, ureten, kullanim, icerik,
+       "Locked", asa sarji, rune hedefi ve buyu sayisi referanstaki gibi listelenir
+       (CClientMsg_AOSTooltip.cpp:400-707).
+DUZELTME - Karakter tooltip'leri sohret unvanini, lonca kisaltmasi ve unvanini, summoned / tame
+       / bonded satirlarini tasir (CClientMsg_AOSTooltip.cpp:253-352).
+DUZELTME - Parti uyeleri birbirinin mana ve staminasini alir; ozel mesaj yalnizca hedefine
+       gider, yanki yok; loot dugmesi parti bayragini ayarlar ve defmessage'larini kullanir
+       (CClientMsg.cpp:2248-2268, CParty.cpp:78-82, 242-277).
+EKLENDI - Sahip olunan petin baglam menusunde "Rename"; olu istekciye ya da gorulemeyen
+       nesneye baglam menusu yok (CClientEvent.cpp:2575, 2670).
+DUZELTME - Arms Lore, Item Identification, Taste Identification ve Animal Lore referans metin
+       ve degerlerini kullanir: esya-durumu mesajlarindan tamir durumu, silahin ust hasari,
+       tanimlanan esyanin blessed/cursed/magic on eki ve "of <buyu> (N charges)", yaratigin
+       meslek adi ve bedene gore zamir (CItem.cpp:1774-1902, 4905-4936, 5779-5794).
+DUZELTME - Zirhin savunmasi taban degeridir (ARMOR=dusuk,yuksek ciftinin dusugu) arti MODAR ve
+       buyu; ciftin ortalamasi degil (Armor_GetDefense, CItem.cpp:4905-4912).
+DUZELTME - Ilan panosu erisimi ve mesajlari; pano en eskisi gitmeden once 32 ilan tutar.
+       Tum-adlar istegi paketteki her serial'i, yalnizca gorulenler icin yanitlar.
+DUZELTME - Yeni karakterler yalnizca duz baslangic kitini aliyordu. Varsayilan kitin irk
+       sayfasi ve [NEWBIE PROFESSION_x] kiti uygulanir; her skill, secilenler yazilmadan
+       once MAXBASESKILL altinda rastgele bir degerle baslar (CChar.cpp:1768-1773,
+       2084-2137).
+DUZELTME - Karakter adlari: mustehcen ya da yetkili unvaniyla baslayan ad isim havuzundan
+       degistirilir ve @Rename ateslenir. @LogIn RETURN 1 girisi reddeder, ARGN2 hizli
+       yeniden giris bayragidir (CChar.cpp:1737-1756, CClientMsg.cpp:2825-2829).
+EKLENDI - Su ustunde giris yapan karakter en yakin kiyiya tasinir; giriste oyun saati paketi
+       0x5B gonderilir (CClientMsg.cpp:2876).
+DUZELTME - Spirit Speak 24 saniye suruyordu; 40 dakika surer (CCharSkill.cpp:2644).
+DUZELTME - Evcillestirilen yaratik hemen sahibini takip eder ve dovusu birakir; dolu pet
+       slotlari denemeyi bastan reddeder (CCharSkill.cpp:2332-2398).
+DUZELTME - Enticement yaratigi basari basina bir adim yurutur; Poisoning'de sahiplik kurali yok;
+       Herding ve Musicianship skill listesinden baslatilamaz; biten kamp atesi kore doner
+       (CCharSkill.cpp:1988, CItem.cpp:6403-6412).
+DUZELTME - Ac oyuncuya (yemek %40 ve altinda) her yemek tikinde bildirilir
+       (CCharAct.cpp:5790-5806).
+DEGISTI - Mevsimler varsayilan olarak artik donmuyor: kod varsayilani elle, Yaz; bir sektorun
+       kendi mevsimi ayarliysa o gonderilir. sphere.ini'de SEASONMODE=Auto donguyu korur
+       (CSectorEnviron.cpp:8, CClientMsg.cpp:1506).
+DUZELTME - Gece ve gunduz artik aniden degismiyor: sektorun isigi 30 saniyelik tik basina bir
+       seviye ilerler (CSector.cpp:778-782, 1238).
+EKLENDI - Havayla birlikte yagmur, ruzgar ve gok gurultusu sesleri; irk bayragi ayarliyken
+       elfler karanlikta gorur (CSector.cpp:836-855, 1280-1336).
+
+[2026-11-10] - Saldirgan zaman asimi, hedef kapisi, NPC adimlari, vendor kesesi, curume, gemi hizi, bolge kaydi
+------------------------------------------------------------------------
+DUZELTME - Saldirgan kaydi yalnizca kurban o saldirgan icin dovus hafizasi tasirken zaman
+       asimina ugruyordu; tek bir buyu vurusu listede sonsuza dek kaliyor ve saatler sonraki
+       bir olumde oldurme payi - ve murder sayisi - kazandiriyordu. Liste her karakter icin
+       saniyede bir kontrol edilir: ATTACKERTIMEOUT'tan uzun suredir vurmayan ya da karakteri
+       artik olmayan kayit silinir (Attacker_CheckTimeout, CCharAttacker.cpp:392-424).
+EKLENDI - STR dustugunde (Weaken, Curse, stat kaybi, script) guc sarti artik karsilanmayan
+       giyili esyalar bildirilir ve cantaya duser; yetkililer muaftir (Stat_StrCheckEquip,
+       CCharStat.cpp:793-804).
+DUZELTME - DEATHFLAGS ceset-yok (0x02) oyuncularda yok sayiliyordu. Bu bayrakli oyuncu ceset
+       birakmaz, her seyini korur ve yine hayalet olur (CItemCorpse.cpp:168-179).
+DUZELTME - Cagrilan yaratik, cagiran oldugu anda siliniyordu. Diger petler gibi cagirma
+       suresi kadar yasar (CCharSpell.cpp:595-606).
+DUZELTME - Sucluya yardim: test yalnizca hedefin criminal/murderer bayragiydi. Olcut, hedefin
+       yardim edene gorunen notoriety'sidir - criminal, lonca savasi dusmani ya da kotu ise
+       suctur; criminal bir lonca ya da parti arkadasi degildir (CCharSpell.cpp:3344-3359).
+DUZELTME - Canavarlar gorus menzilindeki her seyi her seferinde fark ediyordu. 14 karonun
+       (INT 50 alti icin 7) otesindeki karakter yalnizca ara sira fark edilir; hareket
+       edemeyen ve uzaktan saldirisi olmayan yaratik 2 karo bakar (NPC_LookAround,
+       CCharNPCAct.cpp:1131-1181).
+DUZELTME - Guard, suclunun Magery'si varsa sucluya isinlanir; guard'in kendi Magery'sine
+       bakilmaz (CCharNPCAct.cpp:741).
+DUZELTME - Dukkancinin altini yalnizca stoksuz bir vendor'da alis listesi acildiginda
+       doluyordu; periyodik restock bunu neredeyse hic gerceklestirmiyordu, vendor'lar
+       parasiz kalip almayi birakiyordu. Kese zamanli restock ile dolar; satis listesi de
+       ayni kontrolu calistirir (NPC_Vendor_Restock, CCharNPCAct_Vendor.cpp:32-95).
+DUZELTME - Tamamen satilan vendor, bir sonraki alis listesi acilir acilmaz yeniden
+       doluyordu. Restock zamani gelene kadar bos kalir (CClientEvent.cpp:1319).
+DUZELTME - @NPCAction her alis ve satista atesleniyordu. NPC'nin kendi eylem tikine aittir
+       (CCharNPCAct.cpp:2683-2687).
+DUZELTME - NPC adimlari hicbir seyi tetiklemiyordu. Artik oyuncununkiyle ayni konum
+       etkilerini calistirir: bolge, oda ve esya @Step, girerken buyu alanlari ve ates,
+       tuzaklar, basma dugmeleri ve harita isinlayicilari; reddedilen adim NPC'yi geri
+       koyar (CCharAct.cpp:4888-5119).
+EKLENDI - Konum etkilerinin ayakta gecisi, saniyede bir: ayak altindaki esyalar ARGN1 = 1
+       ile @Step alir, tuzak calisir, basma dugmesi kullanilir; ates, alan ya da tuzaktan
+       hasar alan NPC karodan bir adim kacar (CCharAct.cpp:4946-5046).
+DUZELTME - Hedef yanitlari dogrudan isleyicilerine gidiyordu. Her imlecin onunde: yetkili
+       olmayan oyuncu sectigi nesneyi gorebilmelidir, secilemez karakter hic hedef olmaz,
+       cplak nokta gorus menzilinde olmalidir ve secilen nesnenin kendi konumu istemcinin
+       gonderdigi koordinatlarin yerine gecer - gorunur bir serial uzerinde sahte x/y, alan
+       buyusunu ya da field'i istenen yere koyabiliyordu (Event_Target,
+       CClientEvent.cpp:2495-2534).
+DUZELTME - Alan buyuleri esyalara hic dokunmuyordu. Hasar bayragi olmayan buyu, yaricapindaki
+       her esyaya ulasir; Mass Dispel field karolarini boyle temizler
+       (CCharSpell.cpp:2182-2192).
+DUZELTME - Recall petleri geride birakiyordu. 14 karo icinde buyucuyu takip eden petler once
+       gider; ayni menzil telepad, moongate ve iskele icin de gecerlidir
+       (CCharSpell.cpp:203-221, 421).
+DUZELTME - Guarded bolgede duran buyucunun koydugu zararli field, buyucuyu criminal
+       yapmiyordu (Spell_Field, CCharSpell.cpp:2211-2212).
+DUZELTME - Moongate'ler hep kendi MOREP'lerine goturuyordu. IT_MOONGATE hedefini [MOONGATES]
+       listesinden iki ayin evresine gore secer; bagli nesnenin konumu telepad icin MOREP'in
+       yerine gecer; NPC yalniz-oyuncu kapisini kullanmaz, guard yalnizca guarded zemine
+       gider, criminal NPC hic gitmez (Use_MoonGate, CCharUse.cpp:201-282).
+DUZELTME - Vurusla bozulan cast iptal fiyatiyla hesaplaniyor ve @SpellInterrupt sonradan
+       buyucude atesleniyordu. Bu bir basarisizliktir (@SkillFail, MANALOSSFAIL /
+       REAGENTLOSSFAIL); @SpellInterrupt once, saldirganda, ARGN1 = buyu, ARGN2 = sans ile
+       ateslenir; RETURN 1 cast'i surdurur. Kisinin kendi hasari hicbir seyi bozmaz
+       (CCharFight.cpp:881-915).
+DUZELTME - Ekipman degistirmek cast'i bozuyordu; referansta boyle bir kural yok. Kaldirildi.
+DUZELTME - Savas modu gecisi suren eylemi dusurmuyordu. @UserWarmode ARGN2'yi sifirlamadikca
+       cast ya da skill iptal edilir (Event_CombatMode, CClientEvent.cpp:1047-1052).
+DUZELTME - Spell_TargCheck yalnizca cast tamamlanirken calisiyordu: gorus disindaki bir seye
+       yapilan cast soyleniyor, canlandiriliyor ve bekleniyor, sonra basarisiz oluyordu.
+       Artik cast baslarken de calisir (CCharSpell.cpp:3526-3530). Gorus hatti reddi
+       defmessage'ini kullanir.
+DUZELTME - MAGICF_NODIRCHANGE okunmuyordu; ayarliyken buyucu artik hedefe donmez. Asadan
+       yapilan cast iki eli de oldugu gibi birakir (CCharSpell.cpp:2728, 3546-3556).
+DUZELTME - Yere konan her sey curume zamanlayicisi aliyordu. ATTR_MOVE_NEVER, statik, kilitli,
+       secure ya da tasinabilir turde olmayan esya hic curumez; yapi 14 gun dayanir
+       (CItem::GetDecayTime, CItem.cpp:1407-1439).
+EKLENDI - Yere birakmada MAXITEMCOMPLEXITY: tek noktada bu kadar esyadan sonra esya "Too many
+       items here!" der ve bir dakikada gider, curumesiz bolge dahil (MoveToCheck,
+       CItem.cpp:1664-1684).
+DUZELTME - MULTIDEF SPEEDMODE okunmuyordu ve her gemi tek-karo modunda calisiyordu; klasik
+       gemi (SPEEDMODE=3) olmasi gerekenin iki kati hizla gidiyor ve istemciye yanlis hiz
+       bildiriyordu. Tanimin modu kullanilir, tanim vermiyorsa 3; eski varsayilandan kalan
+       kayitli 1 modu tanimin moduyla degistirilir (CItemMulti.cpp:28-30,
+       CItemBase.cpp:1474-1486, 1896).
+DUZELTME - Dumenle yonlendirme (0xBF 0x33): kabul edilen emir gemiyi hemen hareket ettirir,
+       yeni ana yon gemiyi dondurur ve emir cok erken diye dusurulse bile rota degisir
+       (receive.cpp:3404-3450, CCMultiMovable.cpp:60-105).
+DUZELTME - Dunya kaydi her ATTR_STATIC esyayi disarida birakiyordu. Statics dosyasina yalnizca
+       YERDEKI statik esyalar aittir: statik yapi ve konteyner icindeki statik esya yeniden
+       dunya kaydina yazilir - bir sonraki acilista kayboluyorlardi (CSector.cpp:499-510).
+DUZELTME - Eski bir kayit kusagi yuklenirken ayni kusagin statics ve multis dosyasi
+       araniyordu; ikisi de dunya kaydiyla donmedigi icin guncel dosyaya dusulur.
+EKLENDI - Script'in calisma aninda degistirdigi bolge (bayraklar, olaylar, tag'ler, ad, grup),
+       degisen gruplari tasiyan [WORLDSCRIPT defname] kaydi olarak yazilir ve yuklemede geri
+       gelir. Boyle bir kayit eskiden kimsenin kullanmadigi SCRIPT.* global degiskenlerine
+       okunuyordu (CWorld.cpp:852-861, CRegion.cpp:650-671).
+EKLENDI - Oyuncu anahtarlari REFUSETRADES (okuma, yazma, cplak anahtar olarak kayit),
+       LASTUSED ve LASTDISCONNECTED (gecen saniye; giris ve cikista damgalanir) ve kabul
+       edilen ADDHOUSE, DELHOUSE, ADDSHIP, DELSHIP, MAXHOUSES, MAXSHIPS
+       (CCharPlayer.cpp:243-267, 375-485).
+EKLENDI - Bir oldurme, olduren kisiyi baska bir notoriety unvanina tasidiginda "You are now
+       ..." mesaji (Noto_ChangeNewMsg, CCharNotoriety.cpp:465-473).
+
 [2026-11-10] - Klasik spheremultis dosyasi artik kaldirilan yapilari geri getirmiyor
 ------------------------------------------------------------------------
 DUZELTME - Klasik spheremultis dosyasi her acilista okunur ve hic yeniden yazilmaz: dunya

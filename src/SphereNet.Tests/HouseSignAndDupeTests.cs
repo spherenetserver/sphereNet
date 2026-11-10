@@ -154,6 +154,7 @@ public sealed class HouseSignAndDupeTests
     {
         var world = CreateWorld();
         var gm = CreatePlayer(world);
+        gm.PrivLevel = PrivLevel.GM;   // DUPE is a staff verb; a GM's pick only has to exist
         var deed = world.CreateItem();
         deed.BaseId = 0x14F1;
         deed.ItemType = ItemType.Deed;

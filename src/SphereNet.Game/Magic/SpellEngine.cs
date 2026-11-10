@@ -154,7 +154,10 @@ public sealed partial class SpellEngine
     }
 
     /// <summary>Callback fired when a spell is interrupted. Args: (Character caster, string reason).</summary>
-    public Action<Character, string>? OnSpellInterrupt { get; set; }
+/// <summary>@SpellInterrupt, fired on the ATTACKER before a hit disturbs a cast
+    /// (CCharFight.cpp:905-911): source, caster, spell, chance. True = RETURN 1, the
+    /// cast goes on.</summary>
+    public Func<Character, Character, int, int, bool>? OnSpellInterrupt { get; set; }
 
     /// <summary>Fired when a cast RESOLVES at completion — for ANY caster (player,
     /// NPC, direct) — so the @SpellSuccess / @SpellEffect / @SpellFail triggers run
@@ -599,7 +602,6 @@ public sealed partial class SpellEngine
             "damaged" or "moved" or "equip_changed" => ServerMessages.Get(Msg.SpellGenFizzles),
             _ => reason
         };
-        OnSpellInterrupt?.Invoke(caster, msg);
         if (caster.IsPlayer)
             OnSysMessage?.Invoke(caster, msg);
     }
@@ -658,7 +660,28 @@ public sealed partial class SpellEngine
         }
     }
 
-    public bool TryInterruptFromDamage(Character caster, int damage, bool breakParalyze = true)
+    /// <summary>Skill_Fail() for a cast a hit disturbed (CCharFight.cpp:913,
+    /// CCharSkill.cpp:3783-3840): @SkillFail, then Spell_CastFail priced as a
+    /// failure (MANALOSSFAIL / REAGENTLOSSFAIL), not as an abort.</summary>
+    private void FailCastFromDisturb(Character caster)
+    {
+        if (!caster.TryGetCastingSpell(out SpellType spell) || _spells.Get(spell) is not { } def)
+        {
+            InterruptCast(caster, "damaged");
+            return;
+        }
+        TryResolveCastSource(caster, out CastSourceKind kind, out _);
+        bool cancelled = FireCastSkillTrigger(caster, spell, CharTrigger.SkillFail) == TriggerResult.True;
+        ApplyCastResourceLoss(caster, def, kind == CastSourceKind.Wand, kind == CastSourceKind.Scroll,
+            fizzle: !cancelled, abort: cancelled);
+        ClearCastSourceTags(caster);
+        ClearCastState(caster);
+        if (!cancelled && caster.IsPlayer)
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
+    }
+
+    public bool TryInterruptFromDamage(Character caster, int damage, bool breakParalyze = true,
+        Character? source = null)
     {
         // Source-X CChar::OnTakeDamage: taking damage removes paralyze (the
         // LAYER_SPELL_Paralyze memory is deleted) unless DAMAGE_NOUNPARALYZE.
@@ -669,6 +692,10 @@ public sealed partial class SpellEngine
             BreakParalyze(caster);
 
         if (!caster.IsCasting)
+            return false;
+
+        // "(pSrc != this)" (CCharFight.cpp:881): one's own blow disturbs nothing.
+        if (source == caster)
             return false;
 
         if (IsMagicFlag(MagicConfigFlags.NoInterrupt))
@@ -708,7 +735,12 @@ public sealed partial class SpellEngine
 
         if (chance > 0 && _rand.Next(1000) < chance)
         {
-            InterruptCast(caster, "damaged");
+            // @SpellInterrupt on the attacker, ARGN1 = spell, ARGN2 = chance; RETURN 1
+            // lets the cast go on (CCharFight.cpp:905-911).
+            if (source != null &&
+                OnSpellInterrupt?.Invoke(source, caster, (int)castingSpell, chance) == true)
+                return false;
+            FailCastFromDisturb(caster);
             return true;
         }
         return false;
@@ -740,23 +772,6 @@ public sealed partial class SpellEngine
         return IsMagicFlag(MagicConfigFlags.FreezeOnCast)
             ? !def.IsFlag(SpellFlag.NoFreezeOnCast)
             : def.IsFlag(SpellFlag.FreezeOnCast);
-    }
-
-    /// <summary>
-    /// Check and apply spell interruption from equipment change.
-    /// Call this when a casting character equips/unequips an item.
-    /// Returns true if the spell was interrupted.
-    /// </summary>
-    public bool TryInterruptFromEquip(Character caster)
-    {
-        if (!caster.IsCasting)
-            return false;
-
-        if (IsMagicFlag(MagicConfigFlags.NoInterrupt))
-            return false;
-
-        InterruptCast(caster, "equip_changed");
-        return true;
     }
 
     /// <summary>One immutable result shared by target selection and cast start.</summary>
@@ -1078,6 +1093,19 @@ public sealed partial class SpellEngine
         if (CasterStateRefusesCast(caster, failMsg: true))
             return RefuseCast("caster state (dead/asleep/stone/frozen)");
 
+        // "if (!Spell_TargCheck()) return -1;" ahead of the words, the gesture and the
+        // wait (Spell_CastStart, CCharSpell.cpp:3526-3530), for a cast that already has
+        // its target - a precast picks it later. A cast at something out of sight was
+        // spoken, animated, waited out and only then refused.
+        if (!IsPrecastEnabled(def) && targetUid.IsValid &&
+            SpellTargCheckRefusal(caster, def, targetUid, targetPos) is { } startRefusal)
+        {
+            ClearCastSourceTags(caster);
+            if (caster.IsPlayer)
+                OnSysMessage?.Invoke(caster, startRefusal);
+            return RefuseCast("Spell_TargCheck");
+        }
+
         if (!TryResolveCastSource(caster, out var sourceKind, out Item? startSource))
         {
             ClearCastSourceTags(caster);
@@ -1106,7 +1134,11 @@ public sealed partial class SpellEngine
         // (:2849). Fizzling instead meant a player with a weapon in hand simply
         // could not cast, which is what the live shard does today: its
         // EQUIPPEDCAST is 0.
-        if (!Character.EquippedCastEnabled && caster.IsPlayer &&
+        // fAllowEquip (CCharSpell.cpp:3546-3556): a cast whose source is a wand or
+        // an item flagged CAN_I_EQUIPONCAST leaves both hands as they are.
+        bool castFromHeldSource = TryResolveCastSource(caster, out CastSourceKind unequipKind, out _) &&
+                                  unequipKind == CastSourceKind.Wand;
+        if (!Character.EquippedCastEnabled && !castFromHeldSource && caster.IsPlayer &&
             caster.PrivLevel < PrivLevel.GM)
         {
             if (!TrySpellUnequip(caster, Layer.OneHanded) ||
@@ -1121,7 +1153,9 @@ public sealed partial class SpellEngine
         caster.CastDifficulty = preparation.Difficulty;
         caster.CastAborted = ch => FireCastSkillTrigger(ch, spell, CharTrigger.SkillAbort);
 
-        if (!targetPos.Equals(caster.Position))
+        // "if (!IsSetMagicFlags(MAGICF_NODIRCHANGE)) UpdateDir(m_Act_p);"
+        // (Spell_TargCheck_Face, CCharSpell.cpp:2728).
+        if (!IsMagicFlag(MagicConfigFlags.NoDirectionChange) && !targetPos.Equals(caster.Position))
         {
             var newDir = caster.Position.GetDirectionTo(targetPos);
             if (newDir != caster.Direction)
@@ -1264,6 +1298,87 @@ public sealed partial class SpellEngine
         return true;
     }
 
+    /// <summary>Source-X Spell_TargCheck (CCharSpell.cpp:2742-2869): line of sight to
+    /// the target or point, a target that can still be seen, the anti-magic flags of
+    /// the region aimed at, a ghost only for a spell that takes one, and "need a
+    /// target". It runs when the cast starts (Spell_CastStart, :3526-3530) and again
+    /// when it completes (:2922). Null = the target stands; otherwise the refusal.
+    /// </summary>
+    private string? SpellTargCheckRefusal(Character caster, SpellDef def, Serial targetUid, Point3D targetPos)
+    {
+        // LOS check BEFORE consuming resources
+        // A ground pick reaches here with the caster's own uid as its object (the
+        // cursor callback substitutes it), so the object a check must look at is the
+        // point, not the caster - checking the caster always passed.
+        var pickedObject = _world != null && targetUid.IsValid && targetUid != caster.Uid
+            ? _world.FindObject(targetUid) : null;
+        if (_world != null &&
+            caster.PrivLevel < PrivLevel.GM &&
+            !IsMagicFlag(MagicConfigFlags.NoLos) &&
+            (def.IsFlag(SpellFlag.TargChar) || def.IsFlag(SpellFlag.TargObj) ||
+             def.IsFlag(SpellFlag.TargXYZ)  ||
+             def.IsFlag(SpellFlag.Area)     || def.IsFlag(SpellFlag.Field) ||
+             def.IsFlag(SpellFlag.Summon)))
+        {
+            int losDist = Math.Max(Math.Abs(caster.X - targetPos.X), Math.Abs(caster.Y - targetPos.Y));
+            // Spell_TargCheck casts through windows (LOS_NB_WINDOWS): at the object,
+            // or at the point within the caster's view range (CCharSpell.cpp:2808/2831).
+            // A TARG_XYZ-only spell - Teleport - is checked too (:2825-2835); it was
+            // left out, so Teleport went through walls into closed buildings.
+            bool inSight = pickedObject != null && pickedObject.GetTopLevelObj().MapIndex == caster.MapIndex
+                ? _world.CanSeeLOSFor(caster, pickedObject, LosFlags.NbWindows)
+                : _world.CanSeeLOSFor(caster, caster.Position, targetPos, LosFlags.NbWindows, caster.VisualRange);
+            if (losDist > 0 && !inSight)
+                return ServerMessages.Get(Msg.SpellTargLos);
+            // CanSeeLOS opens with CanSee (CCharLOS.cpp:668): a target that hid or
+            // turned invisible during the cast is no longer a target
+            // (Spell_TargCheck at completion, CCharSpell.cpp:2808/2922). Only the
+            // ray was traced, so the spell still landed on it.
+            if (pickedObject is Character seen && !caster.CanSeeCharacter(seen))
+                return ServerMessages.Get(Msg.SpellTargLos);
+        }
+
+        // Spell_TargCheck_Face (CCharSpell.cpp:2731-2738): the region at the TARGET
+        // point refuses what its anti-magic flags refuse, as the caster's own region
+        // does at the cast start. Only the caster's region was asked, so a caster
+        // standing just outside a no-magic or no-harm area could hit people inside
+        // it, or lay fields and summons into it.
+        if (_world != null && caster.PrivLevel < PrivLevel.GM)
+        {
+            Point3D aimed = pickedObject != null ? pickedObject.GetTopLevelObj().Position : targetPos;
+            if (_world.FindRegion(aimed) is { } aimedRegion && RegionBlocksSpell(aimedRegion, def))
+                return ServerMessages.Get(Msg.SpellTryAm);
+        }
+
+        // Source-X opens Spell_CastDone with Spell_TargCheck (CCharSpell.cpp:2878)
+        // and only reaches the reagent/mana/charge consumption 130 lines later
+        // (:3010). SphereNet re-resolved the target AFTER those costs were taken, so
+        // a target that died, walked away or vanished during the cast time was paid
+        // for in full and still reported success to @SpellSuccess.
+        if (def.IsFlag(SpellFlag.TargChar) || def.IsFlag(SpellFlag.TargObj))
+        {
+            var preTarget = _world?.FindChar(targetUid);
+            if (preTarget != null)
+            {
+                // :2740 - a ghost is not a legal target unless the spell says so.
+                if (preTarget.IsDead && !def.IsFlag(SpellFlag.TargDead))
+                    return ServerMessages.Get(Msg.SpellTargDead);
+                // Spell_TargCheck has no range of its own, only LOS (:2764), and
+                // CanSeeLOS reaches as far as the target's visual range
+                // (CCharLOS.cpp:684-687) - not an invented 12 tiles.
+                if (preTarget.MapIndex != caster.MapIndex ||
+                    caster.Position.GetDistanceTo(preTarget.Position) > preTarget.VisualRange)
+                    return ServerMessages.Get(Msg.SpellTargLos);
+            }
+            // :2728 - "need a target". A spell that may also be aimed at the ground
+            // (TARG_XYZ) is allowed to complete without one.
+            else if (_world?.FindItem(targetUid) == null && !def.IsFlag(SpellFlag.TargXYZ))
+                return ServerMessages.Get(Msg.SpellTargObj);
+        }
+
+        return null;
+    }
+
     private bool CastDoneCore(Character caster, out bool terminalHandled)
     {
         terminalHandled = false;
@@ -1301,77 +1416,8 @@ public sealed partial class SpellEngine
             return false;
         }
 
-        // LOS check BEFORE consuming resources
-        // A ground pick reaches here with the caster's own uid as its object (the
-        // cursor callback substitutes it), so the object a check must look at is the
-        // point, not the caster - checking the caster always passed.
-        var pickedObject = _world != null && targetUid.IsValid && targetUid != caster.Uid
-            ? _world.FindObject(targetUid) : null;
-        if (_world != null &&
-            caster.PrivLevel < PrivLevel.GM &&
-            !IsMagicFlag(MagicConfigFlags.NoLos) &&
-            (def.IsFlag(SpellFlag.TargChar) || def.IsFlag(SpellFlag.TargObj) ||
-             def.IsFlag(SpellFlag.TargXYZ)  ||
-             def.IsFlag(SpellFlag.Area)     || def.IsFlag(SpellFlag.Field) ||
-             def.IsFlag(SpellFlag.Summon)))
-        {
-            int losDist = Math.Max(Math.Abs(caster.X - targetPos.X), Math.Abs(caster.Y - targetPos.Y));
-            // Spell_TargCheck casts through windows (LOS_NB_WINDOWS): at the object,
-            // or at the point within the caster's view range (CCharSpell.cpp:2808/2831).
-            // A TARG_XYZ-only spell - Teleport - is checked too (:2825-2835); it was
-            // left out, so Teleport went through walls into closed buildings.
-            bool inSight = pickedObject != null && pickedObject.GetTopLevelObj().MapIndex == caster.MapIndex
-                ? _world.CanSeeLOSFor(caster, pickedObject, LosFlags.NbWindows)
-                : _world.CanSeeLOSFor(caster, caster.Position, targetPos, LosFlags.NbWindows, caster.VisualRange);
-            if (losDist > 0 && !inSight)
-                return FailCastAtCompletion(caster, "Target not in line of sight.");
-            // CanSeeLOS opens with CanSee (CCharLOS.cpp:668): a target that hid or
-            // turned invisible during the cast is no longer a target
-            // (Spell_TargCheck at completion, CCharSpell.cpp:2808/2922). Only the
-            // ray was traced, so the spell still landed on it.
-            if (pickedObject is Character seen && !caster.CanSeeCharacter(seen))
-                return FailCastAtCompletion(caster, "Target not in line of sight.");
-        }
-
-        // Spell_TargCheck_Face (CCharSpell.cpp:2731-2738): the region at the TARGET
-        // point refuses what its anti-magic flags refuse, as the caster's own region
-        // does at the cast start. Only the caster's region was asked, so a caster
-        // standing just outside a no-magic or no-harm area could hit people inside
-        // it, or lay fields and summons into it.
-        if (_world != null && caster.PrivLevel < PrivLevel.GM)
-        {
-            Point3D aimed = pickedObject != null ? pickedObject.GetTopLevelObj().Position : targetPos;
-            if (_world.FindRegion(aimed) is { } aimedRegion && RegionBlocksSpell(aimedRegion, def))
-                return FailCastAtCompletion(caster, ServerMessages.Get(Msg.SpellTryAm));
-        }
-
-        // Source-X opens Spell_CastDone with Spell_TargCheck (CCharSpell.cpp:2878)
-        // and only reaches the reagent/mana/charge consumption 130 lines later
-        // (:3010). SphereNet re-resolved the target AFTER those costs were taken, so
-        // a target that died, walked away or vanished during the cast time was paid
-        // for in full and still reported success to @SpellSuccess.
-        if (def.IsFlag(SpellFlag.TargChar) || def.IsFlag(SpellFlag.TargObj))
-        {
-            var preTarget = _world?.FindChar(targetUid);
-            if (preTarget != null)
-            {
-                // :2740 - a ghost is not a legal target unless the spell says so.
-                if (preTarget.IsDead && !def.IsFlag(SpellFlag.TargDead))
-                    return FailCastAtCompletion(caster,
-                        ServerMessages.Get(Msg.SpellTargDead));
-                // Spell_TargCheck has no range of its own, only LOS (:2764), and
-                // CanSeeLOS reaches as far as the target's visual range
-                // (CCharLOS.cpp:684-687) - not an invented 12 tiles.
-                if (preTarget.MapIndex != caster.MapIndex ||
-                    caster.Position.GetDistanceTo(preTarget.Position) > preTarget.VisualRange)
-                    return FailCastAtCompletion(caster, "Target not in line of sight.");
-            }
-            // :2728 - "need a target". A spell that may also be aimed at the ground
-            // (TARG_XYZ) is allowed to complete without one.
-            else if (_world?.FindItem(targetUid) == null && !def.IsFlag(SpellFlag.TargXYZ))
-                return FailCastAtCompletion(caster,
-                    ServerMessages.Get(Msg.SpellTargObj));
-        }
+        if (SpellTargCheckRefusal(caster, def, targetUid, targetPos) is { } targRefusal)
+            return FailCastAtCompletion(caster, targRefusal);
 
         var primarySkill = def.GetPrimarySkill();
         int skillVal = caster.GetSkill(primarySkill);
@@ -2483,7 +2529,7 @@ public sealed partial class SpellEngine
             if (damage > 0)
             {
                 if ((dmgType & DamageType.NoDisturb) == 0)
-                    TryInterruptFromDamage(target, damage, breakParalyze: false);
+                    TryInterruptFromDamage(target, damage, breakParalyze: false, source: caster);
 
                 // Victim feedback: spell damage used to apply silently — no
                 // 0x0B damage number, no health-bar update — while the melee
@@ -2583,6 +2629,16 @@ public sealed partial class SpellEngine
             // target works its own out (:2140) - duration 0 here does the same.
             ApplyCharEffect(caster, target, def, skillLevel);
         }
+
+        // "if (!IsSpellType(SPELLFLAG_DAMAGE)) // prevent damage nearby items on
+        // ground" - every item in the radius gets OnSpellEffect (Spell_Area,
+        // CCharSpell.cpp:2182-2192). This is how Mass Dispel clears field tiles.
+        if (!def.IsFlag(SpellFlag.Damage))
+        {
+            foreach (var item in _world.GetItemsInRange(center, radius).ToList())
+                if (!item.IsDeleted)
+                    ItemOnSpellEffect(caster, item, def, skillLevel, null);
+        }
     }
 
     /// <summary>Create a multi-tile field wall centred on the target location,
@@ -2611,6 +2667,12 @@ public sealed partial class SpellEngine
         SpellSuccessStage stage)
     {
         int skill = skillLevel;
+
+        // "if (m_pArea && m_pArea->IsGuarded() && IsSpellType(SPELLFLAG_HARM))
+        // Noto_Criminal();" (Spell_Field, CCharSpell.cpp:2211-2212): the caster's own
+        // region, at placement, whether or not anyone stands in it.
+        if (def.IsFlag(SpellFlag.Harm) && _world.FindRegion(caster.Position) is { IsGuarded: true })
+            caster.MakeCriminal();
 
         // Orient the field across the caster->target axis (Spell_Field,
         // CCharSpell.cpp:2177-2179): only a strictly wider x offset lays it N-S.
@@ -3273,6 +3335,9 @@ public sealed partial class SpellEngine
 
     /// <summary>The trip itself: Spell_Teleport for Recall, Spell_CreateGate for Gate
     /// Travel. Returns whether the caster went (or a gate opened).</summary>
+    /// <summary>Spell_Teleport's fTakePets half; wired to the movement engine.</summary>
+    public Action<Character, Point3D>? OnTakePets { get; set; }
+
     private bool TravelByRune(Character caster, SpellDef def, Point3D dest)
     {
 
@@ -3366,6 +3431,9 @@ public sealed partial class SpellEngine
             if (!RedirectJailedTravel(caster, ref dest))
                 return false;
             byte oldMap = caster.MapIndex;
+            // Spell_Recall is Spell_Teleport(mark, fTakePets = true, ...)
+            // (CCharSpell.cpp:421): the pets following the caster go first (:203-221).
+            OnTakePets?.Invoke(caster, dest);
             if (!_world.MoveCharacter(caster, dest))
                 return false;
             OnSpellTeleport?.Invoke(caster, dest, oldMap);

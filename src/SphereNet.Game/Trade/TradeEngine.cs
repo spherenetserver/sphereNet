@@ -1532,15 +1532,7 @@ public static class VendorEngine
         // would be a free-gold faucet. Owned vendors keep only real earnings.
         // CItemContainer::Restock for the bank box (CItemContainer.cpp:1079): an unset
         // m_Check_Restock (MORE2) becomes 10000 first, then the purse is raised to it.
-        if (!vendor.OwnerSerial.IsValid)
-        {
-            var bank = vendor.GetBankBoxSafe();
-            if (bank != null && bank.More2 == 0)
-                bank.More2 = (uint)RestockGold;
-            long restockTo = RestockGoldFor(vendor);
-            if (GetVendorGold(vendor) < restockTo)
-                SetVendorGold(vendor, restockTo);
-        }
+        RestockPurse(vendor);
 
         // A player vendor's stock is its owner's goods; a pet is never restocked
         // (NPC_Vendor_Restock, CCharNPCAct_Vendor.cpp:41).
@@ -1612,6 +1604,22 @@ public static class VendorEngine
         }
 
         vendor.SetTag("RESTOCK_TIME", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());
+    }
+
+    /// <summary>The purse half of NPC_Vendor_Restock - GetBank()->Restock()
+    /// (CCharNPCAct_Vendor.cpp:89, CItemContainer.cpp:1083-1089): an unset
+    /// m_Check_Restock becomes 10000 and the purse is raised to it. Never for an
+    /// owned vendor, whose purse is its owner's earnings.</summary>
+    public static void RestockPurse(Character vendor)
+    {
+        if (!IsVendorLike(vendor) || vendor.OwnerSerial.IsValid)
+            return;
+        var bank = vendor.GetBankBoxSafe();
+        if (bank != null && bank.More2 == 0)
+            bank.More2 = (uint)RestockGold;
+        long restockTo = RestockGoldFor(vendor);
+        if (GetVendorGold(vendor) < restockTo)
+            SetVendorGold(vendor, restockTo);
     }
 
     /// <summary>Check if vendor needs restocking (based on RESTOCK_TIME tag).</summary>

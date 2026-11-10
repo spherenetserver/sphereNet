@@ -658,6 +658,36 @@ public sealed class CharacterCombatState
         return Math.Max(0L, (Environment.TickCount64 - _attackers[idx].LastHitTick) / 1000L);
     }
 
+    private long _nextAttackerTimeoutCheck;
+
+    /// <summary>Source-X Attacker_CheckTimeout (CCharAttacker.cpp:392-424), run once a
+    /// second from the character tick (CCharAct.cpp:6079-6085) whether or not a fight
+    /// memory exists: an entry whose character is gone is dropped, and one that has
+    /// dealt no damage for longer than ATTACKERTIMEOUT is deleted. Without this a
+    /// single spell hit stayed on the list for good and earned kill credit - and a
+    /// murder count - on a death hours later.</summary>
+    public void CheckAttackerTimeout(long nowMs)
+    {
+        if (_attackers.Count == 0 || nowMs < _nextAttackerTimeoutCheck)
+            return;
+        _nextAttackerTimeoutCheck = nowMs + 1000;
+
+        var world = Objects.ObjBase.ResolveWorld?.Invoke();
+        if (world == null)
+            return;
+        int timeout = Character.AttackerTimeoutSeconds;
+        for (int i = _attackers.Count - 1; i >= 0; i--)
+        {
+            if (i >= _attackers.Count)
+                continue;
+            var rec = _attackers[i];
+            var ch = world.FindChar(rec.Uid);
+            bool gone = ch == null || ch.IsDeleted;
+            if (gone || (timeout > 0 && (nowMs - rec.LastHitTick) / 1000L > timeout))
+                Delete(rec.Uid);
+        }
+    }
+
     /// <summary>Remove one attacker entry (fight retreat / timeout).</summary>
     public void Delete(Serial uid)
     {

@@ -165,6 +165,7 @@ public class HousingEconomyTests
         var newOwner = world.CreateCharacter();
         newOwner.IsPlayer = true;
         newOwner.Name = "NewOwner";
+        newOwner.IsOnline = true;   // a logged-out player cannot be seen, so not picked
         world.PlaceCharacter(newOwner, new Point3D(101, 100, 0, 0));
 
         var multi = world.CreateItem();

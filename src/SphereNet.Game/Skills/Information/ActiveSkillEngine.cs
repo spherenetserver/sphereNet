@@ -224,9 +224,15 @@ public static class ActiveSkillEngine
 
     // ---------------------------------------------------------- SpiritSpeak
 
+    /// <summary>Skill_SpiritSpeak hands Spell_Effect_Create 4*60*MSECS_PER_TENTH
+    /// (= 24,000) as its duration IN TENTHS (CCharSkill.cpp:2644), and the memory's
+    /// decay is that times MSECS_PER_TENTH again (CCharSpell.cpp:2139): 2,400,000 ms,
+    /// forty minutes.</summary>
+    public const long SpiritSpeakDurationMs = 4L * 60 * 100 * 100;
+
     /// <summary>Source-X CChar::Skill_SpiritSpeak (CCharSkill.cpp:2623-2650): START is a
     /// difficulty of rand(90), set when the skill starts; SUCCESS sets STATF_SPIRITSPEAK
-    /// for 24 seconds with sound 0x24A.</summary>
+    /// with sound 0x24A for <see cref="SpiritSpeakDurationMs"/>.</summary>
     public static bool SpiritSpeak(IActiveSkillSink sink, int? startDifficulty = null)
     {
         var ch = sink.Self;
@@ -240,8 +246,8 @@ public static class ActiveSkillEngine
                 sink.Sound(0x24A);
             sink.SysMessage(ServerMessages.Get(Msg.SpiritspeakSuccess));
             ch.SetStatFlag(StatFlag.SpiritSpeak);
-            ch.SetTag("SPIRITSPEAK_UNTIL", // 4*60 tenths = 24s (Source-X CCharSkill.cpp:2644)
-                (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 24_000).ToString());
+            ch.SetTag("SPIRITSPEAK_UNTIL",
+                (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + SpiritSpeakDurationMs).ToString());
         }
         return success;
     }
@@ -1265,6 +1271,14 @@ public static class ActiveSkillEngine
                 sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingTamed, target.Name));
                 return false;
             }
+            // OF_PetSlots: FollowersUpdate(pChar, slots, fCheckOnly) refused is
+            // DEFMSG_PETSLOTS_TRY_TAMING, up front (CCharSkill.cpp:2332-2340).
+            if (Character.FollowerCapApplies(ch) && !target.HasOwner(ch.Uid) &&
+                ch.CurFollower + target.ControlSlots > ch.MaxFollower)
+            {
+                sink.SysMessage(ServerMessages.Get(Msg.PetslotsTryTaming));
+                return false;
+            }
         }
         return true;
     }
@@ -1331,6 +1345,14 @@ public static class ActiveSkillEngine
         if (success)
         {
             target.Food = 50;   // Stat_SetVal(STAT_FOOD, 50)
+            // m_Act_UID = the tamer; Skill_Start(NPCACT_FOLLOW_TARG)
+            // (CCharSkill.cpp:2397-2398): the creature drops whatever it was doing,
+            // its fight included, and follows its new master.
+            FightClearAll(target);
+            target.PetAIMode = PetAIMode.Follow;
+            target.SetTag("FOLLOW_TARGET", ch.Uid.Value.ToString());
+            target.NextNpcActionTime = 0;
+            Character.WakeNpc?.Invoke(target);
             if (tamedBefore)
             {
                 sink.ObjectMessage(target, ServerMessages.GetFormatted(Msg.TamingRemember, target.Name));
@@ -1453,7 +1475,11 @@ public static class ActiveSkillEngine
 
     // ------------------------------------------------------------ Poisoning
 
-    /// <summary>Source-X CChar::Skill_Poisoning. Apply potion poison level to target weapon.</summary>
+    /// <summary>Source-X CChar::Skill_Poisoning (CCharSkill.cpp:2153-2213): ACT is the
+    /// poison, ACTPRV the thing to coat. The skill asks only that ACT is a potion of
+    /// s_poison and ACTPRV an item of a type it coats (DEFMSG_POISONING_WITEM); where
+    /// either lies is the targeting's business, not the skill's - there is no reach
+    /// or "in your possession" rule here.</summary>
     public static bool Poisoning(IActiveSkillSink sink, Item? weapon, Item? selectedPotion = null)
     {
         var ch = sink.Self;
@@ -1463,18 +1489,9 @@ public static class ActiveSkillEngine
             return false;
         }
         var potion = selectedPotion ?? sink.FindBackpackItem(ItemType.Potion);
-        if (potion == null ||
-            !CanReachItem(ch, potion, sink.World, SkillType.Poisoning, 2,
-                requirePossession: true) ||
-            !IsPoisonPotion(potion))
+        if (potion == null || potion.IsDeleted || !IsPoisonPotion(potion))
         {
             sink.SysMessage(ServerMessages.Get(Msg.PoisoningSelect1));
-            return false;
-        }
-        if (!CanReachItem(ch, weapon, sink.World, SkillType.Poisoning, 2,
-                requirePossession: true))
-        {
-            sink.SysMessage("You must have that item in your possession.");
             return false;
         }
 
@@ -2239,8 +2256,9 @@ public static class ActiveSkillEngine
     /// <summary>Source-X CChar::Skill_Enticement (CCharSkill.cpp:1901): lure a
     /// creature to the bard. The tune is played against TAG.BARDING.DIFF (divided by
     /// 18, default 40) and needs an instrument; on success a player cannot be lured
-    /// and neither can a creature at war, and anything else walks to where the bard
-    /// stands - running when it is further than the skill's RANGE (default 3).
+    /// and neither can a creature at war, and anything else takes ONE step toward
+    /// where the bard stands - NPC_WalkToPoint is a single step (CCharSkill.cpp:1988),
+    /// a running one when it is further than the skill's RANGE (default 3).
     /// The creature need only be in sight: an invented 8-tile reach refused it with
     /// an English line of its own.</summary>
     public static bool Enticement(IActiveSkillSink sink, Character? target, int? startDifficulty = null)
@@ -2268,12 +2286,18 @@ public static class ActiveSkillEngine
 
         int maxRange = SkillEngine.GetUseRange(SkillType.Enticement, 3);
         if (maxRange <= 0) maxRange = 3;
+        // pChar->m_Act_p = GetTopPoint(); pChar->NPC_WalkToPoint(dist > range)
+        // (CCharSkill.cpp:1987-1988): ONE step toward the bard, running when it is
+        // further than the range. The creature's own action is left alone, so it does
+        // not keep walking - the bard has to keep playing.
         target.ActP = ch.Position;
-        target.Action = (SkillType)(target.Position.GetDistanceTo(ch.Position) > maxRange
-            ? NpcAction.RunTo : NpcAction.GoTo);
-        target.NextNpcActionTime = 0;
+        NpcWalkToPoint?.Invoke(target, target.ActP, target.Position.GetDistanceTo(ch.Position) > maxRange);
         return true;
     }
+
+    /// <summary>One NPC_WalkToPoint step of a creature toward a point, running or not.
+    /// Wired by the host to the NPC engine; true when the creature moved.</summary>
+    public static Func<Character, Point3D, bool, bool>? NpcWalkToPoint { get; set; }
 
     // ----------------------------------------------------------- Provocation
 

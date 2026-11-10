@@ -179,6 +179,9 @@ public sealed class SpellSkillScriptLocalsUpstreamTests : IDisposable
 
     private static void Fizzle(SpellEngine engine, Character caster, Character target)
     {
+        // The target check also runs at the cast start: a live, visible target there.
+        target.IsOnline = true;
+        target.ClearStatFlag(StatFlag.Dead);
         Assert.True(engine.CastStart(caster, SpellType.Heal, target.Uid, target.Position) > 0);
         target.SetStatFlag(StatFlag.Dead);
         caster.CastSkillSucceeded = true;

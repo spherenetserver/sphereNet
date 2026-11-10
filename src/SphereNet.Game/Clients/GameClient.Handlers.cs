@@ -285,8 +285,21 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
+        // A book whose MORE1 names a [BOOK] resource is a system book: title, author
+        // and page count come out of the resource and it is never writable
+        // (PacketDisplayBook, send.cpp:2883-2910). It used to open blank and editable.
+        if (SystemBookName(book) is { } systemBook)
+        {
+            OpenSystemBook(book, systemBook);
+            return;
+        }
+
         string title = book.TryGetTag("BOOK_TITLE", out string? t) && t != null ? t : book.GetName();
         string author = book.TryGetTag("BOOK_AUTHOR", out string? a) && a != null ? a : "";
+        // A user-written book with no author says so (DEFMSG_BOOK_AUTHOR_UNKNOWN,
+        // send.cpp:2920).
+        if (string.IsNullOrEmpty(author))
+            author = ServerMessages.Get(Msg.BookAuthorUnknown);
         // Clamp the page count and iterate with an int. A BOOK_PAGES tag of 65535
         // (corrupt/hand-edited save) drove the old "for (ushort i = 1; i <= pageCount)"
         // past 65535, wrapped i to 0, and looped forever on the main thread (E1).
@@ -317,6 +330,82 @@ public sealed partial class GameClient
             pages.Add(((ushort)i, lines));
         }
 
+        SendBookPages(book.Uid.Value, pages);
+    }
+
+    /// <summary>The tags a MORE1 that names a resource is kept under: the setter's own
+    /// routing tag, or the raw key an itemdef handed over.</summary>
+    private static readonly string[] BookResourceTags = ["MORE1_DEFNAME", "MORE1", "MORE"];
+
+    /// <summary>The [BOOK] resource this book reads from, or null for a user-written
+    /// one - upstream IsBookSystem, m_itBook.m_ResID being a RES_BOOK
+    /// (CItem.cpp:5341-5344).</summary>
+    internal static string? SystemBookName(Item book)
+    {
+        var resources = DefinitionLoader.StaticResources;
+        if (resources == null) return null;
+        foreach (string tag in BookResourceTags)
+        {
+            if (!book.TryGetTag(tag, out string? name) || string.IsNullOrWhiteSpace(name))
+                continue;
+            name = name.Trim();
+            var rid = resources.ResolveDefName(name);
+            if (rid.IsValid && rid.Type == ResType.Book)
+                return name;
+        }
+        return null;
+    }
+
+    /// <summary>TITLE / AUTHOR / PAGES of a [BOOK name] header section
+    /// (send.cpp:2887-2905).</summary>
+    internal static (string Title, string Author, int Pages) ReadSystemBookHeader(string bookName)
+    {
+        string title = "", author = "";
+        int pages = 0;
+        var keys = DefinitionLoader.StaticResources?.GetBookSection(bookName, 0)?.StoredKeys;
+        if (keys != null)
+        {
+            foreach (var key in keys)
+            {
+                switch (key.KeyUpper)
+                {
+                    case "AUTHOR": author = key.Arg.Trim(); break;
+                    case "PAGES":
+                        if (ScriptNumber.TryParseInt(key.Arg.Trim(), out int n)) pages = n;
+                        break;
+                    case "TITLE": title = key.Arg.Trim(); break;
+                }
+            }
+        }
+        return (title, author, Math.Clamp(pages, 0, DeclaredPageHardCap));
+    }
+
+    /// <summary>The lines of one [BOOK name page] section, each script line a book
+    /// line (PacketBookPageContent::addPage, send.cpp:1688-1697).</summary>
+    internal static string[] ReadSystemBookPage(string bookName, int page)
+    {
+        if (page < 1) return [];
+        var keys = DefinitionLoader.StaticResources?.GetBookSection(bookName, page)?.StoredKeys;
+        if (keys == null) return [];
+        var lines = new string[keys.Count];
+        for (int i = 0; i < keys.Count; i++)
+            lines[i] = keys[i].RawLine.Trim();
+        return lines;
+    }
+
+    private void OpenSystemBook(Item book, string bookName)
+    {
+        var (title, author, pageCount) = ReadSystemBookHeader(bookName);
+        // "make sure book is named" (send.cpp:2908-2909).
+        if (title.Length > 0)
+            book.Name = title;
+
+        _netState.Send(new PacketBookHeaderOut(
+            book.Uid.Value, false, (ushort)pageCount, title, author));
+
+        var pages = new List<(ushort PageNum, string[] Lines)>();
+        for (int i = 1; i <= pageCount; i++)
+            pages.Add(((ushort)i, ReadSystemBookPage(bookName, i)));
         SendBookPages(book.Uid.Value, pages);
     }
 
@@ -385,10 +474,13 @@ public sealed partial class GameClient
         // wrote PAGE_n tags onto a pile of gold.
         if (!ItemUse.CanSeeItem(item)) return;
 
-        bool canWrite = IsBookItem(item) &&
+        // A system book is read out of its resource and never written
+        // (send.cpp:1688-1697, IsBookWritable CItem.cpp:5336).
+        string? systemBook = SystemBookName(item);
+        bool canWrite = systemBook == null && IsBookItem(item) &&
             (_character.PrivLevel >= PrivLevel.GM || IsBookWritableBy(item, _character));
 
-        int maxPages = MaxBookPages;
+        int maxPages = systemBook != null ? DeclaredPageHardCap : MaxBookPages;
 
         foreach (var (pageNum, lines) in pages)
         {
@@ -399,7 +491,9 @@ public sealed partial class GameClient
             {
                 // Read request — send page content back
                 string[] pageLines;
-                if (item.TryGetTag($"PAGE_{pageNum}", out string? content) && !string.IsNullOrEmpty(content))
+                if (systemBook != null)
+                    pageLines = ReadSystemBookPage(systemBook, pageNum);
+                else if (item.TryGetTag($"PAGE_{pageNum}", out string? content) && !string.IsNullOrEmpty(content))
                     pageLines = content.Split('\n');
                 else
                     pageLines = [];
@@ -420,7 +514,7 @@ public sealed partial class GameClient
     /// <summary>Whether THIS reader may write this book - the one answer the open
     /// packet announces and the page handler enforces.</summary>
     public bool IsBookWritableFor(Item book) =>
-        _character != null && IsBookItem(book) &&
+        _character != null && IsBookItem(book) && SystemBookName(book) == null &&
         (_character.PrivLevel >= PrivLevel.GM || IsBookWritableBy(book, _character));
 
     private bool IsBookWritableBy(Item book, Character ch)
@@ -459,7 +553,10 @@ public sealed partial class GameClient
             return;
         }
 
-        if (writable && (_character.PrivLevel >= PrivLevel.GM || IsBookWritableBy(item, _character)))
+        // The client's "writable" byte is not consulted - it always sends 0 - only the
+        // book's own state is (Event_Book_Title, CClientEvent.cpp:171; the byte is
+        // skipped at receive.cpp:1719).
+        if (IsBookWritableFor(item))
         {
             item.SetTag("BOOK_TITLE", title);
             item.SetTag("BOOK_AUTHOR", author);
@@ -546,13 +643,18 @@ public sealed partial class GameClient
         if (_character == null) return;
         var board = _world.FindItem(new Serial(boardSerial));
         if (board == null || board.ItemType != ItemType.BBoard) return;
-        if (_character.Position.GetDistanceTo(board.GetTopLevelPosition()) > 4)
+        // Sight first, as every board sub-command (receive.cpp:1193), then reach by the
+        // ordinary touch rule rather than a flat four tiles (receive.cpp:1226-1230).
+        if (!ItemUse.CanSeeItem(board)) return;
+        if (!ItemUse.CanTouchItem(board))
         {
-            SysMessage("You can't reach the board.");
+            SysMessage(ServerMessages.Get(Msg.ItemuseBboardReach));
             return;
         }
 
-        if (board.Contents.Count >= MaxBoardMessages)
+        // A message rolls off only once the board holds MORE than 32
+        // (receive.cpp:1232-1233); ">=" capped it one short.
+        if (board.Contents.Count > MaxBoardMessages)
         {
             var oldest = board.Contents[0];
             _world.RemoveItem(oldest);
@@ -592,10 +694,17 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
         var msg = ResolveBoardMessage(boardSerial, msgSerial, out var board);
-        if (msg == null || board == null) return;
+        if (board == null) return;
+        if (msg == null)
+        {
+            // Not a message of this board (receive.cpp:1273-1277).
+            SysMessage(ServerMessages.Get(Msg.ItemuseBboardCor));
+            return;
+        }
         if (msg.Link != _character.Uid && _character.PrivLevel < PrivLevel.GM)
         {
-            SysMessage("That is not your message.");
+            // receive.cpp:1279-1283
+            SysMessage(ServerMessages.Get(Msg.ItemuseBboardDel));
             return;
         }
         _world.RemoveItem(msg);
@@ -815,9 +924,11 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
+        // Only what the requester can see is named (receive.cpp:1789-1790).
         var ch = _world.FindChar(new Serial(serial));
         if (ch != null)
         {
+            if (!_character.CanSee(ch)) return;
             _netState.Send(new PacketAllNamesResponse(serial, ch.GetName()).Build());
             return;
         }
@@ -825,6 +936,7 @@ public sealed partial class GameClient
         var item = _world.FindItem(new Serial(serial));
         if (item != null)
         {
+            if (!ItemUse.CanSeeItem(item)) return;
             _netState.Send(new PacketAllNamesResponse(serial, item.GetName()).Build());
         }
     }

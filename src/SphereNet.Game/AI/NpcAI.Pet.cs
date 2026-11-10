@@ -111,11 +111,9 @@ public sealed partial class NpcAI
         var master = npc.ResolveControllerCharacter() ?? npc.ResolveOwnerCharacter();
         if (master == null || master.IsDead)
         {
-            if (npc.IsSummoned)
-            {
-                _world.DeleteObject(npc);
-                return;
-            }
+            // A summon lives exactly as long as its LAYER_SPELL_Summon memory
+            // (CCharSpell.cpp:595-606); CChar::Death of the summoner does nothing to
+            // it (CCharAct.cpp:4326-4500), so it is treated like any other pet here.
 
             // Owner gone: "free to do as I wish" (NPC_Act_Follow, CCharNPCAct.cpp:
             // 1350-1355). A dead owner is still there - Source-X keeps the standing

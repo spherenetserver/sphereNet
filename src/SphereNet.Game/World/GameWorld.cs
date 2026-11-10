@@ -502,7 +502,30 @@ public sealed class GameWorld
     public int DungeonLight { get; set; } = 27;
 
     /// <summary>Current season. Updated by WeatherEngine.</summary>
-    public byte CurrentSeason { get; set; } = 0; // default spring
+    public byte CurrentSeason { get; set; } = 1; // SEASON_Summer (CSectorEnviron.cpp:8)
+
+    /// <summary>The season a client standing at <paramref name="pt"/> is shown: the
+    /// sector's own when one was set on it (CSector::GetSeason, sent at login by
+    /// addPlayerStart, CClientMsg.cpp:1506), else the shard-wide one. A sector stores
+    /// 0 for "none set", which is also how it is saved.</summary>
+    public byte SeasonAt(Point3D pt)
+    {
+        byte own = GetSector(pt)?.Season ?? 0;
+        return own != 0 ? own : CurrentSeason;
+    }
+
+    /// <summary>The global light a character is sent - CChar::GetLightLevel
+    /// (CCharStatus.cpp:752-764): the dead see LIGHT_BRIGHT, so does an elf under
+    /// RACIALF_ELF_NIGHTSIGHT, anyone else the light of the sector they stand in.</summary>
+    public byte GetLightLevelFor(Character ch)
+    {
+        if (ch.IsDead)
+            return 0;
+        if ((Character.RacialFlags & (int)Core.Enums.RacialFlags.ElfNightSight) != 0 &&
+            ch.BodyId is 0x025D or 0x025E or 0x025F or 0x0260)   // CCharBase::IsElfID
+            return 0;
+        return GetLightLevel(ch.Position);
+    }
 
     /// <summary>The weather in force at a position: type, intensity and temperature.
     /// Wired to the weather engine by the server so the login and resync paths can send
@@ -619,6 +642,7 @@ public sealed class GameWorld
                 byte mapIndex = (byte)mapId;
                 var sector = new Sector(x, y, mapIndex, sectorCols)
                 {
+                    MapSectorRows = sectorRows,
                     GetWorldMinutes = () => _worldClock,
                     GetWorldTime = () => (WorldHour, WorldMinute),
                     GetLightSettings = () => (LightDay, LightNight, DungeonLight),
@@ -811,7 +835,11 @@ public sealed class GameWorld
         if (sector == null)
             return (byte)Math.Clamp(LightNight, 0, 30);
         bool dungeon = FindRegion(position)?.IsFlag(RegionFlag.Underground) == true;
-        return sector.GetLightCalc(quickSet, dungeonOverride: dungeon);
+        // The stored sector light, which fades a level per sector tick
+        // (CSector::GetLight) - not a fresh calculation on every read.
+        return quickSet
+            ? sector.GetLightShown(dungeonOverride: dungeon)
+            : sector.GetLightCalc(quickSet: false, dungeonOverride: dungeon);
     }
 
     public void LightFlash(Point3D position) => GetSector(position)?.LightFlash();
@@ -3040,7 +3068,18 @@ public sealed class GameWorld
     {
         if (item.IsDeleted) return false;
         if (!PlaceItem(item, pos)) return false;
-        long safeDelay = Math.Max(0, decayMs > 0 ? decayMs : DefaultDecayTimeMs);
+        if (decayMs <= 0)
+        {
+            // The item's own answer (GetDecayTime, CItem.cpp:1407-1439): something
+            // that cannot be moved, or is locked down or secured, never rots.
+            decayMs = item.GetDecayTime();
+            if (decayMs < 0)
+            {
+                item.SetDecayTime(-1);
+                return true;
+            }
+        }
+        long safeDelay = Math.Max(0, decayMs);
         // Through the shared contract, so an item already running a script timer of its
         // own is left to finish it (SetDecayTime, CItem.cpp:1485). Arming a separate
         // shorter decay here destroyed the item well before the interval its script had

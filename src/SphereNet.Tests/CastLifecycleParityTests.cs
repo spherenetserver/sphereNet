@@ -215,7 +215,9 @@ public sealed class CastLifecycleParityTests
 
         Assert.Equal(1, calls);
         Assert.NotNull(seenTargp);
-        Assert.StartsWith("123,456,7", seenTargp);
+        // A picked object replaces the client's coordinates with its own top-level
+        // point (Event_Target, CClientEvent.cpp:2527-2534).
+        Assert.StartsWith($"{f.Player.X},{f.Player.Y},{f.Player.Z}", seenTargp);
         Assert.True(f.Player.IsCasting);
     }
 

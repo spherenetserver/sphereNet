@@ -120,6 +120,8 @@ public sealed class VendorEconomyParityTests
         vendor.Name = "vendor";
         vendor.NpcBrain = NpcBrainType.Vendor;
         vendor.SetTag("VENDORMARKUP", markup.ToString());
+        // Already restocked: the timed restock (which tops the purse up) is not due.
+        vendor.SetTag("RESTOCK_TIME", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());
         world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
         return vendor;
     }

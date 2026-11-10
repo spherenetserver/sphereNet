@@ -130,6 +130,7 @@ public sealed class HousingShipIntegrityTests
             TestHarness.AttachCharacter(client, owner);
 
             client.HandleDoubleClick(deed.Uid.Value);
+            world.MoveCharacter(owner, new Point3D(298, 298, 0, 0));   // a pick must lie in sight
             client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0, 300, 300, 0, 0);
 
             Assert.Single(shipEngine.AllShips);
@@ -289,6 +290,7 @@ public sealed class HousingShipIntegrityTests
         client.SetEngines(housingEngine: engine);
         TestHarness.AttachCharacter(client, owner);
         client.HandleDoubleClick(deed.Uid.Value);
+        world.MoveCharacter(owner, new Point3D(298, 298, 0, 0));   // a pick must lie in sight
         client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0, 300, 300, 0, 0);
 
         var rebuilt = engine.FindHouseAt(new Point3D(300, 300, 0, 0));
@@ -552,6 +554,7 @@ public sealed class HousingShipIntegrityTests
             client.SetEngines(housingEngine: housing);
             TestHarness.AttachCharacter(client, owner);
             client.HandleDoubleClick(plan.Uid.Value);
+            world.MoveCharacter(owner, new Point3D(298, 298, 0, 0));   // a pick must lie in sight
             client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0, 300, 300, 0, 0);
 
             var rebuilt = engine.FindShipAt(new Point3D(300, 300, 0, 0));

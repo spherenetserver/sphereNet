@@ -69,6 +69,21 @@ public class Item : ObjBase
     /// something other than decay is left to expire on its own unless the caller
     /// insists. That last rule is what keeps a script's own interval from being cut
     /// short by an unrelated placement.</summary>
+    /// <summary>Source-X CItem::GetDecayTime (CItem.cpp:1407-1439): how long this
+    /// item lies on the ground before it rots, in milliseconds, or -1 for never. A
+    /// multi lasts 14 days; anything ATTR_MOVE_NEVER / STATIC / LOCKEDDOWN / SECURE,
+    /// or not of a movable type, never decays; everything else takes the server's
+    /// item decay time. (Crops keep their own growth timer.)</summary>
+    public long GetDecayTime()
+    {
+        if (ItemType is ItemType.Multi or ItemType.Ship or ItemType.MultiCustom)
+            return 14L * 24 * 60 * 60 * 1000;
+        if (IsAttr(ObjAttributes.Move_Never) || IsAttr(ObjAttributes.Static) ||
+            IsAttr(ObjAttributes.LockedDown) || IsAttr(ObjAttributes.Secure) || !IsMovableType)
+            return -1;
+        return World.GameWorld.DefaultDecayTimeMs;
+    }
+
     public void SetDecayTime(long msecs, bool overrideAlways = false)
     {
         if (!overrideAlways && Timeout > 0 && !IsAttr(ObjAttributes.Decay))
@@ -1362,9 +1377,33 @@ public class Item : ObjBase
         if (item.X == 0 && item.Y == 0)
             AssignRandomContainerPosition(this, item);
         NotifyTradeContentChanged();
+        UpdateKeyRingGraphic();
         NotifyCarrierInventoryChanged();
         NotifyContentWeightChanged(item.StatusTreeWeight());
         return true;
+    }
+
+    /// <summary>CItemContainer::SetKeyRing (CItemContainer.cpp:863-887), called from
+    /// ContentAdd and OnRemoveObj for an IT_KEYRING: the ring shows how many keys hang
+    /// on it - none, one or two, three or four, five and more.</summary>
+    private void UpdateKeyRingGraphic()
+    {
+        if (ItemType != ItemType.Keyring)
+            return;
+        ushort id = _contents.Count switch
+        {
+            0 => 0x1011,            // ITEMID_KEY_RING0
+            1 or 2 => 0x1769,       // ITEMID_KEY_RING1
+            3 or 4 => 0x176A,       // ITEMID_KEY_RING3
+            _ => 0x176B,            // ITEMID_KEY_RING5
+        };
+        if (id == BaseId)
+            return;
+        // The raw type is pinned first: the ring stays a ring whatever the pack's
+        // definition of the new graphic says.
+        _type = ItemType.Keyring;
+        BaseId = id;
+        OnVisualUpdate?.Invoke(this);
     }
 
     // Source-X CItem::SetAmount / CContainer::ContentAddPrivate / OnRemoveObj
@@ -1878,6 +1917,7 @@ public class Item : ObjBase
             NotifyContentWeightChanged(-item.StatusTreeWeight());
             item.ContainedIn = Serial.Invalid;
             NotifyTradeContentChanged();
+            UpdateKeyRingGraphic();
             return true;
         }
         return false;
@@ -5265,6 +5305,9 @@ public class Item : ObjBase
         return rid is { IsValid: true, Type: ResType.ItemDef } ? rid.Value.Index : null;
     }
 
+    /// <summary>ITEMID_EMBERS (uofiles_enums_itemid.h:276).</summary>
+    private const ushort EmbersId = 0x0DE9;
+
     public override bool OnTick()
     {
         if (_isDeleted) return false;
@@ -5360,6 +5403,16 @@ public class Item : ObjBase
                     SpawnChar?.KillAll();
                     return false;
                 }
+                // IT_CAMPFIRE (CItem.cpp:6403-6412): a fire that burns out becomes
+                // ITEMID_EMBERS for two more minutes; the embers then decay.
+                if (ItemType == ItemType.Campfire && BaseId != EmbersId)
+                {
+                    BaseId = EmbersId;
+                    _type = ItemType.Campfire;
+                    AssignDecay(Environment.TickCount64 + 2 * 60 * 1000L);
+                    OnVisualUpdate?.Invoke(this);
+                    return true;
+                }
                 _isDeleted = true;
                 SpawnChar?.KillAll();
                 return false;
@@ -5390,6 +5443,7 @@ public class Item : ObjBase
                 or ItemType.DoorLocked or ItemType.Portculis or ItemType.PortLocked
                 or ItemType.Crops or ItemType.Foliage or ItemType.LightLit
                 or ItemType.AnimActive or ItemType.BeeHive or ItemType.TrashCan
+                || IsIgnitedExplosionPotion
                 || (type == ItemType.EqMemoryObj && EquipLayer is Layer.FlagWool or Layer.FlagPotionUsed)
                 || (IsEquipped && EquipLayer == Layer.FlagStuck && IsAttr(ObjAttributes.Decay));
 
@@ -5429,6 +5483,9 @@ public class Item : ObjBase
                     break;
                 case ItemType.LightLit:
                     OnLightBurnTick();
+                    break;
+                case ItemType.Potion when IsIgnitedExplosionPotion:
+                    ExplosionPotionTick();
                     break;
                 case ItemType.AnimActive:
                     EndAnim();
@@ -5510,6 +5567,54 @@ public class Item : ObjBase
         }
 
         return true;
+    }
+
+    /// <summary>An explosion potion whose fuse is lit: m_itPotion.m_Type (MORE1) is
+    /// the explosion spell and m_itPotion.m_ignited (MOREZ) is set (CItem.cpp:6363).</summary>
+    public bool IsIgnitedExplosionPotion =>
+        _type == ItemType.Potion && _moreP.Z != 0 &&
+        Combat.ItemDamageEngine.ResolvePotionSpell(this) == SpellType.Explosion;
+
+    /// <summary>Light an explosion potion's fuse (CClientUse.cpp:284-288): the
+    /// countdown m_itPotion.m_tick (MOREX) defaults to 4, the igniter is the LINK and
+    /// the first tick is one second away.</summary>
+    public void IgniteExplosionPotion(Character igniter)
+    {
+        short tick = _moreP.X <= 0 ? (short)4 : _moreP.X;
+        _moreP = new Point3D(tick, _moreP.Y, 1, _moreP.Map);
+        Link = igniter.Uid;
+        SetTimeout(Environment.TickCount64 + 1000);
+    }
+
+    /// <summary>CItem::_OnTick IT_POTION (CItem.cpp:6360-6380): each second the lit
+    /// potion counts down and whatever holds it - the thrower, a container, the potion
+    /// itself on the ground - says the number in red; at the last tick it takes one
+    /// point of fire damage from the igniter, which is what sets it off.</summary>
+    private void ExplosionPotionTick()
+    {
+        if (_moreP.X <= 1)
+        {
+            var holder = GetTopLevelObj() as Character;
+            Combat.ItemDamageEngine.OnTakeDamage(this, 1,
+                ResolveWorld?.Invoke()?.FindChar(Link), Combat.DamageType.Fire);
+            // A potion that went off in the hand is no longer on the cursor.
+            if (_isDeleted && holder != null && holder.TryGetTag("DRAGGING", out string? held) &&
+                held == Uid.Value.ToString())
+                holder.RemoveTag("DRAGGING");
+            return;
+        }
+
+        _moreP = new Point3D((short)(_moreP.X - 1), _moreP.Y, _moreP.Z, _moreP.Map);
+        var top = GetTopLevelObj();
+        BroadcastNearby?.Invoke(top.Position, 18,
+            new SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut(
+                top.Uid.Value, top is Character speaker ? speaker.BodyId : (ushort)0,
+                0,          // TALKMODE_SAY
+                0x0022,     // HUE_RED
+                3,          // FONT_NORMAL
+                SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut.SystemLanguage,
+                top.GetName() ?? "", _moreP.X.ToString()), 0);
+        SetTimeout(Environment.TickCount64 + 1000);
     }
 
     /// <summary>

@@ -429,7 +429,90 @@ public class Region : IScriptObj
         return false;
     }
 
+    /// <summary>Source-X REGMOD_* (CRegion.h:109-113): which groups of this region a
+    /// script changed after it was defined. The world save writes exactly those
+    /// groups in a [WORLDSCRIPT defname] record (CWorld.cpp:852-861,
+    /// CRegion::r_WriteModified, CRegion.cpp:650-671) and replays them on load.</summary>
+    public int ModifiedFlags { get; set; }
+    public const int ModFlags = 0x01, ModEvents = 0x02, ModTags = 0x04, ModName = 0x08, ModGroup = 0x10;
+
+    /// <summary>A script assignment to the region. Every accepted key marks its group
+    /// modified (CRegion::r_LoadVal -> SetModified, CRegion.cpp:506-620); the
+    /// definition loader sets fields directly and marks nothing.</summary>
     public bool TrySetProperty(string key, string val)
+    {
+        string upper = key.ToUpperInvariant();
+        switch (upper)
+        {
+            case "NAME":
+                _name = val;
+                ModifiedFlags |= ModName;
+                return true;
+            case "GROUP":
+                _group = val;
+                ModifiedFlags |= ModGroup;
+                return true;
+        }
+        if (upper == "EVENTS" && val.Length > 0 && val[0] is not ('+' or '-'))
+        {
+            ApplySavedEvents(val);
+            ModifiedFlags |= ModEvents;
+            return true;
+        }
+        if (!TrySetPropertyCore(key, val))
+            return false;
+        ModifiedFlags |= upper.StartsWith("TAG", StringComparison.Ordinal) ? ModTags
+            : upper is "EVENTS" or "RESOURCES" ? ModEvents
+            : ModFlags;
+        return true;
+    }
+
+    /// <summary>A whole EVENTS list (a saved one, or a script's plain assignment):
+    /// each name the region does not already carry is added.</summary>
+    private void ApplySavedEvents(string csv)
+    {
+        foreach (var raw in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string name = raw.TrimStart('+').Trim();
+            if (name.Length == 0)
+                continue;
+            bool known = false;
+            foreach (var rid in _events)
+                if (string.Equals(EventName(rid), name, StringComparison.OrdinalIgnoreCase))
+                {
+                    known = true;
+                    break;
+                }
+            if (!known)
+                AddNamedEvent(name);
+        }
+    }
+
+    /// <summary>The lines of this region's [WORLDSCRIPT] record: only the modified
+    /// groups, and every tag except GUARDOWNER (CRegion.cpp:1024-1034).</summary>
+    public IEnumerable<KeyValuePair<string, string>> ModifiedLines()
+    {
+        if ((ModifiedFlags & ModName) != 0)
+            yield return new("NAME", _name);
+        if ((ModifiedFlags & ModGroup) != 0)
+            yield return new("GROUP", _group ?? "");
+        if ((ModifiedFlags & ModFlags) != 0)
+            yield return new("FLAGS", "0" + ((uint)OwnFlags).ToString("x"));
+        if ((ModifiedFlags & ModEvents) != 0)
+        {
+            var names = new List<string>();
+            foreach (var rid in _events)
+                if (EventName(rid) is { Length: > 0 } n)
+                    names.Add(n);
+            yield return new("EVENTS", string.Join(",", names));
+        }
+        if ((ModifiedFlags & ModTags) != 0)
+            foreach (var kv in _tags)
+                if (!kv.Key.Equals("GUARDOWNER", StringComparison.OrdinalIgnoreCase))
+                    yield return new("TAG." + kv.Key, kv.Value);
+    }
+
+    private bool TrySetPropertyCore(string key, string val)
     {
         var upper = key.ToUpperInvariant();
 

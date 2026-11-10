@@ -185,6 +185,9 @@ public sealed partial class GameClient : IClientContext
         short x, short y, sbyte z, ushort hue, byte direction) => BuildWorldItemPacket(serial, itemId, amount, x, y, z, hue, direction);
 
     void IClientContext.OpenCraftingGump(SkillType craftSkill) => OpenCraftingGump(craftSkill);
+    void IClientContext.OpenCraftingMenu(SkillType craftSkill, string skillMenu, ushort itemUsed) =>
+        WorldFeatures.OpenCraftingMenu(craftSkill, skillMenu, itemUsed);
+    void IClientContext.HandleItemPickup(uint serial, ushort amount) => HandleItemPickup(serial, amount);
     void IClientContext.OpenGuildStoneGump(Item stone) => OpenGuildStoneGump(stone);
     bool IClientContext.IsInGuild(Character ch) => IsInGuild(ch);
     void IClientContext.FoundGuildAtNewStone(Item stone) => FoundGuildAtNewStone(stone);

@@ -230,7 +230,9 @@ public sealed class SpellTithingDispelJailParityTests
             Assert.Empty(sent.OfType<PacketEffect>());
 
             sent.Clear();
+            target.ClearStatFlag(StatFlag.Dead);   // the target check also runs at the cast start
             Assert.True(engine.CastStart(caster, SpellType.Cure, target.Uid, target.Position) > 0);
+            target.SetStatFlag(StatFlag.Dead);
             caster.CastSkillSucceeded = true;
             Assert.False(engine.CastDone(caster));
             Assert.Empty(sent.OfType<PacketEffect>());

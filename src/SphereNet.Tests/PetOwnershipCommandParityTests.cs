@@ -67,6 +67,10 @@ public sealed class PetOwnershipCommandParityTests
     {
         var ch = world.CreateCharacter();
         ch.IsPlayer = player;
+        // A player in the world is one somebody is playing: a disconnected one is
+        // seen by nobody, and a pet cannot be sent at what it cannot see
+        // (Fight_Attack, CCharFight.cpp:1415).
+        ch.IsOnline = player;
         ch.Str = 100; ch.MaxHits = 100; ch.Hits = 100;
         ch.Dex = 100; ch.Stam = 100; ch.Int = 100;
         world.PlaceCharacter(ch, at);

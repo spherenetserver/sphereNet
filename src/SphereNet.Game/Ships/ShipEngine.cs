@@ -638,6 +638,11 @@ public sealed class ShipEngine
         if (ship.Anchored || moveType is not (ShipMovementType.OneTile or ShipMovementType.Normal))
             return false;
 
+        // "We set new direction regardless of click limitations"
+        // (CCMultiMovable.cpp:68-71): the heading changes even when the wheel gate
+        // below drops the order.
+        ship.DirMove = dir;
+
         // Source-X CCMultiMovable.cpp:78 — "otherwise for each click with mouse
         // it will do 1 move". A wheel order that lands while the ship is still
         // counting down to its next step is dropped outright; without this the
@@ -693,7 +698,13 @@ public sealed class ShipEngine
     /// engine default (500 ms / 1 tile), so unscripted ships are unchanged.</summary>
     private static void ApplyDefSpeed(Ship ship, SphereNet.Game.Housing.MultiDef? def)
     {
-        if (def == null || def.ShipSpeedPeriodTenths <= 0) return;
+        if (def == null) return;
+        // "_eSpeedMode = pItemBase->m_SpeedMode" (CItemMulti constructor,
+        // CItemMulti.cpp:30): the definition's mode decides whether a move takes
+        // the whole period (SMS_SLOW) or half of it (SetNextMove,
+        // CCMultiMovable.cpp:107-127).
+        ship.SpeedMode = (ShipSpeedMode)Math.Clamp(def.ShipSpeedMode, 1, 4);
+        if (def.ShipSpeedPeriodTenths <= 0) return;
         ship.SpeedPeriod = (ushort)Math.Clamp(def.ShipSpeedPeriodTenths * 100, 1, ushort.MaxValue);
         if (def.ShipSpeedTiles > 0)
             ship.SpeedTiles = (byte)Math.Clamp(def.ShipSpeedTiles, 1, 16);
@@ -1925,7 +1936,9 @@ public sealed class ShipEngine
             // def has no SHIPSPEED keep the value restored above.
             ApplyDefSpeed(ship, _multiDefs.Get(item.BaseId));
             if (item.TryGetTag("SHIP.SPEEDMODE", out string? smStr) && ScriptNumber.TryParseByte(smStr, out byte sm) &&
-                sm is >= (byte)ShipSpeedMode.OneTile and <= (byte)ShipSpeedMode.Fast)
+                // A saved 1 is the old engine default written for every ship, not a
+                // choice: the definition's mode stands in that case.
+                sm is > (byte)ShipSpeedMode.OneTile and <= (byte)ShipSpeedMode.Fast)
                 ship.SpeedMode = (ShipSpeedMode)sm;
             if (item.TryGetTag("SHIP.PILOT", out string? pilotStr))
                 ship.Pilot = new Serial(ParseHexSerial(pilotStr));

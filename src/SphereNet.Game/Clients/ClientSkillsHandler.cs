@@ -1192,7 +1192,18 @@ public sealed class ClientSkillsHandler
         {
             // Pile items show their stack amount on the tooltip header
             // ("1234 gold coins"), matching the single-click label.
-            propList.Add((1050045, obj is Item nameItem ? nameItem.GetDisplayName() : obj.GetName()));
+            if (obj is Character nameChar)
+            {
+                // A character's name line carries its fame title, name and guild
+                // abbreviation, then the guild line and the default character data
+                // (AOSTooltip_addName / AOSTooltip_addDefaultCharData,
+                // CClientMsg_AOSTooltip.cpp:253-352). Only the bare name went out.
+                DefaultTooltipData.AppendCharName(nameChar, _character.PrivLevel, propList);
+                DefaultTooltipData.AppendCharData(nameChar,
+                    featureMl: (GameClient.ServerFeatureML & 0x01) != 0, propList);
+            }
+            else
+                propList.Add((1050045, obj is Item nameItem ? nameItem.GetDisplayName() : obj.GetName()));
         }
 
         // Enrich tooltips for items
@@ -1203,59 +1214,18 @@ public sealed class ClientSkillsHandler
             // no-trade) and the race-only line, before any per-type data.
             ItemPropertyTooltip.AppendAttributeLines(item, propList);
 
-            switch (item.ItemType)
-            {
-                case ItemType.WeaponMaceSmith:
-                case ItemType.WeaponMaceSharp:
-                case ItemType.WeaponSword:
-                case ItemType.WeaponFence:
-                case ItemType.WeaponBow:
-                case ItemType.WeaponAxe:
-                case ItemType.WeaponXBow:
-                case ItemType.WeaponMaceStaff:
-                case ItemType.WeaponMaceCrook:
-                case ItemType.WeaponMacePick:
-                case ItemType.WeaponThrowing:
-                case ItemType.WeaponWhip:
-                    // Weapon damage - try reading from tags or CombatEngine lookup
-                    if (item.TryGetTag("DAM", out string? damStr) && damStr != null)
-                        propList.Add((1061168, ClilocArgs(damStr))); // weapon damage ~1_val~ - ~2_val~
-                    if (item.TryGetTag("SPEED", out string? speedStr) && speedStr != null)
-                        propList.Add((1061167, speedStr.Trim())); // weapon speed ~1_val~
-                    break;
-
-                case ItemType.Armor:
-                case ItemType.ArmorLeather:
-                case ItemType.ArmorBone:
-                case ItemType.ArmorChain:
-                case ItemType.ArmorRing:
-                case ItemType.Shield:
-                    if (item.TryGetTag("ARMOR", out string? armorStr) && armorStr != null)
-                        propList.Add((1060448, armorStr.Trim())); // physical resist ~1_val~%
-                    if (item.TryGetTag("DURABILITY", out string? durStr) && durStr != null)
-                        propList.Add((1060639, ClilocArgs(durStr))); // durability ~1_val~ / ~2_val~
-                    break;
-
-                case ItemType.Container:
-                case ItemType.ContainerLocked:
-                    // Source-X CClientMsg_AOSTooltip: 1050044 "~1_COUNT~ items,
-                    // ~2_WEIGHT~ stones" takes count and weight, no leading tab
-                    // (a leading tab makes the first argument empty on the client).
-                    propList.Add((1050044, $"{item.ContentCount}\t{item.TotalWeight}"));
-                    propList.Add((item.TotalWeight == 1 ? 1072788u : 1072789u, $"{item.TotalWeight}")); // Weight: ~1_WEIGHT~ stone(s)
-                    break;
-
-                case ItemType.CommCrystal:
-                {
-                    // Source-X CClientMsg_AOSTooltip: active when linked to another
-                    // crystal, else inactive; always shows the broadcast line.
-                    var link = item.Link.IsValid ? _world.FindObject(item.Link) as Item : null;
-                    bool active = link != null && link.ItemType == ItemType.CommCrystal;
-                    propList.Add((active ? 1060742u : 1060743u, "")); // activated / deactivated
-                    propList.Add((1060745u, "")); // broadcast
-                    break;
-                }
-            }
+            // Then weight, maker, quality, uses and the per-type data, in upstream's
+            // order (CClientMsg_AOSTooltip.cpp:396-707). The weapon and armour lines
+            // used to read TAG.DAM / SPEED / ARMOR / DURABILITY, which nothing sets -
+            // those are the item's own ratings - so they never appeared, and armour
+            // went out under the physical-resist cliloc.
+            var housing = _client.Housing;
+            DefaultTooltipData.AppendItemData(item, _world,
+                featureMl: (GameClient.ServerFeatureML & 0x01) != 0,
+                elementalEngine: (Character.CombatFlags & (int)CombatFlags.ElementalEngine) != 0,
+                viewerIsGm: _character.IsGmMode,
+                isMultiAt: housing == null ? null : pt => housing.FindHouseAt(pt) != null,
+                propList);
 
             // The component-property lines (luck, stat bonuses, resists, hit effects,
             // ...) follow the per-type defaults, as upstream appends them right after

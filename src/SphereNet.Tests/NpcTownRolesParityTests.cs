@@ -221,10 +221,12 @@ public sealed class NpcTownRolesParityTests
         var world = CreateWorld();
         AddGuarded(world, 50, 50, 150, 150);
         var ai = new NpcAI(world, new SphereConfig { GuardsInstantKill = false });
+        // The gate reads the CRIMINAL's Magery (NPC_LookAtCharGuard,
+        // CCharNPCAct.cpp:741): a guard closes on a mage at once.
         var mage = Npc(world, NpcBrainType.Guard, 100, 100, karma: 5000);
-        mage.SetSkill(SkillType.Magery, 500);
         var plain = Npc(world, NpcBrainType.Guard, 100, 110, karma: 5000);
         var crim = Player(world, 106, 100);
+        crim.SetSkill(SkillType.Magery, 500);
         crim.SetStatFlag(StatFlag.Criminal);
         var crim2 = Player(world, 106, 110);
         crim2.SetStatFlag(StatFlag.Criminal);

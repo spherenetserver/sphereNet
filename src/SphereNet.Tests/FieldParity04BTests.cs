@@ -107,7 +107,7 @@ public sealed class FieldParity04BTests
     private static void StandOn(Character ch) =>
         typeof(Character).GetMethod("ApplyStandingFieldDamage",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .Invoke(ch, null);
+            .Invoke(ch, [null]);
 
     // --- SX-04B-01: one spell field per location check -----------------------
 

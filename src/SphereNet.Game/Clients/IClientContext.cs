@@ -178,6 +178,10 @@ internal interface IClientContext : ITextConsole
 
     // --- gump / dialog entry points ---
     void OpenCraftingGump(SkillType craftSkill);
+    /// <summary>CClient::Skill_Menu(skill, menu, itemUsed) for a named menu.</summary>
+    void OpenCraftingMenu(SkillType craftSkill, string skillMenu, ushort itemUsed);
+    /// <summary>CChar::ItemPickup(item, amount): take an item onto the cursor.</summary>
+    void HandleItemPickup(uint serial, ushort amount);
     void InscriptionMenu();
     void OpenGuildStoneGump(Item stone);
     bool IsInGuild(Objects.Characters.Character ch);

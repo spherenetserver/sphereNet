@@ -674,9 +674,10 @@ public sealed class MovementEngine
     /// <summary>Spell_Teleport's fTakePets: the pets following their owner go too, or a
     /// disembarking owner leaves them on the ship. Each pet goes with the owner's
     /// fDisplayEffect (CCharSpell.cpp:216).</summary>
-    private void TakePetsAlong(Objects.Characters.Character owner, Point3D dest, bool displayEffect)
+    public void TakePetsAlong(Objects.Characters.Character owner, Point3D dest, bool displayEffect)
     {
-        foreach (var pet in _world.GetCharsInRange(owner.Position, 12).ToList())
+        // UO_MAP_VIEW_SIGHT (CCharSpell.cpp:203).
+        foreach (var pet in _world.GetCharsInRange(owner.Position, 14).ToList())
         {
             if (pet == owner || pet.IsPlayer || pet.IsDead || pet.IsStatFlag(StatFlag.Ridden)) continue;
             // "come" is the same follow action as "follow me" upstream
@@ -741,6 +742,130 @@ public sealed class MovementEngine
         TeleportTo(ch, tele.Dest, takePets: true, displayEffect: false);
         teleported = true;
         return true;
+    }
+
+    /// <summary>The [MOONGATES] points of the script pack, in order
+    /// (g_Cfg.m_MoonGates).</summary>
+    public Func<IReadOnlyList<Point3D>>? MoongatePoints { get; set; }
+
+    /// <summary>Where a telepad or moongate sends the walker - Source-X
+    /// CChar::Use_MoonGate (CCharUse.cpp:201-277). A linked object's top point
+    /// replaces MOREP (no trip when the link is not top-level). An IT_MOONGATE then
+    /// picks its destination from the [MOONGATES] ring by the two moon phases:
+    /// index (gate here + trammel - felucca) mod count. An NPC does not use a
+    /// player-only gate (MORE1), a guard only goes to guarded ground (or, under
+    /// OF_GuardOutsideGuardedArea, does not leave a guarded home for unguarded
+    /// ground), and a criminal NPC never goes to guarded ground. False = no trip.</summary>
+    private bool ResolveGateDestination(Objects.Characters.Character ch, Objects.Items.Item item, out Point3D dest)
+    {
+        dest = item.MoreP;
+        if (item.Link.IsValid && _world.FindObject(item.Link) is Objects.ObjBase link)
+        {
+            if (link is Objects.Items.Item { IsOnGround: false })
+                return false;
+            dest = link.Position;
+        }
+
+        if (item.ItemType == ItemType.Moongate && MoongatePoints?.Invoke() is { Count: > 0 } gates)
+        {
+            int count = gates.Count;
+            int here = 0;
+            const int viewSize = 18; // g_Cfg.m_iMapViewSize
+            for (; here < count; here++)
+                if (ch.Position.GetDistanceTo(gates[here]) <= viewSize)
+                    break;
+            long minutes = _world.GetSector(ch.Position)?.GetWorldMinutes?.Invoke() ?? 0;
+            int trammel = World.Sectors.Sector.GetMoonPhase(minutes, felucca: false) % count;
+            int felucca = World.Sectors.Sector.GetMoonPhase(minutes, felucca: true) % count;
+            if (trammel < felucca)
+                trammel += count;
+            dest = gates[(here + (trammel - felucca)) % count];
+        }
+
+        if (!ch.IsPlayer)
+        {
+            if (item.More1 != 0)
+                return false;
+            var destRegion = _world.FindRegion(dest);
+            if (ch.NpcBrain == NpcBrainType.Guard)
+            {
+                if (destRegion == null)
+                    return false;
+                if ((Clients.GameClient.ServerOptionFlags & OptionFlags.GuardOutsideGuardedArea) != 0)
+                {
+                    var homeRegion = _world.FindRegion(ch.Home);
+                    if (homeRegion == null || (homeRegion.IsGuarded && !destRegion.IsGuarded))
+                        return false;
+                }
+                else if (!destRegion.IsGuarded)
+                    return false;
+            }
+            bool criminal = ch.IsStatFlag(StatFlag.Criminal) || ch.IsCriminal ||
+                            AI.NpcAI.NotoIsEvil(ch, _world);
+            if (criminal && (destRegion == null || destRegion.IsGuarded))
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>An NPC that took fire, spell or trap damage standing still runs one
+    /// random step "away from the threat" (CCharAct.cpp:5005-5043).</summary>
+    public Action<Objects.Characters.Character>? OnNpcFleeThreat { get; set; }
+
+    /// <summary>What a step an NPC has just taken sets off - Source-X runs the same
+    /// CheckLocationEffects(false) for it as for a player (NPC_WalkToPoint ->
+    /// MoveToChar, CCharNPCAct.cpp:601-605, CCharAct.cpp:5367-5371): region, room
+    /// and item @Step, fields, traps, step switches and the map teleporters. A
+    /// refused step puts the NPC back; returns false then.</summary>
+    public bool ApplyNpcStep(Objects.Characters.Character npc, Point3D from)
+    {
+        var target = npc.Position;
+        if (CheckLocationEffects(npc, target, _world.FindRegion(from)))
+            return true;
+        if (!npc.IsDeleted && npc.Position.Equals(target))
+            _world.MoveCharacter(npc, from, fireRegionEvents: false);
+        return false;
+    }
+
+    /// <summary>CheckLocationEffects(true), once a second for a character standing
+    /// still (CCharAct.cpp:4946-5046): every item underfoot gets @Step with
+    /// ARGN1 = 1 (RETURN 1 skips its effect), a trap goes off, a step switch is
+    /// used, fire and spell fields land, and a hurt NPC runs off the tile. Webs,
+    /// telepads, moongates, planks and the map teleporters are walking-only.</summary>
+    public void CheckStandingEffects(Objects.Characters.Character ch)
+    {
+        if (ch.IsDead || ch.IsDeleted)
+            return;
+        int before = ch.Hits;
+        HashSet<Objects.Items.Item>? skip = null;
+        foreach (var item in _world.GetItemsInRange(ch.Position, 0).ToList())
+        {
+            if (item.IsDeleted || item.X != ch.X || item.Y != ch.Y || !item.IsWithinStepHeight(ch.Z))
+                continue;
+            if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Step,
+                    new TriggerArgs { CharSrc = ch, ItemSrc = item, N1 = 1 }) == TriggerResult.True)
+            {
+                (skip ??= []).Add(item);
+                continue;
+            }
+            switch (item.ItemType)
+            {
+                case ItemType.Trap:
+                case ItemType.TrapActive:
+                    ApplyStepDamage(ch, item.UseTrap(),
+                        Combat.DamageType.HitBlunt | Combat.DamageType.General);
+                    break;
+                case ItemType.Switch:
+                    if (item.MoreP.X != 0 && OnStepUseItem?.Invoke(ch, item) != true)
+                        item.SetSwitchState();
+                    break;
+            }
+            if (ch.IsDead || ch.IsDeleted)
+                return;
+        }
+        ch.ApplyStandingFieldDamage(skip);
+        if (!ch.IsPlayer && !ch.IsDead && !ch.IsDeleted && ch.Hits < before)
+            OnNpcFleeThreat?.Invoke(ch);
     }
 
     private bool CheckLocationEffects(Objects.Characters.Character ch, Point3D originalPos, World.Regions.Region? previousRegion)
@@ -845,7 +970,8 @@ public sealed class MovementEngine
                 case ItemType.Telepad:
                 case ItemType.Moongate:
                 {
-                    var dest = item.MoreP;
+                    if (!ResolveGateDestination(ch, item, out var dest))
+                        break;
                     var md = _world.MapData;
                     bool destPassable = md == null || md.IsPassable(dest.Map, dest.X, dest.Y, dest.Z);
                     if ((dest.X != 0 || dest.Y != 0) && dest.X >= 0 && dest.Y >= 0 &&

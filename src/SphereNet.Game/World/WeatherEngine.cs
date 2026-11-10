@@ -34,8 +34,12 @@ public enum SeasonType : byte
 /// Weather and season engine. Weather belongs to the SECTOR, as in Source-X
 /// (CSectorEnviron::m_Weather): the sector stores it, publishes a change to everyone
 /// standing in it (CSector::SetWeather) and recalculates it from its own RAINCHANCE /
-/// COLDCHANCE on its periodic tick (CSector::_OnTick, GetWeatherCalc). The global season
-/// cycles here too (CWorld::GetSeason).
+/// COLDCHANCE on its periodic tick (CSector::_OnTick, GetWeatherCalc).
+///
+/// The season is the sector's too in Source-X: every sector starts in SEASON_Summer
+/// (CSectorEnviron.cpp:8) and changes only through its SEASON verb. The shard-wide
+/// season kept here is what a sector with no season of its own shows; by default it is
+/// Summer and does not move. SeasonMode=Auto in sphere.ini still cycles it.
 /// </summary>
 public sealed class WeatherEngine
 {
@@ -59,9 +63,9 @@ public sealed class WeatherEngine
     private readonly HashSet<Sector> _activeSectorsScratch = [];
 
     // Global season
-    private SeasonType _currentSeason = SeasonType.Spring;
+    private SeasonType _currentSeason = SeasonType.Summer;   // SEASON_Summer, CSectorEnviron.cpp:8
     private long _lastSeasonChangeTick;
-    private SeasonMode _seasonMode = SeasonMode.Auto;
+    private SeasonMode _seasonMode = SeasonMode.Manual;
 
     /// <summary>Season change interval in milliseconds (default: 30 minutes).</summary>
     public int SeasonChangeInterval { get; set; } = 30 * 60 * 1000;
@@ -128,8 +132,8 @@ public sealed class WeatherEngine
         if (NoWeather || sector.IsDungeon?.Invoke() == true)
             return WeatherType.None;
 
-        int rain = sector.RainChance;
-        int cold = sector.ColdChance;
+        int rain = sector.EffectiveRainChance;
+        int cold = sector.EffectiveColdChance;
         int roll = _rand.Next(100);
         if (roll < rain)
         {
@@ -147,8 +151,78 @@ public sealed class WeatherEngine
     /// is published by the sector.</summary>
     internal void OnSectorTick(Sector sector)
     {
-        if (_rand.Next(30) != 0) return; // change less often
-        sector.SetWeather((byte)GetWeatherCalc(sector));
+        // "light change" comes first (CSector.cpp:1236-1243): one level per tick,
+        // sent to the living players here who have no Night Sight (:1330). Each is
+        // sent their own answer (CChar::GetLightLevel), so one standing in an
+        // underground region of this sector keeps the dungeon's light.
+        if (sector.TickLight() && Objects.Characters.Character.SendPacketToOwner is { } sendLight)
+        {
+            foreach (var player in sector.OnlinePlayers)
+            {
+                if (player.IsDeleted || !player.IsOnline || player.IsDead ||
+                    player.IsStatFlag(StatFlag.NightSight))
+                    continue;
+                sendLight(player, new SphereNet.Network.Packets.Outgoing.PacketGlobalLight(
+                    _world.GetLightLevelFor(player)));
+            }
+        }
+
+        if (_rand.Next(30) == 0) // change less often
+            sector.SetWeather((byte)GetWeatherCalc(sector));
+
+        PlayWeatherEffects(sector);
+    }
+
+    // sm_SfxRain / sm_SfxWind / sm_SfxThunder (CSector.cpp:1282-1284)
+    private static readonly ushort[] s_sfxRain = [0x10, 0x11];
+    private static readonly ushort[] s_sfxWind = [0x14, 0x15, 0x16];
+    private static readonly ushort[] s_sfxThunder = [0x28, 0x29, 0x206];
+
+    /// <summary>"Random area noises. Only do if clients about" (CSector::_OnTick,
+    /// CSector.cpp:1277-1311): snow has wind one tick in five; rain rolls 0..29 - below
+    /// 5 lightning (the light flash) with thunder, below 10 rain, below 15 wind. The
+    /// sound goes to each client in the sector at its own character (:1327).</summary>
+    internal ushort PlayWeatherEffects(Sector sector)
+    {
+        if (sector.OnlinePlayers.Count == 0)
+            return 0;
+
+        ushort sound = 0;
+        switch ((WeatherType)sector.Weather)
+        {
+            case WeatherType.Snow:
+                if (_rand.Next(5) == 0)
+                    sound = s_sfxWind[_rand.Next(s_sfxWind.Length)];
+                break;
+            case WeatherType.Rain:
+            {
+                int roll = _rand.Next(30);
+                if (roll < 5)
+                {
+                    sector.LightFlash();
+                    sound = s_sfxThunder[_rand.Next(s_sfxThunder.Length)];
+                }
+                else if (roll < 10)
+                    sound = s_sfxRain[_rand.Next(s_sfxRain.Length)];
+                else if (roll < 15)
+                    sound = s_sfxWind[_rand.Next(s_sfxWind.Length)];
+                break;
+            }
+        }
+        if (sound == 0)
+            return 0;
+
+        var send = Objects.Characters.Character.SendPacketToOwner;
+        if (send != null)
+        {
+            foreach (var player in sector.OnlinePlayers)
+            {
+                if (player.IsDeleted || !player.IsOnline) continue;
+                send(player, new SphereNet.Network.Packets.Outgoing.PacketSound(
+                    sound, player.X, player.Y, player.Z));
+            }
+        }
+        return sound;
     }
 
     /// <summary>

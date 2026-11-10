@@ -2045,11 +2045,16 @@ public sealed class ClientInventoryHandler
         // choices reached nothing. LOCAL.DECAY is still read, in seconds, so the
         // scripts written against the older reading keep working.
         long defaultDecaySec = GameWorld.DefaultDecayTimeMs / 1000;
-        long naturalDecayMs = GameWorld.DefaultDecayTimeMs;
+        // "iDecayTime = GetDecayTime()" (MoveToCheck, CItem.cpp:1618): -1 for an
+        // item that never rots.
+        long naturalDecayMs = item.GetDecayTime();
+        if (naturalDecayMs < 0)
+            naturalDecayMs = -1000;
         // The region's protection is applied to the NATURAL time, before the script
         // speaks (:1620) - not as a veto over whatever it then chooses.
         var preRegion = _world.FindRegion(new Point3D(x, y, z, _character.MapIndex));
-        if (preRegion != null && preRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.NoDecay))
+        if (naturalDecayMs > 0 && preRegion != null &&
+            preRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.NoDecay))
             naturalDecayMs = -1000;
 
         var dropLocals = new SphereNet.Scripting.Variables.VarMap();
@@ -2183,6 +2188,13 @@ public sealed class ClientInventoryHandler
             return;
         }
 
+        // "Too many items here!" (MoveToCheck, CItem.cpp:1664-1684): past
+        // MAXITEMCOMPLEXITY items on one spot the drop still lands, but the item
+        // says so and is gone in a minute - a NODECAY region included.
+        bool tooManyItems = tileItemCount + 1 > Item.MaxItemComplexity;
+        if (tooManyItems)
+            dropDecayMs = 60_000;
+
         if (dropDecayMs < 0)
         {
             // No rot at all - place it and clear the decay.
@@ -2199,6 +2211,8 @@ public sealed class ClientInventoryHandler
             new PacketSound(item.GetDropSound(ontoSomething: false),
                 groundPos.X, groundPos.Y, groundPos.Z), 0);
         BroadcastWorldItem(item);
+        if (tooManyItems)
+            _client.ObjectMessage(item, ServerMessages.Get(Msg.TooManyItems));
     }
 
     /// <summary>
@@ -2459,8 +2473,8 @@ public sealed class ClientInventoryHandler
                 return SettleEquipDrag(item, false);
         }
 
-        // Spell interruption on equip change
-        _spellEngine?.TryInterruptFromEquip(target);
+        // Changing equipment does not disturb a cast: Source-X's only hand rule is
+        // Spell_Unequip at cast start (CCharSpell.cpp:3609).
 
         void BounceWornItem(Item worn)
         {
@@ -2561,40 +2575,70 @@ public sealed class ClientInventoryHandler
     {
         if (_character == null) return;
 
+        // Only a player has a profile, and an unknown serial is not the requester's
+        // own (Event_Profile, CClientEvent.cpp:1598-1600).
         Character? ch = _world.FindChar(new Serial(serial));
-        ch ??= _character;
-
-        if (mode == 1)
-        {
-            if (ch == _character || _character.PrivLevel >= PrivLevel.GM)
-            {
-                var result = _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Profile, new TriggerArgs
-                {
-                    CharSrc = _character,
-                    S1 = bioText,
-                    N1 = mode
-                });
-                if (result == TriggerResult.True)
-                    return;
-
-                ch.SetTag("PROFILE_BIO", bioText);
-            }
+        if (ch == null || !ch.IsPlayer)
             return;
-        }
 
+        // @Profile runs first, for a read and a write alike (CClientEvent.cpp:1602-1606).
         if (_triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Profile, new TriggerArgs
         {
             CharSrc = _character,
+            S1 = mode == 1 ? bioText : "",
             N1 = mode
         }) == TriggerResult.True)
             return;
 
-        string title = string.IsNullOrEmpty(ch.Title)
-            ? ch.GetName()
-            : $"{ch.GetName()}, {ch.Title}";
+        if (mode != 0)
+        {
+            // Someone else's profile needs GM, and a plevel no lower than the owner's
+            // (CClientEvent.cpp:1611-1617).
+            if (ch != _character)
+            {
+                if (_character.PrivLevel < PrivLevel.GM)
+                    return;
+                if (_character.PrivLevel < ch.PrivLevel)
+                    return;
+            }
 
-        string profile = ch.TryGetTag("PROFILE_BIO", out string? bio) && bio != null ? bio : "";
-        _netState.Send(new PacketProfileResponse(ch.Uid.Value, title, profile));
+            // A text carrying a line feed is not stored (CClientEvent.cpp:1619-1620).
+            // The text lives in PROFILE, the key the save writes; it used to go to a
+            // tag nothing else read.
+            if (bioText != null && !bioText.Contains('\n'))
+            {
+                ch.Profile = bioText;
+                ch.RemoveTag(LegacyProfileTag);
+            }
+            return;
+        }
+
+        // send.cpp:3828-3841: the name, then "NotoTitle, TradeTitle", then the body.
+        // An incognito character shows its noto title and an empty body, unless the
+        // viewer is a GM or it is the viewer's own.
+        bool incognito = ch.IsStatFlag(StatFlag.Incognito) &&
+            _character.PrivLevel < PrivLevel.GM && ch != _character;
+        string notoTitle = PaperdollText.GetNotoTitle(ch);
+        if (incognito)
+        {
+            _netState.Send(new PacketProfileResponse(ch.Uid.Value, ch.GetName(), notoTitle, ""));
+            return;
+        }
+
+        _netState.Send(new PacketProfileResponse(ch.Uid.Value, ch.GetName(),
+            $"{notoTitle}, {PaperdollText.GetTradeTitle(ch)}", ReadProfileText(ch)));
+    }
+
+    /// <summary>The tag an earlier build kept the profile text in.</summary>
+    private const string LegacyProfileTag = "PROFILE_BIO";
+
+    /// <summary>The profile body: PROFILE, or - once, for a character written before
+    /// the text moved there - the old tag.</summary>
+    internal static string ReadProfileText(Character ch)
+    {
+        if (!string.IsNullOrEmpty(ch.Profile))
+            return ch.Profile;
+        return ch.TryGetTag(LegacyProfileTag, out string? bio) && bio != null ? bio : "";
     }
 
     public void HandleStatusRequest(byte type, uint serial)

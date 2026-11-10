@@ -3155,11 +3155,15 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
             loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
 
+        // Both are logged in: the menu is refused for something the requester cannot
+        // see, and a disconnected player is not seen (CClientEvent.cpp:2575).
         var player = world.CreateCharacter();
         player.IsPlayer = true;
+        player.IsOnline = true;
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         var target = world.CreateCharacter();
         target.IsPlayer = true;
+        target.IsOnline = true;
         world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
         var item = world.CreateItem();
         item.Name = "Context Item";
@@ -3446,6 +3450,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         world.PlaceItem(sourceItem, player.Position);
         var targetChar = world.CreateCharacter();
         targetChar.IsPlayer = true;
+        targetChar.IsOnline = true;
         world.PlaceCharacter(targetChar, new Point3D(101, 100, 0, 0));
 
         var dispatcher = new TriggerDispatcher
@@ -3487,7 +3492,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         client.SetPendingTarget(static (_, _, _, _, _) => { }, 1);
         client.Targets.ItemUid = sourceItem.Uid;
         client.Targets.ItemParentUid = sourceItem.ContainedIn;
-        client.HandleTargetResponse(1, client.ActiveTargetCursorId, 0, 20, 21, 22, 0x0EED);
+        client.HandleTargetResponse(1, client.ActiveTargetCursorId, 0, 102, 101, 0, 0x0EED);
 
         Assert.Equal(1, charCount);
         Assert.Equal(1, groundCount);

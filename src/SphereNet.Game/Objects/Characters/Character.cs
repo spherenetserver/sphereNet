@@ -668,6 +668,10 @@ public partial class Character : ObjBase
     /// <summary>Whether beneficially helping a criminal flags the helper.
     /// sphere.ini HELPINGCRIMINALSISACRIME.</summary>
     public static bool HelpingCriminalsIsACrimeEnabled { get; set; }
+    /// <summary>The standing pass of CheckLocationEffects - CheckLocationEffects(true)
+    /// on the regen tick (CCharAct.cpp:6158-6163). Wired to the movement engine;
+    /// unset, only the field damage runs.</summary>
+    public static Action<Character>? StandingEffectsHook { get; set; }
     /// <summary>Whether spells must consume reagents from backpack. sphere.ini REAGENTSREQUIRED.</summary>
     public static bool ReagentsRequiredEnabled { get; set; } = true;
     /// <summary>Players must have the spell in an accessible spellbook to
@@ -1339,7 +1343,20 @@ public partial class Character : ObjBase
     public long CreatedUtcSeconds { get; set; }
 
     /// <summary>True when a GameClient is actively controlling this character.</summary>
-    public bool IsOnline { get => _isOnline; set => _isOnline = value; }
+    public bool IsOnline
+    {
+        get => _isOnline;
+        set
+        {
+            if (_isOnline == value)
+                return;
+            _isOnline = value;
+            // CChar::ClientAttach / ClientDetach stamp _iTimeLastUsedMs and
+            // _iTimeLastDisconnectedMs with the world clock (CChar.cpp:517, :539).
+            if (_isPlayer && ResolveWorld?.Invoke() is { } clockWorld)
+                SetTag(value ? "LASTUSED" : "LASTDISCONNECTED", (clockWorld.GameClockMs / 1000).ToString());
+        }
+    }
 
     /// <summary>A player character the server itself drives (no GameClient). It is
     /// online - it ticks and keeps its sectors awake - but it is not a client:
@@ -1413,11 +1430,45 @@ public partial class Character : ObjBase
         {
             if (value < 0) value = 0;
             int oldAdjusted = _str + _modStr;
+            bool lowered = value < _str;
             _str = value;
             TrackPoolMax(ref _maxHits, ref _hits, oldAdjusted, _str + _modStr);
             MarkDirty(DirtyFlag.Stats);
+            if (lowered) StrCheckEquip();
         }
     }
+    /// <summary>Source-X Stat_StrCheckEquip (CCharStat.cpp:793-804), reached only when
+    /// STR goes down - Stat_SetMod (:58-62) and Stat_SetBase (:422-426): every worn
+    /// item CanEquipStr now refuses (CCharStatus.cpp:297-312 - GMs exempt, visible
+    /// layers only) is announced and bounced to the pack. Weaken, Curse and stat loss
+    /// strip gear that has become too heavy.</summary>
+    private void StrCheckEquip()
+    {
+        if (PrivLevel >= PrivLevel.GM)
+            return;
+        World.GameWorld? world = null;
+        int str = -1;
+        for (int i = 0; i < _equipment.Length; i++)
+        {
+            var item = _equipment[i];
+            if (item == null || item.IsDeleted || !Item.IsVisibleLayer((Layer)i))
+                continue;
+            int req = item.ReqStr;
+            if (req <= 0)
+                continue;
+            if (str < 0)
+                str = CombatEngine.EffectiveStr(this);
+            if (str >= req)
+                continue;
+            world ??= ResolveWorld?.Invoke();
+            if (world == null)
+                return;
+            SendOwnerMessage?.Invoke(this,
+                $"{ServerMessages.Get(Msg.EquipNotStrongEnough)} {item.GetName()}.");
+            BounceItemToPack(item, world);
+        }
+    }
+
     public short Dex
     {
         get => _dex;
@@ -1830,7 +1881,7 @@ public partial class Character : ObjBase
     public short ModStr
     {
         get => _modStr;
-        set { int oldAdjusted = _str + _modStr; _modStr = value; TrackPoolMax(ref _maxHits, ref _hits, oldAdjusted, _str + _modStr); MarkDirty(DirtyFlag.Stats); }
+        set { int oldAdjusted = _str + _modStr; bool lowered = value < _modStr; _modStr = value; TrackPoolMax(ref _maxHits, ref _hits, oldAdjusted, _str + _modStr); MarkDirty(DirtyFlag.Stats); if (lowered) StrCheckEquip(); }
     }
     public short ModDex
     {
@@ -2303,7 +2354,13 @@ public partial class Character : ObjBase
     {
         if (!HelpingCriminalsIsACrimeEnabled || !IsPlayer || beneficiary == this)
             return;
-        if (beneficiary.IsFlaggedAsCriminal)
+        // Spell_CastDone (CCharSpell.cpp:3344-3359) switches on the target's
+        // notoriety as the helper sees it - Noto_GetFlag(this, false), incognito and
+        // invul not honoured: NOTO_CRIMINAL, NOTO_GUILD_WAR and NOTO_EVIL are a
+        // crime. A criminal guildmate or party member reads as GUILD_SAME and is not.
+        byte noto = Clients.GameClient.ComputeNotorietyResult(
+            ResolveWorld?.Invoke(), this, beneficiary, allowIncog: false, allowInvul: false).Notoriety;
+        if (noto is 4 or 5 or 6)
             MakeCriminal();
     }
 
@@ -2480,7 +2537,7 @@ public partial class Character : ObjBase
 
     /// <summary>Apply damage from any fire/poison field on the character's
     /// current tile. Sector-indexed lookup, so this is cheap per tick.</summary>
-    private void ApplyStandingFieldDamage()
+    internal void ApplyStandingFieldDamage(HashSet<Item>? skip = null)
     {
         if (IsDead) return;
         var world = ResolveWorld?.Invoke();
@@ -2490,6 +2547,7 @@ public partial class Character : ObjBase
         foreach (var item in world.GetItemsInRange(Position, 0))
         {
             if (item.IsDeleted) continue;
+            if (skip != null && skip.Contains(item)) continue;
             if (item.Position.X != X || item.Position.Y != Y) continue;
             // A field one storey below shares the X/Y but must not reach up.
             if (!item.IsWithinStepHeight(Z)) continue;
@@ -5630,6 +5688,22 @@ public partial class Character : ObjBase
             case "EMOTECOLOROVERRIDE": value = _emoteColorOverride.ToString(); return true;
             case "KRTOOLBARSTATUS": value = _isPlayer && _krToolbarStatus ? "1" : "0"; return true;
             case "REFUSEGLOBALCHATREQUESTS": value = _isPlayer && _refuseGlobalChatRequests ? "1" : "0"; return true;
+            case "REFUSETRADES": // CPC_REFUSETRADES (CCharPlayer.cpp:267)
+                value = TryGetTag("REFUSETRADES", out string? refuseTrades) && refuseTrades != "0" &&
+                        !string.IsNullOrEmpty(refuseTrades) ? "1" : "0";
+                return true;
+            case "LASTUSED":
+            case "LASTDISCONNECTED":
+            {
+                // "Stored as ms, but printed as seconds" since then
+                // (CCharPlayer.cpp:243-250). The stamp is kept in world-clock seconds,
+                // the unit the save line carries (:545-548).
+                long nowSec = (ResolveWorld?.Invoke()?.GameClockMs ?? 0) / 1000;
+                long stamp = TryGetTag(upper, out string? stampText) &&
+                             ScriptNumber.TryParseLong(stampText, out long parsedStamp) ? parsedStamp : 0;
+                value = Math.Max(0, nowSec - stamp).ToString();
+                return true;
+            }
             // CC_LASTEVENT (CClient.cpp:710): the world time the client last sent
             // anything, on the SERV.TIMEHIRES clock like LASTEVENTWALK.
             case "LASTEVENT":
@@ -7831,6 +7905,19 @@ public partial class Character : ObjBase
                 return true;
             case "EMOTECOLOR": case "VIRTUALGOLD":
             case "LASTUSED": case "LASTDISCONNECTED": case "NEED": case "SPAWNITEM":
+                SetTag(upperKey, value);
+                return true;
+            case "REFUSETRADES":
+                // CPC_REFUSETRADES (CCharPlayer.cpp:485): "arg > 0 ? 1 : 0".
+                SetTag("REFUSETRADES", EvalScriptLong(normalized) > 0 ? "1" : "0");
+                return true;
+            case "ADDHOUSE": case "DELHOUSE": case "ADDSHIP": case "DELSHIP":
+                // The player's house and ship lists (CCharPlayer.cpp:375-440) are
+                // read live from what the character owns here, so there is no list
+                // to edit; the line is accepted so a script that keeps them in step
+                // does not stop on it.
+                return true;
+            case "MAXHOUSES": case "MAXSHIPS":
                 SetTag(upperKey, value);
                 return true;
         }
@@ -10403,11 +10490,15 @@ public partial class Character : ObjBase
         if (now >= _nextFieldTick)
         {
             _nextFieldTick = now + 1000;
-            ApplyStandingFieldDamage();
+            if (StandingEffectsHook != null)
+                StandingEffectsHook(this);
+            else
+                ApplyStandingFieldDamage();
         }
 
         // Criminal timer expiry
         CombatState.ExpireCriminalTimer(now);
+        CombatState.CheckAttackerTimeout(now);
 
         // Opt-in timed jail release (a JAIL command given a duration). Source-X jail
         // has no timer; the release hook only clears the jail flag, and removes the
@@ -10518,25 +10609,37 @@ public partial class Character : ObjBase
             return;
         }
 
-        if (_food > 0)
-            _food = (ushort)Math.Clamp(_food - amount, 0, ushort.MaxValue);
+        // CChar::OnTickFood (CCharAct.cpp:5770-5816), the same rule the creatures
+        // follow: the dead, the conjured, the petrified, a body with no MAXFOOD and
+        // a GM neither get hungrier nor hear about it.
+        int max = MaxFood;
+        if (IsDead || IsStatFlag(StatFlag.Conjured) || IsStatFlag(StatFlag.Stone) || max == 0)
+            return;
+        if (PrivLevel >= PrivLevel.GM)
+            return;
+
+        _food = (ushort)Math.Max(0, _food - amount);
 
         // Let scripts react to hunger (@Hunger trigger).
         OnHungerDecay?.Invoke(this);
 
-        // HITSHUNGERLOSS. Starvation does bite upstream - OnTakeDamage with a
-        // FLAT amount once food reaches zero (CCharAct.cpp:5788) - but only when
-        // the shard asks for it, and the reference ini ships the line commented
-        // out. This engine once chipped health UNCONDITIONALLY, which was the
-        // invented part; removing the bite entirely and writing "the reference
-        // never does this" overshot in the other direction.
-        //
-        // Staff and the dead starve for free, as upstream's guards say.
-        if (hungerLoss > 0 && _food <= 0 && !IsDead &&
-            PrivLevel < PrivLevel.GM && !IsStatFlag(StatFlag.Sleeping))
-        {
+        // At 40% and below, with HITSHUNGERLOSS set and awake: DEFMSG_MSG_HUNGER to
+        // the player and the "looks hungry" emote, on every food tick (:5790-5806).
+        // The reference ini ships HITSHUNGERLOSS commented out, so a shard that does
+        // not ask for starvation hears nothing.
+        int level = (_food * 100 + max / 2) / max;   // Food_GetLevelPercent
+        if (level > 40)
+            return;
+        if (hungerLoss <= 0 || IsStatFlag(StatFlag.Sleeping))
+            return;
+
+        string levelText = FoodLevelMessage(pet: false);
+        SendOwnerMessage?.Invoke(this, ServerMessages.GetFormatted(Msg.MsgHunger, levelText));
+        EmoteObject(ServerMessages.GetFormatted(Msg.MsgFoodLvlLooks, levelText));
+
+        // The bite itself only once the food level reaches 0 (:5808-5812).
+        if (level <= 0)
             ApplyHungerDamage(hungerLoss);
-        }
     }
 
     // Source-X REGENx rates are seconds-to-recover-one-point (CServerConfig.cpp:1075

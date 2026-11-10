@@ -494,6 +494,10 @@ public sealed partial class GameClient
         return $"{ip}:{name}";
     }
 
+    /// <summary>The character was still lingering when its client came back: @LogIn's
+    /// ARGN2 (CClientMsg.cpp:2820).</summary>
+    private bool _quickRelogin;
+
     public void HandleCharSelect(int slot, string name)
     {
         if (_account == null) return;
@@ -526,8 +530,11 @@ public sealed partial class GameClient
 
         // Reconnecting during client linger resumes the same world object. Drop
         // the temporary active-sector membership before EnterWorld adds it back.
+        _quickRelogin = false;
         if (_character?.IsClientLingering == true)
         {
+            // fQuickLogIn = LayerFind(LAYER_FLAG_ClientLinger) (CClientMsg.cpp:2820).
+            _quickRelogin = true;
             _character.RemoveTag("CLIENT_LINGER_UNTIL");
             _world.RemoveOnlinePlayer(_character);
         }
@@ -535,13 +542,37 @@ public sealed partial class GameClient
         if (_character == null)
         {
             _character = _world.CreateCharacter();
-            string safeName = SanitizeCharacterName(string.IsNullOrWhiteSpace(name) ? _account.Name : name);
-            _character.Name = safeName;
+            var info = PendingCharCreate;
+            PendingCharCreate = null;
             _character.IsPlayer = true;
             _character.CreatedUtcSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-            var info = PendingCharCreate;
-            PendingCharCreate = null;
+            // Source-X CChar::InitPlayer (CChar.cpp:1732-1756): an empty name, one
+            // with a character outside A-Z a-z 0-9 space ' - ., an obscene one or one
+            // opening with a staff/noble title is refused; an accepted one still goes
+            // through @Rename (ARGS = the name, ARGO = the character), and a refused
+            // one becomes a pick from the human name pool. A creation with no name at
+            // all is the engine's own (bots, tools), which keeps the account's name.
+            if (string.IsNullOrWhiteSpace(name))
+                _character.Name = SanitizeCharacterName(_account.Name);
+            else
+            {
+                string createName = name.Length > MaxCreateNameLength ? name[..MaxCreateNameLength] : name;
+                bool nameAccepted = IsCreateNameAccepted(createName, _commands?.Resources != null
+                    ? _commands.Resources.IsObscene : null);
+                if (nameAccepted &&
+                    _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Rename, new TriggerArgs
+                    {
+                        CharSrc = _character,
+                        O1 = _character,
+                        S1 = createName,
+                    }) == TriggerResult.True)
+                    nameAccepted = false;
+                _character.Name = nameAccepted
+                    ? createName
+                    : DefinitionLoader.ResolveNamePool(
+                        info?.Female == true ? "#NAMES_HUMANFEMALE" : "#NAMES_HUMANMALE");
+            }
 
             // ARGN1 = client feature flags, ARGN2 = profession, ARGN3 = race, ARGS = the
             // account, ARGO = the client (receive.cpp:207-214).
@@ -628,10 +659,15 @@ public sealed partial class GameClient
                     _character.Equip(beard, Layer.FacialHair);
                 }
 
+                // "randomize the skills first" (CChar.cpp:1768-1773): every skill the
+                // pack defines starts at Rand(MAXBASESKILL) - 0..MAXBASESKILL-1 tenths -
+                // and the chosen ones are then written over it, whatever their value
+                // (CChar.cpp:1804-1814 has no value condition).
+                RandomizeStartingSkills(_character);
                 for (int i = 0; i < skills.Length; i++)
                 {
                     int id = skills[i].Id;
-                    if (id < SkillEngine.BaseSkillCount && skillVals[i] > 0)
+                    if (id < SkillEngine.BaseSkillCount)
                         _character.SetSkill((SkillType)id, (ushort)(skillVals[i] * 10));
                 }
                 // Diagnostic: what the client actually sent for the creation
@@ -707,8 +743,11 @@ public sealed partial class GameClient
                 gold.Amount = (ushort)Math.Min(ushort.MaxValue, startGoldAmount);
                 pack.AddItem(gold);
             }
-            EquipPlayerNewbieItems(_character, info?.Female ?? false);
-            EquipNewbieSkillKits(_character, info);
+            EquipPlayerNewbieItems(_character, info?.Female ?? false, race, info?.Profession);
+            // Necromancer / paladin / samurai / ninja take their whole kit from the
+            // profession block: no skill kits (fCreateSkillItems, CChar.cpp:2084-2098).
+            if (info == null || !ProfessionSuppressesSkillKits(info.Profession))
+                EquipNewbieSkillKits(_character, info, race);
 
             // Tint the starter shirt/pants with the hues picked on the creation
             // screen, clamped to HUE_BLUE_LOW..HUE_DYE_HIGH (CChar.cpp:2139-2156) -
@@ -1004,6 +1043,11 @@ public sealed partial class GameClient
             _character.Position = new Point3D(_character.X, _character.Y, loginStand.Z, _character.MapIndex);
         }
 
+        // "Don't login on the water, bring us to nearest shore (unless I can swim)"
+        // (CClientMsg.cpp:2875-2879). Done before the position is sent rather than
+        // after, so the client starts on the shore instead of being moved there.
+        string? shoreMessage = MoveLoginToNearestShore(_character);
+
         // Map dimensions per map index (ML-expanded Felucca = 7168x4096)
         ushort mapW = _character.MapIndex switch
         {
@@ -1038,11 +1082,13 @@ public sealed partial class GameClient
         SendCharacterStatus(_character);
         SendSkillList();
 
-        _netState.Send(new PacketGlobalLight(_character.IsDead ? (byte)0 : _world.GetLightLevel(_character.Position)));
+        _netState.Send(new PacketGlobalLight(_world.GetLightLevelFor(_character)));
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
+        // addSeason(pSector->GetSeason()) (CClientMsg.cpp:1506); the dead see
+        // Desolation (addSeason, CClientMsg.cpp:505).
         SendSeason(_character.IsDead
             ? (byte)SeasonType.Desolation
-            : (byte)_world.CurrentSeason, playSound: true);
+            : _world.SeasonAt(_character.Position), playSound: true);
         SendCurrentWeather();
 
         // Send player's own character with equipment — client needs this to render worn items
@@ -1061,6 +1107,13 @@ public sealed partial class GameClient
         }
 
         _netState.Send(new PacketLoginComplete());
+        // addTime(true) (CClientMsg.cpp:1505, PacketGameTime send.cpp:1625): 0x5B with
+        // the hour, minute and second of the game clock.
+        {
+            long clockMs = _world.GameClockMs;
+            _netState.SendRaw([0x5B, (byte)((clockMs / 3_600_000) % 24), (byte)((clockMs / 60_000) % 60),
+                (byte)((clockMs / 1000) % 60)]);
+        }
         SendSpeedMode();
         SendKrToolbar(_character.KrToolbarStatus); // addPlayerStart, CClientMsg.cpp:1511
         _spellEngine?.ResendBuffs(_character);
@@ -1087,8 +1140,24 @@ public sealed partial class GameClient
         // Fire @LogIn trigger: ARGN1 = no-messages, ARGN2 = quick login, both read back;
         // either one set keeps the login greeting lines off (Setup_Start,
         // CClientMsg.cpp:2819-2845).
-        var loginArgs = new TriggerArgs { CharSrc = _character, N1 = 0, N2 = 0 };
-        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.LogIn, loginArgs);
+        var loginArgs = new TriggerArgs { CharSrc = _character, N1 = 0, N2 = _quickRelogin ? 1 : 0 };
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.LogIn, loginArgs) == TriggerResult.True)
+        {
+            // RETURN 1 blocks the login: ClientDetach + SetDisconnected and
+            // PacketLoginError::Blocked (CClientMsg.cpp:2825-2830) - the character
+            // goes offline at once, with no linger and no @LogOut.
+            _netState.Send(new PacketLoginDenied(LoginDenyBlocked));
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                new PacketDeleteObject(_character.Uid.Value), _character.Uid.Value);
+            _character.IsOnline = false;
+            _character.CombatState.OnClientAnnounce(arrive: false);
+            OnCharacterOffline?.Invoke(_character);
+            _world.RemoveOnlinePlayer(_character);
+            _sessionEnterUtc = null;
+            _character = null;
+            _netState.MarkClosing();
+            return;
+        }
         bool quietLogin = loginArgs.N1 != 0 || loginArgs.N2 != 0;
         // f_onclient_add is not a login hook: Sphere 56T custom-version packs list it
         // under their command hooks, for the bare ADD command (ClientScriptConsoleHandler).
@@ -1114,6 +1183,9 @@ public sealed partial class GameClient
                 SysMessage(ServerMessages.GetFormatted(Msg.LoginLastlogged, lastLogged));
             _account.Tags.Remove("LastLogged");
         }
+
+        if (shoreMessage != null)
+            SysMessage(ServerMessages.Get(shoreMessage));
 
         if (_character.IsDead)
         {
@@ -1235,11 +1307,11 @@ public sealed partial class GameClient
         SendCharacterStatus(_character);
 
         // 4. Re-send light & season
-        _netState.Send(new PacketGlobalLight(_character.IsDead ? (byte)0 : _world.GetLightLevel(_character.Position)));
+        _netState.Send(new PacketGlobalLight(_world.GetLightLevelFor(_character)));
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
         SendSeason(_character.IsDead
             ? (byte)SeasonType.Desolation
-            : (byte)_world.CurrentSeason, playSound: false, force: true);
+            : _world.SeasonAt(_character.Position), playSound: false, force: true);
         SendCurrentWeather();
 
         // 5. Reset walk sequence (0 = resync sentinel, client must send seq 0 next)
@@ -1362,6 +1434,128 @@ public sealed partial class GameClient
         if (_character == null || !IsPlaying) return;
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
     }
+
+    /// <summary>CClient::Setup_Start (CClientMsg.cpp:2875-2879) + CChar::
+    /// MoveToNearestShore (CCharAct.cpp:5439-5463): a character that is not a GM,
+    /// cannot swim and stands on the water is put on the first standable tile along a
+    /// diagonal, searched in 20-tile bands out to 400. Returns the defmessage to show
+    /// (MSG_REGION_WATER_2 when a shore was found, _1 when none was), or null when the
+    /// character was not on the water.</summary>
+    private string? MoveLoginToNearestShore(Character ch)
+    {
+        var md = _world.MapData;
+        if (md == null || _movement == null || ch.IsGmMode)
+            return null;
+        if ((CharDefHelper.GetCanFlags(ch) & CanFlags.C_Swim) != 0)
+            return null;
+        if (!AI.NpcAI.StandsOnWater(md, ch.Position))
+            return null;
+
+        int dist = 1;
+        for (int i = 0; i < 20; i++)
+        {
+            int distNew = dist + 20;
+            // DIR_NE..DIR_NW step 2: the four diagonals.
+            for (int dir = (int)Direction.NorthEast; dir <= (int)Direction.NorthWest; dir += 2)
+            {
+                if (_movement.MoveToValidSpot(ch, (Direction)dir, distNew, dist, out var spot))
+                {
+                    _world.MoveCharacter(ch, spot);
+                    return Msg.MsgRegionWater2;
+                }
+            }
+            dist = distNew;
+        }
+        return Msg.MsgRegionWater1;
+    }
+
+    /// <summary>The [NEWBIE name] block for a race. Source-X files "[NEWBIE name ELF]"
+    /// and "[NEWBIE name GARG]" under the race as the resource page
+    /// (CServerConfig.cpp:4304-4322) and asks for the race's block first, the plain
+    /// one when there is none (CChar.cpp:2103-2106, :2110-2113, :2137-2141). The
+    /// loader keeps a race block under name_ELF / name_GARG.</summary>
+    internal static SphereNet.Scripting.Resources.ResourceLink? ResolveNewbieSection(
+        SphereNet.Scripting.Resources.ResourceHolder resources, string sectionName, int race)
+    {
+        string? suffix = race switch { 2 => "_ELF", 3 => "_GARG", _ => null };   // RACETYPE_ELF / _GARGOYLE
+        if (suffix != null)
+        {
+            var raceRid = resources.ResolveDefName(sectionName + suffix);
+            if (raceRid.IsValid && raceRid.Type == Core.Enums.ResType.NewBie &&
+                resources.GetResource(raceRid) is { } raceLink)
+                return raceLink;
+        }
+        var rid = resources.ResolveDefName(sectionName);
+        if (!rid.IsValid || rid.Type != Core.Enums.ResType.NewBie)
+            return null;
+        return resources.GetResource(rid);
+    }
+
+    /// <summary>MAX_NAME_SIZE - 1 (sphereproto.h:754): Str_CopyLimitNull keeps 29
+    /// characters of the name the client sent.</summary>
+    private const int MaxCreateNameLength = 29;
+
+    /// <summary>sphere.ini MAXBASESKILL (Source-X m_iMaxBaseSkill, default 200).</summary>
+    public static int MaxBaseSkill { get; set; } = 200;
+
+    /// <summary>The creation name test of CChar::InitPlayer (CChar.cpp:1737-1742):
+    /// not empty, only Str_Untrusted_InvalidName's characters (sstring.cpp:1667),
+    /// not obscene, and none of the reserved title prefixes.</summary>
+    internal static bool IsCreateNameAccepted(string name, Func<string, bool>? isObscene)
+    {
+        if (string.IsNullOrEmpty(name))
+            return false;
+        foreach (char c in name)
+        {
+            bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                      c == ' ' || c == '\'' || c == '-' || c == '.';
+            if (!ok)
+                return false;
+        }
+        if (isObscene != null && isObscene(name))
+            return false;
+        foreach (string prefix in s_reservedNamePrefixes)
+        {
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+        return true;
+    }
+
+    private static readonly string[] s_reservedNamePrefixes =
+        ["lord ", "lady ", "seer ", "gm ", "admin ", "counselor "];
+
+    /// <summary>CChar.cpp:1768-1773: each skill with a definition starts at
+    /// g_Rand.GetVal(MAXBASESKILL), i.e. 0..MAXBASESKILL-1.</summary>
+    internal static void RandomizeStartingSkills(Character ch)
+    {
+        int max = MaxBaseSkill;
+        for (int i = 0; i < (int)SkillType.Qty; i++)
+        {
+            if (DefinitionLoader.GetSkillDef(i) == null)
+                continue;
+            ch.SetSkill((SkillType)i, (ushort)(max > 0 ? Random.Shared.Next(max) : 0));
+        }
+    }
+
+    /// <summary>PROFESSION_NECROMANCER..PROFESSION_NINJA (sphereproto.h:641-644) clear
+    /// fCreateSkillItems (CChar.cpp:2084-2098).</summary>
+    internal static bool ProfessionSuppressesSkillKits(int profession) => profession is >= 4 and <= 7;
+
+    /// <summary>The [NEWBIE PROFESSION_x] block name of a creation profession
+    /// (CChar.cpp:2069-2099); an unknown profession has none.</summary>
+    internal static string? NewbieProfessionSection(int profession) => profession switch
+    {
+        0 => "PROFESSION_ADVANCED",
+        1 => "PROFESSION_WARRIOR",
+        2 => "PROFESSION_MAGE",
+        3 => "PROFESSION_BLACKSMITH",
+        4 => "PROFESSION_NECROMANCER",
+        5 => "PROFESSION_PALADIN",
+        6 => "PROFESSION_SAMURAI",
+        7 => "PROFESSION_NINJA",
+        _ => null,
+    };
 
     private static string SanitizeCharacterName(string raw)
     {
@@ -1509,22 +1703,28 @@ public sealed partial class GameClient
         ch.Equip(item, layer);
     }
 
-    private void EquipPlayerNewbieItems(Character ch, bool female)
+    /// <summary>CChar.cpp:2102-2114: the race page of the sex default block, else the
+    /// plain one; then the profession block the same way.</summary>
+    private void EquipPlayerNewbieItems(Character ch, bool female, int race = 1, int? profession = null)
     {
-        EquipNewbieSection(ch, female ? "FEMALE_DEFAULT" : "MALE_DEFAULT");
+        EquipNewbieSection(ch, female ? "FEMALE_DEFAULT" : "MALE_DEFAULT", race);
+        if (profession is { } prof && NewbieProfessionSection(prof) is { } profSection)
+            EquipNewbieSection(ch, profSection, race);
     }
 
     /// <summary>Sphere grants a starter kit per chosen creation skill through
     /// the [NEWBIE &lt;SKILL&gt;] sections (sphere_newb.scp) on top of the
     /// male/female default outfit. Unknown section names no-op.</summary>
-    private void EquipNewbieSkillKits(Character ch, CharCreateInfo? info)
+    private void EquipNewbieSkillKits(Character ch, CharCreateInfo? info, int race = 1)
     {
         if (info == null) return;
-        foreach (var (id, val) in info.Skills)
+        // No value condition: a chosen skill at 0 still brings its kit
+        // (CChar.cpp:2116-2143).
+        foreach (var (id, _) in info.Skills)
         {
-            if (val <= 0 || id < 0 || id >= SkillEngine.BaseSkillCount) continue;
+            if (id < 0 || id >= SkillEngine.BaseSkillCount) continue;
             string? section = FindNewbieSkillSection(id);
-            EquipNewbieSection(ch, section ?? ((SkillType)id).ToString().ToUpperInvariant());
+            EquipNewbieSection(ch, section ?? ((SkillType)id).ToString().ToUpperInvariant(), race);
         }
     }
 
@@ -1566,16 +1766,12 @@ public sealed partial class GameClient
     internal void ApplyNewbieSection(Character ch, string sectionName) =>
         EquipNewbieSection(ch, sectionName);
 
-    private void EquipNewbieSection(Character ch, string sectionName)
+    private void EquipNewbieSection(Character ch, string sectionName, int race = 1)
     {
         if (_commands?.Resources == null) return;
         var resources = _commands.Resources;
 
-        var rid = resources.ResolveDefName(sectionName);
-        if (!rid.IsValid || rid.Type != Core.Enums.ResType.NewBie)
-            return;
-
-        var link = resources.GetResource(rid);
+        var link = ResolveNewbieSection(resources, sectionName, race);
         if (link?.StoredKeys == null || link.StoredKeys.Count == 0)
             return;
 

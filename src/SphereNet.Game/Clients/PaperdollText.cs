@@ -104,6 +104,26 @@ public static class PaperdollText
             abbrev, guildTitle.Trim(), after.Trim(), text);
     }
 
+    /// <summary>CChar::Noto_GetTitle (CCharNotoriety.cpp:358-377) on its own: article,
+    /// rank, fame title, name and suffix, whatever the incognito state - the fame
+    /// title already blanks itself there.</summary>
+    internal static string GetNotoTitle(Character ch)
+    {
+        string notoTitle = GetNotoRankTitle(ch);
+        string fameTitle = GetTag(ch, "NAME.PREFIX");
+        if (fameTitle.Length == 0)
+            fameTitle = GetFameTitle(ch);
+        return string.Concat(
+            notoTitle.Length > 0
+                ? ServerMessages.Get(ch.IsFemale ? Msg.TitleArticleFemale : Msg.TitleArticleMale)
+                : "",
+            notoTitle,
+            notoTitle.Length > 0 ? " " : "",
+            fameTitle,
+            ch.GetName(),
+            GetTag(ch, "NAME.SUFFIX"));
+    }
+
     /// <summary>CChar::GetName(true): TAG.NAME.ALT overrides the name.</summary>
     private static string GetName(Character ch)
     {
@@ -273,14 +293,21 @@ public static class PaperdollText
     /// <summary>CChar::Guild_FindMember(MEMORY_GUILD): the member record of the
     /// character's guild (not a town stone), candidates included, as the guild
     /// memory is added for every record.</summary>
-    private static Guild.GuildMember? FindGuildMember(Character ch, out string abbrev)
+    private static Guild.GuildMember? FindGuildMember(Character ch, out string abbrev) =>
+        FindGuildMember(ch, out abbrev, out _);
+
+    /// <summary>The same record, with the stone's name for the callers that print it
+    /// (the tooltip's guild line).</summary>
+    internal static Guild.GuildMember? FindGuildMember(Character ch, out string abbrev, out string guildName)
     {
         abbrev = "";
+        guildName = "";
         var guild = Character.ResolveGuildManager?.Invoke(ch.Uid)?.FindGuildRecordFor(ch.Uid, townStones: false);
         var member = guild?.FindMember(ch.Uid);
         if (member == null || member.Priv is Guild.GuildPriv.Enemy or Guild.GuildPriv.Ally)
             return null;
         abbrev = guild!.Abbreviation ?? "";
+        guildName = guild.Name ?? "";
         return member;
     }
 }

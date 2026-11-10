@@ -144,7 +144,7 @@ public sealed class ScriptTargetVerbParityTests : IDisposable
     public void UsedItemTriggersGetTheTileIdAndTargPrvIsTheItem()
     {
         Assert.True(Run(Tool, "TARGETG"));
-        _client.HandleTargetResponse(1, _client.ActiveTargetCursorId, 0, 300, 310, 5, 0x1234);
+        _client.HandleTargetResponse(1, _client.ActiveTargetCursorId, 0, 103, 104, 5, 0x1234);
         Assert.Equal(0x1234.ToString(), Tag(_tool, "G_N1"));
         Assert.Equal("0", Tag(_tool, "G_N2"));
         Assert.Equal("0", Tag(_tool, "G_N3"));

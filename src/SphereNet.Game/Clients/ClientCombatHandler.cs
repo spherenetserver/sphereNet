@@ -1423,7 +1423,7 @@ public sealed class ClientCombatHandler
                         obsCh.Uid.Value == victimUid ? emoteVictim : emoteOthers));
             }
 
-            _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false);
+            _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false, source: _character);
             if (target.HasActiveSkillPending())
             {
                 int abortedSkill = target.ClearActiveSkillPending();
@@ -2253,8 +2253,8 @@ public sealed class ClientCombatHandler
             _character.Hue, resFlags, resNoto,
             resEquipment, _netState.SupportsNewMobileIncoming));
 
-        _client.SendSeason((byte)_world.CurrentSeason, playSound: true);
-        _netState.Send(new PacketGlobalLight(_world.GetLightLevel(_character.Position)));
+        _client.SendSeason(_world.SeasonAt(_character.Position), playSound: true);
+        _netState.Send(new PacketGlobalLight(_world.GetLightLevelFor(_character)));
         if (corpseRestored && ownCorpse != null && _netState.SupportsMapWaypoints)
             _netState.Send(new PacketWaypointRemove(ownCorpse.Uid.Value));
 
@@ -2371,6 +2371,20 @@ public sealed class ClientCombatHandler
             return;
         if (triggerArgs.N3 is 1 or 2)
             warMode = triggerArgs.N3 == 2;
+        // "if (fCleanSkill) { Skill_Fail(true); m_Fight_Targ_UID.InitUID(); }"
+        // (Event_CombatMode, CClientEvent.cpp:1047-1052): the toggle drops whatever
+        // the character was doing - a cast included - unless the script cleared
+        // ARGN2.
+        if (triggerArgs.N2 != 0)
+        {
+            _spellEngine?.CancelCast(_character);
+            if (_character.HasActiveSkillPending())
+            {
+                int aborted = _character.ClearActiveSkillPending();
+                if (aborted >= 0)
+                    Character.ActiveSkillAborted?.Invoke(_character, aborted);
+            }
+        }
         // No line of text: Event_CombatMode only answers with the war-mode packet
         // and the mode update (CClientEvent.cpp:1016-1056).
         SetWarMode(warMode, syncClients: true, preserveTarget: false);
@@ -2817,12 +2831,38 @@ public sealed class ClientCombatHandler
             {
                 _netState.Send(new PacketUpdateMana(
                     _character.Uid.Value, _character.MaxMana, _character.Mana));
+                // The party sees it too, as a percentage (addManaUpdate,
+                // CClientMsg.cpp:2248-2252; PacketManaUpdate full=false, send.cpp:3183-3188).
+                ForwardStatToParty(new PacketUpdateMana(
+                    _character.Uid.Value, 100, PartyStatPercent(_character.Mana, _character.MaxMana)));
             }
             if (stamChanged)
             {
                 _netState.Send(new PacketUpdateStamina(
                     _character.Uid.Value, _character.MaxStam, _character.Stam));
+                // addStamUpdate, CClientMsg.cpp:2264-2268.
+                ForwardStatToParty(new PacketUpdateStamina(
+                    _character.Uid.Value, 100, PartyStatPercent(_character.Stam, _character.MaxStam)));
             }
+        }
+    }
+
+    private static short PartyStatPercent(int value, int max) =>
+        (short)(value * 100 / Math.Max(max, 1));
+
+    /// <summary>CPartyDef::AddStatsUpdate (CParty.cpp:96-112): every other member who
+    /// is online and can see this character gets the packet.</summary>
+    private void ForwardStatToParty(SphereNet.Network.Packets.PacketWriter packet)
+    {
+        if (_character == null) return;
+        var party = _client.PartyM?.FindParty(_character.Uid);
+        if (party == null) return;
+        foreach (var memberUid in party.Members)
+        {
+            if (memberUid == _character.Uid) continue;
+            var member = _world.FindChar(memberUid);
+            if (member != null && member.CanSee(_character))
+                _client.SendToChar?.Invoke(memberUid, packet);
         }
     }
 

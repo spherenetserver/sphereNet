@@ -879,10 +879,8 @@ public sealed class ClientWorldFeaturesHandler
             return;
         }
 
-        // Fire @Buy trigger on vendor NPC
-        _triggerDispatcher?.FireCharTrigger(vendor, CharTrigger.NPCAction,
-            new TriggerArgs { CharSrc = _character, S1 = "BUY" });
-
+        // @NPCAction belongs to NPC_ExtraAI alone (CCharNPCAct.cpp:2683-2687); a
+        // purchase does not fire it.
         // Build trade entries from packet data
         var entries = new List<TradeEntry>();
         foreach (var bi in buyItems)
@@ -1004,10 +1002,6 @@ public sealed class ClientWorldFeaturesHandler
             SysMessage(ServerMessages.Get("npc_vendor_sellfast"));
             return;
         }
-
-        // Fire @Sell trigger on vendor NPC
-        _triggerDispatcher?.FireCharTrigger(vendor, CharTrigger.NPCAction,
-            new TriggerArgs { CharSrc = _character, S1 = "SELL" });
 
         // Build trade entries from packet data. The price is the quote of the BUY
         // sample the item matches - the figure the list showed, @Sell is shown and
@@ -1664,29 +1658,33 @@ public sealed class ClientWorldFeaturesHandler
     /// CCharNPCStatus.cpp:449-469): a player could not name their own pet, and a
     /// GM's rename also reached items, which the packet never names. A refusal
     /// is silent, as upstream.</summary>
-    public void HandleRename(uint serial, string name)
+    public void HandleRename(uint serial, string name) => TrySetName(serial, name);
+
+    /// <summary>Event_SetName itself; true when the name was changed, which is what
+    /// the pet-rename prompt reports on (CClientEvent.cpp:1719-1722).</summary>
+    private bool TrySetName(uint serial, string name)
     {
-        if (_character == null) return;
+        if (_character == null) return false;
 
         var trimmed = name.Trim();
         if (trimmed.Length == 0 || trimmed.Length > 30)
-            return;
+            return false;
         foreach (char c in trimmed)
         {
             if (!char.IsLetterOrDigit(c) && c != ' ' && c != '-' && c != '\'')
-                return;
+                return false;
         }
         if (RenameReservedWords.Contains(trimmed))
-            return;
+            return false;
 
         var target = _world.FindChar(new Serial(serial));
         if (target == null || target == _character)
-            return;
+            return false;
 
         bool ownedPet = !target.IsPlayer && target.HasOwner(_character.Uid);
         bool staffOver = _character.PrivLevel >= PrivLevel.GM && _character.PrivLevel > target.PrivLevel;
         if (!ownedPet && !staffOver)
-            return;
+            return false;
 
         // @Rename runs on the RENAMER with ARGO = the pet being renamed and ARGS = the
         // new name (CClientEvent.cpp:2238-2245).
@@ -1697,11 +1695,12 @@ public sealed class ClientWorldFeaturesHandler
             S1 = trimmed
         });
         if (result == TriggerResult.True)
-            return;
+            return false;
 
         if (ownedPet)
             SysMessage(ServerMessages.GetFormatted(Msg.NpcPetRenameSuccess2, target.Name, trimmed));
         target.Name = trimmed;
+        return true;
     }
 
     /// <summary>Handle client view range change (0xC8).</summary>
@@ -3290,14 +3289,23 @@ public sealed class ClientWorldFeaturesHandler
         if (ship == null) return;
         if (ship.Pilot != _character.Uid) return;
 
-        byte dir = (byte)(data[4] & 0x07);
+        // PacketWheelBoatMove (receive.cpp:3421-3443): facing, moving, movement type.
+        // A cardinal facing other than the hull's turns the ship first, and an
+        // accepted order moves it at once instead of waiting out a period.
+        var facing = (Direction)(data[4] & 0x07);
+        var moving = (Direction)(data[5] & 0x07);
         byte speed = data[6];
         if (speed == 0)
-            engine.Stop(ship);
-        else
-            engine.SetMoveDir(ship, (Direction)dir,
+        {
+            engine.SetMoveDir(ship, facing, ShipMovementType.Stop, wheelMove: true);
+            return;
+        }
+        if (((byte)facing & 1) == 0 && ship.DirFace != facing)
+            engine.Face(ship, moving);
+        if (engine.SetMoveDir(ship, facing,
                 speed >= 2 ? ShipMovementType.Normal : ShipMovementType.OneTile,
-                wheelMove: true);
+                wheelMove: true))
+            engine.Move(ship, moving, Math.Min((int)speed, 2));
     }
 
     private static IReadOnlyDictionary<ushort, Action<ClientWorldFeaturesHandler, byte[]>> BuildExtendedCommandHandlers()
@@ -3683,19 +3691,20 @@ public sealed class ClientWorldFeaturesHandler
                         : "";
                     if (!string.IsNullOrEmpty(pmMsg))
                     {
+                        // A tell outside a party, or to someone who is not in it, is
+                        // dropped without a word (receive.cpp:2680, CParty.cpp:247-248) -
+                        // it used to answer "You could not join that party."
                         var party = _partyManager.FindParty(_character.Uid);
                         var targetUid = new Serial(pmTargetUid);
                         if (party == null || !party.IsMember(targetUid))
-                        {
-                            SysMessage(ServerMessages.Get("party_join_failed"));
                             break;
-                        }
                         if (PartySpeechFiltered(party, pmTargetUid, pmMsg))
                             break;
+                        // The tell goes to its target and nobody else
+                        // (CParty.cpp:271-272); the sender got a "[PARTY]: <uid>" echo.
                         SendToChar?.Invoke(targetUid,
                             new PacketPartyMessage(_character.Uid.Value, pmMsg, isPrivate: true));
                         PartyManager.OnPartyMessage?.Invoke(_character, pmMsg, targetUid);
-                        SysMessage(ServerMessages.GetFormatted("party_msg", $"{pmTargetUid:X}", pmMsg));
                     }
                 }
                 break;
@@ -3719,10 +3728,19 @@ public sealed class ClientWorldFeaturesHandler
             case 6: // Set loot flag
                 if (data.Length >= 2)
                 {
+                    // Nothing at all outside a party (receive.cpp:2703). Inside one the
+                    // choice is kept on the character as PARTY_CANLOOTME and answered
+                    // with the party's own message (SetLootFlag, CParty.cpp:74-83).
                     bool canLoot = data[1] != 0;
                     var party = _partyManager.FindParty(_character.Uid);
-                    party?.SetLootFlag(_character.Uid, canLoot);
-                    SysMessage(canLoot ? "Party loot sharing enabled." : "Party loot sharing disabled.");
+                    if (party == null || !party.IsMember(_character.Uid))
+                        break;
+                    party.SetLootFlag(_character.Uid, canLoot);
+                    if (canLoot)
+                        _character.SetTag("PARTY_CANLOOTME", "1");
+                    else
+                        _character.RemoveTag("PARTY_CANLOOTME");
+                    SysMessage(ServerMessages.Get(canLoot ? Msg.PartyLootAllow : Msg.PartyLootBlock));
                 }
                 break;
 
@@ -3759,6 +3777,10 @@ public sealed class ClientWorldFeaturesHandler
 
         var ch = _world.FindChar(new Serial(targetSerial));
         var item = ch == null ? _world.FindItem(new Serial(targetSerial)) : null;
+        // No menu for the dead, nor for something the requester cannot see
+        // (Event_AOSPopupMenuRequest, CClientEvent.cpp:2575-2576).
+        if (_character.IsDead || !_character.CanSee((ObjBase?)ch ?? item))
+            return;
         if (ch != null && (ch.MapIndex != _character.MapIndex ||
             _character.Position.GetDistanceTo(ch.Position) > 12))
             return;
@@ -3819,7 +3841,7 @@ public sealed class ClientWorldFeaturesHandler
     private const ushort PopupPetDrop = 43, PopupPetGuard = 130, PopupPetFollow = 131,
         PopupPetFriendAdd = 133, PopupPetKill = 134, PopupPetStop = 135,
         PopupPetTransfer = 136, PopupPetStay = 137, PopupPetRelease = 138,
-        PopupPetFriendRemove = 140;
+        PopupPetFriendRemove = 140, PopupPetRename = 919;
     private const ushort PopupTrainSkill = 200, PopupTame = 301, PopupBackpack = 302;
     private const ushort PopupStableStable = 400, PopupStableRetrieve = 401;
     private const ushort PopupPaperdoll = 520, PopupPartyAdd = 810, PopupPartyRemove = 811,
@@ -3884,6 +3906,10 @@ public sealed class ClientWorldFeaturesHandler
                     entries.Add((PopupPetKill, 3006111, enabled));
                     entries.Add((PopupPetStop, 3006112, PopupFlagColor));
                     entries.Add((PopupPetStay, 3006114, PopupFlagColor));
+                    // "Rename", for a client from 4.0.7 on (MINCLIVER_NEWDAMAGE,
+                    // CClientEvent.cpp:2669-2670).
+                    if (_netState.ClientVersionNumber >= 4_000_700)
+                        entries.Add((PopupPetRename, 1115557, PopupFlagColor));
                     if (!ch.IsStatFlag(StatFlag.Conjured))
                     {
                         entries.Add((PopupPetFriendAdd, 3006110, enabled));
@@ -4001,6 +4027,21 @@ public sealed class ClientWorldFeaturesHandler
                 case PopupPetFriendRemove: _client.ApplyPetCommand(target, "unfriend"); return;
                 case PopupPetTransfer: _client.ApplyPetCommand(target, "transfer"); return;
                 case PopupPetRelease: _client.ApplyPetCommand(target, "release"); return;
+                case PopupPetRename:
+                    // Only the owner is asked for a name; the answer goes through the
+                    // same rules as the status-bar rename (CClientEvent.cpp:2858-2861,
+                    // CLIMODE_PROMPT_NAME_PET :1719-1722).
+                    if (target.HasOwner(_character.Uid))
+                    {
+                        uint petUid = target.Uid.Value;
+                        _client.SendPrompt(petUid, ServerMessages.Get(Msg.NpcPetRenamePrompt),
+                            (_, _, type, text) =>
+                            {
+                                if (type != 0 && TrySetName(petUid, text))
+                                    SysMessage(ServerMessages.Get(Msg.NpcPetRenameSuccess1));
+                            });
+                    }
+                    return;
                 case PopupStableStable:
                     if (target.NpcBrain == NpcBrainType.Stable)
                         _client.SpeechEng?.DeliverNpcHear(_character, target, "stable");

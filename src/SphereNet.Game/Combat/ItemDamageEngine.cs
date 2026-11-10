@@ -166,7 +166,7 @@ public static class ItemDamageEngine
     }
 
     /// <summary>Armor_GetRepairDesc (CItem.cpp:5774-5790).</summary>
-    private static string RepairDesc(Item item)
+    internal static string RepairDesc(Item item)
     {
         int max = item.HitsMax, cur = item.HitsCur;
         string key = cur > max ? Msg.ItemstatusPerfect

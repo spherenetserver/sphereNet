@@ -36,9 +36,12 @@ public sealed class ScriptScope
     /// <summary>The loop cap for this scope; see <see cref="DefaultMaxLoopIterations"/>.</summary>
     public int MaxLoopIterations { get; set; } = DefaultMaxLoopIterations;
 
-    /// <summary>True once a loop has made as many passes as the cap allows.</summary>
+    /// <summary>True when the pass about to start is the one the cap cuts off.
+    /// <paramref name="passes"/> is the number already made: upstream counts the
+    /// coming pass first and stops at "LoopsMade >= MAXLOOPTIMES"
+    /// (CScriptObj.cpp:1926-1928), so a cap of N allows N-1 passes.</summary>
     public bool LoopLimitReached(long passes) =>
-        MaxLoopIterations > 0 && passes >= MaxLoopIterations;
+        MaxLoopIterations > 0 && passes + 1 >= MaxLoopIterations;
 
     /// <summary>
     /// REF object references (REF1..REFn). Stores UID strings.

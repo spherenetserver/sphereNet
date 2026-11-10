@@ -14,12 +14,15 @@ namespace SphereNet.Scripting.Expressions;
 /// </summary>
 public static class BraceRange
 {
-    /// <summary>Split brace content on whitespace, respecting nested &lt;...&gt; and
-    /// {...} so an inner expression is not torn in half.</summary>
+    /// <summary>Split brace content on whitespace or commas, respecting nested
+    /// &lt;...&gt;, {...} and (...) so an inner expression is not torn in half. The
+    /// comma is a separator as much as the space (the range's values are parsed
+    /// as a command list): <c>{1,5}</c> inside an expression used to be one token,
+    /// so it never rolled, while the same text in an assignment did.</summary>
     public static List<string> SplitTokens(string s)
     {
         var tokens = new List<string>();
-        int depth = 0, angle = 0, start = 0;
+        int depth = 0, angle = 0, paren = 0, start = 0;
         bool inTok = false;
         for (int i = 0; i < s.Length; i++)
         {
@@ -28,8 +31,10 @@ public static class BraceRange
             else if (c == '>' && angle > 0) angle--;
             else if (c == '{') depth++;
             else if (c == '}' && depth > 0) depth--;
+            else if (c == '(') paren++;
+            else if (c == ')' && paren > 0) paren--;
 
-            if (char.IsWhiteSpace(c) && angle == 0 && depth == 0)
+            if ((char.IsWhiteSpace(c) || (c == ',' && paren == 0)) && angle == 0 && depth == 0)
             {
                 if (inTok) { tokens.Add(s[start..i]); inTok = false; }
             }

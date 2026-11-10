@@ -5401,7 +5401,11 @@ public partial class Character : ObjBase
             case "BODY": value = FormatBodyProperty(); return true;
             case "DIR": value = ((byte)_direction).ToString(); return true;
             case "FLAGS": value = ((uint)_statFlags).ToString(); return true;
+            // OFAME / OKARMA read the same value (CHC_OFAME falls into CHC_FAME,
+            // CChar.cpp:2610 and :2707); they could be written but not read.
+            case "OFAME":
             case "FAME": value = _fame.ToString(); return true;
+            case "OKARMA":
             case "KARMA": value = _karma.ToString(); return true;
             // Upstream reads the brain back as a number (CCharNPC::r_WriteVal,
             // CCharNPC.cpp:168; the numbering is NPCBRAIN_TYPE, CChar.h:32 - the

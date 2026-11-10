@@ -1417,9 +1417,10 @@ public sealed class ScriptInterpreter
              v += countDown ? -1 : 1, iterations++)
         {
             if (scope.LoopLimitReached(iterations)) { ReportLoopLimit(scope, iterations); break; }
-            scope.LocalVars.SetInt("_FOR", v);
-            if (!loopVar.Equals("_FOR", StringComparison.OrdinalIgnoreCase))
-                scope.LocalVars.SetInt(loopVar, v);
+            // Only the loop's own variable is written (m_VarsLocal.SetNum(sLoopVar),
+            // CScriptObj.cpp:1930/1953): a named FOR leaves LOCAL._FOR alone, so a
+            // named loop nested in an unnamed one no longer overwrites its counter.
+            scope.LocalVars.SetInt(loopVar, v);
             result = Execute(forBody, target, source, args, scope);
             if (scope.IsContinuing) { scope.IsContinuing = false; continue; }
             if (scope.IsBreaking) { scope.IsBreaking = false; break; }

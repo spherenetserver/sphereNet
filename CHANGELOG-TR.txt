@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-10] - Script araliklari ve donguleri, bolge bayrak anahtarlari, karakter kayit anahtarlari
+------------------------------------------------------------------------
+DUZELTME - Bir ifadenin icinde virgulle yazilan {a,b} araligi tek parca okunuyor ve hic zar
+       atilmiyordu; ayni metin atamada calisiyordu. Virgul, bosluk gibi aralik degerlerini
+       ayirir. Bir cagrinin parantezleri icindeki virguller cagriyla kalir.
+DUZELTME - Adli FOR (FOR x 1 5) LOCAL._FOR'u da yaziyordu; adsiz bir dongunun icindeki
+       adli dongu distaki sayaci eziyordu. Artik yalnizca dongunun kendi degiskeni
+       yazilir (CScriptObj.cpp:1930, 1953).
+DUZELTME - MAXLOOPTIMES referanstan bir gecis fazla izin veriyordu: N siniri artik N'inci
+       gecisten once durdurur (CScriptObj.cpp:1926-1928).
+EKLENDI - Bolge anahtarlari ANNOUNCE, ARENA, NODECAY, BUILDABLE, GATE, RECALL ve
+       RECALLOUT, okuma ve yazma, referans anlamiyla: "izinli" anahtarlar bayraklarinin
+       tersidir (CRegion.cpp:315-390, 530-600).
+DUZELTME - OFAME ve OKARMA yazilabiliyor ama okunamiyordu; FAME ve KARMA'yi okurlar
+       (CChar.cpp:2610, 2707).
+DUZELTME - Karakterin FONT ve element hasar dagilimi (DAMPHYSICAL, DAMFIRE, DAMCOLD,
+       DAMPOISON, DAMENERGY) kayda yazilmiyor, yeniden baslatmada kayboluyordu.
+
 [2026-11-10] - Hasar sayilari, notoriety mesajlari, rune menzili, eski hesap bloklari
 ------------------------------------------------------------------------
 DUZELTME - Hasar sayilari, ozellik maskesi ne olursa olsun 18 karo icindeki her istemciye

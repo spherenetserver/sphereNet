@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-10] - Script ranges and loops, region flag keys, character save keys
+------------------------------------------------------------------------
+FIX - A {a,b} range written with a comma inside an expression was read as one token and
+      never rolled; the same text in an assignment did. The comma separates range values
+      like the space does. Commas inside a call's parentheses stay with the call.
+FIX - A named FOR (FOR x 1 5) also wrote LOCAL._FOR, so a named loop nested inside an
+      unnamed one overwrote the outer counter. Only the loop's own variable is written
+      (CScriptObj.cpp:1930, 1953).
+FIX - MAXLOOPTIMES allowed one pass more than the reference: a cap of N now stops before
+      the Nth pass (CScriptObj.cpp:1926-1928).
+ADD - Region keys ANNOUNCE, ARENA, NODECAY, BUILDABLE, GATE, RECALL and RECALLOUT, read
+      and write, with the reference meaning: the "allowed" keys are the inverse of their
+      flag (CRegion.cpp:315-390, 530-600).
+FIX - OFAME and OKARMA could be written but not read; they read FAME and KARMA
+      (CChar.cpp:2610, 2707).
+FIX - A character's FONT and elemental damage split (DAMPHYSICAL, DAMFIRE, DAMCOLD,
+      DAMPOISON, DAMENERGY) were not written to the save and were lost on restart.
+
 [2026-11-10] - Damage numbers, notoriety messages, rune reach, legacy account blocks
 ------------------------------------------------------------------------
 FIX - Damage numbers went to every client within 18 tiles, whatever the feature mask. They

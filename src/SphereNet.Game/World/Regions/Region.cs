@@ -283,6 +283,14 @@ public class Region : IScriptObj
             _flags &= ~flag;
     }
 
+    /// <summary>GetArgVal() != 0 for a flag argument.</summary>
+    private static bool IsTruthy(string val)
+    {
+        val = val.Trim();
+        return val.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+               (SphereNet.Core.Types.ScriptNumber.TryParseToken(val, out long n) && n != 0);
+    }
+
     // --- IScriptObj ---
 
     public string GetName() => _name;
@@ -326,6 +334,15 @@ public class Region : IScriptObj
             case "MARK": value = GetFlagBool(RegionFlag.Recall) ? "0" : "1"; return true;
             case "SAFE": value = GetFlagBool(RegionFlag.Safe) ? "1" : "0"; return true;
             case "UNDERGROUND": value = GetFlagBool(RegionFlag.Underground) ? "1" : "0"; return true;
+            // The rest of CRegion's flag keys (CRegion.cpp:315-390). BUILDABLE, GATE
+            // and RECALL/RECALLOUT read "is it allowed", the inverse of their flag.
+            case "ANNOUNCE": value = GetFlagBool(RegionFlag.Announce) ? "1" : "0"; return true;
+            case "ARENA": value = GetFlagBool(RegionFlag.Arena) ? "1" : "0"; return true;
+            case "NODECAY": value = GetFlagBool(RegionFlag.NoDecay) ? "1" : "0"; return true;
+            case "BUILDABLE": value = GetFlagBool(RegionFlag.NoBuild) ? "0" : "1"; return true;
+            case "GATE": value = GetFlagBool(RegionFlag.Gate) ? "0" : "1"; return true;
+            case "RECALL":
+            case "RECALLOUT": value = GetFlagBool(RegionFlag.RecallOut) ? "0" : "1"; return true;
         }
 
         // RESOURCES / RESOURCES.n
@@ -442,6 +459,15 @@ public class Region : IScriptObj
                 return true;
             case "SAFE": SetFlagBool(RegionFlag.Safe, val); return true;
             case "UNDERGROUND": SetFlagBool(RegionFlag.Underground, val); return true;
+            // CRegion::r_LoadVal (CRegion.cpp:530-600): ANNOUNCE with no argument
+            // turns it on; the "allowed" keys raise their flag on 0.
+            case "ANNOUNCE": SetFlagBool(RegionFlag.Announce, val.Trim().Length == 0 ? "1" : val); return true;
+            case "ARENA": SetFlagBool(RegionFlag.Arena, val); return true;
+            case "NODECAY": SetFlagBool(RegionFlag.NoDecay, val); return true;
+            case "BUILDABLE": SetFlagBool(RegionFlag.NoBuild, IsTruthy(val) ? "0" : "1"); return true;
+            case "GATE": SetFlagBool(RegionFlag.Gate, IsTruthy(val) ? "0" : "1"); return true;
+            case "RECALL":
+            case "RECALLOUT": SetFlagBool(RegionFlag.RecallOut, IsTruthy(val) ? "0" : "1"); return true;
             case "FLAGS":
                 // CRegion FLAGS is GetArgVal (CRegion.cpp r_LoadVal): a Sphere number
                 // ("0100" is hex), a '|' list of region_flag_* names or an expression

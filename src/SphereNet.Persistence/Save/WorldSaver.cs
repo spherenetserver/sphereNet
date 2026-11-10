@@ -1548,6 +1548,16 @@ public sealed class WorldSaver
         if (!string.IsNullOrEmpty(ch.Profile)) w.WriteProperty("PROFILE", ch.Profile);
         if (ch.PFlag != 0) w.WriteProperty("PFLAG", ch.PFlag);
         if (ch.Tithing != 0) w.WriteProperty("TITHING", ch.Tithing);
+        // Set by script only, so base values; none of them reached the save.
+        // FONT when not the normal one (CChar.cpp:4152) and the elemental damage
+        // split. LIGHT is left out on purpose: Night Sight writes the same field,
+        // so it can be a derived value here.
+        if (ch.Font != 3) w.WriteProperty("FONT", ch.Font);
+        if (ch.DamPhysical != 0) w.WriteProperty("DAMPHYSICAL", ch.DamPhysical);
+        if (ch.DamFire != 0) w.WriteProperty("DAMFIRE", ch.DamFire);
+        if (ch.DamCold != 0) w.WriteProperty("DAMCOLD", ch.DamCold);
+        if (ch.DamPoison != 0) w.WriteProperty("DAMPOISON", ch.DamPoison);
+        if (ch.DamEnergy != 0) w.WriteProperty("DAMENERGY", ch.DamEnergy);
         if (ch.SkillClass != 0) w.WriteProperty("SKILLCLASS", ch.SkillClass);
 
         // The creature's own damage, written only when it has one (CChar.cpp:4159).

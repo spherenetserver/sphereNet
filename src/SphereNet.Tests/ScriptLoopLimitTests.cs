@@ -41,8 +41,10 @@ public sealed class ScriptLoopLimitTests
     [Fact]
     public void TheConfiguredCapStopsARunawayLoop()
     {
+        // Upstream counts the coming pass, then stops at LoopsMade >= MAXLOOPTIMES
+        // (CScriptObj.cpp:1845-1846): a cap of 50 lets 49 passes run.
         ScriptScope.DefaultMaxLoopIterations = 50;
-        Assert.Equal("50", Run("TAG.X=0", "WHILE (1)", "TAG.X=<eval <tag.x>+1>", "ENDWHILE"));
+        Assert.Equal("49", Run("TAG.X=0", "WHILE (1)", "TAG.X=<eval <tag.x>+1>", "ENDWHILE"));
     }
 
     [Fact]

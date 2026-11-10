@@ -250,6 +250,55 @@ public sealed class SharedReferenceGameplayTests
         Assert.Equal(blocked, account.IsBanned);
     }
 
+    // ---- script engine and region keys ----
+
+    [Fact]
+    public void ABraceRange_SplitsOnCommasAsWellAsSpaces()
+    {
+        var tokens = SphereNet.Scripting.Expressions.BraceRange.SplitTokens("3,7");
+        Assert.Equal(["3", "7"], tokens);
+        // A call's own commas stay inside its token.
+        Assert.Equal(["f(1,2)", "9"], SphereNet.Scripting.Expressions.BraceRange.SplitTokens("f(1,2) 9"));
+    }
+
+    [Fact]
+    public void TheLoopCap_AllowsOnePassFewerThanItsValue()
+    {
+        var scope = new SphereNet.Scripting.Execution.ScriptScope { MaxLoopIterations = 10 };
+        Assert.False(scope.LoopLimitReached(8));   // the 9th pass still runs
+        Assert.True(scope.LoopLimitReached(9));    // the 10th is cut off
+    }
+
+    [Fact]
+    public void RegionFlagKeys_ReadAndWriteTheReferenceFlags()
+    {
+        var region = new SphereNet.Game.World.Regions.Region { Name = "r", MapIndex = 0 };
+
+        Assert.True(region.TrySetProperty("RECALLOUT", "0"));
+        Assert.True(region.IsFlag(RegionFlag.RecallOut));
+        Assert.True(region.TryGetProperty("RECALL", out string recall));
+        Assert.Equal("0", recall);
+
+        Assert.True(region.TrySetProperty("NODECAY", "1"));
+        Assert.True(region.IsFlag(RegionFlag.NoDecay));
+        Assert.True(region.TrySetProperty("ARENA", "1"));
+        Assert.True(region.IsFlag(RegionFlag.Arena));
+        Assert.True(region.TrySetProperty("BUILDABLE", "0"));
+        Assert.True(region.IsFlag(RegionFlag.NoBuild));
+        Assert.True(region.TrySetProperty("GATE", "0"));
+        Assert.True(region.IsFlag(RegionFlag.Gate));
+    }
+
+    [Fact]
+    public void OFameAndOKarma_CanBeReadBack()
+    {
+        var ch = new Character { Fame = 1234, Karma = -55 };
+        Assert.True(ch.TryGetProperty("OFAME", out string fame));
+        Assert.Equal("1234", fame);
+        Assert.True(ch.TryGetProperty("OKARMA", out string karma));
+        Assert.Equal("-55", karma);
+    }
+
     // ---- spells ----
 
     [Fact]

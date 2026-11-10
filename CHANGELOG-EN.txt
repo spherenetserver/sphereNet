@@ -4,6 +4,44 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-10] - Touch, equip and cast-source gates
+------------------------------------------------------------------------
+FIX - A wand or scroll stayed bound to its caster after its spell cursor was dismissed,
+      timed out or replaced, so the next spell cast from the spellbook or a macro was
+      priced as a wand or scroll cast (no mana, no reagents, no book). The source now
+      belongs to one cast, as in Cmd_Skill_Magery (CClientUse.cpp:1009): a cast from the
+      caster's own power drops it, and dropping a spell cursor releases it and fires
+      @SpellTargetCancel with ARGN1 = spell and ARGO = the wand or scroll
+      (CClientMsg.cpp:1678-1701). @SpellTargetCancel did not fire at all for a
+      non-precast cursor.
+FIX - Magic Lock and Unlock flipped the item type unconditionally. Magic Lock now runs
+      SetMagicLock (CItem.cpp:5515-5592): the key for a container, door or hold, never an
+      OWNED item, only lockable types. Unlock runs Use_LockPick twice around a Magery
+      roll against the lock's complexity (CItem.cpp:5708-5719), so MAGICUNLOCKDOOR, the
+      key shortcut and the snooping crime apply as for lockpicking.
+FIX - An item on the ground was lifted when it was not MOVE_NEVER, whatever else it was.
+      Pickup now asks CItem::IsMovable (CItem.cpp:712-735, CCharAct.cpp:2976-2979): a
+      STATIC item or a spell field never, an INVIS item or one whose tiledata weight is
+      255 unless MOVE_ALWAYS. PRIV_ALLMOVE bypasses like GM. House lockdowns stay with
+      the housing engine.
+FIX - The equip packet's layer byte was trusted, so a forged 0x13 wore any dragged item
+      on any layer (gold over the backpack, a sword on the head). The item's own layer
+      replaces it (receive.cpp:554-564); an item that is not wearable, or whose layer is
+      LAYER_HORSE or above, is not equipped, and a worn backpack is never displaced.
+FIX - Pickup, dropping into a container or onto a character, dropping on the ground and
+      vendor buy/sell now require line of sight as CanTouch does (CCharStatus.cpp:
+      1415-1422, CClientEvent.cpp:314 and 549, receive.cpp:752). Dropping into a pet's
+      pack also needs the pet within reach.
+FIX - Spell targeting: a ground pick was checked for line of sight against the caster,
+      so it always passed, and TARG_XYZ-only spells (Teleport) were not checked at all.
+      The point is now checked (CCharSpell.cpp:2825-2835). The anti-magic flags of the
+      region at the target are applied as well as the caster's own
+      (Spell_TargCheck_Face, :2731-2738).
+FIX - Double-clicking ingots, or targeting them with a smith's hammer, opened the
+      blacksmith menu with no checks. It now wants the ingots on the smith, a smith's
+      hammer in hand and a forge within 3 tiles (Cmd_Skill_Smith, CClientUse.cpp:
+      1255-1291).
+
 [2026-10-24] - Player bots: walking on into places, place room, ledge foes, weighted searches, menu gates, verified learning, bot brain
 ------------------------------------------------------------------------
 CHANGE - PlayerBotCount defaults to 300 (was 50), in the code and in the shipped

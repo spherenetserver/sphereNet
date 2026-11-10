@@ -49,6 +49,7 @@ public sealed class InvisibleEquipVisualTests
 
     private static Item GroundPickaxe(GameWorld world)
     {
+        TestHarness.SeedWearable(Pickaxe, Layer.OneHanded);
         var pick = world.CreateItem();
         pick.BaseId = Pickaxe;
         pick.ItemType = ItemType.WeaponMacePick;

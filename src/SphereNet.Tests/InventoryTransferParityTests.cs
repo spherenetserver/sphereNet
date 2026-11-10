@@ -24,6 +24,7 @@ namespace SphereNet.Tests;
 /// - a busy equip layer is only freed if what is on it can be moved
 ///   (CCharStatus.cpp:470).
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class InventoryTransferParityTests
 {
     private static (GameWorld World, GameClient Client, Character Player) Setup(int id = 7100)
@@ -341,6 +342,8 @@ public sealed class InventoryTransferParityTests
     public void SwappingTwoOrdinaryWeaponsStillWorks()
     {
         var (world, client, player) = Setup(7113);
+        TestHarness.SeedWearable(0x0F5E, Layer.OneHanded);
+        TestHarness.SeedWearable(0x0F5F, Layer.OneHanded);
 
         var first = NewItem(world, 0x0F5E);
         first.ItemType = ItemType.WeaponSword;

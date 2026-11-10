@@ -1230,7 +1230,7 @@ public sealed class ClientItemUseHandler
                     if (item.ItemType == ItemType.WeaponMaceSmith)
                     {
                         if (targetObj is Item ingot && ingot.ItemType == ItemType.Ingot)
-                            OpenCraftingGump(SkillType.Blacksmithing);
+                            CmdSkillSmith(ingot);
                         else if (targetObj is Item armor && IsArmorRepairable(armor))
                             Skills.Information.ActiveSkillEngine.RepairItem(
                                 new GameClient.InfoSkillSink(_client, _character), armor);
@@ -1377,7 +1377,7 @@ public sealed class ClientItemUseHandler
                     SkillMiningSmelt(_world.FindItem(new Serial(serial)), item));
                 break;
             case ItemType.Ingot:
-                OpenCraftingGump(SkillType.Blacksmithing);
+                CmdSkillSmith(item);
                 break;
 
             // ---- crafting tools → default crafting gump (overridable via @DClick trigger) ----
@@ -1559,8 +1559,7 @@ public sealed class ClientItemUseHandler
                 }
                 // The engine spends the charge / scroll only once the cast succeeds
                 // (SpellEngine.CastDone), so a fizzle or a cancelled target costs nothing.
-                _character.SetTag(isWand ? "WAND_UID" : "SCROLL_UID", item.Uid.Value.ToString());
-                HandleCastSpell(itemSpell, 0);
+                _client.HandleCastSpellFromItem(itemSpell, item);
                 break;
             }
 
@@ -3154,6 +3153,39 @@ public sealed class ClientItemUseHandler
             return false;
         return _world.CanSeeLOSFor(_character, _character.Position, pt,
             maxDist: 6, allowGmPass: true);
+    }
+
+    /// <summary>CClient::Cmd_Skill_Smith (CClientUse.cpp:1255-1291), reached by
+    /// double-clicking ingots (:392) or targeting them with a smith's hammer
+    /// (CClientTarg.cpp:1854): the ingots on the smith (DEFMSG_SMITHING_REACH), a
+    /// smith's hammer in hand (DEFMSG_SMITHING_HAMMER) and a forge within 3 tiles
+    /// (DEFMSG_SMITHING_FORGE) before the blacksmith menu opens. The menu opened on
+    /// the bare double-click, so ingots lying on the ground could be smithed with no
+    /// hammer and no forge - Scripts-X's SKILLMAKE lines name neither.</summary>
+    private void CmdSkillSmith(Item ingots)
+    {
+        if (_character == null) return;
+        if (ingots.ItemType != ItemType.Ingot)
+        {
+            SysMessage(ServerMessages.Get(Msg.SmithingFail));
+            return;
+        }
+        if (ingots.GetTopLevelObj() != _character)
+        {
+            SysMessage(ServerMessages.Get(Msg.SmithingReach));
+            return;
+        }
+        if (_character.GetEquippedItem(Layer.OneHanded) is not { ItemType: ItemType.WeaponMaceSmith })
+        {
+            SysMessage(ServerMessages.Get(Msg.SmithingHammer));
+            return;
+        }
+        if (!TryFindForgeNearby(3, out _))
+        {
+            SysMessage(ServerMessages.Get(Msg.SmithingForge));
+            return;
+        }
+        OpenCraftingGump(SkillType.Blacksmithing);
     }
 
     /// <summary>CWorldMap::FindItemTypeNearby(pt, IT_FORGE, range) (CWorldMap.cpp:663):

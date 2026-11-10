@@ -463,7 +463,7 @@ public sealed class ClientScriptConsoleHandler
             {
                 _character.RemoveTag("CAST_MENU_SPELL");
                 _character.SetTag("SUMMON_SELECT", args.Trim());
-                (_client as GameClient)?.HandleCastSpell(SpellType.SummonCreature, _character.Uid.Value);
+                (_client as GameClient)?.ContinueMenuCast(SpellType.SummonCreature, _character.Uid.Value);
                 return true;
             }
             // Reference CV_SUMMON: summon the given chardef as a temporary
@@ -488,7 +488,7 @@ public sealed class ClientScriptConsoleHandler
             {
                 polyChar.RemoveTag("CAST_MENU_SPELL");
                 polyChar.SetTag("POLY_SELECT", args.Trim());
-                (_client as GameClient)?.HandleCastSpell((SpellType)pendingPolyId, polyChar.Uid.Value);
+                (_client as GameClient)?.ContinueMenuCast((SpellType)pendingPolyId, polyChar.Uid.Value);
                 return true;
             }
         }

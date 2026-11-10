@@ -859,8 +859,10 @@ public sealed class ClientWorldFeaturesHandler
         if (_character.IsDead) return;
         var vendor = _world.FindChar(new Serial(vendorSerial));
         if (vendor == null || !VendorEngine.IsVendorLike(vendor)) return;
+        // buyer->CanTouch(vendor) (receive.cpp:752): reach AND line of sight.
         if (_character.MapIndex != vendor.MapIndex ||
-            _character.Position.GetDistanceTo(vendor.Position) > 3)
+            _character.Position.GetDistanceTo(vendor.Position) > 3 ||
+            !_world.CanSeeLOSFor(_character, vendor, allowGmPass: true))
             return;
 
         if (flag == 0 || buyItems.Count == 0)
@@ -984,8 +986,10 @@ public sealed class ClientWorldFeaturesHandler
         if (_character.IsDead) return;
         var vendor = _world.FindChar(new Serial(vendorSerial));
         if (vendor == null || !VendorEngine.IsVendorLike(vendor)) return;
+        // CanTouch(vendor), as for the buy (receive.cpp:752): reach AND line of sight.
         if (_character.MapIndex != vendor.MapIndex ||
-            _character.Position.GetDistanceTo(vendor.Position) > 3)
+            _character.Position.GetDistanceTo(vendor.Position) > 3 ||
+            !_world.CanSeeLOSFor(_character, vendor, allowGmPass: true))
             return;
 
         if (sellItems.Count == 0)

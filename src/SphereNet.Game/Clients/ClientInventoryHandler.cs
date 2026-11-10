@@ -854,6 +854,13 @@ public sealed class ClientInventoryHandler
                     }
                 }
             }
+
+            // ItemPickup asks CanTouch (CCharAct.cpp:2828), which wants the item's
+            // top-level object on this map and in line of sight (CCharStatus.cpp:
+            // 1415-1422), not merely within reach: the tile count alone let items be
+            // lifted through walls and floors, or off another facet at the same x,y.
+            // Same touch rule the double-click uses, CAN_I/C_DCIGNORELOS honoured.
+            if (!_client.ItemUse.CanTouchItem(item)) { SendPickupFailed(4); return; }
         }
 
         // Looting crime (Source-X CheckCorpseCrime): taking an item out of another
@@ -1493,6 +1500,16 @@ public sealed class ClientInventoryHandler
                                 return;
                             }
                         }
+
+                        // "CanTouch(pObjOn) // Must also be LOS" (CClientEvent.cpp:314):
+                        // a world container through a wall, and a pet's pack from
+                        // anywhere in the world, were both accepted on reach alone.
+                        if (!_client.ItemUse.CanTouchItem(container))
+                        {
+                            RestoreToOrigin(item);
+                            _netState.Send(new PacketDropReject());
+                            return;
+                        }
                     }
                 }
 
@@ -1827,7 +1844,8 @@ public sealed class ClientInventoryHandler
             {
                 if (_character.PrivLevel < PrivLevel.GM &&
                     (_character.MapIndex != charTarget.MapIndex ||
-                     _character.Position.GetDistanceTo(charTarget.Position) > 3))
+                     _character.Position.GetDistanceTo(charTarget.Position) > 3 ||
+                     !_world.CanSeeLOSFor(_character, charTarget)))   // CanTouch, CClientEvent.cpp:314
                 {
                     RestoreToOrigin(item);
                     _netState.Send(new PacketDropReject());
@@ -1935,7 +1953,12 @@ public sealed class ClientInventoryHandler
                 }
             }
             int dropDist = Math.Max(Math.Abs(_character.X - x), Math.Abs(_character.Y - y));
-            if (dropDist > 3)
+            // CChar::CanTouch(pt) is line of sight to the point (CCharStatus.cpp:1282,
+            // called at CClientEvent.cpp:549 "Must also be LOS"): no dropping into a
+            // sealed room through its wall.
+            if (dropDist > 3 ||
+                !_world.CanSeeLOSFor(_character, _character.Position,
+                    new Point3D(x, y, z, _character.MapIndex), maxDist: 6))
             {
                 RestoreToOrigin(item);
                 _netState.Send(new PacketDropReject());
@@ -2336,6 +2359,22 @@ public sealed class ClientInventoryHandler
         if (target == null) target = _character;
 
         if (target != _character && _character.PrivLevel < PrivLevel.GM)
+            return SettleEquipDrag(item, false);
+
+        // The layer byte comes from the client and is not trusted: Source-X replaces
+        // it with the item's own layer (CanEquipLayer(item, LAYER_QTY), receive.cpp:
+        // 554-562), refuses anything that is not wearable, and equips nothing at
+        // LAYER_HORSE or above from this packet (:564). A forged 0x13 used to wear any
+        // dragged item on any layer - a sword on the head, a stack of gold over the
+        // backpack or the bank box.
+        Layer ownLayer = _client.ItemUse.ResolveWearableLayer(item);
+        if (ownLayer == Layer.None || ownLayer >= Layer.Horse)
+            return SettleEquipDrag(item, false);
+        layer = (byte)ownLayer;
+        // A pack already worn is never displaced by another one: CanEquipLayer
+        // answers LAYER_NONE for an occupied LAYER_PACK (CCharStatus.cpp:454-457).
+        if (ownLayer == Layer.Pack &&
+            target.GetEquippedItem(ownLayer) is { } wornContainer && !ReferenceEquals(wornContainer, item))
             return SettleEquipDrag(item, false);
 
         // Resolve the final hand before testing/bouncing occupants. Character.Equip

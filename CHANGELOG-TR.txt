@@ -4,6 +4,46 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-10] - Dokunma, giyme ve buyu kaynagi kapilari
+------------------------------------------------------------------------
+DUZELTME - Asa ya da parsomen, buyu imleci kapatildiginda, zaman asimina ugradiginda ya
+       da baska imlecle degistirildiginde buyucuye bagli kaliyordu; buyu kitabindan ya
+       da makrodan atilan sonraki buyu asa/parsomen fiyatina (manasiz, reagentsiz,
+       kitapsiz) atiliyordu. Kaynak artik tek bir buyuye ait (Cmd_Skill_Magery,
+       CClientUse.cpp:1009): kendi gucuyle atilan buyu onu birakir, buyu imlecinin
+       dusmesi onu serbest birakir ve ARGN1 = buyu, ARGO = asa/parsomen ile
+       @SpellTargetCancel atesler (CClientMsg.cpp:1678-1701). Precast olmayan imlecte
+       @SpellTargetCancel hic atesmiyordu.
+DUZELTME - Magic Lock ve Unlock item tipini kosulsuz degistiriyordu. Magic Lock artik
+       SetMagicLock'u calistirir (CItem.cpp:5515-5592): kap, kapi ya da ambar icin
+       anahtar gerekir, OWNED item asla kilitlenmez, yalnizca kilitlenebilir tipler.
+       Unlock, kilit karmasikligina karsi Magery zarinin iki yaninda Use_LockPick
+       calistirir (CItem.cpp:5708-5719); MAGICUNLOCKDOOR, anahtar kisayolu ve
+       snooping suclamasi lockpicking'deki gibi gecerli.
+DUZELTME - Yerdeki bir item MOVE_NEVER degilse ne olursa olsun kaldirilabiliyordu.
+       Kaldirma artik CItem::IsMovable'a sorar (CItem.cpp:712-735, CCharAct.cpp:
+       2976-2979): STATIC item ya da buyu alani asla; INVIS ya da tiledata agirligi 255
+       olan item MOVE_ALWAYS degilse hayir. PRIV_ALLMOVE GM gibi gecer. Ev kilitlemeleri
+       ev motorunda kalir.
+DUZELTME - Giyme paketindeki katman baytina guveniliyordu; sahte bir 0x13 ile
+       suruklenen herhangi bir item herhangi bir katmana giyilebiliyordu (sirt cantasi
+       yerine altin, kafaya kilic). Artik item'in kendi katmani kullanilir
+       (receive.cpp:554-564); giyilemeyen ya da katmani LAYER_HORSE ve uzeri olan item
+       giyilmez, giyili sirt cantasi asla yerinden edilmez.
+DUZELTME - Kaldirma, kaba ya da karaktere birakma, yere birakma ve vendor alis/satis
+       artik CanTouch gibi gorus hatti ister (CCharStatus.cpp:1415-1422,
+       CClientEvent.cpp:314 ve 549, receive.cpp:752). Evcil hayvanin cantasina birakma
+       da hayvanin erisim mesafesinde olmasini ister.
+DUZELTME - Buyu hedefleme: yere yapilan secim gorus hatti icin buyucunun kendisine
+       karsi denetleniyordu, bu yuzden hep geciyordu; yalnizca TARG_XYZ olan buyuler
+       (Teleport) hic denetlenmiyordu. Artik nokta denetlenir (CCharSpell.cpp:
+       2825-2835). Buyucunun kendi bolgesinin yaninda hedefteki bolgenin anti-magic
+       bayraklari da uygulanir (Spell_TargCheck_Face, :2731-2738).
+DUZELTME - Kulceye cift tiklamak ya da demirci cekiciyle kulceyi hedeflemek demirci
+       menusunu hicbir kontrol yapmadan aciyordu. Artik kulcelerin demircinin uzerinde
+       olmasi, elde demirci cekici ve 3 kare icinde ocak gerekir (Cmd_Skill_Smith,
+       CClientUse.cpp:1255-1291).
+
 [2026-10-24] - Oyuncu botlari: yerlerin icine yurume, yer kapasitesi, cikintidaki dusman, agirlikli arama, menulu gate, dogrulanan ogrenme, bot beyni
 ------------------------------------------------------------------------
 DEGISIKLIK - PlayerBotCount varsayilani 300 (eskiden 50), kodda ve gelen sphere.ini'de.

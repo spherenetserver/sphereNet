@@ -698,54 +698,59 @@ public static class ActiveSkillEngine
     /// unless a one-in-N roll lets it be tried, a crime the onlookers may see. Not
     /// testing, it unlocks (Use_KeyChange); the difficulty is the lock's complexity
     /// (MORE2) / 10.</summary>
-    public static int UseLockPick(IActiveSkillSink sink, Item lockItem, bool test, bool fail)
+    public static int UseLockPick(IActiveSkillSink sink, Item lockItem, bool test, bool fail) =>
+        UseLockPick(sink.World, sink.Self, lockItem, test, fail, sink.SysMessage, sink.Random);
+
+    /// <summary>The same Use_LockPick for a caller with no skill sink - the Unlock
+    /// spell (CItem::OnSpellEffect SPELL_Unlock, CItem.cpp:5708-5719).</summary>
+    public static int UseLockPick(GameWorld world, Character ch, Item lockItem, bool test, bool fail,
+        Action<string> say, Random random)
     {
-        var ch = sink.Self;
         if (!IsTypeLocked(lockItem))
         {
-            sink.SysMessage(ServerMessages.Get(Msg.UnlockCantGeneral));
+            say(ServerMessages.Get(Msg.UnlockCantGeneral));
             return -1;
         }
         if (lockItem.GetTopLevelObj() is Character carrier && carrier != ch)
         {
-            sink.SysMessage(ServerMessages.Get(Msg.UnlockCantThere));
+            say(ServerMessages.Get(Msg.UnlockCantThere));
             return -1;
         }
         if (ch.FindKeyFor(lockItem) != null)
         {
             if (!test)
-                sink.SysMessage(ServerMessages.Get(Msg.LockHasKey));
+                say(ServerMessages.Get(Msg.LockHasKey));
             return 0;
         }
         if (lockItem.ItemType == ItemType.DoorLocked && Item.MagicUnlockDoor != -1)
         {
             if (Item.MagicUnlockDoor == 0)
             {
-                sink.SysMessage(ServerMessages.Get(Msg.UnlockDoorNeedsKey));
+                say(ServerMessages.Get(Msg.UnlockDoorNeedsKey));
                 return -1;
             }
             if (!test)
-                CrimeWitnessService.CheckCrimeSeen(sink.World, ch, null, SkillType.Snooping, sink.Random,
+                CrimeWitnessService.CheckCrimeSeen(world, ch, null, SkillType.Snooping, random,
                     item: lockItem, action: ServerMessages.Get(Msg.LockPickCrime));
-            if (sink.Random.Next(Item.MagicUnlockDoor) != 0)
+            if (random.Next(Item.MagicUnlockDoor) != 0)
                 return 10000;   // plain impossible
         }
         if (!test)
         {
             if (fail)
             {
-                sink.SysMessage(ServerMessages.Get(lockItem.ItemType == ItemType.DoorLocked
+                say(ServerMessages.Get(lockItem.ItemType == ItemType.DoorLocked
                     ? Msg.UnlockFailDoor : Msg.UnlockFailCont));
                 return -1;
             }
-            UnlockWithMessage(sink, lockItem);
+            UnlockWithMessage(say, lockItem);
         }
         return (int)Math.Min(lockItem.More2 / 10u, (uint)int.MaxValue);
     }
 
     /// <summary>The unlocking half of CChar::Use_KeyChange (CCharUse.cpp): the locked
     /// type turns into its open one, and the picker is told which.</summary>
-    private static void UnlockWithMessage(IActiveSkillSink sink, Item lockItem)
+    private static void UnlockWithMessage(Action<string> say, Item lockItem)
     {
         (ItemType open, string msg) = lockItem.ItemType switch
         {
@@ -755,7 +760,63 @@ public static class ActiveSkillEngine
             _ => (ItemType.Door, Msg.MsgKeyTargDoorUlock),
         };
         lockItem.ItemType = open;
-        sink.SysMessage(ServerMessages.Get(msg));
+        say(ServerMessages.Get(msg));
+    }
+
+    /// <summary>CItem::IsTypeLockable (CItem.cpp:4067-4082).</summary>
+    private static bool IsTypeLockable(Item item) =>
+        item.ItemType is ItemType.Container or ItemType.Door or ItemType.DoorOpen or ItemType.ShipSide
+            or ItemType.ShipPlank or ItemType.ShipHold || IsTypeLocked(item);
+
+    /// <summary>CItem::SetMagicLock (CItem.cpp:5515-5592), what the Magic Lock spell
+    /// does to an item: never twice, only to a lockable thing, never to an OWNED one,
+    /// and a container, door or hold only by a caster carrying its key - "or people
+    /// would be locking up dungeon chests" / "all the doors in towns". A ship side
+    /// needs no key; any other lockable type (a plank) cannot be locked.</summary>
+    public static bool SetMagicLock(Character ch, Item item, Action<string> say)
+    {
+        if (IsTypeLocked(item))
+        {
+            say(ServerMessages.Get(Msg.LockAlreadyIs));
+            return false;
+        }
+        if (!IsTypeLockable(item))
+        {
+            say(ServerMessages.Get(Msg.LockUnlockeable));
+            return false;
+        }
+        if (item.IsAttr(ObjAttributes.Owned))
+        {
+            say(ServerMessages.Get(Msg.LockMayNot));
+            return false;
+        }
+
+        (ItemType locked, string ok, string noKey)? keyed = item.ItemType switch
+        {
+            ItemType.Container => (ItemType.ContainerLocked, Msg.LockContOk, Msg.LockContNoKey),
+            ItemType.Door or ItemType.DoorOpen => (ItemType.DoorLocked, Msg.LockDoorOk, Msg.LockDoorNoKey),
+            ItemType.ShipHold => (ItemType.ShipHoldLock, Msg.LockHoldOk, Msg.LockHoldNoKey),
+            _ => null,
+        };
+        if (keyed is { } k)
+        {
+            if (ch.FindKeyFor(item) == null)
+            {
+                say(ServerMessages.Get(k.noKey));
+                return false;
+            }
+            item.ItemType = k.locked;
+            say(ServerMessages.Get(k.ok));
+            return true;
+        }
+        if (item.ItemType == ItemType.ShipSide)
+        {
+            item.ItemType = ItemType.ShipSideLocked;
+            say(ServerMessages.Get(Msg.LockShipOk));
+            return true;
+        }
+        say(ServerMessages.Get(Msg.LockCanNot));
+        return false;
     }
 
     /// <summary>What every Skill_Lockpicking stage asks (CCharSkill.cpp:2425-2441): the

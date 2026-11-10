@@ -3520,13 +3520,13 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         client.SetEngines(triggerDispatcher: dispatcher);
         AttachCharacter(client, player);
-        player.SetTag("CAST_SPELL", SpellType.MagicArrow.ToString());
-
+        // A spell's (non-precast) cursor: CLIMODE_TARG_SKILL_MAGERY.
         client.Targets.CursorActive = true; // the cursor this response answers
+        client.Targets.SpellCancelId = (int)SpellType.MagicArrow;
         client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0xFFFFFFFF, 0, 0, 0, 0);
 
         Assert.Equal(1, cancelCount);
-        Assert.False(player.TryGetTag("CAST_SPELL", out _));
+        Assert.Equal(-1, client.Targets.SpellCancelId);
     }
 
     [Fact]

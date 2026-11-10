@@ -213,6 +213,7 @@ internal interface IClientContext : ITextConsole
     ResDisplayVersion HandleResolvedClientVersion();
     void StoreReportedClientVersion();
     void HandleCastSpell(SpellType spell, uint targetUid);
+    void HandleCastSpellFromItem(SpellType spell, Item source);
     void HandleChatOpen();
     void HandleQueryDesignDetails(byte[] data);
     void BeginHouseCustomization(Item multi);

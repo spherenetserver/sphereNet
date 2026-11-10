@@ -1302,22 +1302,41 @@ public sealed partial class SpellEngine
         }
 
         // LOS check BEFORE consuming resources
+        // A ground pick reaches here with the caster's own uid as its object (the
+        // cursor callback substitutes it), so the object a check must look at is the
+        // point, not the caster - checking the caster always passed.
+        var pickedObject = _world != null && targetUid.IsValid && targetUid != caster.Uid
+            ? _world.FindObject(targetUid) : null;
         if (_world != null &&
             caster.PrivLevel < PrivLevel.GM &&
             !IsMagicFlag(MagicConfigFlags.NoLos) &&
             (def.IsFlag(SpellFlag.TargChar) || def.IsFlag(SpellFlag.TargObj) ||
+             def.IsFlag(SpellFlag.TargXYZ)  ||
              def.IsFlag(SpellFlag.Area)     || def.IsFlag(SpellFlag.Field) ||
              def.IsFlag(SpellFlag.Summon)))
         {
             int losDist = Math.Max(Math.Abs(caster.X - targetPos.X), Math.Abs(caster.Y - targetPos.Y));
             // Spell_TargCheck casts through windows (LOS_NB_WINDOWS): at the object,
-            // or at the point within the caster's view range (CCharSpell.cpp:2764/2787).
-            var losObject = targetUid.IsValid ? _world.FindObject(targetUid) : null;
-            bool inSight = losObject != null && losObject.GetTopLevelObj().MapIndex == caster.MapIndex
-                ? _world.CanSeeLOSFor(caster, losObject, LosFlags.NbWindows)
+            // or at the point within the caster's view range (CCharSpell.cpp:2808/2831).
+            // A TARG_XYZ-only spell - Teleport - is checked too (:2825-2835); it was
+            // left out, so Teleport went through walls into closed buildings.
+            bool inSight = pickedObject != null && pickedObject.GetTopLevelObj().MapIndex == caster.MapIndex
+                ? _world.CanSeeLOSFor(caster, pickedObject, LosFlags.NbWindows)
                 : _world.CanSeeLOSFor(caster, caster.Position, targetPos, LosFlags.NbWindows, caster.VisualRange);
             if (losDist > 0 && !inSight)
                 return FailCastAtCompletion(caster, "Target not in line of sight.");
+        }
+
+        // Spell_TargCheck_Face (CCharSpell.cpp:2731-2738): the region at the TARGET
+        // point refuses what its anti-magic flags refuse, as the caster's own region
+        // does at the cast start. Only the caster's region was asked, so a caster
+        // standing just outside a no-magic or no-harm area could hit people inside
+        // it, or lay fields and summons into it.
+        if (_world != null && caster.PrivLevel < PrivLevel.GM)
+        {
+            Point3D aimed = pickedObject != null ? pickedObject.GetTopLevelObj().Position : targetPos;
+            if (_world.FindRegion(aimed) is { } aimedRegion && RegionBlocksSpell(aimedRegion, def))
+                return FailCastAtCompletion(caster, ServerMessages.Get(Msg.SpellTryAm));
         }
 
         // Source-X opens Spell_CastDone with Spell_TargCheck (CCharSpell.cpp:2878)
@@ -1735,16 +1754,29 @@ public sealed partial class SpellEngine
     /// wrote a TRAPPED tag that nothing ever read.</summary>
     private void ApplyItemTargetSpell(Character caster, Item item, SpellDef def)
     {
+        void Say(string text) => OnSysMessage?.Invoke(caster, text);
         switch (def.Id)
         {
             case SpellType.MagicLock:
-                if (item.ItemType == ItemType.Container) item.ItemType = ItemType.ContainerLocked;
-                else if (item.ItemType == ItemType.Door) item.ItemType = ItemType.DoorLocked;
+                // SPELL_Magic_Lock → SetMagicLock (CItem.cpp:5703-5706): key, owner and
+                // lockable-type rules, not a bare type flip.
+                Skills.Information.ActiveSkillEngine.SetMagicLock(caster, item, Say);
                 break;
             case SpellType.Unlock:
-                if (item.ItemType == ItemType.ContainerLocked) item.ItemType = ItemType.Container;
-                else if (item.ItemType == ItemType.DoorLocked) item.ItemType = ItemType.Door;
+            {
+                // SPELL_Unlock (CItem.cpp:5708-5719): Use_LockPick tests the lock (key,
+                // MAGICUNLOCKDOOR, carried by someone else), Magery is rolled against
+                // its complexity, and the second Use_LockPick unlocks or reports the
+                // failure.
+                if (_world == null) break;
+                int difficulty = Skills.Information.ActiveSkillEngine.UseLockPick(
+                    _world, caster, item, test: true, fail: false, Say, Random.Shared);
+                if (difficulty < 0) break;
+                bool success = SkillEngine.CheckSuccess(caster, SkillType.Magery, difficulty);
+                Skills.Information.ActiveSkillEngine.UseLockPick(
+                    _world, caster, item, test: false, fail: !success, Say, Random.Shared);
                 break;
+            }
             case SpellType.Telekinesis:
                 ApplyTelekinesis(caster, item);
                 break;

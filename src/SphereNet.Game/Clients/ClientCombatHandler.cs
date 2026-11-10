@@ -2364,7 +2364,36 @@ public sealed class ClientCombatHandler
 
     // ==================== Spell Casting ====================
 
+    /// <summary>A cast from the caster's own power: spellbook, macro, CAST verb.
+    /// Cmd_Skill_Magery binds the source afresh on every cast (m_Targ_Prv_UID,
+    /// CClientUse.cpp:1009), so a wand or scroll left bound by an earlier cast that
+    /// never completed must not carry over and price this one.</summary>
     public void HandleCastSpell(SpellType spell, uint targetUid)
+    {
+        if (_character != null)
+        {
+            _character.RemoveTag("WAND_UID");
+            _character.RemoveTag("SCROLL_UID");
+        }
+        HandleCastSpellCore(spell, targetUid, null);
+    }
+
+    /// <summary>A cast from a wand or scroll (IT_WAND / IT_SCROLL,
+    /// CClientUse.cpp:352-370 → Cmd_Skill_Magery(spell, pItem)).</summary>
+    public void HandleCastSpellFromItem(SpellType spell, Item source)
+    {
+        if (_character == null) return;
+        _character.RemoveTag("WAND_UID");
+        _character.RemoveTag("SCROLL_UID");
+        _character.SetTag(source.ItemType == ItemType.Wand ? "WAND_UID" : "SCROLL_UID",
+            source.Uid.Value.ToString());
+        HandleCastSpellCore(spell, 0, null);
+    }
+
+    /// <summary>The cast a Polymorph / Summon selection menu continues: the source
+    /// bound when the menu opened stays (Source-X keeps m_Targ_Prv_UID across the
+    /// menu and hands it back to Cmd_Skill_Magery, CCharSkill.cpp:2995).</summary>
+    public void ContinueMenuCast(SpellType spell, uint targetUid)
         => HandleCastSpellCore(spell, targetUid, null);
 
     private void HandleCastSpellCore(SpellType spell, uint targetUid,
@@ -2454,6 +2483,7 @@ public sealed class ClientCombatHandler
                     HandleCastSpellCore(spell, serial != 0 ? serial : _character.Uid.Value, preparation,
                         selectTested: true);
                 });
+                _client.Targets.SpellCancelId = (int)spell;
                 // A spell's cursor is the one upstream puts a clock on
                 // (CClientUse.cpp:1061); the GM and script cursors around it have none.
                 _client.Targeting.ArmSpellTimeout();
@@ -2552,7 +2582,14 @@ public sealed class ClientCombatHandler
     {
         byte cursorType = spellDef != null && spellDef.IsFlag(SpellFlag.TargXYZ) ? (byte)1 : (byte)0;
         byte flags = spellDef != null && spellDef.IsFlag(SpellFlag.Harm) ? (byte)1 : (byte)0;
+        // Arming the cursor abandons whatever spell cursor was up before it, and that
+        // releases the OLD cast's wand or scroll. The source bound to THIS cast is set
+        // already, so it is put back once the old cursor is gone.
+        _character!.TryGetTag("WAND_UID", out string? wand);
+        _character.TryGetTag("SCROLL_UID", out string? scroll);
         _client.Targeting.SetPendingTarget(callback, cursorType, flags);
+        if (wand != null) _character.SetTag("WAND_UID", wand);
+        else if (scroll != null) _character.SetTag("SCROLL_UID", scroll);
     }
 
     private void PromptPrecastTarget(SpellType spell, Magic.SpellDef? spellDef)

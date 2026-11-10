@@ -227,6 +227,7 @@ public sealed partial class GameClient : IClientContext
     ResDisplayVersion IClientContext.HandleResolvedClientVersion() => HandleResolvedClientVersion();
     void IClientContext.StoreReportedClientVersion() => StoreReportedClientVersion();
     void IClientContext.HandleCastSpell(SpellType spell, uint targetUid) => HandleCastSpell(spell, targetUid);
+    void IClientContext.HandleCastSpellFromItem(SpellType spell, Item source) => Combat.HandleCastSpellFromItem(spell, source);
     void IClientContext.HandleChatOpen() => HandleChatOpen();
     void IClientContext.HandleQueryDesignDetails(byte[] data) => HandleQueryDesignDetails(data);
     void IClientContext.BeginHouseCustomization(Item multi) => BeginHouseCustomization(multi);

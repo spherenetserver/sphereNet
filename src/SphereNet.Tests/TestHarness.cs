@@ -58,6 +58,14 @@ internal static class TestHarness
                 new SphereNet.Scripting.Definitions.ItemDef(ResourceId.Invalid) { DispIndex = (ushort)id });
     }
 
+    /// <summary>Give an art id an ITEMDEF that names its wearable layer, the way the
+    /// client's tiledata does in a real install. The equip packet's layer byte is not
+    /// trusted - the item's own layer is (receive.cpp:554-564) - so an item a test
+    /// equips through the client needs one.</summary>
+    public static void SeedWearable(int id, SphereNet.Core.Enums.Layer layer) =>
+        SphereNet.Game.Definitions.DefinitionLoader.SetItemDef(id,
+            new SphereNet.Scripting.Definitions.ItemDef(ResourceId.Invalid) { DispIndex = (ushort)id, Layer = layer });
+
     /// <summary>A bare ITEMDEF for every art id, standing in for a full script pack
     /// when a test walks real map data.</summary>
     public static void SeedAllItemDefs()

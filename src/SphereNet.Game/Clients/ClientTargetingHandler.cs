@@ -168,6 +168,7 @@ public sealed class ClientTargetingHandler
         Targets.TimeoutAtMs = 0;
         if (_character.IsDead)
         {
+            AbandonSpellCursor();
             int cancelledSkill = Targets.SkillCancelId;
             ClearPendingTargetState();
             if (cancelledSkill >= 0)
@@ -217,19 +218,8 @@ public sealed class ClientTargetingHandler
             int pendingSkillTargetCancelId = Targets.SkillCancelId;
             Targets.SkillCancelId = -1;
 
-            if (_character.TryGetTag("CAST_SPELL", out string? cancelledSpellStr))
-            {
-                if (Enum.TryParse<SpellType>(cancelledSpellStr, out var cancelledSpell) &&
-                    _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellTargetCancel,
-                        new TriggerArgs { CharSrc = _character, N1 = (int)cancelledSpell }) == TriggerResult.True)
-                    suppressCancelMessage = true;
-                _client.Spells?.CancelCast(_character);
-                _character.RemoveTag("CAST_SPELL");
-                // The cast never started — drop the wand/scroll source tags so they
-                // don't leak into and get consumed by the next cast.
-                _character.RemoveTag("WAND_UID");
-                _character.RemoveTag("SCROLL_UID");
-            }
+            if (AbandonSpellCursor())
+                suppressCancelMessage = true;
             if (CancelPrecastTarget())
                 suppressCancelMessage = true;
             _character.RemoveTag("TARGP");
@@ -257,6 +247,8 @@ public sealed class ClientTargetingHandler
         // survives ClearPendingTargetState by design.
         if (serial != 0 && serial != 0xFFFFFFFF)
             Targets.LastPickedSerial = serial;
+        // A pick answers the spell cursor: the cast goes on, with its source.
+        Targets.SpellCancelId = -1;
         // SRC.TARG and its point, for every pick - not only a TARGETF one - so a
         // used item's @TargOn_* sees what was picked (OnTarg_Use_Item sets
         // m_Targ_UID to the target before the trigger).
@@ -848,6 +840,7 @@ public sealed class ClientTargetingHandler
         int replacedSkill = Targets.SkillCancelId;
         var replacedItem = Targets.ItemUid;
         _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
+        AbandonSpellCursor();
         FireFunctionCursorCancel();
         FirePendingItemTargetTrigger(replacedItem, ItemTrigger.TargOnCancel, Serial.Invalid, 0);
         if (replacedSkill >= 0 && _character != null)
@@ -1081,6 +1074,33 @@ public sealed class ClientTargetingHandler
             : 0;
     }
 
+    /// <summary>The spell cursor is dropped without a pick - dismissed, timed out,
+    /// replaced by another cursor or answered by a ghost. SetTargMode's
+    /// CLIMODE_TARG_SKILL_MAGERY case (CClientMsg.cpp:1678-1701) fires
+    /// @SpellTargetCancel with ARGN1 = the spell and ARGO = the source. The cast never
+    /// started, so the wand or scroll it was bound to is released here: left behind,
+    /// its tag priced the caster's next ordinary cast as a wand or scroll cast.
+    /// Returns true when the trigger answered RETURN 1.</summary>
+    private bool AbandonSpellCursor()
+    {
+        int spell = Targets.SpellCancelId;
+        Targets.SpellCancelId = -1;
+        if (spell < 0 || _character == null)
+            return false;
+
+        IScriptObj? source = null;
+        if ((_character.TryGetTag("WAND_UID", out string? srcText) ||
+             _character.TryGetTag("SCROLL_UID", out srcText)) &&
+            uint.TryParse(srcText, out uint srcUid))
+            source = _world.FindItem(new Serial(srcUid));
+        source ??= _character;
+        _character.RemoveTag("WAND_UID");
+        _character.RemoveTag("SCROLL_UID");
+
+        return _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellTargetCancel,
+            new TriggerArgs { CharSrc = _character, N1 = spell, O1 = source }) == TriggerResult.True;
+    }
+
     /// <summary>Returns true when @SpellTargetCancel answered RETURN 1.</summary>
     private bool CancelPrecastTarget()
     {
@@ -1106,6 +1126,7 @@ public sealed class ClientTargetingHandler
             return;
 
         CancelPrecastTarget();
+        AbandonSpellCursor();
         int cancelledSkill = Targets.SkillCancelId;
         var cancelledItem = Targets.ItemUid;
         // The client is told to drop the cursor as well; leaving it drawn would let the

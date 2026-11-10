@@ -72,6 +72,8 @@ public sealed partial class GameClient
 
     public void HandleCastSpell(SpellType spell, uint targetUid) => Combat.HandleCastSpell(spell, targetUid);
 
+    public void ContinueMenuCast(SpellType spell, uint targetUid) => Combat.ContinueMenuCast(spell, targetUid);
+
     public void TickSpellCast() => Combat.TickSpellCast();
 
     /// <summary>

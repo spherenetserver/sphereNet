@@ -10,6 +10,7 @@ using SphereNet.Network.Packets;
 
 namespace SphereNet.Tests;
 
+[Collection("DefinitionLoaderSerial")]
 public class CombatSwingParityTests
 {
     [Fact]
@@ -28,6 +29,7 @@ public class CombatSwingParityTests
             TestHarness.AttachCharacter(client, player);
 
             Character.CombatFlags = 0;
+            TestHarness.SeedWearable(0x0F5E, Layer.OneHanded);
             var sword = world.CreateItem();
             sword.ItemType = ItemType.WeaponSword;
             sword.BaseId = 0x0F5E;

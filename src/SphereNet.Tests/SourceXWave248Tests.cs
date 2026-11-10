@@ -20,6 +20,7 @@ namespace SphereNet.Tests;
 /// TargetedSkill, spell-select repoint) plus the per-char regen AMOUNT override
 /// (Source-X CChar m_regenVal) deferred from Wave 247.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class SourceXWave248Tests
 {
     private static (GameClient client, Character player, GameWorld world, TriggerDispatcher d) Setup()
@@ -59,6 +60,7 @@ public sealed class SourceXWave248Tests
     public void EquipLastWeapon_RewieldsDisarmedWeaponFromPack()
     {
         var (client, player, world, _) = Setup();
+        TestHarness.SeedWearable(0x0F5E, Layer.OneHanded);
 
         var sword = world.CreateItem();
         sword.ItemType = ItemType.WeaponSword;

@@ -759,11 +759,15 @@ public sealed class ClientCombatHandler
         clearText = SpeechEngine.ApplyCapitalsSuppression(clearText);
 
         // Broadcast speech to nearby clients
+        // The configured distances (DISTANCEWHISPER / DISTANCETALK / DISTANCEYELL,
+        // applied per listener in CChar::CanHear, CCharStatus.cpp:1506-1552) - the
+        // same ones NPC and item hearing use. They were fixed numbers here, with a
+        // yell reaching 48 tiles against the reference's 31.
         int range = type switch
         {
-            8 => 3,  // whisper
-            9 => 48, // yell
-            _ => 18  // say
+            8 => _speech?.DistanceWhisper ?? 3,
+            9 => _speech?.DistanceYell ?? 31,
+            _ => _speech?.DistanceSay ?? 18,
         };
         // Source-X CChar::Speak (CCharAct.cpp:3575): a Counsel+ yell is promoted
         // to TALKMODE_BROADCAST — every client on the server reads it. Only the
@@ -2488,6 +2492,11 @@ public sealed class ClientCombatHandler
                         SysMessage(ServerMessages.Get("spell_targ_obj")); // DEFMSG_SPELL_TARG_OBJ (CCharSpell.cpp:2776)
                         return;
                     }
+                    if (spellDef != null && PickedTargetRefusal(spellDef, serial) is { } refusal)
+                    {
+                        SysMessage(ServerMessages.Get(refusal));
+                        return;
+                    }
                     _character.SetCastTargetPosPending(new Point3D(x, y, z, _character.MapIndex));
                     HandleCastSpellCore(spell, serial != 0 ? serial : _character.Uid.Value, preparation,
                         selectTested: true);
@@ -2629,6 +2638,12 @@ public sealed class ClientCombatHandler
                 _spellEngine.CancelCast(_character);
                 return;
             }
+            if (spellDef != null && PickedTargetRefusal(spellDef, serial) is { } refusal)
+            {
+                SysMessage(ServerMessages.Get(refusal));
+                _spellEngine.CancelCast(_character);
+                return;
+            }
             var targetPos = new Point3D(x, y, z, _character.MapIndex);
             uint uid = serial != 0 ? serial : _character.Uid.Value;
             var targetChar = _world.FindChar(new Serial(uid));
@@ -2637,6 +2652,42 @@ public sealed class ClientCombatHandler
             FinishPrecastCast(spell, uid, targetPos);
         });
         _client.Targeting.ArmSpellTimeout();
+    }
+
+    /// <summary>Why the object picked with a spell cursor is not a target this
+    /// spell takes, or null when it is. Source-X refuses these at the cursor,
+    /// before the skill starts and before anything is paid (OnTarg_Skill_Magery,
+    /// CClientTarg.cpp:1482-1521; the living-with-TARG_DEAD case is
+    /// Spell_TargCheck at the cast start, CCharSpell.cpp:2790-2794). The cast used
+    /// to run in full and do nothing: Resurrection on the living, Heal on an item,
+    /// Recall on a character.</summary>
+    private string? PickedTargetRefusal(SpellDef def, uint serial)
+    {
+        if (serial == 0 || _character == null)
+            return null;
+        var uid = new Serial(serial);
+        var ch = _world.FindChar(uid);
+        var item = ch == null ? _world.FindItem(uid) : null;
+        if (ch == null && item == null)
+            return null;
+
+        bool takesItem = def.IsFlag(SpellFlag.TargItem);
+        bool takesChar = def.IsFlag(SpellFlag.TargChar);
+        if (!takesItem && !takesChar)
+            return Msg.Magery4;
+        if (item != null)
+            return takesItem ? null : Msg.Magery1;
+        if (!takesChar)
+            return Msg.Magery2;
+        if (def.IsFlag(SpellFlag.TargNoPlayer) && ch!.IsPlayer)
+            return Msg.Magery7;
+        if (def.IsFlag(SpellFlag.TargNoNPC) && !ch!.IsPlayer)
+            return Msg.Magery8;
+        if (ch == _character && def.IsFlag(SpellFlag.TargNoSelf) && _character.PrivLevel < PrivLevel.GM)
+            return Msg.Magery3;
+        if (!ch!.IsDead && def.IsFlag(SpellFlag.TargDead))
+            return Msg.SpellTargNotdead;
+        return null;
     }
 
     private void FinishPrecastCast(SpellType spell, uint targetUid, Point3D targetPos)

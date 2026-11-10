@@ -1369,6 +1369,22 @@ public sealed class ClientInventoryHandler
 
         _character.RemoveTag("DRAGGING");
 
+        // A game piece goes nowhere but a game board (Event_Item_Drop,
+        // CClientEvent.cpp:556-570: any other drop puts it back on its board). It
+        // could be carried off to the ground, a pack or another container.
+        if (item.ItemType == ItemType.GamePiece && _character.PrivLevel < PrivLevel.GM)
+        {
+            var on = containerUid is not 0 and not 0xFFFFFFFF ? _world.FindItem(new Serial(containerUid)) : null;
+            bool onBoard = on != null && (on.ItemType == ItemType.GameBoard ||
+                (on.ContainedIn.IsValid && _world.FindItem(on.ContainedIn)?.ItemType == ItemType.GameBoard));
+            if (!onBoard)
+            {
+                RestoreToOrigin(item);
+                _netState.Send(new PacketDropReject());
+                return;
+            }
+        }
+
         // A plain item lying on the ground that the drop was aimed at: the drop lands
         // on its tile, but that item still hears @DropOn_Self first.
         Item? groundDropOnTarget = null;
@@ -1539,6 +1555,29 @@ public sealed class ClientInventoryHandler
                 // when the container weight cap is 400).
                 bool isPileMerge = container.CanStackWith(item);
                 bool isSpellbook = container.IsSpellbook;
+
+                // What a special container holds (CanContainerHold, CItemContainer.cpp:
+                // 977-1001): a game board only game pieces, a bulletin board nothing
+                // by drop, a key ring only keys that are cut to a lock.
+                if (!isPileMerge && _character.PrivLevel < PrivLevel.GM)
+                {
+                    string? holdRefusal = container.ItemType switch
+                    {
+                        ItemType.GameBoard when item.ItemType != ItemType.GamePiece => Msg.MsgErrNotgamepiece,
+                        ItemType.BBoard => "",
+                        ItemType.Keyring when item.ItemType != ItemType.Key => Msg.MsgErrNotkey,
+                        ItemType.Keyring when item.More1 == 0 => Msg.MsgErrNoblankring,
+                        _ => null,
+                    };
+                    if (holdRefusal != null)
+                    {
+                        if (holdRefusal.Length > 0)
+                            SysMessage(ServerMessages.Get(holdRefusal));
+                        RestoreToOrigin(item);
+                        _netState.Send(new PacketDropReject());
+                        return;
+                    }
+                }
 
                 // Nesting depth limit — prevent container-in-container bypass of slot limits.
                 if (!isPileMerge && !isSpellbook && _character.PrivLevel < PrivLevel.GM)
@@ -2476,6 +2515,8 @@ public sealed class ClientInventoryHandler
             // A weapon change restarts the fight skill in WAR_SWING_EQUIPPING: the
             // recoil runs before the next swing animation (CCharSkill.cpp:4559-4563).
             int delayMs = CombatHelper.GetInitialSwingWaitMs(CombatEngine.GetSwingDelayMs(target, item));
+            // The swing in flight belongs to the weapon that was in hand (:306-316).
+            target.ClearPendingHit();
             target.BeginEquipSwingWait(Environment.TickCount64, delayMs, noWait);
         }
 

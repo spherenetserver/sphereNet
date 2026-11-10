@@ -48,9 +48,11 @@ public sealed class MountEngine
         // touch, mount item, capability, ownership and ceiling.
         if (rider.MapIndex != npc.MapIndex || rider.Position.GetDistanceTo(npc.Position) > 1)
             return false;
-        // Source-X Horse_Mount requires NPC_IsOwnedBy. Mounting must never tame
-        // or transfer a wild/foreign creature as a side effect.
-        if (rider.PrivLevel < PrivLevel.GM && !npc.CanAcceptPetCommandFrom(rider, allowFriends: true))
+        // Source-X Horse_Mount requires NPC_IsOwnedBy (CCharAct.cpp:3976), which is
+        // the owner memory alone - a pet FRIEND is not an owner
+        // (CCharNPCStatus.cpp:449-469). Friends were let on, and the dismount's
+        // re-own then handed them the mount.
+        if (rider.PrivLevel < PrivLevel.GM && !npc.CanAcceptPetCommandFrom(rider, allowFriends: false))
         {
             Character.SendOwnerMessage?.Invoke(rider, Messages.ServerMessages.Get(Messages.Msg.MsgMountDontown));
             return false;
@@ -470,10 +472,41 @@ public sealed class MountEngine
     public static bool IsMountable(ushort bodyId) => GetMountItemId(bodyId) != 0;
 
     /// <summary>
-    /// Map body ID to mount item graphic.
-    /// Source-X: CCharBase::IsMount + item graphic lookup.
+    /// The mount item a creature body rides as. Source-X Horse_GetMountItemID
+    /// (CCharAct.cpp:3940-3944) reads it from the script pack: DEFNAME
+    /// <c>mount_0x&lt;body hex&gt;</c> holds the mount item (a number or an item
+    /// defname), and a body with no entry is not a mount (:3968-3970). A pack
+    /// that defines the list is the whole answer; the built-in table below serves
+    /// only when no pack list is loaded at all.
     /// </summary>
-    public static ushort GetMountItemId(ushort bodyId) => bodyId switch
+    public static ushort GetMountItemId(ushort bodyId)
+    {
+        var resources = Definitions.DefinitionLoader.StaticResources;
+        if (resources != null)
+        {
+            ushort fromPack = ResolvePackMount(resources, bodyId);
+            if (fromPack != 0)
+                return fromPack;
+            // Every pack's list opens with the plain horse; its presence means
+            // the pack speaks for mounts and this body is simply not one.
+            if (bodyId != 0xC8 && ResolvePackMount(resources, 0xC8) != 0)
+                return 0;
+        }
+        return BuiltinMountItemId(bodyId);
+    }
+
+    private static ushort ResolvePackMount(global::SphereNet.Scripting.Resources.ResourceHolder resources, ushort bodyId)
+    {
+        string key = "mount_0x" + bodyId.ToString("x");
+        if (Definitions.DefinitionLoader.TryGetDefNumber(key, out int number))
+            return number is > 0 and <= 0xFFFF ? (ushort)number : (ushort)0;
+        if (Definitions.DefinitionLoader.TryGetDefValue(key, out string text) &&
+            !string.IsNullOrWhiteSpace(text))
+            return Definitions.TemplateEngine.ResolveDispId(resources, text.Trim());
+        return 0;
+    }
+
+    private static ushort BuiltinMountItemId(ushort bodyId) => bodyId switch
     {
         // PreT2A
         0xC8 => 0x3E9F, // horse 1
@@ -512,8 +545,8 @@ public sealed class MountEngine
         0x115 => 0x3E91, // cu sidhe
         0x114 => 0x3E90, // reptalon
         0xD5 => 0x3EC5, // polar bear
-        0x124 => 0x3E4A, // pack llama
-        0x123 => 0x3E4B, // pack horse
+        // Pack horse and pack llama are not mounts: no pack lists them, and a
+        // double-click opens their pack (CClientEvent.cpp:2402-2404).
         // Legacy aliases used by some script packs
         0xC9 => 0x3EA0,
         0xCA => 0x3EA0,

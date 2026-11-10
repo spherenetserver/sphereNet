@@ -58,6 +58,7 @@ public sealed class SpellEffectContributionSourceXTests : IDisposable
     {
         var c = w.CreateCharacter();
         c.IsPlayer = true;
+        c.IsOnline = true;   // a logged-out player is not a visible spell target
         c.BodyId = 0x190;
         c.Name = "Probe";
         c.Str = c.Dex = c.Int = 50;

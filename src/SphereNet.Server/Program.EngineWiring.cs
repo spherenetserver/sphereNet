@@ -1543,6 +1543,11 @@ public static partial class Program
 
                 BroadcastDeathEffects(victim, effectiveKiller, corpse, victimPos, victimDir);
             };
+            Character.OnPlayerAutoDefend = (victim, attacker) =>
+            {
+                if (_clientsByCharUid.TryGetValue(victim.Uid, out var victimClient))
+                    victimClient.HandleAttack(attacker.Uid.Value);
+            };
             Character.OnLifecycleResurrect = victim =>
             {
                 if (!victim.IsDead) return;

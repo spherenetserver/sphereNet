@@ -136,11 +136,13 @@ public sealed class PetParity06EHTests
         var owner = Player(world, 100);
         var second = Player(world, 100);
         var horse = Horse(world, owner);
-        horse.AddFriend(second);
 
         Assert.True(engine.TryMount(owner, horse));
         Assert.Same(horse, engine.Dismount(owner));
 
+        // Only an owner rides (Horse_Mount, CCharAct.cpp:3976): the next rider is
+        // whoever the creature is handed to, not a friend of the first.
+        Assert.True(horse.TryAssignOwnership(second, second));
         Assert.True(engine.TryMount(second, horse));
     }
 

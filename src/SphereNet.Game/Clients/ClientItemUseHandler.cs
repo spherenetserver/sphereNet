@@ -633,8 +633,27 @@ public sealed class ClientItemUseHandler
 
                 // Pack horses and llamas open their pack; staff snoop any other
                 // creature's pack; anyone else gets nothing.
-                if (ch.BodyId is 0x0123 or 0x0124 || _character.PrivLevel >= PrivLevel.GM)
-                    SendOpenContainer(EnsureCharacterPack(ch));
+                if (_character.PrivLevel >= PrivLevel.GM)
+                {
+                    SendOpenContainer(EnsureCharacterPack(ch));   // staff: no touch test
+                }
+                else if (ch.BodyId is 0x0123 or 0x0124)
+                {
+                    // The pack is USED like any container (Cmd_Use_Item with the
+                    // touch test, CClientEvent.cpp:2402-2404): within reach, and
+                    // somebody else's animal is snooped, not opened.
+                    var animalPack = EnsureCharacterPack(ch);
+                    if (!CanTouchItem(animalPack))
+                        return;
+                    if (Skills.Information.ActiveSkillEngine.IsTakeCrime(_character, animalPack, out var packMark) &&
+                        packMark != null)
+                    {
+                        if (!SkillWait(SkillType.Snooping))
+                            _client.StartSkillFromTool(SkillType.Snooping, animalPack.Uid, animalPack, null, null);
+                        return;
+                    }
+                    SendOpenContainer(animalPack);
+                }
                 return;
             }
 
@@ -1770,21 +1789,11 @@ public sealed class ClientItemUseHandler
 
             // ---- telepad / switch ----
             case ItemType.Telepad:
-            {
-                var dest = item.MoreP;
-                if ((dest.X != 0 || dest.Y != 0) && IsValidTeleportDest(dest))
-                {
-                    var from = _character.Position;
-                    _character.MoveTo(dest);
-                    SendSelfRedraw();
-                    // Spell_Teleport's fDisplayEffect = !MORE2 (Use_MoonGate,
-                    // CCharUse.cpp:266-268): the configured teleport effect and
-                    // sound, or nothing for a quiet pad.
-                    if (item.More2 == 0)
-                        Character.OnTeleportEffect?.Invoke(_character, from);
-                }
+                // A telepad works by being stepped on and in no other way: Use_MoonGate
+                // has one caller, the walk-on check (CCharAct.cpp:5054-5058), and no
+                // use switch names IT_TELEPAD. A double-click teleported from touch
+                // range and left the pets behind.
                 break;
-            }
             case ItemType.Switch:
                 // Using a switch only flips it (CCharUse.cpp:1763-1768); @Step belongs
                 // to walking onto an item and fires nowhere else (CCharAct.cpp:4953).
@@ -1883,21 +1892,8 @@ public sealed class ClientItemUseHandler
 
             // ---- moongate ----
             case ItemType.Moongate:
-            {
-                var dest = item.MoreP;
-                if ((dest.X != 0 || dest.Y != 0) && IsValidTeleportDest(dest))
-                {
-                    var from = _character.Position;
-                    _character.MoveTo(dest);
-                    SendSelfRedraw();
-                    // Same as the telepad: fDisplayEffect = !MORE2 (CCharUse.cpp:266-268).
-                    if (item.More2 == 0)
-                        Character.OnTeleportEffect?.Invoke(_character, from);
-                }
-                // No destination: nothing happens. @Step is a walking trigger only
-                // (CCharAct.cpp:4953), never a double-click one.
+                // Stepped on only, like the telepad (CCharAct.cpp:5054-5058).
                 break;
-            }
 
             // ---- training dummies ----
             case ItemType.TrainDummy:

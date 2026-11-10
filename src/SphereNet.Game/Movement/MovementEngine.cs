@@ -679,7 +679,9 @@ public sealed class MovementEngine
         foreach (var pet in _world.GetCharsInRange(owner.Position, 12).ToList())
         {
             if (pet == owner || pet.IsPlayer || pet.IsDead || pet.IsStatFlag(StatFlag.Ridden)) continue;
-            if (!pet.HasOwner(owner.Uid) || pet.PetAIMode != PetAIMode.Follow) continue;
+            // "come" is the same follow action as "follow me" upstream
+            // (PC_COME / PC_FOLLOW_ME -> NPCACT_FOLLOW_TARG, CCharNPCPet.cpp:183-189).
+            if (!pet.HasOwner(owner.Uid) || pet.PetAIMode is not (PetAIMode.Follow or PetAIMode.Come)) continue;
             TeleportOne(pet, dest, displayEffect);
         }
     }

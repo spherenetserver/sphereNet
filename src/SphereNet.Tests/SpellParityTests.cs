@@ -181,6 +181,7 @@ public class SpellParityTests
 
             var criminal = world.CreateCharacter();
             criminal.IsPlayer = true;
+            criminal.IsOnline = true;   // a logged-out player is not a visible spell target
             criminal.MakeCriminal();
             criminal.Hits = 10;
             criminal.MaxHits = 100;

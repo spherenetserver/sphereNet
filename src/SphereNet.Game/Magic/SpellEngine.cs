@@ -1325,6 +1325,12 @@ public sealed partial class SpellEngine
                 : _world.CanSeeLOSFor(caster, caster.Position, targetPos, LosFlags.NbWindows, caster.VisualRange);
             if (losDist > 0 && !inSight)
                 return FailCastAtCompletion(caster, "Target not in line of sight.");
+            // CanSeeLOS opens with CanSee (CCharLOS.cpp:668): a target that hid or
+            // turned invisible during the cast is no longer a target
+            // (Spell_TargCheck at completion, CCharSpell.cpp:2808/2922). Only the
+            // ray was traced, so the spell still landed on it.
+            if (pickedObject is Character seen && !caster.CanSeeCharacter(seen))
+                return FailCastAtCompletion(caster, "Target not in line of sight.");
         }
 
         // Spell_TargCheck_Face (CCharSpell.cpp:2731-2738): the region at the TARGET
@@ -1650,6 +1656,13 @@ public sealed partial class SpellEngine
                 _effectTargetPos = prevTargetPos;
             }
         }
+
+        // Helping a criminal is a crime for ANY beneficial spell cast on another
+        // character, not only heals and cures (Spell_CastDone, CCharSpell.cpp:
+        // 3344-3359: HELPINGCRIMINALSISACRIME + SPELLFLAG_GOOD + the target's
+        // notoriety). Bless, Protection or Invisibility on a criminal cost nothing.
+        if (def.IsFlag(SpellFlag.Good) && _world?.FindChar(targetUid) is { } helped && helped != caster)
+            caster.FlagForHelpingCriminalIfNeeded(helped);
 
         // NPC casters have no client-side completion path (the player's
         // TickSpellCast sends the impact/bolt effect there); emit their
@@ -2557,6 +2570,10 @@ public sealed partial class SpellEngine
                 ((harmful && !IsMagicFlag(MagicConfigFlags.CanHarmSelf)) || def.IsFlag(SpellFlag.TargNoSelf)))
                 continue;
             if (target.IsDead && !def.IsFlag(SpellFlag.TargDead)) continue;
+            // A disconnected character is never an area target: Spell_Area walks
+            // CWorldSearch, which holds logged-out characters apart
+            // (CWorldSearch.cpp:271-275). Their bodies took the damage here.
+            if (target.IsLoggedOut) continue;
 
             // Spell_Area hands the duration over in the fReflecting slot, so each
             // target works its own out (:2140) - duration 0 here does the same.

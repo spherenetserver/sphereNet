@@ -416,7 +416,7 @@ public sealed class CustomHousingEngine
             foreach (var pet in _world.GetCharsInRange(from, 12).ToList())
             {
                 if (pet == ch || pet.IsPlayer || pet.IsDead || pet.IsStatFlag(StatFlag.Ridden)) continue;
-                if (!pet.HasOwner(ch.Uid) || pet.PetAIMode != PetAIMode.Follow) continue;
+                if (!pet.HasOwner(ch.Uid) || pet.PetAIMode is not (PetAIMode.Follow or PetAIMode.Come)) continue;
                 _world.MoveCharacter(pet, dest);
             }
             ch.TeleportWithEffect(dest);

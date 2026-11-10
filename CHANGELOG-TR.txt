@@ -4,6 +4,72 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-10] - Buyu hedef redleri, yagma notoriety'si, vurus sifirlama, ticaret ve kaplar
+------------------------------------------------------------------------
+DUZELTME - "come" emrindeki pet, sahibi moongate, teleporter ya da gemi iskelesi
+       kullandiginda ya da evden atildiginda geride kaliyordu; yalnizca "follow" petleri
+       gidiyordu. Iki emir ayni takip eylemidir (CCharNPCPet.cpp:183-189), ikisi de gider.
+DUZELTME - Konusma menzili koda gomuluydu (fisilti 3, konusma 18, bagirma 48);
+       DISTANCEWHISPER, DISTANCETALK ve DISTANCEYELL oyuncularin duydugunu
+       degistirmiyordu. Artik ayar degerleri kullanilir; bagirma varsayilani 31
+       (CServerConfig.cpp:211).
+DUZELTME - TAG.OVERRIDE.STATCAP_1 DEX'i, _2 INT'i sinirliyordu. Etiket referansin stat
+       numarasini tasir: STR 0, INT 1, DEX 2 (uofiles_enums.h:447-449).
+DUZELTME - Sucluya yardim sucu yalnizca heal, cure ve Resurrection'da isliyordu. Baska bir
+       karaktere atilan her faydali buyu, HELPINGCRIMINALSISACRIME altinda caster'i
+       suclu yapar (Spell_CastDone, CCharSpell.cpp:3344-3359).
+DUZELTME - Buyu imleciyle yanlis turde hedef secmek tum cast'i calistiriyor, mana ve
+       reagent'i aliyor ve hicbir sey yapmiyordu (canliya Resurrection, esyaya Heal,
+       karaktere Recall). Secim artik imlecte mesajiyla ve bedelsiz reddedilir:
+       magery_1/2/3/4/7/8 (OnTarg_Skill_Magery, CClientTarg.cpp:1482-1521) ve
+       spell_targ_notdead (CCharSpell.cpp:2790-2794).
+DUZELTME - Oyuncu cesedini yagmalama ya da kesme sabit bir listeyle degerlendiriliyordu
+       (suclu ya da katil sahip, parti, guild). Artik yalnizca sahip yagmalayana gore
+       masumsa suctur (CheckCorpseCrime, CItemCorpse.cpp:127); guild savasi dusmanini,
+       gri sahibi ya da yagmalayanin kin tuttugu sahibi yagmalamak suc degildir.
+DUZELTME - Dovus sirasinda silahi elden cikarmak ya da baska silah takmak havadaki vurusu
+       birakiyordu: darbe artik elde olmayan silahla iniyor, silah cikarmak vurusu hic
+       yeniden baslatmiyordu. Ikisi de vurusu iptal eder ve yeni bir geri cekilme
+       baslatir (CCharAct.cpp:306-316, 419-424).
+DUZELTME - Ticaret penceresi acikken ticaret ortaginin ustune baska bir esya birakmak
+       "already trading" ile geri donuyordu. Artik acik pencereye girer ve iki onay
+       isaretini de temizler (Cmd_SecureTrade, CClientUse.cpp:1346-1372).
+DUZELTME - Oyun tahtasi her esyayi, anahtarlik her seyi, ilan tahtasi ustune birakilani
+       aliyordu; oyun taslari tahtadan alinip goturulebiliyordu. Tahta yalnizca oyun
+       tasi, anahtarlik yalnizca bir kilide kesilmis anahtar alir, ilan tahtasi birakma
+       ile hicbir sey almaz (CanContainerHold, CItemContainer.cpp:977-1001); tahta
+       disina birakilan oyun tasi geri doner (CClientEvent.cpp:556-570).
+DUZELTME - Telepad ya da moongate'e cift tiklamak dokunma menzilinden isinliyor ve petleri
+       geride birakiyordu. Ikisi de yalnizca ustune basinca calisir
+       (CCharAct.cpp:5054-5058).
+
+[2026-11-10] - Oto-savunma, berserk summon, binek sahipligi ve buyu hedefleri
+------------------------------------------------------------------------
+DUZELTME - Saldirilan oyuncu baris modunda, dovus hedefi olmadan kaliyor ve hic karsilik
+       vermiyordu. Kendi dovusu olmayan, zarar goren oyuncu artik normal saldiri yolundan
+       saldirana doner - savas modu, dovus hedefi, vurus - OnHarmedBy -> Fight_Attack
+       gibi (CCharFight.cpp:291-317). Hala var olan bir hedefle dovusen oyuncu hedefini
+       korur.
+DUZELTME - Cagrilan Energy Vortex ya da Blade Spirit caster'ini takip ediyor, yalnizca
+       vurulunca karsilik veriyordu. Berserk beyinli sahipli NPC artik berserk davranisini
+       calistirir: emir almaz, sahibi dahil gordugune saldirir (NPC_LookAtChar,
+       CCharNPCAct.cpp:1030-1091).
+DUZELTME - Pet arkadasi sahibin binegine binebiliyor, inince de binegin sahibi oluyordu.
+       Yalnizca sahip biner (Horse_Mount / NPC_IsOwnedBy, CCharAct.cpp:3976,
+       CCharNPCStatus.cpp:449-469).
+DUZELTME - Alan buyuleri cikis yapmis oyuncularin bedenine vuruyor, oldurebiliyordu.
+       Baglantisi kopmus karakter artik alan hedefi degil (CWorldSearch.cpp:271-275).
+DUZELTME - Buyu, cast sirasinda saklanan ya da gorunmez olan hedefe yine isabet ediyordu.
+       Tamamlanma kontrolu artik caster'in hedefi gorup gormedigine bakar; CanSeeLOS isini
+       cizmeden once bunu sorar (CCharLOS.cpp:668, CCharSpell.cpp:2808/2922).
+DUZELTME - Hangi yaratigin binek oldugu motora gomulu bir tablodan geliyordu. Artik script
+       paketinin mount_0x<beden> defname'lerinden okunur (Horse_GetMountItemID,
+       CCharAct.cpp:3940-3944): sayi ya da item defname'i; paketin listelemedigi beden
+       binek degildir. Gomulu tablo yalnizca hic paket listesi yuklu degilken kullanilir.
+DUZELTME - Yuk ati ve yuk lamasina cift tiklayinca biniliyordu. Bunlar binek degil; cift
+       tiklama menzil icindeyse cantayi acar, baskasinin hayvani ise snoop edilir
+       (CClientEvent.cpp:2400-2408).
+
 [2026-11-10] - Dirilis, skill baslangici, durum paketi ve kap davranisi
 ------------------------------------------------------------------------
 DUZELTME - Katil her dirilisinde tum stat ve skill'lerinin %1'ini kaybediyordu. Source-X'te

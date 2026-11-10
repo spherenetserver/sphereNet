@@ -4,6 +4,70 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-10] - Spell target refusals, looting notoriety, swing reset, trade and containers
+------------------------------------------------------------------------
+FIX - A pet under a "come" order was left behind when its owner used a moongate,
+      teleporter or ship plank, or was ejected from a house; only "follow" pets went.
+      Both orders are the same follow action (CCharNPCPet.cpp:183-189) and both go.
+FIX - Speech reach was fixed in code (whisper 3, say 18, yell 48), so DISTANCEWHISPER,
+      DISTANCETALK and DISTANCEYELL did not change what players hear. The configured
+      values are used; the yell default is 31 (CServerConfig.cpp:211).
+FIX - TAG.OVERRIDE.STATCAP_1 capped DEX and _2 capped INT. The tag carries the reference
+      stat number: STR 0, INT 1, DEX 2 (uofiles_enums.h:447-449).
+FIX - Only heals, cures and Resurrection made the caster a criminal for helping one.
+      Every beneficial spell cast on another character does, under
+      HELPINGCRIMINALSISACRIME (Spell_CastDone, CCharSpell.cpp:3344-3359).
+FIX - Picking the wrong kind of target with a spell cursor ran the whole cast, took its
+      mana and reagents and did nothing (Resurrection on the living, Heal on an item,
+      Recall on a character). The pick is refused at the cursor with its message and no
+      cost: magery_1/2/3/4/7/8 (OnTarg_Skill_Magery, CClientTarg.cpp:1482-1521) and
+      spell_targ_notdead (CCharSpell.cpp:2790-2794).
+FIX - Looting or carving a player's corpse was judged by a fixed list (criminal or
+      murderer owner, party, guild). It is a crime only when the owner is innocent to
+      the looter (CheckCorpseCrime, CItemCorpse.cpp:127), so a guild-war enemy, a grey
+      owner or one the looter holds a grievance against is no longer a crime to loot.
+FIX - Taking a weapon out of hand, or putting another in, during a fight left the swing
+      in flight: the blow still landed with a weapon no longer held, and unequipping
+      never restarted the swing. Both abandon the swing and run a fresh recoil
+      (CCharAct.cpp:306-316, 419-424).
+FIX - With a trade window open, dropping another item on the trade partner bounced with
+      "already trading". It goes into the open window and clears both accept marks
+      (Cmd_SecureTrade, CClientUse.cpp:1346-1372).
+FIX - A game board took any item, a key ring anything, a bulletin board whatever was
+      dropped on it, and game pieces could be carried off their board. A board holds
+      only game pieces, a key ring only keys cut to a lock, a bulletin board nothing by
+      drop (CanContainerHold, CItemContainer.cpp:977-1001), and a game piece dropped
+      anywhere but a board goes back (CClientEvent.cpp:556-570).
+FIX - Double-clicking a telepad or moongate teleported from touch range and left pets
+      behind. Both work only by being stepped on (CCharAct.cpp:5054-5058).
+
+[2026-11-10] - Auto-defend, berserk summons, mount ownership and spell targets
+------------------------------------------------------------------------
+FIX - A player who was attacked stayed in peace mode with no fight target and never
+      swung back. A harmed player with no fight of their own now turns on the attacker
+      through the normal attack path - war mode, fight target, swing - as OnHarmedBy ->
+      Fight_Attack does (CCharFight.cpp:291-317). A player already fighting a target
+      that still exists keeps it.
+FIX - A summoned Energy Vortex or Blade Spirit followed its caster and only hit back. An
+      owned NPC with the berserk brain now runs the berserk behaviour: it takes no
+      orders and attacks whatever it sees, its owner included (NPC_LookAtChar,
+      CCharNPCAct.cpp:1030-1091).
+FIX - A pet's friend could ride the owner's mount, and dismounting made the friend its
+      owner. Only the owner mounts (Horse_Mount / NPC_IsOwnedBy, CCharAct.cpp:3976,
+      CCharNPCStatus.cpp:449-469).
+FIX - Area spells hit, and could kill, the bodies of logged-out players. A disconnected
+      character is no longer an area target (CWorldSearch.cpp:271-275).
+FIX - A spell still landed on a target that hid or turned invisible during the cast. The
+      completion check now asks whether the caster can see the target, as CanSeeLOS does
+      before tracing the ray (CCharLOS.cpp:668, CCharSpell.cpp:2808/2922).
+FIX - Which creatures are mounts came from a table built into the engine. It is now read
+      from the script pack's mount_0x<body> defnames (Horse_GetMountItemID,
+      CCharAct.cpp:3940-3944): a number or an item defname, and a body the pack does not
+      list is not a mount. The built-in table is used only when no pack list is loaded.
+FIX - Pack horses and pack llamas were mounted on double-click. They are not mounts; the
+      double-click opens the pack within reach, and somebody else's animal is snooped
+      (CClientEvent.cpp:2400-2408).
+
 [2026-11-10] - Resurrection, skill start, status packet and container behaviour
 ------------------------------------------------------------------------
 FIX - A murderer lost 1% of every stat and skill on each resurrection. Source-X has no

@@ -40,6 +40,7 @@ public sealed class SpellEngineSourceXParityTests
 
         var target = world.CreateCharacter();
         target.IsPlayer = true;
+        target.IsOnline = true;   // a logged-out player is not a visible spell target
         target.Str = 100; target.MaxHits = 100; target.Hits = 100;
         target.Dex = 50; target.Int = 50; target.MaxMana = 50; target.Mana = 50;
         world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));

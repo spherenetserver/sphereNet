@@ -1394,7 +1394,37 @@ public sealed class ClientWorldFeaturesHandler
         { SysMessage($"{partner.Name} is refusing trade requests."); return false; }
 
         var existing = _tradeManager.FindTradeFor(_character);
-        if (existing != null) { SysMessage("You are already trading."); return false; }
+        if (existing != null)
+        {
+            // A window already open with this partner takes the item (Cmd_SecureTrade,
+            // CClientUse.cpp:1346-1372: @DropOn_Trade, then ContentAdd into the
+            // existing trade container). It used to bounce with "already trading".
+            if (firstItem != null && existing.GetPartner(_character) == partner)
+            {
+                if (_triggerDispatcher?.FireItemTrigger(firstItem, ItemTrigger.DropOnTrade, new TriggerArgs
+                    {
+                        CharSrc = _character,
+                        ItemSrc = firstItem,
+                        O1 = partner,
+                        N1 = (int)existing.SessionId.Value
+                    }) == TriggerResult.True)
+                    return false;
+                var openCont = existing.GetOwnContainer(_character);
+                if (!openCont.TryAddItem(firstItem))
+                    return false;
+                firstItem.Position = new Point3D(30, 30, 0, _character.MapIndex);
+                existing.ResetAcceptance();
+                SendTradeUpdateToBoth(existing);
+                SendContainerItemPacket(new PacketContainerItem(
+                    firstItem.Uid.Value, firstItem.DispIdFull, 0,
+                    firstItem.Amount, 30, 30,
+                    openCont.Uid.Value, firstItem.Hue, _netState.IsClientPost6017));
+                SendTradeItemToPartner?.Invoke(partner, firstItem, openCont);
+                return true;
+            }
+            SysMessage("You are already trading.");
+            return false;
+        }
 
         var partnerTrade = _tradeManager.FindTradeFor(partner);
         if (partnerTrade != null) { SysMessage("They are already trading."); return false; }

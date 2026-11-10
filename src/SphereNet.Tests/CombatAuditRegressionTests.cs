@@ -206,8 +206,11 @@ public class CombatAuditRegressionTests
     }
 
     [Fact]
-    public void RangedWindupKeepsCommittedWeaponAcrossEquipmentSwap()
+    public void RangedWindupIsAbandonedByAnEquipmentSwap()
     {
+        // Taking the bow out of hand restarts the fight skill (OnRemoveObj,
+        // CCharAct.cpp:419-424): the shot in flight is abandoned, so no arrow is
+        // spent and nothing lands with a weapon no longer held.
         int oldFlags = Character.CombatFlags;
         try
         {
@@ -220,15 +223,15 @@ public class CombatAuditRegressionTests
             Assert.Equal(bow.Uid, attacker.PendingHitWeapon);
             Assert.Equal(staminaBefore, attacker.Stam);
 
+            int arrowsBefore = arrows.Amount;
+            short hitsBefore = target.Hits;
             var sword = world.CreateItem();
             sword.ItemType = ItemType.WeaponSword;
             attacker.Equip(sword, Layer.TwoHanded);
-            attacker.SwingHitTime = Environment.TickCount64 - 1;
-            client.TickCombat();
 
             Assert.False(attacker.HasPendingHit);
-            Assert.Equal(1, arrows.Amount);
-            Assert.True(target.Hits <= target.MaxHits);
+            Assert.Equal(arrowsBefore, arrows.Amount);
+            Assert.Equal(hitsBefore, target.Hits);
         }
         finally
         {

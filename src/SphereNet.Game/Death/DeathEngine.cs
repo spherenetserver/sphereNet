@@ -1041,7 +1041,6 @@ public sealed class DeathEngine
         var owner = _world.FindChar(ownerSerial);
         if (owner == null || owner.IsDeleted) return false; // owner gone (NPC corpse)
         if (!owner.IsPlayer) return false;                  // creature corpse — free loot
-        if (owner.IsCriminal || owner.IsMurderer) return false; // looting a red/criminal is allowed
 
         // Looting a party member's corpse is not criminal when that member granted
         // loot rights. The flag belongs to the CORPSE OWNER ("party may loot me"), not
@@ -1064,7 +1063,12 @@ public sealed class DeathEngine
                 return false;
         }
 
-        return true;
+        // The rule itself: a crime only when the owner is NOTO_GOOD to the looter
+        // (CheckCorpseCrime, CItemCorpse.cpp:127). The notoriety already answers
+        // criminal and murderer owners, and also what a hand-written list missed:
+        // a guild-war enemy, a grey or permagrey owner, one the looter holds a
+        // grievance against, an arena.
+        return Clients.GameClient.ComputeNotoriety(_world, looter, owner) == 1;
     }
 
     /// <summary>The corpse's owner, when one is still around to be wronged.

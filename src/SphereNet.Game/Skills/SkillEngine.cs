@@ -705,7 +705,10 @@ public static class SkillEngine
     /// player's class stat max, else 100 - an NPC's limit is always 100.</summary>
     private static int ResolveStatCap(Character ch, int statIdx)
     {
-        if (TryGetIntTag(ch, $"OVERRIDE.STATCAP_{statIdx}", out int tag))
+        // The tag carries Source-X's STAT_TYPE number: STR 0, INT 1, DEX 2
+        // (uofiles_enums.h:447-449), not this engine's Str/Dex/Int order.
+        int tagIdx = statIdx switch { 1 => 2, 2 => 1, _ => statIdx };
+        if (TryGetIntTag(ch, $"OVERRIDE.STATCAP_{tagIdx}", out int tag))
             return tag;
         if (!ch.IsPlayer)
             return 100;

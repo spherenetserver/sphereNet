@@ -27,6 +27,10 @@ public partial class Character : ObjBase
     public static Action<string>? Diagnostic { get; set; }
 
     public static Action<Character, Character?>? OnLifecycleKill;
+    /// <summary>A harmed player with no fight of its own turns on the attacker
+    /// (Source-X OnHarmedBy -> Fight_Attack, CCharFight.cpp:315-316). The host
+    /// routes it to that player's client attack path. (victim, attacker)</summary>
+    public static Action<Character, Character>? OnPlayerAutoDefend;
     public static Action<Character>? OnLifecycleResurrect;
     /// <summary>Fired by the script DISMOUNT verb. The host routes it through
     /// MountEngine.Dismount (restores the mount NPC) and the rider's client
@@ -3617,12 +3621,24 @@ public partial class Character : ObjBase
     /// a ridden mount does nothing; an NPC already fighting someone who still
     /// exists stays on its target nine times in ten and turns on the new attacker
     /// the tenth (g_Rand.Get16ValFast(10)); an NPC with no fight turns on it.
-    /// It used to switch only when it had no target at all. Players do not
-    /// auto-target here.</summary>
+    /// It used to switch only when it had no target at all.
+    ///
+    /// A player auto-defends too (:302-316): one already fighting a target that
+    /// still exists is left alone, any other is put through Fight_Attack on the
+    /// attacker - war mode, fight target, swing. The host runs that through the
+    /// player's own attack path; a player with no client does nothing.</summary>
     internal void OnHarmedBy(Character src)
     {
-        if (IsPlayer || IsDead || src == this)
+        if (IsDead || src == this)
             return;
+        if (IsPlayer)
+        {
+            if (IsInWarMode && FightTarget.IsValid &&
+                ResolveWorld?.Invoke()?.FindChar(FightTarget) is { IsDeleted: false, IsDead: false })
+                return;
+            OnPlayerAutoDefend?.Invoke(this, src);
+            return;
+        }
         if (IsStatFlag(StatFlag.Ridden)) // NPCACT_RIDDEN
             return;
         if (FightTarget.IsValid)
@@ -4547,6 +4563,17 @@ public partial class Character : ObjBase
         // OnRemoveObj IT_EQ_HORSE (CCharAct.cpp:488-490): the rider is on foot again.
         if (layer == Layer.Horse)
             ClearStatFlag(StatFlag.OnHorse);
+        // OnRemoveObj for a hand layer during a fight (CCharAct.cpp:419-424):
+        // Skill_Start(Fight_GetWeaponSkill()) re-enters the equipping state, so the
+        // swing in flight is abandoned and a fresh recoil runs. The committed blow
+        // used to land anyway, with a weapon no longer in hand.
+        if ((layer == Layer.OneHanded || layer == Layer.TwoHanded) && FightTarget.IsValid && !IsDead)
+        {
+            ClearPendingHit();
+            bool noWait = (CombatFlags & (int)Combat.CombatFlags.FirstHitInstant) != 0;
+            BeginEquipSwingWait(Environment.TickCount64,
+                Combat.CombatHelper.GetInitialSwingWaitMs(Combat.CombatEngine.GetSwingDelayMs(this, null)), noWait);
+        }
         // OnRemoveObj, IsTypeWeapon (CCharAct.cpp:548-555): the Curse Weapon
         // contribution leaves with the weapon.
         if ((layer == Layer.OneHanded || layer == Layer.TwoHanded) && IsTypeWeapon(item.ItemType))

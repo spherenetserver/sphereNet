@@ -68,7 +68,7 @@ public sealed class SpeechEngine
     /// DistanceTalk / DistanceWhisper / DistanceYell); defaults match the old hardcodes.</summary>
     public int DistanceSay { get; set; } = 18;
     public int DistanceWhisper { get; set; } = 3;
-    public int DistanceYell { get; set; } = 48;
+    public int DistanceYell { get; set; } = 31; // UO_MAP_VIEW_RADAR (CServerConfig.cpp:211)
 
     /// <summary>How far an NPC can hear speech, independent of the talk mode
     /// (sphere.ini NPCDISTANCEHEAR, Source-X m_iNPCDistanceHear). NPCs are

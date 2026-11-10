@@ -96,6 +96,18 @@ public sealed partial class NpcAI
             return;
         }
 
+        // A berserk creature is owned only on paper: it takes no orders and
+        // attacks whatever it sees, its owner included (NPC_LookAtChar skips the
+        // "my owner" block for NPCBRAIN_BERSERK, CCharNPCAct.cpp:1030, and
+        // Fight_Attacks at :1080-1091; hostility is a flat 100,
+        // CCharNPCStatus.cpp:761-765). A summoned Energy Vortex or Blade Spirit
+        // went through the pet orders instead and only ever hit back.
+        if (npc.NpcBrain == NpcBrainType.Berserk)
+        {
+            ActBerserk(npc);
+            return;
+        }
+
         var master = npc.ResolveControllerCharacter() ?? npc.ResolveOwnerCharacter();
         if (master == null || master.IsDead)
         {

@@ -1,4 +1,4 @@
-﻿using SphereNet.Core.Enums;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Messages;
@@ -57,7 +57,7 @@ public static class ActiveSkillEngine
         int diff = startDifficulty ?? HidingStart(sink);
         if (diff < -1)
             return false;
-        bool success = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.Hiding, diff);
+        bool success = SkillEngine.UseStart(ch, SkillType.Hiding, diff);
         if (success)
         {
             ch.SetStatFlag(StatFlag.Hidden);
@@ -107,7 +107,7 @@ public static class ActiveSkillEngine
     /// result. The hidden gate, the step budget and the English lines this had were
     /// invented.</summary>
     public static bool Stealth(IActiveSkillSink sink)
-        => SkillEngine.UseQuick(sink.Self, SkillType.Stealth, 0);
+        => SkillEngine.UseStart(sink.Self, SkillType.Stealth, 0);
 
     // ---------------------------------------------------------- DetectHidden
 
@@ -120,7 +120,7 @@ public static class ActiveSkillEngine
     {
         var ch = sink.Self;
         int diff = startDifficulty ?? 10;
-        bool succeeded = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.DetectingHidden, diff);
+        bool succeeded = SkillEngine.UseStart(ch, SkillType.DetectingHidden, diff);
         if (!succeeded) return false;
         if ((Character.ActiveRevealFlags & RevealFlags.DetectingHidden) == 0)
             return true;
@@ -233,7 +233,7 @@ public static class ActiveSkillEngine
         if (ch.IsStatFlag(StatFlag.SpiritSpeak)) return false;
 
         int diff = startDifficulty ?? sink.Random.Next(90);
-        bool success = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.SpiritSpeak, diff);
+        bool success = SkillEngine.UseStart(ch, SkillType.SpiritSpeak, diff);
         if (success)
         {
             if (!SkillEngine.HasFlag(SkillType.SpiritSpeak, SkillFlag.NoSfx))
@@ -421,7 +421,7 @@ public static class ActiveSkillEngine
             return false;
         if (boundToFail)
             stealDiff = -1;
-        bool success = stealDiff >= 0 && SkillEngine.UseQuick(ch, SkillType.Stealing, stealDiff);
+        bool success = SkillEngine.UseStart(ch, SkillType.Stealing, stealDiff);
 
         // Deliver the goods (CCharSkill.cpp:4321-4331): on SUCCESS, and ALWAYS for an
         // item taken off the ground - "stealing off the ground should always
@@ -666,7 +666,7 @@ public static class ActiveSkillEngine
         if (mark == null)
             return true;   // not a crime really (:4123-4124)
 
-        bool success = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.Snooping, diff);
+        bool success = SkillEngine.UseStart(ch, SkillType.Snooping, diff);
 
         CrimeWitnessService.CheckCrimeSeen(sink.World, ch, mark, SkillType.Snooping,
             sink.Random, isSnoop: true, item: container, action: ServerMessages.Get(Msg.SnoopingAttempting));
@@ -884,7 +884,7 @@ public static class ActiveSkillEngine
         if (pick == null)
             return false;
 
-        if (diff < 0 || !SkillEngine.UseQuick(ch, SkillType.Lockpicking, diff))
+        if (!SkillEngine.UseStart(ch, SkillType.Lockpicking, diff))
         {
             Combat.CombatEngine.OnItemDamaged?.Invoke(pick, 1, ch, Combat.DamageType.HitBlunt);
             return false;
@@ -939,7 +939,7 @@ public static class ActiveSkillEngine
         if (!RemoveTrapTarget(sink, trap))
             return false;
         int diff = startDifficulty ?? RandVal(sink.Random, 95);
-        bool success = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.RemoveTrap, diff);
+        bool success = SkillEngine.UseStart(ch, SkillType.RemoveTrap, diff);
         if (success)
         {
             // Disabled, and it re-arms by itself five minutes later
@@ -1091,7 +1091,7 @@ public static class ActiveSkillEngine
         // No animation and no sound: Skill_Healing plays neither at any stage, and
         // healing is neither a crafting nor a gathering skill, so Skill_Start and
         // Skill_Stroke play none for it either (CCharSkill.cpp:2724-2886/4543).
-        if (diff < 0 || !SkillEngine.UseQuick(ch, healingSkill, diff))
+        if (!SkillEngine.UseStart(ch, healingSkill, diff))
         {
             // FAIL (:2814-2821): the bandage is spent, and the patient told.
             sink.ConsumeAmount(bandage!);
@@ -1321,7 +1321,7 @@ public static class ActiveSkillEngine
 
         var tamedMemory = target!.Memory_FindObjTypes(ch.Uid, MemoryType.Speak);
         bool tamedBefore = tamedMemory != null && (tamedMemory.More1 & 0xFFFF) == Character.NpcMemActTamed;
-        bool success = diff >= 0 && SkillEngine.UseQuick(ch, SkillType.Taming, diff, allowGain: !tamedBefore);
+        bool success = SkillEngine.UseStart(ch, SkillType.Taming, diff, allowGain: !tamedBefore);
         if (success)
             success = target.TryAssignOwnership(ch, ch, summoned: false, enforceFollowerCap: true);
         if (success)

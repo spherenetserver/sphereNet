@@ -4772,18 +4772,23 @@ public partial class Character : ObjBase
         MarkDirty(DirtyFlag.StatFlags | DirtyFlag.Stats);
     }
 
+    /// <summary>Source-X Spell_Resurrection (CCharSpell.cpp:447-454): an antimagic
+    /// region (REGION_ANTIMAGIC_ALL → SphereNet RegionFlag.NoMagic) refuses the
+    /// rez, checked before @Resurrect fires; a GM ghost or a GM raiser bypasses it
+    /// (the reference fNoFail).</summary>
+    public bool IsResurrectionBlockedHere(Character? raiser = null)
+    {
+        if (PrivLevel >= PrivLevel.GM || (raiser != null && raiser.PrivLevel >= PrivLevel.GM))
+            return false;
+        var region = ResolveWorld?.Invoke()?.FindRegion(Position);
+        return region != null && region.NoMagic;
+    }
+
     public void Resurrect()
     {
         if (!IsDead) return;
-        // Source-X Spell_Resurrection: an antimagic region refuses the rez
-        // (REGION_ANTIMAGIC_ALL → SphereNet RegionFlag.NoMagic); a GM ghost
-        // bypasses (the reference fNoFail).
-        if (PrivLevel < PrivLevel.GM)
-        {
-            var region = ResolveWorld?.Invoke()?.FindRegion(Position);
-            if (region != null && region.NoMagic)
-                return;
-        }
+        if (IsResurrectionBlockedHere())
+            return;
         ClearStatFlag(StatFlag.Dead);
         // Source-X Spell_Resurrection: StatFlag_Clear(STATF_DEAD|STATF_INSUBSTANTIAL).
         ClearStatFlag(StatFlag.Insubstantial);
@@ -4795,28 +4800,8 @@ public partial class Character : ObjBase
         CombatState.ClearAttackers();
         ClearPendingHit();
         FightTarget = Serial.Invalid;
-
-        // Source-X: murderer resurrection penalties (stat/skill loss ~1%)
-        if (IsMurderer && IsPlayer)
-        {
-            short oldStr = _str, oldDex = _dex, oldInt = _int;
-            _str = (short)Math.Max(1, _str - Math.Max((short)1, (short)(_str / 100)));
-            _dex = (short)Math.Max(1, _dex - Math.Max((short)1, (short)(_dex / 100)));
-            _int = (short)Math.Max(1, _int - Math.Max((short)1, (short)(_int / 100)));
-            if (_str < oldStr) SkillEngine.OnStatDecrease?.Invoke(this, 0, _str);
-            if (_dex < oldDex) SkillEngine.OnStatDecrease?.Invoke(this, 1, _dex);
-            if (_int < oldInt) SkillEngine.OnStatDecrease?.Invoke(this, 2, _int);
-            for (int i = 0; i < _skillValues.Length; i++)
-            {
-                if (_skillValues[i] > 0)
-                {
-                    _skillValues[i] = (ushort)Math.Max(0,
-                        _skillValues[i] - Math.Max(1, _skillValues[i] / 100));
-                    if (i < SkillEngine.BaseSkillCount)
-                        SkillEngine.OnSkillDecrease?.Invoke(this, (SkillType)i, _skillValues[i]);
-                }
-            }
-        }
+        // No stat or skill loss here, murderer or not: Spell_Resurrection
+        // (CCharSpell.cpp:441-533) only restores body, hue, flags and hits.
 
         MarkDirty(DirtyFlag.StatFlags | DirtyFlag.Stats);
 
@@ -10270,6 +10255,19 @@ public partial class Character : ObjBase
         }
 
         if (IsDead) return true;
+
+        // A character dies on its own tick (CChar::OnTick, CCharAct.cpp:6092-6119):
+        // hit points at or below zero there run Death() before any regeneration,
+        // so a script's HITS=0 (or a negative MODMAXHITS clamp) kills. A @Death
+        // RETURN 1 aborts it and the tick carries on, as upstream. A character
+        // with no hit-point maximum at all is a statless placeholder, not a corpse
+        // in waiting, and is left alone.
+        if (_hits <= 0 && MaxHits > 0 && !IsDeleted)
+        {
+            if (OnLifecycleKill != null) OnLifecycleKill(this, null);
+            else Kill();
+            if (IsDead || IsDeleted) return true;
+        }
 
         // HP regen: Source/Sphere REGEN0 interval, affected by hunger. Suspended while poisoned
         // so the poison can actually whittle the victim down.

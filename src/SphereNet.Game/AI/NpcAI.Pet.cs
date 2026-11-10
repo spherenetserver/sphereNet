@@ -105,9 +105,15 @@ public sealed partial class NpcAI
                 return;
             }
 
-            // Owner gone — uncontrolled pets idle instead of following stale state.
-            Wander(npc);
-            return;
+            // Owner gone: "free to do as I wish" (NPC_Act_Follow, CCharNPCAct.cpp:
+            // 1350-1355). A dead owner is still there - Source-X keeps the standing
+            // order, so a pet told to stay stays and a follower follows the ghost;
+            // only a missing owner frees it.
+            if (master == null)
+            {
+                Wander(npc);
+                return;
+            }
         }
 
         // NPCAIEXTRAS BandageHeal: a pet (or hireling) with Healing and bandages

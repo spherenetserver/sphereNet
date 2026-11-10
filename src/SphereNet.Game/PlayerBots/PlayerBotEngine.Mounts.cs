@@ -64,8 +64,7 @@ public sealed partial class PlayerBotEngine
             mind.Scene != null || !IsRider(mind))
             return false;
 
-        // A fight that is over leaves no target behind: mounting refuses a rider
-        // with one (Horse_Mount), and the bot would click its horse for ever.
+        // A fight that is over leaves no target behind.
         if (ch.FightTarget.IsValid)
             ch.FightTarget = Serial.Invalid;
 

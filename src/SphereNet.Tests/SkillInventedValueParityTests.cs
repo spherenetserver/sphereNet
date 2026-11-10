@@ -288,9 +288,10 @@ public sealed class SkillInventedValueParityTests : IDisposable
         var markPack = Pack(world, mark);
         var rolls = Rolls(_ => 1);
 
-        ActiveSkillEngine.Snooping(new Sink(snoop, world), markPack);
+        // Difficulty 0 is never rolled (Skill_Start, CCharSkill.cpp:4568): it succeeds.
+        Assert.True(ActiveSkillEngine.Snooping(new Sink(snoop, world), markPack));
 
-        Assert.Equal((SkillType.Snooping, 0), rolls.Single());
+        Assert.Empty(rolls);
         Assert.Equal(92, snoop.Karma);
     }
 
@@ -573,8 +574,9 @@ public sealed class SkillInventedValueParityTests : IDisposable
         var rolls = Rolls(_ => 1);
         var sink = new Sink(ch, world);
 
+        // Difficulty 0 is never rolled (Skill_Start, CCharSkill.cpp:4568).
         Assert.True(ActiveSkillEngine.Stealth(sink));
-        Assert.Equal((SkillType.Stealth, 0), rolls.Single());
+        Assert.Empty(rolls);
         Assert.Equal(0, ch.StepStealth);
         Assert.Empty(sink.Messages);
     }
@@ -589,7 +591,8 @@ public sealed class SkillInventedValueParityTests : IDisposable
 
         Assert.True(ActiveSkillEngine.Hiding(new Sink(ch, world)));
         Assert.True(ActiveSkillEngine.Stealth(new Sink(ch, world)));
-        Assert.Equal(2, rolls.Count);
+        // Stealth's difficulty 0 succeeds without a roll (CCharSkill.cpp:4568).
+        Assert.DoesNotContain(rolls, r => r.Skill == SkillType.Stealth);
     }
 
     // ----------------------------------------------------------- Poisoning

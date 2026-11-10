@@ -1,4 +1,4 @@
-﻿using SphereNet.Core.Enums;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects;
@@ -56,7 +56,7 @@ public sealed class SkillHandlers
 
         int level = SkillEngine.GetAdjustedSkill(ch, skill);
         int difficulty = InfoSkillStartStage(sink, skill, target);
-        if (difficulty < 0 || !SkillEngine.UseQuick(ch, skill, difficulty))
+        if (!SkillEngine.UseStart(ch, skill, difficulty))
             return false;
 
         return skill switch

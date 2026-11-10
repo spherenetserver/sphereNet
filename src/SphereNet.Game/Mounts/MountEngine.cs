@@ -43,8 +43,9 @@ public sealed class MountEngine
         // mount while its stable entry or figurine still held the same NPC.
         if (npc.IsPlayer || npc.IsStatFlag(StatFlag.Ridden))
             return false;
-        if (rider.FightTarget.IsValid || rider.IsStatFlag(StatFlag.Freeze))
-            return false;
+        // No refusal for a rider in a fight or frozen: Horse_Mount (CCharAct.cpp:
+        // 3951-3990) and Event_DoubleClick (CClientEvent.cpp:2395-2398) gate only
+        // touch, mount item, capability, ownership and ceiling.
         if (rider.MapIndex != npc.MapIndex || rider.Position.GetDistanceTo(npc.Position) > 1)
             return false;
         // Source-X Horse_Mount requires NPC_IsOwnedBy. Mounting must never tame

@@ -1617,59 +1617,61 @@ public sealed class ClientWorldFeaturesHandler
     }
 
 
-    /// <summary>Handle rename request (0x75).</summary>
+    /// <summary>Names a pet may not take: the pet-command verbs and the staff
+    /// command redirects, which a spoken order would then hit (CClientEvent.cpp:
+    /// 2231-2234; sm_szCmd_Redirect :28, CCharNPC::sm_szVerbKeys).</summary>
+    private static readonly HashSet<string> RenameReservedWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "BANK", "CONTROL", "DESTROY", "DUPE", "FORGIVE", "JAIL", "KICK", "KILL",
+        "NUDGEDOWN", "NUDGEUP", "PRIVSET", "REMOVE", "SHRINK",
+        "BUY", "BYE", "FLEE", "GOTO", "HIRE", "LEAVE", "PETRETRIEVE", "PETSTABLE",
+        "RELEASE", "RESTOCK", "RUN", "RUNTO", "SELL", "TRAIN", "WALK",
+    };
+
+    /// <summary>0x75 rename from a status bar (Source-X Event_SetName,
+    /// CClientEvent.cpp:2217-2251). Only a character, never oneself, and only by
+    /// its owner or by staff above its plevel (IsOwnedBy with fAllowGM,
+    /// CCharNPCStatus.cpp:449-469): a player could not name their own pet, and a
+    /// GM's rename also reached items, which the packet never names. A refusal
+    /// is silent, as upstream.</summary>
     public void HandleRename(uint serial, string name)
     {
         if (_character == null) return;
 
-        if (_character.PrivLevel < PrivLevel.GM)
-        {
-            SysMessage(ServerMessages.Get("rename_no_permission"));
-            return;
-        }
-
         var trimmed = name.Trim();
         if (trimmed.Length == 0 || trimmed.Length > 30)
-        {
-            SysMessage("Invalid name length.");
             return;
-        }
-
         foreach (char c in trimmed)
         {
             if (!char.IsLetterOrDigit(c) && c != ' ' && c != '-' && c != '\'')
-            {
-                SysMessage("Name contains invalid characters.");
                 return;
-            }
         }
+        if (RenameReservedWords.Contains(trimmed))
+            return;
 
         var target = _world.FindChar(new Serial(serial));
-        if (target != null)
-        {
-            string oldName = target.Name;
-            // @Rename runs on the RENAMER with ARGO = the pet being renamed and ARGS = the
-            // new name (m_pChar->OnTrigger(CTRIG_Rename...), CClientEvent.cpp:2221-2227).
-            var result = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Rename, new TriggerArgs
-            {
-                CharSrc = _character,
-                O1 = target,
-                S1 = trimmed
-            });
-            if (result == TriggerResult.True)
-                return;
-
-            target.Name = trimmed;
-            SysMessage(ServerMessages.GetFormatted("msg_rename_success", oldName, target.Name));
+        if (target == null || target == _character)
             return;
-        }
 
-        var item = _world.FindItem(new Serial(serial));
-        if (item != null)
+        bool ownedPet = !target.IsPlayer && target.HasOwner(_character.Uid);
+        bool staffOver = _character.PrivLevel >= PrivLevel.GM && _character.PrivLevel > target.PrivLevel;
+        if (!ownedPet && !staffOver)
+            return;
+
+        // @Rename runs on the RENAMER with ARGO = the pet being renamed and ARGS = the
+        // new name (CClientEvent.cpp:2238-2245).
+        var result = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Rename, new TriggerArgs
         {
-            item.Name = trimmed;
-            SysMessage(ServerMessages.GetFormatted("rename_item_ok", item.Name));
-        }
+            CharSrc = _character,
+            O1 = target,
+            S1 = trimmed
+        });
+        if (result == TriggerResult.True)
+            return;
+
+        if (ownedPet)
+            SysMessage(ServerMessages.GetFormatted(Msg.NpcPetRenameSuccess2, target.Name, trimmed));
+        target.Name = trimmed;
     }
 
     /// <summary>Handle client view range change (0xC8).</summary>

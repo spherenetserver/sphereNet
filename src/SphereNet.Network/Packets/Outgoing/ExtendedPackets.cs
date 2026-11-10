@@ -58,6 +58,17 @@ public sealed class PacketStatusFull : PacketWriter
     private readonly short _luck;
     private readonly short _damageMin, _damageMax;
     private readonly ushort _maxWeight;
+    private readonly byte _race;
+
+    /// <summary>Race byte from the body (send.cpp:259-282): 1 human, 2 elf,
+    /// 3 gargoyle, living or ghost; 0 for anything else.</summary>
+    public static byte RaceFromBody(ushort body) => body switch
+    {
+        0x0190 or 0x0191 or 0x0192 or 0x0193 => 1,
+        0x025D or 0x025E or 0x025F or 0x0260 => 2,
+        0x029A or 0x029B or 0x02B6 or 0x02B7 => 3,
+        _ => 0,
+    };
 
     public PacketStatusFull(uint serial, string name,
         short hits, short maxHits, short str, short dex, short intel,
@@ -67,7 +78,7 @@ public sealed class PacketStatusFull : PacketWriter
         short statCap = 225, byte followers = 0, byte maxFollowers = 5,
         short resFire = 0, short resCold = 0, short resPoison = 0, short resEnergy = 0,
         short luck = 0, short damageMin = 0, short damageMax = 0,
-        ushort maxWeight = 0)
+        ushort maxWeight = 0, byte race = 1)
         : base(0x11)
     {
         _serial = serial; _name = name;
@@ -81,6 +92,7 @@ public sealed class PacketStatusFull : PacketWriter
         _resFire = resFire; _resCold = resCold; _resPoison = resPoison; _resEnergy = resEnergy;
         _luck = luck; _damageMin = damageMin; _damageMax = damageMax;
         _maxWeight = maxWeight;
+        _race = race;
     }
 
     public override PacketBuffer Build()
@@ -105,6 +117,16 @@ public sealed class PacketStatusFull : PacketWriter
         buf.WriteUInt16(_armorRating);
         buf.WriteUInt16(_weight);
 
+        // ML: max weight and race follow the weight directly, ahead of the stat
+        // cap (Source-X PacketCharacterStatus, send.cpp:253-283; ClassicUO reads
+        // them in that order). Written after the AOS block, they shifted the stat
+        // cap, followers and resists of every ML client by three bytes.
+        if (_expansionLevel >= 5)
+        {
+            buf.WriteUInt16(_maxWeight);
+            buf.WriteByte(_race);
+        }
+
         if (_expansionLevel >= 3)
         {
             buf.WriteInt16(_statCap);
@@ -122,12 +144,6 @@ public sealed class PacketStatusFull : PacketWriter
             buf.WriteInt16(_damageMin);
             buf.WriteInt16(_damageMax);
             buf.WriteInt32(0); // tithing points
-        }
-
-        if (_expansionLevel >= 5)
-        {
-            buf.WriteUInt16(_maxWeight);
-            buf.WriteByte(1); // race (1=human)
         }
 
         if (_expansionLevel >= 7)

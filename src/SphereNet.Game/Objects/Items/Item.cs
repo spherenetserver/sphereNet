@@ -5389,7 +5389,7 @@ public class Item : ObjBase
                 or ItemType.ShipPlank or ItemType.Door or ItemType.DoorOpen
                 or ItemType.DoorLocked or ItemType.Portculis or ItemType.PortLocked
                 or ItemType.Crops or ItemType.Foliage or ItemType.LightLit
-                or ItemType.AnimActive or ItemType.BeeHive
+                or ItemType.AnimActive or ItemType.BeeHive or ItemType.TrashCan
                 || (type == ItemType.EqMemoryObj && EquipLayer is Layer.FlagWool or Layer.FlagPotionUsed)
                 || (IsEquipped && EquipLayer == Layer.FlagStuck && IsAttr(ObjAttributes.Decay));
 
@@ -5453,6 +5453,12 @@ public class Item : ObjBase
                     if (More1 < BeeHiveMaxHoney)
                         More1 += 1;
                     SetTimeout(Environment.TickCount64 + BeeHiveRefillMs);
+                    break;
+                case ItemType.TrashCan:
+                    // CItemContainer::_OnTick IT_TRASH_CAN (CItemContainer.cpp:
+                    // 1415-1418): the can empties itself and stays.
+                    foreach (var junk in _contents.ToArray())
+                        junk.Delete();
                     break;
             }
         }

@@ -603,9 +603,9 @@ public sealed class SphereConfig
 
     /// <summary>Can an NPC's spell be disturbed by a hit, the way a player's can?
     /// (Source-X m_fNPCCanFizzleOnHit, ini NPCCANFIZZLEONHIT, CCharFight.cpp:881.)
-    /// This shard defaults it on; Source-X's own default is off, which disturbs only
-    /// players.</summary>
-    public bool NpcCanFizzleOnHit { get; set; } = true;
+    /// Off unless the ini turns it on, as Source-X (CServerConfig.cpp:74): only
+    /// players are disturbed. The shipped config/sphere.ini turns it on.</summary>
+    public bool NpcCanFizzleOnHit { get; set; }
 
     /// <summary>How many houses a guild may own by default (Source-X
     /// _iMaxHousesGuild, ini MAXHOUSESGUILD, default 1). It is the value a stone

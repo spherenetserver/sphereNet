@@ -242,6 +242,25 @@ public static class SkillEngine
     /// negative value is RETURN 0: it fails, again without experience.</summary>
     public const int UseQuickHandledSuccess = -2;
 
+    /// <summary>The roll a started skill gets (Source-X Skill_Start,
+    /// CCharSkill.cpp:4566-4572): a negative difficulty fails, a difficulty of
+    /// zero is never rolled and succeeds ("too easy to be bad", :4338), and only
+    /// a positive one goes to the bell curve. Skill_Done then gains experience
+    /// at that difficulty either way.</summary>
+    public static bool UseStart(Character ch, SkillType skill, int difficulty, bool allowGain = true)
+    {
+        if (difficulty < 0)
+            return false;
+        if (difficulty > 0)
+            return UseQuick(ch, skill, difficulty, allowGain);
+        if (!IsValidBaseSkill(skill) || HasFlag(skill, SkillFlag.Disabled) ||
+            HasFlag(skill, SkillFlag.Scripted))
+            return false;
+        if (allowGain)
+            GainExperience(ch, skill, 0);
+        return true;
+    }
+
     public static bool UseQuick(Character ch, SkillType skill, int difficulty,
         bool allowGain = true, bool useBellCurve = true, bool forceCheck = false)
     {

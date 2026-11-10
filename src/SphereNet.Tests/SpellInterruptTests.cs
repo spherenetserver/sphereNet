@@ -90,26 +90,26 @@ public class SpellInterruptTests
             Assert.False(engine.TryInterruptFromDamage(caster, 99));
             Assert.True(caster.IsCasting);
         }
-        finally { SpellEngine.NpcCanFizzleOnHit = true; }
+        finally { SpellEngine.NpcCanFizzleOnHit = false; }
     }
 
     [Fact]
-    public void AnNpcIsDisturbedByDefault_AndNotWhenTheSettingIsOff()
+    public void AnNpcIsNotDisturbedByDefault_AndIsWhenTheSettingIsOn()
     {
-        // Upstream gates NPC disturbance on NPCCANFIZZLEONHIT (CCharFight.cpp:881);
-        // this shard's default is on.
+        // Upstream gates NPC disturbance on NPCCANFIZZLEONHIT (CCharFight.cpp:881),
+        // off by default (CServerConfig.cpp:74).
         var (engine, npc, _) = CreateCastingCaster(1000, 0, isPlayer: false);
-        Assert.True(SpellEngine.NpcCanFizzleOnHit);
-        Assert.True(engine.TryInterruptFromDamage(npc, 1));
-        Assert.False(npc.IsCasting);
+        Assert.False(SpellEngine.NpcCanFizzleOnHit);
+        Assert.False(engine.TryInterruptFromDamage(npc, 50));
+        Assert.True(npc.IsCasting);
 
         var (engine2, npc2, _) = CreateCastingCaster(1000, 0, isPlayer: false);
-        SpellEngine.NpcCanFizzleOnHit = false;
+        SpellEngine.NpcCanFizzleOnHit = true;
         try
         {
-            Assert.False(engine2.TryInterruptFromDamage(npc2, 50));
-            Assert.True(npc2.IsCasting);
+            Assert.True(engine2.TryInterruptFromDamage(npc2, 1));
+            Assert.False(npc2.IsCasting);
         }
-        finally { SpellEngine.NpcCanFizzleOnHit = true; }
+        finally { SpellEngine.NpcCanFizzleOnHit = false; }
     }
 }

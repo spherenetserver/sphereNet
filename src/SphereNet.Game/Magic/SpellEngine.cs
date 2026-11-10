@@ -610,9 +610,9 @@ public sealed partial class SpellEngine
     /// Returns true if the spell was interrupted.
     /// </summary>
     /// <summary>Whether a creature's casting can be disturbed by a hit the way a
-    /// player's is (ini NPCCANFIZZLEONHIT, default on). The host sets it from the
-    /// configuration.</summary>
-    public static bool NpcCanFizzleOnHit { get; set; } = true;
+    /// player's is (ini NPCCANFIZZLEONHIT, default off as Source-X
+    /// CServerConfig.cpp:74). The host sets it from the configuration.</summary>
+    public static bool NpcCanFizzleOnHit { get; set; }
 
     /// <summary>How far a polymorph may move a stat, in points (ini MAXPOLYSTATS,
     /// default 150). The host sets it from the configuration.</summary>

@@ -1751,7 +1751,8 @@ public sealed partial class GameClient
             luck: (short)SphereNet.Game.Combat.CombatEngine.EffectiveLuck(ch),
             damageMin: (short)dmgMin,
             damageMax: (short)dmgMax,
-            maxWeight: maxWeight
+            maxWeight: maxWeight,
+            race: PacketStatusFull.RaceFromBody(ch.BodyId)
         ));
 
         // Keep self bars synchronized on clients that rely on A1/A2/A3 updates.

@@ -4,6 +4,41 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-10] - Dirilis, skill baslangici, durum paketi ve kap davranisi
+------------------------------------------------------------------------
+DUZELTME - Katil her dirilisinde tum stat ve skill'lerinin %1'ini kaybediyordu. Source-X'te
+       boyle bir ceza yok (Spell_Resurrection, CCharSpell.cpp:441-533); kaldirildi.
+DUZELTME - Anti-magic bolgenin reddettigi dirilis yine de hayalete bedenini, rengini ve
+       ceset esyalarini geri veriyor, @Resurrect atesliyordu. Red artik en basta gelir ve
+       her seyi durdurur, spell_res_am mesajiyla (CCharSpell.cpp:447-454); GM hayalet ya
+       da GM dirilten gecer.
+DUZELTME - NPCCANFIZZLEONHIT ini'de yoksa acik varsayiliyordu; varsayilan artik Source-X
+       gibi kapali (CServerConfig.cpp:74). Dagitilan sphere.ini hala 1 yapar.
+DUZELTME - Zorlugu 0 olan baslatilmis skill can egrisinde zar atiyordu; Stealth ve diger
+       sifir zorluklu baslangiclar rastgele basarisiz oluyordu. Skill_Start 0 zorluga
+       zar atmaz (CCharSkill.cpp:4566-4572): basarilir ve 0'da kazanc verir. Bilgi
+       skill'leri, Hiding, Stealth, Detect Hidden, Spirit Speak, Stealing, Snooping,
+       Lockpicking, Remove Trap, Healing ve Taming'e uygulandi.
+DUZELTME - Binicinin dovus hedefi varken ya da donmusken binme reddediliyordu; Horse_Mount'ta
+       boyle bir kapi yok (CCharAct.cpp:3951-3990).
+DUZELTME - Sahibi olen pet, stay emrindeyken bile dolasmaya basliyordu. Olu sahip hala
+       sahiptir: pet emrini korur, yalnizca hic sahibi olmayan pet serbesttir
+       (NPC_Act_Follow, CCharNPCAct.cpp:1350-1355).
+DUZELTME - 0x11 durum paketi: ML istemcilerde azami agirlik ve irk, agirliktan hemen sonra
+       yerine AOS blogundan sonra yaziliyordu (send.cpp:253-283); istemci stat cap,
+       takipci, direnc ve sansi uc bayt kaymis okuyordu. Irk bayti artik hep insan yerine
+       bedene gore (insan, elf, gargoyle) gonderilir.
+DUZELTME - Sifir ya da alti can oldurmuyordu: script'in HITS=0'i karakteri 0 canla canli
+       birakiyordu. Artik karakterin kendi tick'i olumu calistirir, CChar::OnTick gibi
+       (CCharAct.cpp:6092-6119); @Death RETURN 1 hala iptal eder.
+DUZELTME - 0x75 yeniden adlandirma yalnizca GM'ye acikti ve item'lari da adlandiriyordu.
+       Event_SetName gibi (CClientEvent.cpp:2217-2251): sahip kendi petini adlandirir,
+       staff kendi plevel'inin altindaki herhangi bir karakteri adlandirir, kimse kendini
+       ya da item'i adlandiramaz; pet komut kelimeleri (release, goto, ...) ve staff
+       komut kelimeleri reddedilir. Red sessizdir.
+DUZELTME - Cop kutusu icine atilani tutuyordu. Artik sesini calar, mesajini verir ve 15
+       saniye sonra kendini bosaltir (CItemContainer.cpp:1025-1029, 1415-1418).
+
 [2026-11-10] - Dokunma, giyme ve buyu kaynagi kapilari
 ------------------------------------------------------------------------
 DUZELTME - Asa ya da parsomen, buyu imleci kapatildiginda, zaman asimina ugradiginda ya

@@ -4,6 +4,41 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-10] - Resurrection, skill start, status packet and container behaviour
+------------------------------------------------------------------------
+FIX - A murderer lost 1% of every stat and skill on each resurrection. Source-X has no
+      such penalty (Spell_Resurrection, CCharSpell.cpp:441-533); it is removed.
+FIX - A resurrection refused by an antimagic region still gave the ghost its body, hue
+      and corpse items back and fired @Resurrect. The refusal now comes first and stops
+      everything, with the spell_res_am message (CCharSpell.cpp:447-454); a GM ghost or a
+      GM raiser bypasses it.
+FIX - NPCCANFIZZLEONHIT defaulted on when the ini leaves it out; the default is now off,
+      as Source-X (CServerConfig.cpp:74). The shipped sphere.ini still sets it to 1.
+FIX - A started skill at difficulty 0 was rolled on the bell curve, so Stealth and other
+      zero-difficulty starts failed at random. Skill_Start never rolls a difficulty of
+      0 (CCharSkill.cpp:4566-4572): it succeeds and gains at 0. Applied to the info
+      skills, Hiding, Stealth, Detect Hidden, Spirit Speak, Stealing, Snooping,
+      Lockpicking, Remove Trap, Healing and Taming.
+FIX - Mounting was refused while the rider had a fight target or was frozen; Horse_Mount
+      has no such gate (CCharAct.cpp:3951-3990).
+FIX - A pet whose owner died started wandering even under a stay order. A dead owner is
+      still the owner: the pet keeps its order, and only a pet with no owner at all is
+      free (NPC_Act_Follow, CCharNPCAct.cpp:1350-1355).
+FIX - 0x11 status: on ML clients the max weight and race were written after the AOS
+      block instead of right after the weight (send.cpp:253-283), so the client read the
+      stat cap, followers, resists and luck three bytes off. The race byte now follows
+      the body (human, elf, gargoyle) instead of always human.
+FIX - Hit points at or below zero did not kill: a script's HITS=0 left a living character
+      on 0 HP. The character's own tick now runs the death, as CChar::OnTick does
+      (CCharAct.cpp:6092-6119); a @Death RETURN 1 still aborts it.
+FIX - 0x75 rename was GM-only and also renamed items. As Event_SetName
+      (CClientEvent.cpp:2217-2251): an owner renames their own pet, staff rename any
+      character below their plevel, nobody renames themselves or an item, and pet
+      command words (release, goto, ...) and staff command words are refused. A refusal
+      is silent.
+FIX - A trash can kept whatever was dropped in it. It now plays its sound, says so, and
+      empties itself 15 seconds later (CItemContainer.cpp:1025-1029, 1415-1418).
+
 [2026-11-10] - Touch, equip and cast-source gates
 ------------------------------------------------------------------------
 FIX - A wand or scroll stayed bound to its caster after its spell cursor was dismissed,

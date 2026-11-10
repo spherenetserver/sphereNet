@@ -2134,6 +2134,15 @@ public sealed class ClientCombatHandler
     {
         if (_character == null || !_character.IsDead) return;
 
+        // Antimagic refuses before @Resurrect and before any body, hue or corpse
+        // is restored (Spell_Resurrection, CCharSpell.cpp:450-454); a refused
+        // rez previously still gave the ghost its body and its corpse's items.
+        if (_character.IsResurrectionBlockedHere())
+        {
+            SysMessage(ServerMessages.Get(Msg.SpellResAm));
+            return;
+        }
+
         Item? ownCorpse = FindOwnCorpseNear(_character);
 
         // @Resurrect — Source-X Spell_Resurrection (CCharSpell.cpp:449-462): ARGO is

@@ -1816,6 +1816,16 @@ public sealed class ClientInventoryHandler
                     container.Uid.Value, item.Hue,
                     _netState.IsClientPost6017));
                 _netState.Send(new PacketDropAck());
+                // A trash can "eats" what goes in: a sound, the message, and the can
+                // empties itself 15 seconds later (CanContainerHold IT_TRASH_CAN,
+                // CItemContainer.cpp:1025-1029; emptied in _OnTick, :1415-1418).
+                if (container.ItemType == ItemType.TrashCan)
+                {
+                    var canPos = container.GetTopLevelPosition();
+                    _netState.Send(new PacketSound(0x235, canPos.X, canPos.Y, canPos.Z));
+                    SysMessage(ServerMessages.Get(Msg.ItemuseTrashcan));
+                    container.SetTimeout(Environment.TickCount64 + 15_000);
+                }
                 if (VendorEngine.IsGold(item))
                     SendCharacterStatus(_character);
                 return;

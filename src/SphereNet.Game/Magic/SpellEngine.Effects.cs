@@ -1507,7 +1507,7 @@ public sealed partial class SpellEngine
         if ((type & DamageType.NoDisturb) == 0 && source != null && source != victim)
             TryInterruptFromDamage(victim, dealt, breakParalyze: false);
 
-        Character.BroadcastDamageNearby?.Invoke(victim.Position, 18, victim.Uid.Value, dealt, 0);
+        Character.BroadcastDamageNearby?.Invoke(victim.Position, 18, victim.Uid.Value, dealt, source?.Uid.Value ?? 0);
         Character.BroadcastNearby?.Invoke(victim.Position, 18,
             new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
                 victim.Uid.Value, victim.MaxHits, victim.Hits), 0);

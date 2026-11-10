@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-10] - Damage numbers, notoriety messages, rune reach, legacy account blocks
+------------------------------------------------------------------------
+FIX - Damage numbers went to every client within 18 tiles, whatever the feature mask. They
+      are sent only under FEATURE_AOS_DAMAGE (FEATUREAOS bit 0x08) and only to the victim,
+      the attacker, or the owner of an attacking pet (CCharFight.cpp:1036-1051).
+FIX - Blood was spilled by any damage - a poison tick, a trap, breath, a script's DAMAGE.
+      Only a damaging weapon blow spills it (Fight_Hit, CCharFight.cpp:2362-2386).
+FIX - Toggling war mode printed "You are now in war mode." / "peace mode."; the reference
+      sends the mode packets and no text (CClientEvent.cpp:1016-1056). Removed.
+FIX - Fame and karma changed in silence on a kill or a death. The "You have gained/lost
+      ... fame/karma" line is sent (Noto_ChangeDeltaMsg, CCharNotoriety.cpp:509, 547).
+FIX - Opening somebody else's corpse gave no warning; the first notice was the criminal
+      flag on taking an item. loot_criminal_act is shown when looting it would be a
+      crime (CClientUse.cpp:219-224).
+FIX - A ghost targeted directly with a bandage was refused unless it had manifested. That
+      test belongs to the corpse path only (CCharSkill.cpp:2796-2799).
+FIX - Recall and Gate Travel refused a rune more than two tiles away or outside the
+      caster's pack. A rune only has to be in line of sight and not carried by somebody
+      else (Spell_TargCheck, CCharSpell.cpp:2808-2817).
+FIX - Stat gain from skill use tried STR, DEX, INT; the reference order is STR, INT, DEX
+      (CCharSkill.cpp:462-510), so a use that could raise both raises INT.
+FIX - The bandage poison cure rolled against the healer's bare skill instead of the
+      stat-adjusted one (CCharSkill.cpp:2859-2862).
+FIX - A character in GM mode got hungry; OnTickFood skips PRIV_GM (CCharAct.cpp:5780).
+FIX - A Sphere/Source-X accounts file stores a blocked account as BLOCK=1; only BANNED was
+      read, so importing one unblocked every blocked account. Both keys are read.
+FIX - A character's MODAR and MODMAXWEIGHT were not written to the save and were lost on
+      every restart.
+
 [2026-11-10] - Spell target refusals, looting notoriety, swing reset, trade and containers
 ------------------------------------------------------------------------
 FIX - A pet under a "come" order was left behind when its owner used a moongate,

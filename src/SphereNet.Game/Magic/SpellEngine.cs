@@ -1583,7 +1583,11 @@ public sealed partial class SpellEngine
         else if (spell is SpellType.Recall or SpellType.GateTravel or SpellType.SacredJourney)
         {
             var rune = _world?.FindItem(targetUid);
-            if (rune != null && IsItemAccessible(caster, rune))
+            // The rune only has to be seen - the line-of-sight test above - and not
+            // be carried by somebody else (Spell_TargCheck, CCharSpell.cpp:2808-2817).
+            // It also had to lie within two tiles or in the caster's own pack.
+            if (rune != null && (caster.PrivLevel >= PrivLevel.GM ||
+                rune.GetTopLevelObj() is not Character holder || holder == caster))
             {
                 if (!RuneTravelHandledByScript(caster, rune, def))
                     ApplyRuneTravelSpell(caster, rune, def);
@@ -2485,7 +2489,7 @@ public sealed partial class SpellEngine
                 // 0x0B damage number, no health-bar update — while the melee
                 // and breath paths broadcast both. Without these the hit is
                 // invisible until the victim dies.
-                Character.BroadcastDamageNearby?.Invoke(target.Position, 18, target.Uid.Value, damage, 0);
+                Character.BroadcastDamageNearby?.Invoke(target.Position, 18, target.Uid.Value, damage, caster.Uid.Value);
                 Character.BroadcastNearby?.Invoke(target.Position, 18,
                     new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
                         target.Uid.Value, target.MaxHits, target.Hits), 0);

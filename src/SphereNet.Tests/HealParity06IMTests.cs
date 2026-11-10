@@ -227,17 +227,18 @@ public sealed class HealParity06IMTests
     }
 
     [Fact]
-    public void AnUnmanifestedPlayerGhostIsStillTurnedAway()
+    public void AnUnmanifestedPlayerGhostIsTurnedAwayAtItsCorpse_NotWhenTargetedDirectly()
     {
-        // The player half of the manifest rule is unchanged.
+        // The manifest rule lives in IsCorpseResurrectable, which Skill_Healing asks
+        // only for a corpse target (CCharSkill.cpp:2796-2799).
         var world = CreateWorld();
         var b = HealBench(world);
         var victim = world.CreateCharacter();
         victim.IsPlayer = true;
         world.PlaceCharacter(victim, new Point3D(101, 100, 0, 0));
-        KillForCorpse(world, victim);
+        var corpse = KillForCorpse(world, victim);
 
-        Assert.False(b.Skills.UseActiveSkill(b.Sink, SkillType.Healing, victim));
+        Assert.False(b.Skills.UseActiveSkill(b.Sink, SkillType.Healing, corpse));
         Assert.True(victim.IsStatFlag(StatFlag.Dead));
     }
 

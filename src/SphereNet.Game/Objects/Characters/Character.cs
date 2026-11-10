@@ -288,12 +288,11 @@ public partial class Character : ObjBase
     /// BroadcastNearby helper.</summary>
     public new static Action<Point3D, int, SphereNet.Network.Packets.PacketWriter, uint>? BroadcastNearby;
 
-    /// <summary>Broadcast a combat damage popup to nearby clients, selecting the
-    /// wire format per recipient version (0x0B for >=4.0.7a, 0xBF.0x22 for older,
-    /// nothing below 4.0.0). Args: (origin, range, defenderSerial, rawDamage,
-    /// excludeUid). Wired in Program.cs; a single shared buffer per version bucket
-    /// preserves the broadcast fast path. Unwired (e.g. unit tests) it is a no-op,
-    /// like <see cref="BroadcastNearby"/>.</summary>
+    /// <summary>Show a combat damage popup to the parties of a blow - the victim,
+    /// the attacker, or the attacker's owner - under FEATURE_AOS_DAMAGE
+    /// (CCharFight.cpp:1036-1051), in the wire format of each recipient's version.
+    /// Args: (origin, range, defenderSerial, rawDamage, attackerUid; 0 = no
+    /// source). Wired in Program.cs; unwired (e.g. unit tests) it is a no-op.</summary>
     public static Action<Point3D, int, uint, int, uint>? BroadcastDamageNearby;
 
     /// <summary>Broadcast a direction-only 0x77 update after script FACE.</summary>
@@ -2527,7 +2526,7 @@ public partial class Character : ObjBase
             if (caster != null && caster != this)
                 RecordAttack(caster.Uid, dmg);
 
-            BroadcastDamageNearby?.Invoke(Position, 18, Uid.Value, dmg, 0);
+            BroadcastDamageNearby?.Invoke(Position, 18, Uid.Value, dmg, caster?.Uid.Value ?? 0);
             BroadcastNearby?.Invoke(Position, 18,
                 new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
                     Uid.Value, MaxHits, Hits), 0);
@@ -10374,7 +10373,9 @@ public partial class Character : ObjBase
 
         // Hunger decay: Source-X m_iRegenRate[STAT_FOOD] = 60 minutes per point.
         long foodRateMs = ResolveRegenRateMs(_regenFoodRateMs, RegenFoodSeconds, 3_600_000);
-        if (_isPlayer && foodRateMs >= 0 && now >= _nextFoodDecay &&
+        // A character in GM mode does not get hungry at all: OnTickFood returns for
+        // PRIV_GM before the food is lowered (CCharAct.cpp:5780-5781).
+        if (_isPlayer && !IsGmMode && foodRateMs >= 0 && now >= _nextFoodDecay &&
             (Definitions.CharDefHelper.GetCanFlags(this) & CanFlags.C_Statue) == 0)
         {
             _nextFoodDecay = now + foodRateMs;

@@ -1445,6 +1445,11 @@ public sealed class WorldSaver
         if (ch.ModMaxHits != 0) w.WriteProperty("MODMAXHITS", ch.ModMaxHits);
         if (ch.ModMaxMana != 0) w.WriteProperty("MODMAXMANA", ch.ModMaxMana);
         if (ch.ModMaxStam != 0) w.WriteProperty("MODMAXSTAM", ch.ModMaxStam);
+        // Script-set modifiers, written by nothing else in the engine, so they are
+        // base values (CObjBase.cpp:2086 MODAR; CChar r_Write MODMAXWEIGHT). They
+        // were lost on every restart.
+        if (ch.ModAr != 0) w.WriteProperty("MODAR", ch.ModAr);
+        if (ch.ModMaxWeight != 0) w.WriteProperty("MODMAXWEIGHT", ch.ModMaxWeight);
         w.WriteProperty("MAXMANA", ch.BaseMaxMana);
         w.WriteProperty("MAXSTAM", ch.BaseMaxStam);
         w.WriteProperty("HITS", ch.Hits);

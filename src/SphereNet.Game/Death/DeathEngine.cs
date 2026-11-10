@@ -532,7 +532,17 @@ public sealed class DeathEngine
             if (adjusted == null) return;
             delta = adjusted.Value;
         }
+        int before = killer.Fame;
         killer.Fame = (short)Math.Clamp(killer.Fame + delta, 0, MaxFame);
+        // Noto_Fame ends with Noto_ChangeDeltaMsg (CCharNotoriety.cpp:509): "You
+        // have gained/lost [degree] fame." The value changed in silence.
+        TellNotoChange(killer, killer.Fame - before, Msg.NotoFame);
+    }
+
+    private static void TellNotoChange(Character ch, int delta, string typeKey)
+    {
+        if (Skills.Information.ActiveSkillEngine.NotoChangeDeltaMessage(delta, ServerMessages.Get(typeKey)) is { } line)
+            Character.SendOwnerMessage?.Invoke(ch, line);
     }
 
     /// <summary>Apply a Karma delta after firing @KarmaChange (Source-X Noto_Karma).
@@ -547,7 +557,9 @@ public sealed class DeathEngine
             if (adjusted == null) return;
             delta = adjusted.Value;
         }
+        int before = killer.Karma;
         killer.Karma = (short)Math.Clamp(killer.Karma + delta, MinKarma, MaxKarma);
+        TellNotoChange(killer, killer.Karma - before, Msg.NotoKarma);   // :547
     }
 
     /// <summary>Source-X Calc_KarmaScale (CResourceCalc.cpp:387-407): a good

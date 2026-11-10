@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -1469,7 +1469,7 @@ public sealed class ClientCombatHandler
                     new PacketSound(painSound, target.X, target.Y, target.Z), 0);
 
             SphereNet.Game.Objects.Characters.Character.BroadcastDamageNearby?.Invoke(
-                target.Position, UpdateRange, target.Uid.Value, damage, 0);
+                target.Position, UpdateRange, target.Uid.Value, damage, _character.Uid.Value);
 
             var healthPacket = new PacketUpdateHealth(
                 target.Uid.Value, target.MaxHits, target.Hits);
@@ -2371,8 +2371,9 @@ public sealed class ClientCombatHandler
             return;
         if (triggerArgs.N3 is 1 or 2)
             warMode = triggerArgs.N3 == 2;
+        // No line of text: Event_CombatMode only answers with the war-mode packet
+        // and the mode update (CClientEvent.cpp:1016-1056).
         SetWarMode(warMode, syncClients: true, preserveTarget: false);
-        SysMessage(warMode ? ServerMessages.Get("combat_warmode_on") : ServerMessages.Get("combat_warmode_off"));
     }
 
     // ==================== Spell Casting ====================

@@ -920,8 +920,12 @@ public static class AccountPersistence
                 if (uint.TryParse(val, out uint ct))
                     acc.TotalConnectTime = ct;
                 break;
+            // A Sphere/Source-X accounts file writes the block as BLOCK
+            // (CAccount::r_Write); only BANNED was read, so a legacy import silently
+            // unblocked every blocked account.
+            case "BLOCK":
             case "BANNED":
-                acc.IsBanned = val == "1";
+                acc.IsBanned = val.Trim() is not ("" or "0");
                 break;
             case "CHATNAME": acc.ChatName = val; break;
             case "FIRSTCONNECTDATE":

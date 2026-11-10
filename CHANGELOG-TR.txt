@@ -4,6 +4,41 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-10] - Hasar sayilari, notoriety mesajlari, rune menzili, eski hesap bloklari
+------------------------------------------------------------------------
+DUZELTME - Hasar sayilari, ozellik maskesi ne olursa olsun 18 karo icindeki her istemciye
+       gidiyordu. Artik yalnizca FEATURE_AOS_DAMAGE (FEATUREAOS 0x08 biti) altinda ve
+       yalnizca kurbana, saldirana ya da saldiran petin sahibine gonderilir
+       (CCharFight.cpp:1036-1051).
+DUZELTME - Her hasar kan birakiyordu - zehir tick'i, tuzak, nefes, script DAMAGE'i. Kani
+       yalnizca hasar veren silah darbesi birakir (Fight_Hit, CCharFight.cpp:2362-2386).
+DUZELTME - Savas modu degisince "You are now in war mode." / "peace mode." yaziliyordu;
+       referans mod paketlerini gonderir, metin gondermez (CClientEvent.cpp:1016-1056).
+       Kaldirildi.
+DUZELTME - Oldurme ya da olumde fame ve karma sessizce degisiyordu. Artik "You have
+       gained/lost ... fame/karma" satiri gonderilir (Noto_ChangeDeltaMsg,
+       CCharNotoriety.cpp:509, 547).
+DUZELTME - Baskasinin cesedini acmak uyari vermiyordu; ilk bildirim esya alinca gelen suclu
+       bayragiydi. Yagmalamak suc olacaksa loot_criminal_act gosterilir
+       (CClientUse.cpp:219-224).
+DUZELTME - Dogrudan bandajla hedeflenen hayalet, manifest olmadiysa reddediliyordu. Bu test
+       yalnizca ceset yoluna aittir (CCharSkill.cpp:2796-2799).
+DUZELTME - Recall ve Gate Travel, iki karodan uzaktaki ya da caster'in cantasi disindaki
+       rune'u reddediyordu. Rune'un yalnizca gorus hattinda olmasi ve baskasi tarafindan
+       tasinmamasi gerekir (Spell_TargCheck, CCharSpell.cpp:2808-2817).
+DUZELTME - Skill kullanimindan stat kazanimi STR, DEX, INT sirasiyla deneniyordu; referans
+       sirasi STR, INT, DEX (CCharSkill.cpp:462-510); ikisini de artirabilecek kullanim
+       INT'i artirir.
+DUZELTME - Bandajla zehir tedavisi, sifacinin stat bonuslu skill'i yerine ham skill'ine
+       karsi zar atiyordu (CCharSkill.cpp:2859-2862).
+DUZELTME - GM modundaki karakter acikiyordu; OnTickFood PRIV_GM'i atlar
+       (CCharAct.cpp:5780).
+DUZELTME - Sphere/Source-X hesap dosyasi bloklu hesabi BLOCK=1 olarak saklar; yalnizca
+       BANNED okunuyordu, boyle bir dosyayi ice aktarmak tum bloklu hesaplarin blokunu
+       kaldiriyordu. Iki anahtar da okunur.
+DUZELTME - Karakterin MODAR ve MODMAXWEIGHT degerleri kayda yazilmiyor, her yeniden
+       baslatmada kayboluyordu.
+
 [2026-11-10] - Buyu hedef redleri, yagma notoriety'si, vurus sifirlama, ticaret ve kaplar
 ------------------------------------------------------------------------
 DUZELTME - "come" emrindeki pet, sahibi moongate, teleporter ya da gemi iskelesi

@@ -538,12 +538,18 @@ public static class SkillEngine
     /// </summary>
     private static int GetStatLock(Character ch, int statIdx) => ch.GetStatLock(statIdx);
 
+    /// <summary>This engine's stat indexes (0 Str, 1 Dex, 2 Int) in STAT_TYPE order.</summary>
+    private static readonly int[] StatGainOrder = [0, 2, 1];
+
     private static void TryStatGain(Character ch, SkillType skill)
     {
         var def = DefinitionLoader.GetSkillDef((int)skill);
         int statSumMax = ResolveStatSumCap(ch);
 
-        for (int statIdx = 0; statIdx < 3; statIdx++)
+        // Tried in the reference's STAT_TYPE order - STR, INT, DEX (Skill_Experience,
+        // CCharSkill.cpp:462-510) - and the first gain ends the walk, so a use that
+        // could raise both INT and DEX raises INT.
+        foreach (int statIdx in StatGainOrder)
         {
             // Polymorphed characters can only train INT (reference parity).
             if (ch.IsStatFlag(StatFlag.Polymorph) && statIdx != 2)

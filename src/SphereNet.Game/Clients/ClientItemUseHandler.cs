@@ -969,6 +969,11 @@ public sealed class ClientItemUseHandler
             }
             case ItemType.Corpse:
                 SendOpenContainer(item);
+                // CheckCorpseCrime(pCorpse, true, true) - the test only - warns that
+                // looting this one would be a crime (CClientUse.cpp:219-224). The
+                // first notice used to be the criminal flag itself.
+                if (_client.DeathEng?.IsLootingCriminal(_character, item) == true)
+                    SysMessage(ServerMessages.Get(Msg.LootCriminalAct));
                 break;
 
             case ItemType.ContainerLocked:

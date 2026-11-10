@@ -217,6 +217,39 @@ public sealed class SharedReferenceGameplayTests
         Assert.Equal(crime, engine.IsLootingCriminal(looter, corpse));
     }
 
+    // ---- fame message, legacy BLOCK, character modifiers ----
+
+    [Fact]
+    public void AFameChange_IsToldToTheCharacter()
+    {
+        var world = TestHarness.CreateWorld();
+        var ch = Player(world, 100);
+        ch.Fame = 1000;
+        var lines = new List<string>();
+        Character.SendOwnerMessage = (who, text) => { if (who == ch) lines.Add(text); };
+
+        typeof(SphereNet.Game.Death.DeathEngine)
+            .GetMethod("ApplyFame", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [ch, 100]);
+
+        Assert.Equal(1100, ch.Fame);
+        Assert.Single(lines);
+    }
+
+    [Theory]
+    [InlineData("BLOCK", "1", true)]
+    [InlineData("BANNED", "1", true)]
+    [InlineData("BLOCK", "0", false)]
+    public void ALegacyAccountsFile_KeepsItsBlocks(string key, string value, bool blocked)
+    {
+        var account = new SphereNet.Game.Accounts.Account();
+        typeof(SphereNet.Persistence.Accounts.AccountPersistence)
+            .GetMethod("ApplyProperty", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [account, key, value]);
+
+        Assert.Equal(blocked, account.IsBanned);
+    }
+
     // ---- spells ----
 
     [Fact]

@@ -1034,7 +1034,10 @@ public static class ActiveSkillEngine
         // only on a PLAYER who was not already in war mode (CCharAct.cpp:4468) and never
         // on an NPC; SphereNet uses war mode as the manifest signal for players, so a
         // bonded pet that died out of combat can still be revived by Veterinary.
-        if (target.IsStatFlag(StatFlag.Dead) && target.IsPlayer && !target.IsInWarMode)
+        // The test belongs to the CORPSE path only (Skill_Healing calls
+        // IsCorpseResurrectable `if (pCorpse && ...)`, CCharSkill.cpp:2796-2799): a
+        // ghost targeted directly goes straight to the resurrection roll.
+        if (corpse != null && target.IsStatFlag(StatFlag.Dead) && target.IsPlayer && !target.IsInWarMode)
         {
             sink.SysMessage(ServerMessages.Get(Msg.HealingResManifest));
             return null;
@@ -1124,8 +1127,9 @@ public static class ActiveSkillEngine
         if (target.IsStatFlag(StatFlag.Poisoned))
         {
             // Source-X Skill_Healing (CCharSkill.cpp:2859): Calc_CurePoisonChance on the
-            // worn poison against the healer's skill; a success only cures.
-            int skillLvl = ch.GetSkill(healingSkill);
+            // worn poison against the healer's ADJUSTED skill (Skill_GetAdjusted,
+            // :2859-2862: stat bonus included); a success only cures.
+            int skillLvl = SkillEngine.GetAdjustedSkill(ch, healingSkill);
             if (CharacterPoisonState.CureChance(target.Poison.Memory, skillLvl, ch.PrivLevel >= PrivLevel.GM))
             {
                 target.SetPoisonCure(true);

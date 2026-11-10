@@ -2007,7 +2007,7 @@ public static partial class Program
                         BroadcastNearby(target.Position, 18,
                             new PacketSound(painSound, target.X, target.Y, target.Z), 0);
 
-                    BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, 0);
+                    BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, attacker.Uid.Value);
                 }
 
                 BroadcastNearby(target.Position, 18,
@@ -2351,10 +2351,12 @@ public static partial class Program
                 // DAMAGE_NOUNPARALYZE flag.
                 if (!damageType.HasFlag(DamageType.NoDisturb))
                     _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false);
-                BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, 0);
+                BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, source?.Uid.Value ?? 0);
                 BroadcastNearby(target.Position, 18,
                     new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits), 0);
-                GameClient.EmitBloodSplat(_world, target);
+                // No blood here: it is spilled by a damaging weapon blow only
+                // (Fight_Hit, CCharFight.cpp:2362-2386), not by poison, traps,
+                // breath or a script's DAMAGE.
 
                 if (source != null && source != target && !target.IsPlayer &&
                     !target.IsDead && !target.FightTarget.IsValid)

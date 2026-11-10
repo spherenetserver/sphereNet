@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-10] - Classic spheremultis file no longer restores removed structures
+------------------------------------------------------------------------
+FIX - A classic spheremultis file is read at every boot and never rewritten: once the
+      world has been saved by this engine, every structure is in sphereworld. A house
+      demolished after the import was therefore still listed in the old file and came
+      back on each restart. When the world file carries this engine's save stamp, the
+      multis file now supplies only its ATTR_STATIC records - the ones the world save
+      leaves out. An unstamped classic world still loads the file in full, and the file
+      itself is not touched.
+
 [2026-11-10] - Script ranges and loops, region flag keys, character save keys
 ------------------------------------------------------------------------
 FIX - A {a,b} range written with a comma inside an expression was read as one token and

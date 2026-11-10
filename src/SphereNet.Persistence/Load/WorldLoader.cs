@@ -640,9 +640,20 @@ public sealed class WorldLoader
                 _logger.LogInformation("Statics: {Path} -> {Count}", Path.GetFileName(path), n);
             }
 
+            // A classic spheremultis file is never rewritten by this engine: every
+            // structure goes into sphereworld with the rest of the world. Once the
+            // world file is one of ours, a structure the multis file still lists and
+            // the world file does not has been removed since the import - reading
+            // it again brought every demolished house back on each boot. Structures
+            // present in both are skipped as duplicates; what is still taken from the
+            // multis file is its ATTR_STATIC records, which the world save leaves out.
+            bool ownWorldSave = itemPaths.Count > 0 && itemPaths.All(p =>
+                (ReadStamp(p, SaveIO.SaveIdSection, SaveIO.GenerationProperty, firstRecordOnly: true)
+                 ?? ReadStamp(p, SaveIO.SaveIdSection, SaveIO.SaveIdProperty, firstRecordOnly: true)) != null);
+
             foreach (string path in multiPaths)
             {
-                int n = LoadItemFile(world, path, itemContLinks);
+                int n = LoadItemFile(world, path, itemContLinks, staticOnly: ownWorldSave);
                 itemCount += n;
                 _logger.LogInformation("Multis: {Path} -> {Count}", Path.GetFileName(path), n);
             }
@@ -1151,9 +1162,14 @@ public sealed class WorldLoader
         return new List<string>();
     }
 
-    private int LoadItemFile(GameWorld world, string path, List<(Item, Serial, byte)> contLinks)
+    /// <param name="staticOnly">Keep only ATTR_STATIC records. Used for a classic
+    /// multis file read beside a world this engine has already saved: see
+    /// <see cref="Materialize"/>.</param>
+    private int LoadItemFile(GameWorld world, string path, List<(Item, Serial, byte)> contLinks,
+        bool staticOnly = false)
     {
         int count = 0;
+        int leftOut = 0;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         using var reader = SaveIO.OpenReader(path);
         bool headerRead = false;
@@ -1317,6 +1333,13 @@ public sealed class WorldLoader
             if (skipItem)
                 continue;
 
+            if (staticOnly && !item.IsAttr(SphereNet.Core.Enums.ObjAttributes.Static))
+            {
+                world.TryDeleteObject(item, force: true);
+                leftOut++;
+                continue;
+            }
+
             if (ResolveItemBase != null)
             {
                 // Native records carry ID and may pin a synthetic definition in
@@ -1353,6 +1376,10 @@ public sealed class WorldLoader
                 _logger.LogInformation("  Loading items... {Count} ({Elapsed}s)",
                     count, sw.Elapsed.TotalSeconds.ToString("F1"));
         }
+        if (leftOut > 0)
+            _logger.LogInformation(
+                "  {File}: {Count} structure(s) not in the current world save were left out (removed since the import)",
+                Path.GetFileName(path), leftOut);
         return count;
     }
 

@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-10] - Klasik spheremultis dosyasi artik kaldirilan yapilari geri getirmiyor
+------------------------------------------------------------------------
+DUZELTME - Klasik spheremultis dosyasi her acilista okunur ve hic yeniden yazilmaz: dunya
+       bu motorla kaydedildikten sonra tum yapilar sphereworld'dedir. Ice aktarimdan sonra
+       yikilan ev eski dosyada listeli kaldigi icin her yeniden baslatmada geri geliyordu.
+       Dunya dosyasi bu motorun kayit damgasini tasiyorsa, multis dosyasindan artik
+       yalnizca ATTR_STATIC kayitlar alinir - dunya kaydinin disarida biraktiklari.
+       Damgasiz klasik dunya dosyayi tam yuklemeye devam eder; dosyanin kendisine
+       dokunulmaz.
+
 [2026-11-10] - Script araliklari ve donguleri, bolge bayrak anahtarlari, karakter kayit anahtarlari
 ------------------------------------------------------------------------
 DUZELTME - Bir ifadenin icinde virgulle yazilan {a,b} araligi tek parca okunuyor ve hic zar

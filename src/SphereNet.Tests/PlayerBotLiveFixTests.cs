@@ -167,6 +167,7 @@ public sealed class PlayerBotLiveFixTests(ITestOutputHelper outp)
             // The murderers' town of this world: an open field east of the road.
             RedRespawnRegion = "300,300,0",
         };
+        engine.SetClock(1_000_000); // the rig's clock, not the machine's uptime
         engine.AddGatherTrade(new BotGatherTrade(SkillType.Mining, ItemType.WeaponMacePick, ["MiningSpot"]));
         engine.AddNeed(new BotNeed("bandage", ItemType.Bandage, 10, 40, ["Healer"]));
         engine.AddNeed(new BotNeed("reagent", ItemType.Reagent, 15, 30, ["VendorMage"]));

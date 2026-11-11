@@ -108,6 +108,7 @@ public sealed class PlayerBotBrainTests
             Gravity = 0,
             Brain = brain,
         };
+        engine.SetClock(1_000_000); // the rig's clock, not the machine's uptime
         var rig = new Rig { World = world, Engine = engine, Brain = brain };
         engine.Say = (ch, line) => rig.Said.Add((ch, line));
         return rig;

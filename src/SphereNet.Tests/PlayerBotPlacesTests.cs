@@ -92,6 +92,7 @@ public sealed class PlayerBotPlacesTests
             TargetCount = 1000,
             Gravity = 0,
         };
+        engine.SetClock(1_000_000); // the rig's clock, not the machine's uptime
         return new Rig { World = world, Engine = engine, Log = log };
     }
 

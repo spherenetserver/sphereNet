@@ -241,6 +241,7 @@ public sealed class PlayerBotFavorTests
             ValueOf = _ => 0,
             Intents = BotIntents.Parse(IntentLines),
         };
+        engine.SetClock(1_000_000); // the rig's clock, not the machine's uptime
         engine.CreateClient = ch =>
         {
             var c = new GameClient(new SphereNet.Network.State.NetState(NullLogger.Instance), world,

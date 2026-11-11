@@ -290,6 +290,7 @@ public sealed class PlayerBotWorkTests
             WorkMaxMs = 60_000,
             WorkLookAroundPercent = 0,
         };
+        engine.SetClock(1_000_000); // the rig's clock, not the machine's uptime
         engine.AddGatherTrade(new BotGatherTrade(SkillType.Mining, ItemType.WeaponMacePick, ["MiningSpot"]));
         engine.AddGatherTrade(new BotGatherTrade(SkillType.Lumberjacking, ItemType.WeaponAxe, ["LumberSpot"]));
         engine.AddCraftTrade(new BotCraftTrade(SkillType.Blacksmithing, ItemType.WeaponMaceSmith, InHand: true,

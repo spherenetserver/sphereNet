@@ -135,6 +135,7 @@ public sealed class PlayerBotChatTests
             Scenes = BotSceneBook.Parse(scenes ?? []),
             Gravity = 0,
         };
+        engine.SetClock(1_000_000); // the rig's clock, not the machine's uptime
         var rig = new Rig { World = world, Engine = engine, Log = log };
         engine.Say = (ch, line) => rig.Said.Add((ch, line));
         return rig;

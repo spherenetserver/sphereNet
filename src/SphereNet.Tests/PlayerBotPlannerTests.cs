@@ -172,7 +172,11 @@ public sealed class PlayerBotPlannerTests
             c.AttachServerDriven(ch);
             return c;
         };
-        return new Rig { World = world, Engine = engine, Log = log };
+        var rig = new Rig { World = world, Engine = engine, Log = log };
+        // The engine's clock is the rig's from the start: a bot adopted before the first
+        // tick would otherwise be timed on the machine's uptime, and its drives with it.
+        engine.SetClock(rig.Now);
+        return rig;
     }
 
     private static Character Bot(Rig rig, Point3D at, Action<Character>? setup = null, string trait = "kind")

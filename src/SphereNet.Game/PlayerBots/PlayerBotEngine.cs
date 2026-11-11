@@ -1209,5 +1209,9 @@ public sealed partial class PlayerBotEngine
     /// between ticks is timed on the same clock the bots act on.</summary>
     private long NowMs() => _nowMs != 0 ? _nowMs : Environment.TickCount64;
 
+    /// <summary>Sets the engine's clock before the first tick, so a driver with its own
+    /// clock (a test rig) does not have bots adopted on the machine's uptime.</summary>
+    internal void SetClock(long now) => _nowMs = now;
+
     private long _nowMs;
 }

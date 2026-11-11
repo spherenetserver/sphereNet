@@ -153,6 +153,7 @@ public sealed class PlayerBotCombatTests(Xunit.Abstractions.ITestOutputHelper ou
             SearchBatchMs = 1000,
             Spells = spells,
         };
+        engine.SetClock(1_000_000); // the rig's clock, not the machine's uptime
         engine.CreateClient = ch =>
         {
             var c = new GameClient(new SphereNet.Network.State.NetState(NullLogger.Instance), world,

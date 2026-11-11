@@ -39,7 +39,7 @@ Capabilities the classic engine does not have:
 
 ## Performance
 
-### Current measurement (2026-10-19): 1,000 clients
+### Current measurement (2026-11-11): 1,000 clients
 
 Measured with `SphereNet.LoadTest` (in-tree, reproducible): real TCP bot clients in a
 separate process log in through the normal flow, walk (a step every ~450 ms), talk and
@@ -49,6 +49,32 @@ town; *one screen* clusters them so every bot sees every other. Machine: AMD Ryz
 5700X3D (8C/16T), Windows 11, an ordinary busy desktop, the bots on the same machine; 8
 multicore workers. *Step answer* is the time from a bot's walk request to the server's
 answer, measured on the bot.
+
+| Clients | Placement | Tick p50 / p95 / p99 | Step answer p50 / p95 / p99 | Alloc |
+|---|---|---|---|---|
+| 1,000 | town | 5.8 / 9.7 / 17.1 ms | 7.4 / 12.7 / 17.9 ms | 50 MB/s |
+| 500 | one screen | 2.9 / 15.2 / 25.0 ms | 5.1 / 12.0 / 42.9 ms | 39 MB/s |
+| 1,000 | one screen | 5.5 / 25.2 / 38.4 ms | 13.0 / 31.3 / 57.4 ms | 79 MB/s |
+
+No slow tick, no deferred NPC and no server error in any run; the world save in the
+window took 22 ms to capture. A repeat of the 1,000 one-screen run gave tick p95 25.4 ms
+and step answer p95 37.1 ms.
+
+Against the 2026-10-19 measurement below, on the same machine and scenario, 1,000 on one
+screen answers a step about six times faster (p95 192 → 31 ms) and the town run's tick
+p95 fell from 16.4 to 9.7 ms.
+
+- **Crowds and `MAXSIZECLIENTOUT`**: a client stepping into a crowd of several hundred is
+  sent everything it can see at once, which exceeds the Source-X default of 80,000 bytes in
+  10 s and drops it. The one-screen rows ran with `MaxSizeClientOut=400000`; a shard
+  expecting crowds that size should raise it too ([CONFIG](docs/CONFIG-EN.md)).
+- **Limit**: 1,000 on one screen is the heaviest case here - every step goes to 999
+  viewers. Spread over a town, the same count is far cheaper: what costs is how many
+  players see each other.
+
+### Earlier measurement (2026-10-19)
+
+The same scenario and machine:
 
 | Clients | Placement | Tick p50 / p95 / p99 | Step answer p50 / p95 / p99 |
 |---|---|---|---|
@@ -63,14 +89,6 @@ every read (asked for every mobile every viewer sees), an NPC step's packet buil
 viewer, packet buffers allocated anew because the shared array pool dropped buffers
 returned by the send threads, and a contended dirty-object dictionary. Details in
 [CHANGELOG-EN](CHANGELOG-EN.txt).
-
-- **Crowds and `MAXSIZECLIENTOUT`**: a client stepping into a crowd of several hundred is
-  sent everything it can see at once, which exceeds the Source-X default of 80,000 bytes in
-  10 s and drops it. The one-screen rows above ran with `MaxSizeClientOut=400000`; a shard
-  expecting crowds that size should raise it too ([CONFIG](docs/CONFIG-EN.md)).
-- **Limit**: 1,000 on one screen is the heaviest case here - every step goes to 999
-  viewers. Spread over a town, the same count is far cheaper: what costs is how many
-  players see each other.
 
 ### Earlier measurement (2026-10-12)
 

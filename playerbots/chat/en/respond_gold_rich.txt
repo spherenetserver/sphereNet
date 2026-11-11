@@ -1,0 +1,6 @@
+# respond_gold_rich.txt - see docs/PLAYERBOTS.md (Talking). {gold}: the bot's pack and bank gold, rounded.
+
+{gold} in the bank, saving for a house
+about {gold}, doing alright
+{gold} give or take
+enough, {gold} or so

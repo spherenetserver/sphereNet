@@ -1,0 +1,7 @@
+# respond_gold_some.txt - bkz. docs/PLAYERBOTS.md (Talking). {gold}: botun canta ve banka altini, yuvarlanmis.
+
+{gold} civarı
+{gold} kadar, biriktiriyorum
+bi {gold} gp var
+{gold}, idare eder
+[crafter] {gold}, satışlar yavaş bu ara

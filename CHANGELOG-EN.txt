@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-11] - Player bot talk: gold, places in a named town, unread questions; sector item warning
+------------------------------------------------------------------------
+ADD - "How much gold do you have" ("kac paran var") is understood: a stranger gets a shrug,
+      a player the bot knows a rough figure of its pack and bank gold (350, 2.5k, 40k);
+      the brain is told the bot's gold too.
+FIX - A kind of place named with a town ("beni brit mezarina gotur", "brit bankasi nerde")
+      took the town alone and led to its bank; the place is now looked for in that town.
+      Graveyards, dungeons and mining spots can be named.
+FIX - A Turkish question no fact answers ("kac yasindasin", "... mi / misin") was read as
+      small talk and got an agreeing "aynen"; it is a question and gets a shrug.
+ADD - Lines players say to a bot that the intents do not read are counted (by their words,
+      the bot's name left out, at most 500) and kept with the world in
+      playerbots_unheard.txt; console PLAYERBOTS UNHEARD [n|CLEAR] lists the most said, so
+      intents.txt can grow from real chat.
+CHANGE - config/sphere.ini MAXSECTORCOMPLEXITY 1024 -> 2048: a sector decorated by the worldgen
+      pack holds about 1,400 items and warned "Sector too complex" for nothing. Only that
+      warning reads the value.
+
 [2026-11-11] - Packet abuse guards, spell effects, character rules, NPC fights, script symbols, performance, player bot work, combat, manners and planning
 ------------------------------------------------------------------------
 FIX - A client could disconnect every bystander by spamming the resync request (0x22): each

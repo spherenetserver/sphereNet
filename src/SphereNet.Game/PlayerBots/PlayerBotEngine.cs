@@ -281,6 +281,7 @@ public sealed partial class PlayerBotEngine
     {
         WindowLines = WindowReplies = WindowScenes = WindowSeenSum = WindowSeenSamples = WindowMovedHouse = WindowMounts = WindowRegears = WindowRobesShed = WindowStallDoors = WindowSpotSwitches = WindowStallSearches = 0;
         WindowSearchTimeouts = WindowSettles = WindowCrowdLeaves = WindowUnlearned = 0;
+        WindowUnheard = 0;
         WindowSearchQueued = WindowSearchDenied = WindowSearchDropped = WindowCorridorUses = WindowCornerSplits = WindowSearchesNotRun = 0;
         WindowSearchBacklog = 0;
         WindowMobileWaits = WindowSideSteps = WindowDoorwaySteps = WindowNoRoute = WindowStrandedRescues = WindowMapRescues = 0;

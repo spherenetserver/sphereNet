@@ -537,13 +537,15 @@ public sealed partial class PlayerBotEngine
             f.Stage = BotFavorStage.Asking;
             return ("guide_where", null);
         }
-        return GuideTo(m, f, intent.PlaceType, intent.PlaceWord ?? "", now);
+        return GuideTo(m, f, intent.PlaceType, intent.PlaceWord ?? "", now, intent.Town);
     }
 
     /// <summary>The place to lead the player to: the nearest of its kind to them, a
     /// town's bank (or any place of the town), or the place named - on the bot's road.
-    /// Too far to walk, a caster offers a gate instead.</summary>
-    private (string, Dictionary<string, string>?) GuideTo(BotMind m, BotFavor f, string type, string word, long now)
+    /// Too far to walk, a caster offers a gate instead. A <paramref name="town"/> named
+    /// beside a kind of place ("brit mezarı") looks for it in that town first.</summary>
+    private (string, Dictionary<string, string>?) GuideTo(BotMind m, BotFavor f, string type, string word, long now,
+        string? town = null)
     {
         var ch = m.Char;
         var tokens = new Dictionary<string, string> { ["target"] = word };
@@ -554,14 +556,14 @@ public sealed partial class PlayerBotEngine
         BotDestination? to;
         if (type.StartsWith("town:", StringComparison.OrdinalIgnoreCase))
         {
-            string town = type[5..];
-            var inTown = pool.Where(d => d.City.Equals(town, StringComparison.OrdinalIgnoreCase)).ToList();
+            string city = type[5..];
+            var inTown = pool.Where(d => d.City.Equals(city, StringComparison.OrdinalIgnoreCase)).ToList();
             to = inTown.FirstOrDefault(d => d.Type.Equals("Bank", StringComparison.OrdinalIgnoreCase)) ?? inTown.FirstOrDefault();
         }
         else if (type.StartsWith("dest:", StringComparison.OrdinalIgnoreCase))
             to = Nav.FindDestination(type[5..]) is { } d && pool.Contains(d) ? d : null;
         else
-            to = pool.Where(d => d.Type.Equals(type, StringComparison.OrdinalIgnoreCase))
+            to = InTownFirst(pool.Where(d => d.Type.Equals(type, StringComparison.OrdinalIgnoreCase)), town)
                 .OrderBy(d => d.Pos.GetDistanceTo(from)).FirstOrDefault();
         if (to == null)
         {
@@ -778,7 +780,7 @@ public sealed partial class PlayerBotEngine
                  Intents.FindPlace(text, t => t.Equals("Moongate", StringComparison.OrdinalIgnoreCase)) is { } to)
             (category, tokens) = GateTo(m, f, to.Type, to.Word, now);
         else if (f.Stage == BotFavorStage.Asking && f.Kind == BotFavorKind.Guide && Intents.FindPlace(text) is { } place)
-            (category, tokens) = GuideTo(m, f, place.Type, place.Word, now);
+            (category, tokens) = GuideTo(m, f, place.Type, place.Word, now, Intents.FindTown(text, place.Type));
         else if (f.Kind == BotFavorKind.Gate && f.Stage is BotFavorStage.Open or BotFavorStage.Casting or BotFavorStage.Working &&
                  intent.Kind is BotIntentKind.Follow or BotIntentKind.Companion or BotIntentKind.Yes)
         {

@@ -597,6 +597,8 @@ public static partial class Program
             return;
         }
         forceImmediate = saveArgs.Number1 != 0;
+        // The lines players said to bots that were not understood go with the world.
+        _playerBots?.SaveUnheard();
 
         // CWorld::SaveForce (CWorld.cpp:944): the one announcement a save makes is
         // DEFMSG_SERVER_WORLDSAVE, through CWorldComm::Broadcast. A pack that blanks

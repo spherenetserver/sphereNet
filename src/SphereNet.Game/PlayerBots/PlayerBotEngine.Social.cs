@@ -101,6 +101,7 @@ public sealed partial class PlayerBotEngine
                 BotIntentKind.Guide => 45,
                 BotIntentKind.Can => 30,
                 BotIntentKind.Appraise => 25,
+                BotIntentKind.Gold => 20,
                 _ => 0,
             };
             if (near.Count == 0 || chance == 0 || _rng.Next(100) >= chance) return;
@@ -244,6 +245,10 @@ public sealed partial class PlayerBotEngine
             case BotIntentKind.Appraise:
                 (category, tokens) = AskAppraise(m, player, w, lang, now);
                 break;
+            case BotIntentKind.Gold:
+                (category, tokens) = AnswerGold(m, player);
+                fallback = "respond_question";
+                break;
             case BotIntentKind.Carry:
                 (category, tokens) = AskCarry(m, player, w, lang, now);
                 fallback = null;
@@ -358,10 +363,16 @@ public sealed partial class PlayerBotEngine
                 break;
             case BotIntentKind.Question:
                 category = "respond_question";
+                NoteUnheard(m, text, lang, "question", now);
                 break;
             default:
-                category = Haggle(m, text, ref tokens) ??
-                           (named ? "respond_name" : w.Focus == m ? "respond_chat" : "respond_what");
+                if (Haggle(m, text, ref tokens) is { } haggled)
+                    category = haggled;
+                else
+                {
+                    category = named ? "respond_name" : w.Focus == m ? "respond_chat" : "respond_what";
+                    NoteUnheard(m, text, lang, "chat", now);
+                }
                 break;
         }
         if (intent.Kind is not (BotIntentKind.None or BotIntentKind.Yes or BotIntentKind.No))
@@ -545,6 +556,36 @@ public sealed partial class PlayerBotEngine
     /// <summary>Directions to what a player asked for, from where the bot stands:
     /// the nearest place of the type named, or the town or dungeon named; the compass
     /// point (<c>token_dir</c>, north first, clockwise) and the distance in steps.</summary>
+    /// <summary>The places of a town when the line named one and it has any of them,
+    /// else all of them.</summary>
+    private static IEnumerable<BotDestination> InTownFirst(IEnumerable<BotDestination> places, string? town)
+    {
+        if (town == null) return places;
+        var inTown = places.Where(d => d.City.Equals(town, StringComparison.OrdinalIgnoreCase)).ToList();
+        return inTown.Count > 0 ? inTown : places;
+    }
+
+    /// <summary>How much gold the bot has, the way a player answers it: a stranger (or a
+    /// rogue) gets a shrug, someone it knows a rough figure of its pack and bank.</summary>
+    private (string, Dictionary<string, string>?) AnswerGold(BotMind m, Character player)
+    {
+        if (IsRogueBot(m.Char) || BondLevel(m, player) == BotBondLevel.Stranger) return ("respond_gold_wary", null);
+        var ch = m.Char;
+        long bank = ch.GetEquippedItem(Layer.BankBox) is { } box
+            ? Objects.Items.ResourceMatch.Count(box, Objects.Items.ResourceMatch.Gold) : 0;
+        long gold = PackGold(ch) + bank;
+        string category = gold < 300 ? "respond_gold_poor" : gold < 20_000 ? "respond_gold_some" : "respond_gold_rich";
+        return (category, new Dictionary<string, string> { ["gold"] = RoughGold(gold) });
+    }
+
+    /// <summary>A sum the way it is typed in chat: 350, 2.5k, 40k.</summary>
+    internal static string RoughGold(long gold) => gold switch
+    {
+        < 1000 => (Math.Max(1, (gold + 25) / 50) * 50).ToString(),
+        < 10_000 => (Math.Round(gold / 500.0) / 2).ToString(System.Globalization.CultureInfo.InvariantCulture) + "k",
+        _ => ((gold + 500) / 1000) + "k",
+    };
+
     private (string Category, Dictionary<string, string>? Tokens) AnswerWhere(Point3D from, BotIntent intent,
         string lang)
     {
@@ -561,8 +602,8 @@ public sealed partial class PlayerBotEngine
         else if (type != null && type.StartsWith("dest:", StringComparison.OrdinalIgnoreCase))
             to = Nav.FindDestination(type[5..])?.Pos;
         else if (type != null)
-            to = Nav.Destinations
-                .Where(d => d.Type.Equals(type, StringComparison.OrdinalIgnoreCase) && d.Pos.Map == from.Map)
+            to = InTownFirst(Nav.Destinations
+                    .Where(d => d.Type.Equals(type, StringComparison.OrdinalIgnoreCase) && d.Pos.Map == from.Map), intent.Town)
                 .OrderBy(d => d.Pos.GetDistanceTo(from))
                 .FirstOrDefault()?.Pos;
         if (to is not { } target || word == null)

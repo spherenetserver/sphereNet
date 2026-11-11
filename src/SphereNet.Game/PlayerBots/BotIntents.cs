@@ -63,6 +63,8 @@ public enum BotIntentKind
     Remember,
     /// <summary>What is your plan, what next, why.</summary>
     Plan,
+    /// <summary>How much gold do you have.</summary>
+    Gold,
 }
 
 /// <summary>What a player's line asks for. <see cref="PlaceType"/> is the destination
@@ -71,9 +73,10 @@ public enum BotIntentKind
 /// WTS / WTB keyword (the goods) and <see cref="At"/> the word index of that keyword
 /// (0: the line opens with it, the way a trade shout does). <see cref="AlsoGreets"/>:
 /// the line says hello as well ("hi, where is the bank"). <see cref="Spell"/> is the
-/// spell a <see cref="BotIntentKind.Buff"/> asks for, when one is named.</summary>
+/// spell a <see cref="BotIntentKind.Buff"/> asks for, when one is named. <see cref="Town"/>
+/// is a town named beside a kind of place ("the graveyard of Britain").</summary>
 public readonly record struct BotIntent(BotIntentKind Kind, string? PlaceType = null, string? PlaceWord = null,
-    string? Rest = null, int At = -1, bool AlsoGreets = false, SpellType? Spell = null);
+    string? Rest = null, int At = -1, bool AlsoGreets = false, SpellType? Spell = null, string? Town = null);
 
 /// <summary>
 /// Reads a player's line the way a bystander would: a few keywords per intent and per
@@ -185,6 +188,17 @@ public sealed class BotIntents
         return null;
     }
 
+    /// <summary>A town a line names beside a kind of place (<paramref name="type"/>): the
+    /// place is looked for in that town. Null when the place named is itself a town or a
+    /// destination, or no town is named.</summary>
+    public string? FindTown(string text, string type)
+    {
+        if (type.StartsWith("town:", StringComparison.OrdinalIgnoreCase) ||
+            type.StartsWith("dest:", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return FindPlace(text, t => !t.StartsWith("town:", StringComparison.OrdinalIgnoreCase))?.Type[5..];
+    }
+
     /// <summary>The beneficial spell a line names ("bless", "night sight"), if any
     /// (<c>buff.&lt;Spell&gt;: words</c> in the data).</summary>
     public SpellType? FindBuff(string text)
@@ -235,7 +249,8 @@ public sealed class BotIntents
                 {
                     // "britain'e gate": the place, not the moongate the word "gate" names.
                     BotIntentKind.Gate when FindPlace(text, IsMoongate) is { } to => new BotIntent(kind, to.Type, to.Word),
-                    BotIntentKind.Guide when FindPlace(text) is { } place => new BotIntent(kind, place.Type, place.Word),
+                    BotIntentKind.Guide when FindPlace(text) is { } place =>
+                        new BotIntent(kind, place.Type, place.Word, Town: FindTown(text, place.Type)),
                     BotIntentKind.Buff => new BotIntent(kind, Spell: FindBuff(text)),
                     _ => new BotIntent(kind),
                 };
@@ -245,7 +260,8 @@ public sealed class BotIntents
         if (Has(BotIntentKind.Where, words, normalized, out _))
         {
             var place = FindPlace(text);
-            return new BotIntent(BotIntentKind.Where, place?.Type, place?.Word);
+            return new BotIntent(BotIntentKind.Where, place?.Type, place?.Word,
+                Town: place is { } p ? FindTown(text, p.Type) : null);
         }
         if (Has(BotIntentKind.Far, words, normalized, out _)) return new BotIntent(BotIntentKind.Far);
         if (Has(BotIntentKind.Party, words, normalized, out _)) return new BotIntent(BotIntentKind.Party);
@@ -257,7 +273,7 @@ public sealed class BotIntents
         if (Has(BotIntentKind.Bye, words, normalized, out _)) return new BotIntent(BotIntentKind.Bye);
         if (Has(BotIntentKind.HowAreYou, words, normalized, out _)) return new BotIntent(BotIntentKind.HowAreYou);
         if ((asks || words.Count <= 3 || Has(More, words, normalized, out _)) && FindPlace(text) is { } named)
-            return new BotIntent(BotIntentKind.Where, named.Type, named.Word);
+            return new BotIntent(BotIntentKind.Where, named.Type, named.Word, Town: FindTown(text, named.Type));
         if (Has(BotIntentKind.Greet, words, normalized, out _)) return new BotIntent(BotIntentKind.Greet);
         if (!asks && words.Count <= 3)
         {
@@ -274,7 +290,7 @@ public sealed class BotIntents
     private static readonly BotIntentKind[] Particular =
     [
         BotIntentKind.Bot, BotIntentKind.Cancel, BotIntentKind.Can, BotIntentKind.Selling, BotIntentKind.GiveBack,
-        BotIntentKind.Carry, BotIntentKind.Gift, BotIntentKind.Appraise, BotIntentKind.Remember, BotIntentKind.Friend,
+        BotIntentKind.Carry, BotIntentKind.Gift, BotIntentKind.Appraise, BotIntentKind.Gold, BotIntentKind.Remember, BotIntentKind.Friend,
         BotIntentKind.Companion, BotIntentKind.Dismiss, BotIntentKind.LeaveParty, BotIntentKind.Status,
         BotIntentKind.Stay, BotIntentKind.Gate, BotIntentKind.Mark, BotIntentKind.Guide, BotIntentKind.Protect,
         BotIntentKind.Heal, BotIntentKind.Buff, BotIntentKind.Follow, BotIntentKind.Plan, BotIntentKind.Doing,

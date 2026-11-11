@@ -178,6 +178,7 @@ public sealed partial class PlayerBotEngine
         sb.Append(". You are ").Append(TraitOf(m)).Append(". ");
         sb.Append("Right now you are ").Append(DoingWords(m)).Append(". ");
         if (PlanWords(m) is { } plan) sb.Append(plan);
+        sb.Append("You have about ").Append(RoughGold(PackGold(ch))).Append(" gold on you; tell a stranger only roughly. ");
         if (_world.FindRegion(ch.Position)?.Name is { Length: > 0 } region)
             sb.Append("You are in ").Append(region).Append(". ");
         if (player == null) return sb.Append("You do not know the player.").ToString();

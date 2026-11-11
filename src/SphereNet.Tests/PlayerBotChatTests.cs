@@ -286,6 +286,78 @@ public sealed class PlayerBotChatTests
     }
 
     [Fact]
+    public void LinesABotDidNotUnderstandAreCountedAndKept()
+    {
+        var rig = MakeRig(new()
+        {
+            ["respond_chat"] = ["yeah"],
+            ["respond_name"] = ["need something?"],
+            ["respond_question"] = ["dunno"],
+            ["respond_greet"] = ["hey"],
+        });
+        string file = Path.Combine(Path.GetTempPath(), $"unheard_{Guid.NewGuid():N}.txt");
+        rig.Engine.UnheardFile = file;
+        Bot(rig, "Wanderer", new Point3D(100, 100, 0, 0));
+        var hero = Player(rig, "Hero", new Point3D(101, 100, 0, 0));
+        rig.Run(1000);
+        void Say(string text)
+        {
+            rig.Engine.OnHear(hero, text);
+            rig.Run(4000);
+        }
+        try
+        {
+            Say("wanderer, sing me a song");
+            Say("sing me a song");
+            Say("why is the sky red?");
+            // Understood lines and the bot's bare name are not counted.
+            Say("hi wanderer");
+            Say("wanderer");
+            Assert.Equal(2, rig.Engine.UnheardCount);
+            Assert.Equal(3, rig.Engine.WindowUnheard);
+            var report = rig.Engine.UnheardReport(10);
+            Assert.Contains("sing me a song", report[1]);
+            Assert.Contains(" 2 ", report[1]);
+            Assert.Contains("question", report[2]);
+
+            rig.Engine.SaveUnheard();
+            var again = MakeRig(new());
+            again.Engine.UnheardFile = file;
+            Assert.Equal(2, again.Engine.LoadUnheard());
+            Assert.Contains("sing me a song", again.Engine.UnheardReport(1)[1]);
+            Assert.Equal(2, again.Engine.ClearUnheard());
+            Assert.Equal(0, again.Engine.UnheardCount);
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Theory]
+    [InlineData(0, "50")]
+    [InlineData(340, "350")]
+    [InlineData(2300, "2.5k")]
+    [InlineData(9800, "10k")]
+    [InlineData(41_200, "41k")]
+    public void GoldIsSaidTheWayChatSaysIt(long gold, string said) =>
+        Assert.Equal(said, PlayerBotEngine.RoughGold(gold));
+
+    [Fact]
+    public void AStrangerAskingAboutGoldGetsAShrug()
+    {
+        var rig = MakeRig(new()
+        {
+            ["respond_gold_wary"] = ["why do you ask"],
+            ["respond_gold_poor"] = ["{gold} gp"],
+        });
+        rig.Engine.Intents = BotIntents.Parse([.. IntentLines, "gold: how+much+gold"]);
+        var bot = Bot(rig, "Wanderer", new Point3D(100, 100, 0, 0));
+        var hero = Player(rig, "Hero", new Point3D(101, 100, 0, 0));
+        rig.Run(1000);
+        rig.Engine.OnHear(hero, "wanderer how much gold do you have");
+        rig.Run(4000);
+        Assert.Contains((bot, "why do you ask"), rig.Said);
+    }
+
+    [Fact]
     public void ABotTellsWhatItIsAndWhetherItCanHeal()
     {
         var rig = MakeRig(new()
@@ -708,6 +780,18 @@ public sealed class PlayerBotChatTests
         Assert.Equal(BotIntentKind.Bot, intents.Parse("bot musun").Kind);
         Assert.Equal(BotIntentKind.No, intents.Parse("i dont want to group").Kind);
         Assert.True(intents.Parse("selam, banka nerede").AlsoGreets);
+        Assert.Equal(BotIntentKind.Gold, intents.Parse("kaç paran var").Kind);
+        Assert.Equal(BotIntentKind.Gold, intents.Parse("how much gold do you have?").Kind);
+        Assert.Equal(BotIntentKind.Gold, intents.Parse("zengin misin").Kind);
+        // A kind of place named with a town is looked for in that town.
+        var guide = intents.Parse("beni brit mezara götür");
+        Assert.Equal((BotIntentKind.Guide, "Graveyard", "Britain"), (guide.Kind, guide.PlaceType, guide.Town));
+        var where = intents.Parse("brit bankası nerde");
+        Assert.Equal((BotIntentKind.Where, "Bank", "Britain"), (where.Kind, where.PlaceType, where.Town));
+        Assert.Null(intents.Parse("britain nerde").Town);
+        // A question no fact answers is a question, not small talk to agree with.
+        Assert.Equal(BotIntentKind.Question, intents.Parse("kaç yaşındasın").Kind);
+        Assert.Equal(BotIntentKind.Question, intents.Parse("sen de ork avlar mısın").Kind);
         Assert.Equal("tr", intents.DetectLanguage("bu ne abi"));
         Assert.Equal("en", intents.DetectLanguage("anyone want to hunt"));
 

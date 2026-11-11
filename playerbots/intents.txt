@@ -4,10 +4,12 @@
 #                             stay leaveparty status (orders to a party's bots) selling
 #                             favours: gate mark buff guide appraise protect carry giveback
 #                             gift can cancel; friendship: friend companion dismiss remember;
-#                             plan (what is your plan, what next, why)
+#                             plan (what is your plan, what next, why); gold (how much
+#                             gold do you have)
 #   not: / more: words        "not" turns party/follow/heal into a no; "more" ("what about")
 #                             makes a place named alone ask the way there
-#   place.<Type>: keywords    a destination type (destinations.json "Type") a "where" asks about
+#   place.<Type>: keywords    a destination type (destinations.json "Type") a "where" asks about;
+#                             a town named beside it ("brit mezarı") looks for it in that town
 #   town.<City>: keywords     a town (destinations.json "City")
 #   dest.<Name>: keywords     one destination by name (destinations.json "Name")
 #   lang.<code>: words        words that tell a line's language (chat/<code>/)
@@ -25,6 +27,7 @@ can: what+can+you+do what+can+u+do what+do+you+offer how+can+you+help can+you+he
 giveback: give+me+my give+back give+it+back my+stuff my+things my+items return+my geri+ver geri+verir eşyalarımı esyalarimi itemlarımı itemlarimi emanetimi rünümü+ver runumu+ver rünümü+geri runumu+geri
 carry: carry+this carry+these carry+my can+you+carry hold+this hold+these hold+my keep+this+for+me bunu+taşı bunu+tasi bunları+taşı bunlari+tasi taşır+mısın tasir+misin taşıyabilir tasiyabilir sende+kalsın sende+kalsin emanet
 gift: gift a+present for+you+friend this+is+for+you keep+it hediye senin+için senin+icin bu+senin sana+aldım sana+aldim
+gold: how+much+gold how+much+money how+much+gp how+much+cash how+rich are+you+rich r+u+rich your+gold ur+gold got+any+gold kaç+paran kac+paran paran+var paran+kaç paran+kac paran+ne ne+kadar+paran ne+kadar+para+var kaç+gold kac+gold goldun+var goldun+ne kaç+goldun kac+goldun zengin+misin zengin+mısın paralı+mısın parali+misin
 appraise: how+much+is+this how+much+is+it how+much+for+this price+check what+is+this+worth whats+this+worth what+s+this+worth what+is+it+worth is+this+worth ne+eder kaç+eder kac+eder kaça+gider kaca+gider değeri+ne degeri+ne fiyatı+ne fiyati+ne bu+kaç bu+kac
 remember: remember+me do+you+remember+me do+you+know+me you+know+me u+know+me beni+hatırlıyor beni+hatirliyor beni+hatırladın beni+hatirladin beni+tanıyor beni+taniyor beni+tanıdın beni+tanidin
 friend: be+my+friend be+friends lets+be+friends let+s+be+friends wanna+be+friends we+friends arkadaş+olalım arkadas+olalim arkadaş+olur arkadas+olur arkadaşım+ol arkadasim+ol dost+olalım dost+olalim kanka+olalım kanka+olalim
@@ -60,7 +63,7 @@ thanks: ty thx thanks thank tyvm sağol sagol sağolun eyv eyvallah teşekkür t
 bye: bye cya gtg bb goodbye görüşürüz gorusuruz hoşçakal hoscakal baybay
 howareyou: how+are+you how+r+u hru wassup nasılsın nasilsin naber nbr naptın
 greet: hi hello hey hail greetings yo sup hiya sa selam slm merhaba selamlar mrb aleykum
-question: why what who how when neden niye kim nasıl nasil ne+zaman
+question: why what who how when neden niye kim nasıl nasil ne+zaman kaç kac hangi ne+kadar mı mi mu mü mısın misin musun müsün mıyım miyim
 yes: yes yeah yep yea ye yup sure ok okay k evet olur tamam aynen tabi tabii he
 no: no nope nah nvm nothing nm hayır hayir yok istemem gerek+yok
 not: don+t dont do+not not no+need never istemiyorum istemem gerek+yok değil degil
@@ -82,6 +85,9 @@ place.VendorCarpenter: carpenter marangoz
 place.Stables: stables stable ahır ahir
 place.Shrine: shrine tapınak tapinak
 place.Dock: docks dock iskele liman
+place.Graveyard: graveyard cemetery grave mezar mezarlık mezarlik kabristan
+place.DungeonEntrance: dungeon zindan
+place.MiningSpot: mining+spot mines maden
 
 town.Britain: britain brit britanya
 town.Trinsic: trinsic

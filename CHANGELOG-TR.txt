@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-11] - Oyuncu botu sohbeti: altin, adi verilen kasabadaki yer, okunmayan sorular; sektor esya uyarisi
+------------------------------------------------------------------------
+EKLEME - "Kac paran var" ("how much gold do you have") anlasiliyor: tanimadigina bot
+         gecistirir, tanidigina canta ve banka altininin kabaca tutarini soyler (350, 2.5k,
+         40k); botun beynine de altini bildirilir.
+DUZELTME - Bir yer turu kasabayla birlikte soylendiginde ("beni brit mezarina gotur", "brit
+         bankasi nerde") yalniz kasaba okunup bankasina gidiliyordu; yer artik o kasabada
+         aranir. Mezarlik, zindan ve maden noktasi adlandirilabilir.
+DUZELTME - Hicbir bilginin cevaplamadigi Turkce soru ("kac yasindasin", "... mi / misin")
+         sohbet sayilip onaylayan "aynen" aliyordu; artik soru sayilir ve bot omuz silker.
+EKLEME - Oyuncularin bota soyleyip niyet listesinin okuyamadigi satirlar sayilir (kelimeleriyle,
+         bot adi cikarilarak, en fazla 500) ve dunyayla birlikte playerbots_unheard.txt
+         dosyasinda tutulur; konsol PLAYERBOTS UNHEARD [n|CLEAR] en cok soyleneni listeler,
+         boylece intents.txt gercek sohbetten buyutulebilir.
+DEGISIKLIK - config/sphere.ini MAXSECTORCOMPLEXITY 1024 -> 2048: worldgen paketinin
+         susledigi bir sektor yaklasik 1.400 esya tasiyor ve bosuna "Sector too complex"
+         uyarisi veriyordu. Bu degeri yalnizca o uyari okur.
+
 [2026-11-11] - Paket istismar korumalari, buyu efektleri, karakter kurallari, NPC dovusu, script sembolleri, performans, oyuncu botlari: is, dovus, gorgu ve plan
 ------------------------------------------------------------------------
 DUZELTME - Bir istemci resync istegini (0x22) yagdirarak cevresindeki herkesi dusurebiliyordu:

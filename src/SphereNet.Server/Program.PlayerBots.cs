@@ -80,6 +80,8 @@ public static partial class Program
         int badSpots = engine.LoadBadSpots();
         engine.CorridorFile = Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "playerbots_corridors.txt");
         int corridors = engine.LoadCorridors();
+        engine.UnheardFile = Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "playerbots_unheard.txt");
+        engine.LoadUnheard();
         int adopted = engine.AdoptSaved();
         _playerBots = engine;
         _log.LogInformation(
@@ -157,6 +159,10 @@ public static partial class Program
                 "[playerbots] work: jobs={Jobs} gathers={Gathers} smelts={Smelts} crafts={Crafts} sales={Sales} (gold {Gold}) givenup={GivenUp}",
                 bots.WindowWorkTrips, bots.WindowGathers, bots.WindowSmelts, bots.WindowCrafts, bots.WindowSales,
                 bots.WindowSaleGold, bots.WindowWorkGiveUps);
+        if (bots.WindowUnheard > 0)
+            _log.LogInformation("[playerbots] unread lines={Unheard} (kept {Kept}; PLAYERBOTS UNHEARD lists them)",
+                bots.WindowUnheard, bots.UnheardCount);
+        bots.SaveUnheard();
         if (bots.WindowPlansMade + bots.WindowPlansKept + bots.WindowPlanFails > 0)
             _log.LogInformation("[playerbots] plans {Report}", bots.PlanMixReport());
         if (bots.Watching.Count > 0 || bots.WindowGhostWalks + bots.WindowCorpseRuns + bots.WindowDeathsResumed > 0)
@@ -191,7 +197,7 @@ public static partial class Program
 
     /// <summary>Console PLAYERBOTS: STALLS [n] lists the bots stalled longest, TRACE
     /// &lt;uid|name&gt; one bot's last decisions, PLAN &lt;uid|name&gt; its drives, options and plan, NEAR x y [range [map]] the bots about a
-    /// point and what they do, THINK &lt;bot&gt; &lt;line&gt; a line put to a bot's brain, PLACES [n] the fullest places, NAVCHECK [LINKS [LEARN]] the road data
+    /// point and what they do, THINK &lt;bot&gt; &lt;line&gt; a line put to a bot's brain, UNHEARD [n|CLEAR] the lines players said to bots that were not understood, PLACES [n] the fullest places, NAVCHECK [LINKS [LEARN]] the road data
     /// against the running world. Runs on the main loop (it reads bot state).</summary>
     private static void HandlePlayerBotsCommand(string args, Action<string> output)
     {
@@ -223,6 +229,14 @@ public static partial class Program
             case "TRACE" when parts.Length > 1:
                 lines = bots.TraceOf(string.Join(' ', parts.Skip(1)));
                 break;
+            case "UNHEARD" when parts.Length > 1 && parts[1].Equals("CLEAR", StringComparison.OrdinalIgnoreCase):
+                lines = [$"Forgot {bots.ClearUnheard()} unread lines."];
+                break;
+            case "UNHEARD":
+                bots.SaveUnheard();
+                lines = bots.UnheardReport(parts.Length > 1 && int.TryParse(parts[1], out int nu) ? nu : 30);
+                if (bots.UnheardFile is { } unheardFile) output($"All of them: {unheardFile}");
+                break;
             case "PLAN" when parts.Length > 1:
                 lines = bots.PlanReport(string.Join(' ', parts.Skip(1)));
                 break;
@@ -247,7 +261,7 @@ public static partial class Program
                 break;
             }
             default:
-                output("PLAYERBOTS STALLS [n] | PLAYERBOTS TRACE <uid|name> | PLAYERBOTS PLAN <uid|name> | PLAYERBOTS NAVCHECK [LINKS [LEARN]]");
+                output("PLAYERBOTS STALLS [n] | PLAYERBOTS TRACE <uid|name> | PLAYERBOTS PLAN <uid|name> | PLAYERBOTS UNHEARD [n|CLEAR] | PLAYERBOTS NAVCHECK [LINKS [LEARN]]");
                 output($"online {bots.Count}, portals {bots.PortalPlaces} (+{bots.PortallessPlaces} without), corridors {bots.CorridorCount}, rescues {bots.StuckRescues}, stranded {bots.StrandedRescues}");
                 return;
         }

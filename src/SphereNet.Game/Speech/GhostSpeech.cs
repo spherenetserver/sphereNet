@@ -26,9 +26,29 @@ public static class GhostSpeech
             return text;
         var sb = new StringBuilder(text.Length);
         foreach (char c in text)
-            sb.Append(c == ' ' ? ' ' : GhostChars[rng.Next(GhostChars.Length)]);
+            // Spaces and tabs survive (CWorldComm.cpp:68, 169).
+            sb.Append(c is ' ' or '	' ? c : GhostChars[rng.Next(GhostChars.Length)]);
         return sb.ToString();
     }
+
+    /// <summary>CChar::IsSpeakAsGhost (CCharStatus.cpp:82-87): the dead speak as
+    /// ghosts unless Spirit Speak is on them or they are in GM mode - those two are
+    /// understood by everyone.</summary>
+    public static bool SpeaksAsGhost(Character speaker) =>
+        speaker.IsDead &&
+        !speaker.IsStatFlag(StatFlag.SpiritSpeak) &&
+        !speaker.IsGmMode;
+
+    /// <summary>SOUND_GHOST_1 (uofiles_enums.h:118): the first of the five moans a
+    /// listener who cannot understand a ghost hears with its words.</summary>
+    public const ushort GhostSoundFirst = 382;
+
+    /// <summary>How many moans there are (SOUND_GHOST_1..5).</summary>
+    public const int GhostSoundCount = 5;
+
+    /// <summary>One of sm_Sounds_Ghost at random (CWorldComm.cpp:75, 177).</summary>
+    public static ushort RandomGhostSound(Random? rng = null) =>
+        (ushort)(GhostSoundFirst + (rng ?? Random.Shared).Next(GhostSoundCount));
 
     /// <summary>A recipient hears a ghost's speech as clear text when they are
     /// themselves dead (a ghost) or are staff (AllShow / Counsel+). Every other

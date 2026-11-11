@@ -23,8 +23,11 @@ namespace SphereNet.Game.PlayerBots;
 /// </summary>
 public sealed partial class PlayerBotEngine
 {
-    /// <summary>Gold carried above which the surplus goes into the bank.</summary>
-    public int BankDepositAbove { get; set; } = 1500;
+    /// <summary>Gold carried above which the surplus goes into the bank, and from which
+    /// the planner's purse drive is felt (full at plans.txt's <c>pursefull</c>). Above
+    /// what a withdrawal brings the purse up to (<see cref="BankWithdrawTo"/>), so the
+    /// errand never puts in what it has just taken out.</summary>
+    public int BankDepositAbove { get; set; } = 600;
     /// <summary>Gold carried below which some is taken out of the bank.</summary>
     public int BankWithdrawBelow { get; set; } = 200;
     /// <summary>How much a withdrawal brings the purse up to.</summary>

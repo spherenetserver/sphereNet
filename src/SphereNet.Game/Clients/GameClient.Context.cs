@@ -247,6 +247,8 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.OnResurrect() => OnResurrect();
     Character? IClientContext.DismountCharacter() => DismountCharacter();
     bool IClientContext.TryMountCharacter(Character mount) => TryMountCharacter(mount);
+    bool IClientContext.TryMountCharacter(Character mount, out Character? swappedOut) =>
+        TryMountCharacter(mount, out swappedOut);
     void IClientContext.ResetWalkValidator() => ResetWalkValidator();
     void IClientContext.ToggleDoor(Item door) => ToggleDoor(door);
     bool IClientContext.UsePortcullis(Item gate) => UsePortcullis(gate);

@@ -1,0 +1,7 @@
+# emote_board.txt - a bot reading the bulletin board; emotes.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+*reads the notices*
+*runs a finger down the board*
+*squints at a note*
+*reads the board*

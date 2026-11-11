@@ -1,0 +1,10 @@
+# followed.txt - yolun epey bir kısmında botun hemen arkasından yürüyen oyuncuya söylenir. {name} oyuncu.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+beni mi takip ediyorsun?
+bir şey mi lazım {name}?
+bir şey mi istiyorsun?
+niye peşimdesin
+aynı yöne mi {name}?
+[shy] şey, merhaba?
+[chatty] selam, aynı yöne mi gidiyoruz?

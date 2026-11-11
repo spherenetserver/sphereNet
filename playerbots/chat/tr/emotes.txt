@@ -1,9 +1,31 @@
-# emotes.txt — sözsüz sosyal katman. *yıldızlı* satırlar gerçek emote olur.
-# Ara sıra herhangi bir botun sohbet sırasını alır.
-# "asdf" tarzı satırlar bilerek — kusur insan gibi okunur.
+# emotes.txt - ayakta bekleyen botun sözsüz küçük hareketleri; emote olarak söylenir (yıldızlar satırın parçası).
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
 
-asdf
-test
-pardon yanlış pencere
-qwe
-..
+*esner*
+*gerinir*
+*kafasını kaşır*
+*etrafa bakınır*
+*bir şeyler mırıldanır*
+*parmaklarını çıtlatır*
+*çantasını yoklar*
+*kemerini düzeltir*
+*gözlerini ovuşturur*
+*omuz silker*
+*ıslık çalar*
+*iç çeker*
+*kıkırdar*
+*ayağını yere vurur*
+*kollarındaki tozu silkeler*
+*omuzlarını gevşetir*
+*göğe bakar*
+*parmak hesabı yapar*
+[mage] *büyü kitabını karıştırır*
+[mage] *birkaç güç sözü mırıldanır*
+[warrior] *kılıcının ağzına bakar*
+[archer] *yayının kirişini yoklar*
+[mounted] *bineğini okşar*
+[hurt] *acıyla yüzünü buruşturur*
+[chatty] *el sallar*
+[kind] *gülümser*
+[shy] *yere bakar*
+[stingy] *para kesesini tartar*

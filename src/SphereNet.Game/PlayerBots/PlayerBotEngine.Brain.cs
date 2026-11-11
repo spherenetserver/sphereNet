@@ -177,6 +177,7 @@ public sealed partial class PlayerBotEngine
             sb.Append(", best at ").Append(string.Join(" and ", best.Select(b => SkillWords(b.Skill))));
         sb.Append(". You are ").Append(TraitOf(m)).Append(". ");
         sb.Append("Right now you are ").Append(DoingWords(m)).Append(". ");
+        if (PlanWords(m) is { } plan) sb.Append(plan);
         if (_world.FindRegion(ch.Position)?.Name is { Length: > 0 } region)
             sb.Append("You are in ").Append(region).Append(". ");
         if (player == null) return sb.Append("You do not know the player.").ToString();
@@ -231,6 +232,7 @@ public sealed partial class PlayerBotEngine
                 ? $"on your way to hunt in {ShortPlaceName(goal.Name)}"
                 : $"walking to the {PlacePhrase(goal, "en")}",
             BotMode.Shop => "shopping",
+            BotMode.Work or BotMode.Sell => WorkWords(m),
             BotMode.Loot => "looting what you killed",
             BotMode.Reclaim => "going back to your body for your things",
             BotMode.Fight => "fighting",

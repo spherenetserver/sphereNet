@@ -500,7 +500,13 @@ public sealed partial class GameClient
 
     public void HandleCharSelect(int slot, string name)
     {
-        if (_account == null) return;
+        // A creation request that is not acted on is dropped with the packet that
+        // carried it: left standing, it would turn a later play request into one.
+        if (_account == null)
+        {
+            PendingCharCreate = null;
+            return;
+        }
 
         // Dedup: if this client already has a live character, a retransmitted
         // 0x5D/0xF8 must not create a second one. Without this guard a bugged
@@ -510,12 +516,28 @@ public sealed partial class GameClient
         {
             _logger.LogDebug("[LOGIN] Ignoring duplicate CharSelect for account '{Acct}'",
                 _account.Name);
+            PendingCharCreate = null;
             return;
         }
 
         var charUid = _account.GetCharSlot(slot);
         if (charUid.IsValid)
             _character = _world.FindChar(charUid);
+
+        // "Play character" plays a character; it does not make one. Source-X
+        // Setup_Play answers BadCharacter when the slot holds no character of the
+        // account (CClientMsg.cpp:2924-2926). An empty slot used to fall through to
+        // the creation code below with no creation request, which built a 50/50/50
+        // character past every check the creation packets (0x00 / 0xF8 / 0x8D) are
+        // put through - stat and skill budget, name, appearance. Only those packets
+        // leave a pending request; without one the client is shown its list again.
+        if (_character == null && PendingCharCreate == null)
+        {
+            _logger.LogDebug("[LOGIN] Play request for empty slot {Slot} refused for account '{Acct}'",
+                slot, _account.Name);
+            ReturnToCharacterList();
+            return;
+        }
 
         int effectiveMaxChars = GetEffectiveMaxChars();
         if (_character == null &&
@@ -536,7 +558,8 @@ public sealed partial class GameClient
             // fQuickLogIn = LayerFind(LAYER_FLAG_ClientLinger) (CClientMsg.cpp:2820).
             _quickRelogin = true;
             _character.RemoveTag("CLIENT_LINGER_UNTIL");
-            _world.RemoveOnlinePlayer(_character);
+            // Still in the world and still in its area: no @Exit for a reconnect.
+            _world.RemoveOnlinePlayer(_character, regionStep: false);
         }
 
         if (_character == null)
@@ -947,7 +970,9 @@ public sealed partial class GameClient
         EngineTags.StripEphemeral(_character);
         _character.MigrateStatLockFromTags();
         _character.IsOnline = true;
-        _world.AddOnlinePlayer(_character); // activates tick for this player's sectors
+        // activates tick for this player's sectors; the area's @Enter waits until the
+        // client has its start packets (below)
+        _world.AddOnlinePlayer(_character, regionStep: false);
         // CClient::Announce(true) (CClient.cpp:388-401): the murder memory's clock
         // restarts from the balance it kept, or Noto_Murder makes one.
         _character.CombatState.OnClientAnnounce(arrive: true);
@@ -1130,12 +1155,18 @@ public sealed partial class GameClient
         string paperdollTitle = PaperdollText.Build(_character);
         _netState.Send(new PacketOpenPaperdoll(
             _character.Uid.Value, paperdollTitle, 0x02));
-        _paperdollThrottle[_character.Uid.Value] = Environment.TickCount64;
 
         View.KnownChars.Clear();
         View.KnownItems.Clear();
         View.LastKnownPos.Clear();
         View.LastKnownItemState.Clear();
+
+        // A character that was out of the world enters its area from no area
+        // (addPlayerStart -> MoveToChar -> MoveToRegion, CClientMsg.cpp:1501,
+        // CCharAct.cpp:5202-5221): the area's @Enter and @RegionEnter, ahead of
+        // @LogIn. One that never left - a reconnect inside the linger - does not.
+        if (!_quickRelogin)
+            _world.EnterRegionFromNowhere(_character);
 
         // Fire @LogIn trigger: ARGN1 = no-messages, ARGN2 = quick login, both read back;
         // either one set keeps the login greeting lines off (Setup_Start,
@@ -1182,6 +1213,16 @@ public sealed partial class GameClient
                 !string.IsNullOrEmpty(lastLogged))
                 SysMessage(ServerMessages.GetFormatted(Msg.LoginLastlogged, lastLogged));
             _account.Tags.Remove("LastLogged");
+        }
+
+        // Setup_Start (CClientMsg.cpp:2854-2860): unless this is a quick login, a
+        // character standing in a guarded area that does not announce itself is
+        // told whose guards protect it - and that the area is red, when it is.
+        if (loginArgs.N2 == 0)
+        {
+            foreach (string line in SphereNet.Game.World.Regions.Region.LoginBanners(
+                         _world.FindRegion(_character.Position)))
+                SysMessage(line);
         }
 
         if (shoreMessage != null)
@@ -1263,7 +1304,50 @@ public sealed partial class GameClient
     ///   - Teleport/map change
     ///   - GM manually triggers it
     /// </summary>
-    public void Resync()
+    public void Resync() => Resync(announceToViewers: true);
+
+    /// <summary>Shortest gap between two full resyncs a client may ask for with 0x22.
+    /// Zero disables the limit.</summary>
+    public static int ResyncRequestMinIntervalMs = 1000;
+
+    /// <summary>Monotonic ms before which a 0x22 gets only the light answer.</summary>
+    private long _nextResyncRequestMs;
+
+    /// <summary>
+    /// 0x22 from the client. Source-X PacketResynchronize (network/receive.cpp:590-606)
+    /// refreshes the REQUESTING client only - addChar(self), addPlayerUpdate,
+    /// addPlayerSee - and zeroes the walk sequence; nobody else is sent anything. The
+    /// request used to run the server-initiated resync, whose last step re-announces
+    /// the character to every viewer with a full 0x78: a client repeating the 3-byte
+    /// packet made each bystander's output climb past MAXSIZECLIENTOUT, and they were
+    /// the ones the byte-quota verdict disconnected.
+    ///
+    /// The full self-refresh (every known object deleted and re-sent) is also limited
+    /// to one per <see cref="ResyncRequestMinIntervalMs"/>. A request inside that window
+    /// is still answered - the client waits for a 0x20 before it walks again
+    /// (ClassicUO WalkerManager.cs:174-185, PacketHandlers.cs:6461) - but only with its
+    /// own position and a zeroed sequence. Returns true when the full refresh ran.
+    /// </summary>
+    public bool HandleResyncRequest()
+    {
+        if (_character == null || !IsPlaying) return false;
+
+        long now = Environment.TickCount64;
+        if (ResyncRequestMinIntervalMs > 0 && now < _nextResyncRequestMs)
+        {
+            _netState.Send(new PacketDrawPlayer(
+                _character.Uid.Value, _character.BodyId, _character.Hue,
+                BuildMobileFlags(_character),
+                _character.X, _character.Y, _character.Z, (byte)_character.Direction));
+            _netState.WalkSequence = 0;
+            return false;
+        }
+        _nextResyncRequestMs = now + ResyncRequestMinIntervalMs;
+        Resync(announceToViewers: false);
+        return true;
+    }
+
+    private void Resync(bool announceToViewers)
     {
         ResyncPending = false;
         if (_character == null || !IsPlaying) return;
@@ -1328,7 +1412,10 @@ public sealed partial class GameClient
         // 7. Force full scan on next tick to re-populate all nearby objects
         ViewNeedsRefresh = true;
 
-        BroadcastCharacterAppear?.Invoke(_character);
+        // Only a server-initiated resync (teleport, body change, GM) re-announces the
+        // character; a client asking for its own refresh changes nothing others see.
+        if (announceToViewers)
+            BroadcastCharacterAppear?.Invoke(_character);
 
         _logger.LogDebug("Resync for client '{Name}'", _character.Name);
     }

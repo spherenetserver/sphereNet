@@ -243,12 +243,11 @@ public class GameSystemTests
         Assert.Contains(packets, p => p.Span.Length >= 19 && p.Span[0] == 0x20 && ReadU16(p, 5) == 0x0192);
         Assert.Contains(packets, p => p.Span.Length >= 17 && p.Span[0] == 0x77 && ReadU16(p, 5) == 0x0192);
         int drawPlayerIndex = packets.FindIndex(p => p.Span.Length >= 19 && p.Span[0] == 0x20 && ReadU16(p, 5) == 0x0192);
-        int sysMessageIndex = packets.FindIndex(p => p.Span.Length > 0 && p.Span[0] == 0xAE);
         int deathStatusIndex = packets.FindIndex(p => p.Span.Length == 2 && p.Span[0] == 0x2C && p.Span[1] == 0x00);
         Assert.True(drawPlayerIndex >= 0);
-        Assert.True(sysMessageIndex >= 0);
         Assert.True(deathStatusIndex > drawPlayerIndex);
-        Assert.True(deathStatusIndex > sysMessageIndex);
+        // CChar::Death tells the victim nothing in words (CCharAct.cpp:4326-4544).
+        Assert.DoesNotContain(packets, p => p.Span.Length > 0 && p.Span[0] == 0xAE);
 
         var observerPackets = GetQueuedPackets(observerClient.NetState).ToList();
         Assert.Contains(observerPackets, p => p.Span.Length >= 9 && p.Span[0] == 0x78 && ReadU16(p, 7) == 0x0192);
@@ -2163,7 +2162,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         // attach internals via login flow
         client.HandleLoginRequest(acc.Name, "pw");
         client.HandleGameLogin(acc.Name, "pw", 1);
-        client.HandleCharSelect(-1, "Tester");
+        TestHarness.CreateAndEnterCharacter(client, "Tester");
 
         var activeChar = client.Character!;
         Assert.True(client.TryExecuteScriptCommand(activeChar, "DIALOG", "testdlg", null));
@@ -2238,6 +2237,15 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
             {
                 charSelectCount++;
                 GetClient(state).HandleCharSelect(slot, name);
+            },
+            // A new account's first character comes from the creation packet; a
+            // play request on its empty slot is refused.
+            charCreate: (state, info) =>
+            {
+                charSelectCount++;
+                var created = GetClient(state);
+                created.PendingCharCreate = info;
+                created.HandleCharSelect(-1, info.Name);
             });
 
         var loginState = network.GetState(0)!;
@@ -2259,7 +2267,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         AssertQueuedOpcode(gameState, 0xB9);
         AssertQueuedOpcode(gameState, 0xA9);
 
-        ProcessPacket(network, gameState, BuildCharSelectPacket("LoopChar", 0));
+        ProcessPacket(network, gameState, SphereNet.Game.Diagnostics.BotPacketBuilder.BuildCharCreate("LoopChar"));
         Assert.Equal(0, unknownOpcode);
         Assert.Equal(0, gameState.PendingPacketLength);
         Assert.Equal(0, gameState.ReceivedData.Length);
@@ -2344,7 +2352,13 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
                 state.MarkClosing();
             },
             gameLogin: (state, account, password, authId) => GetClient(state).HandleGameLogin(account, password, authId),
-            charSelect: (state, slot, name) => GetClient(state).HandleCharSelect(slot, name));
+            charSelect: (state, slot, name) => GetClient(state).HandleCharSelect(slot, name),
+            charCreate: (state, info) =>
+            {
+                var created = GetClient(state);
+                created.PendingCharCreate = info;
+                created.HandleCharSelect(-1, info.Name);
+            });
 
         var loginState = network.GetState(0)!;
         SetNetStateInUse(loginState, true);
@@ -2356,7 +2370,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         var gameState = network.GetState(1)!;
         SetNetStateInUse(gameState, true);
         ProcessPacket(network, gameState, BuildGameLoginPacket(authId, "entertest", "pw"));
-        ProcessPacket(network, gameState, BuildCharSelectPacket("EnterChar", 0));
+        ProcessPacket(network, gameState, SphereNet.Game.Diagnostics.BotPacketBuilder.BuildCharCreate("EnterChar"));
 
         // After entering world: 0x1B (LoginConfirm), 0x20 (DrawPlayer), 0x11 (StatusFull)
         AssertQueuedOpcode(gameState, 0x1B);
@@ -2452,7 +2466,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         var acc = accountManager.CreateAccount("paper", "pw")!;
         client.HandleLoginRequest(acc.Name, "pw");
         client.HandleGameLogin(acc.Name, "pw", 1);
-        client.HandleCharSelect(-1, "Paper");
+        TestHarness.CreateAndEnterCharacter(client, "Paper");
 
         var packets = TestHarness.GetQueuedPackets(client.NetState).ToArray();
         Assert.Contains(packets, p => p.Span.Length > 0 && p.Span[0] == 0x88);

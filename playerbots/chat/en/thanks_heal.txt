@@ -1,0 +1,12 @@
+# thanks_heal.txt - said to whoever healed the bot (a spell or a bandage). {name} is the healer.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+thanks for the heal!
+ty for the heal {name}
+ty, needed that
+thx {name}
+cheers for the heal
+appreciated, {name}
+[hurt] phew, thanks
+[friend] ty {name}, as always
+[shy] um, thanks

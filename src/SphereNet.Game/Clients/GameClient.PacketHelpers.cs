@@ -628,29 +628,6 @@ public sealed partial class GameClient
         ushort hue, uint render) =>
         BuildObjectEffect(0, from, to, effectId, 18, 1, false, hue, render);
 
-    /// <summary>The visuals a landed spell shows on its target (Source-X
-    /// CChar::OnSpellEffect tail, CCharSpell.cpp:4154-4160): SPELLFLAG_FX_BOLT
-    /// flies EFFECT_BOLT from the caster (speed 5, loop 1), SPELLFLAG_FX_TARG plays
-    /// EFFECT_OBJ on the target (speed 0, loop 15) — both when both are set, none
-    /// when neither is. Bolts of a non-GOOD spell explode on arrival
-    /// (CCharSpell.cpp:3638). The bolt used to go out as motion 1, which the client
-    /// draws as a lightning strike, so a Magic Arrow / Fireball / Energy Bolt never
-    /// flew.</summary>
-    public static List<PacketWriter> BuildSpellCastFx(Character caster, Character target,
-        SphereNet.Game.Magic.SpellDef def)
-    {
-        var packets = new List<PacketWriter>(2);
-        ushort gfx = def.EffectId;
-        if (gfx == 0)
-            return packets;
-        bool explode = def.IsFlag(SpellFlag.FxBolt) && !def.IsFlag(SpellFlag.Good);
-        if (def.IsFlag(SpellFlag.FxBolt))
-            packets.Add(BuildObjectEffect(0, caster, target, gfx, 5, 1, explode));
-        if (def.IsFlag(SpellFlag.FxTarg))
-            packets.Add(BuildObjectEffect(3, caster, target, gfx, 0, 15, explode));
-        return packets;
-    }
-
     /// <summary>Source-X CObjBase::Effect toward a character, as the client gets
     /// it (PacketEffect::writeBasicEffect, send.cpp:1986-2043, picked by
     /// CClient::addEffect, CClientMsg.cpp:982-987). EFFECT_BOLT (0) flies from
@@ -1574,15 +1551,26 @@ public sealed partial class GameClient
         SendOpenContainer(bankBox);
     }
 
-    private readonly Dictionary<uint, long> _paperdollThrottle = [];
+    /// <summary>CChar::CanDress (CCharStatus.cpp:921-931): whose paperdoll this viewer
+    /// may dress and undress - their own, a lower-ranked character's while in GM mode
+    /// (an Owner anyone's), and a pet of theirs when CANUNDRESSPETS is on.</summary>
+    internal static bool CanDress(Character viewer, Character target)
+    {
+        if (target == viewer)
+            return true;
+        if (viewer.IsGmMode &&
+            (viewer.PrivLevel > target.PrivLevel || viewer.PrivLevel == PrivLevel.Owner))
+            return true;
+        // IsOwnedBy is false for a player character (CCharStatus.cpp:945-946).
+        return Character.CanUndressPets && !target.IsPlayer && target.HasOwner(viewer.Uid);
+    }
 
+    /// <summary>CClient::addCharPaperdoll (CClientMsg.cpp:2685-2697): @SendPaperdoll,
+    /// then the packet - on every request. A second request for the same character
+    /// used to be dropped for two seconds, so a paperdoll closed and reopened at once
+    /// did not come back.</summary>
     public void SendPaperdoll(Character ch)
     {
-        long now = Environment.TickCount64;
-        if (_paperdollThrottle.TryGetValue(ch.Uid.Value, out long last) && now - last < 2000)
-            return;
-        _paperdollThrottle[ch.Uid.Value] = now;
-
         if (_triggerDispatcher?.IsCharTriggerUsed(CharTrigger.SendPaperdoll) == true)
             _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SendPaperdoll,
                 new TriggerArgs { CharSrc = _character, ScriptConsole = this });
@@ -1590,7 +1578,9 @@ public sealed partial class GameClient
         string title = PaperdollText.Build(ch);
         byte paperdollFlags = 0;
         if (ch.IsInWarMode) paperdollFlags |= 0x01;
-        if (_character != null && ch == _character) paperdollFlags |= 0x02;
+        // Mode 0x02 lets the client drag items on and off the doll: set for whoever
+        // CanDress the character, not only its own player (send.cpp:2646-2650).
+        if (_character != null && CanDress(_character, ch)) paperdollFlags |= 0x02;
         _netState.Send(new PacketOpenPaperdoll(ch.Uid.Value, title, paperdollFlags));
 
         SendCharacterStatus(ch, includeExtendedStats: ch == _character);
@@ -1722,7 +1712,10 @@ public sealed partial class GameClient
 
         ushort armor = (ushort)CombatEngine.CalcArmorDefense(ch);
         ushort weight = (ushort)Math.Clamp(ch.GetTotalWeight(), 0, ushort.MaxValue);
-        short statCap = 225;
+        // "writeInt16((word) other->Stat_GetSumLimit())" (send.cpp:285-288): the cap
+        // the window shows is the one the gain code enforces - OVERRIDE.STATSUM, else
+        // the skill class STATSUM (CCharStat.cpp:476-491) - not a fixed 225.
+        short statCap = (short)Math.Clamp(SphereNet.Game.Skills.SkillEngine.StatSumLimit(ch), 0, short.MaxValue);
         var weapon = ch.GetEquippedItem(Core.Enums.Layer.OneHanded) ?? ch.GetEquippedItem(Core.Enums.Layer.TwoHanded);
         // Fight_CalcDamage under the configured COMBATDAMAGEERA (send.cpp:320-321).
         var (dmgMin, dmgMax) = CombatEngine.CalcWeaponDamage(ch, weapon, Character.CombatDamageEra);

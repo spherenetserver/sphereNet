@@ -235,6 +235,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.NpcWantThisItem = null;
         SphereNet.Game.Objects.Characters.Character.NpcCanEatFood = null;
         SphereNet.Game.Trade.VendorEngine.World = null;
+        SphereNet.Game.Trade.VendorEngine.PayFromPackOnly = false;
         SphereNet.Game.Combat.CombatEngine.OnHitDamage = null;
         SphereNet.Game.Combat.CombatEngine.OnReactiveArmorTrigger = null;
         SphereNet.Game.Combat.CombatEngine.OnReactiveArmorFeedback = null;
@@ -317,6 +318,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnDragCancel = null;
         SphereNet.Game.Objects.Items.Item.OnTradeWindowChanged = null;
         SphereNet.Game.Objects.Characters.Character.OnHitIgnored = null;
+        SphereNet.Game.Objects.Characters.Character.NpcFightAttackHook = null;
+        SphereNet.Game.Objects.Characters.Character.OnNpcFightRowRemoved = null;
+        SphereNet.Game.Objects.Characters.Character.OnNpcCombatStart = null;
         SphereNet.Game.Objects.Characters.Character.OnNpcLostTeleport = null;
         SphereNet.Game.Objects.Items.Item.OnTimerExpired = null;
         SphereNet.Game.Objects.Items.Item.ResolveHouse = null;
@@ -393,6 +397,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         // The fastloot window between two pickups is real time; tests that lift
         // several items back to back run with it off (the one that tests it sets it).
         SphereNet.Game.Clients.ClientInventoryHandler.PickupMinIntervalMs = 0;
+        // Per-client request limits, back at their shipped values.
+        SphereNet.Game.Clients.GameClient.ResyncRequestMinIntervalMs = 1000;
+        SphereNet.Network.State.NetState.CrashReportMinIntervalMs = 10_000;
         SphereNet.Network.Packets.Outgoing.PacketCharList.AosTooltipsEnabled = true;
         SphereNet.Game.Components.SpawnComponent.OnSpawnTrigger = null;
         SphereNet.Game.Components.SpawnComponent.OnNpcScriptInit = null;
@@ -406,6 +413,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Skills.SkillHandlers.OnScriptedSkillUse = null;
         SphereNet.Game.Skills.Information.ActiveSkillEngine.DamageToolsEnabled = false;
         SphereNet.Game.Skills.Information.ActiveSkillEngine.NpcWalkToPoint = null;
+        SphereNet.Game.Skills.Information.ActiveSkillEngine.OnBandageHealed = null;
+        SphereNet.Game.Skills.Information.ActiveSkillEngine.OnTheftAttempt = null;
+        SphereNet.Game.Magic.SpellEngine.OnHelpfulEffect = null;
         SphereNet.Game.Objects.Items.ResourceMatch.StrictComparison = false;
         SphereNet.Game.Skills.SkillEngine.SkillMaxOverrides.Clear();
         SphereNet.Game.Skills.SkillEngine.SkillSumMaxOverride = 10000;

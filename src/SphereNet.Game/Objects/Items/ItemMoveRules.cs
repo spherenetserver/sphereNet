@@ -87,9 +87,12 @@ public static class ItemMoveRules
             // An equipped hair / beard / pack is never lifted, nor is any layer
             // that isn't a visible worn slot (bank box, vendor boxes, trade layer);
             // LAYER_DRAGGING is the one layer that always passes
-            // (CCharStatus.cpp:1669-1686; staff already returned above).
+            // (CCharStatus.cpp:1669-1686; staff already returned above). The trade
+            // window itself sits on LAYER_SPECIAL and is held like the rest: it was
+            // exempted here, so its owner could lift the whole container - offer and
+            // all - with a 0x07 naming its serial. Taking an item OUT of one's own
+            // window is the rule above and is untouched.
             if (item.IsEquipped && item.EquipLayer != Layer.Dragging &&
-                item.ItemType != ItemType.EqTradeWindow &&
                 (item.EquipLayer is Layer.Hair or Layer.FacialHair or Layer.Pack ||
                  !Item.IsVisibleLayer(item.EquipLayer)))
             { denial = MoveDenial.ItemLayerLocked; return false; }

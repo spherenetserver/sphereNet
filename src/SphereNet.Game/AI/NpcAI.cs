@@ -372,6 +372,11 @@ public sealed partial class NpcAI
 
         RunTickBody(npc);
 
+        // A fight that ended this tick - or was ended for the NPC since the last
+        // one - takes war mode down with it (CCharFight.cpp:1508-1515).
+        if (!npc.IsDeleted)
+            DropWarAfterFight(npc);
+
         // The tail of NPC_OnTickAction (CCharNPCAct.cpp:2396): every NPC_IsVendor
         // brain checks its periodic restock once per tick, whatever action the tick
         // ran - a scripted RUNTO, a fight or the brain's own idle alike. Inside the
@@ -694,7 +699,13 @@ public sealed partial class NpcAI
 
     public Action<Character, string>? OnNpcSay { get; set; }
 
-    public Action<Character>? OnNpcTeleport { get; set; }
+    /// <summary>An NPC teleported itself (Source-X Spell_Teleport): args are the NPC,
+    /// already at its new position, and the point it left.</summary>
+    public Action<Character, Point3D>? OnNpcTeleport { get; set; }
+
+    /// <summary>A summoned creature's time is up and it is about to be deleted
+    /// (Spell_Effect_Remove, LAYER_SPELL_Summon, CCharSpell.cpp:595-606).</summary>
+    public Action<Character>? OnNpcSummonVanish { get; set; }
 
     /// <summary>Callback: wake an NPC for immediate action (e.g. retaliation).
     /// Program.cs reschedules the NPC in the timer wheel so it acts next tick.</summary>

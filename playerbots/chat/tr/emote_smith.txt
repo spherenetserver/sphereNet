@@ -1,0 +1,9 @@
+# emote_smith.txt - ocağı ya da örsü izleyen bot; emote.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+*kıvılcımları izler*
+*ocakta ellerini ısıtır*
+*örsteki işi inceler*
+*iyi bir vuruşa başını sallar*
+*sıcaktan gözlerini kısar*
+[warrior] *başparmağını kılıcın ağzında gezdirir*

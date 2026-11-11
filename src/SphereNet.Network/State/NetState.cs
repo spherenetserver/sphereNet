@@ -456,6 +456,7 @@ public sealed class NetState : IDisposable
         ScreenWidth = 0;
         ScreenHeight = 0;
         ViewRange = DefaultViewRange;
+        _nextCrashReportMs = 0;
         HuffmanReceiveEnabled = false;
         PacketDebugClassifier = null;   // belonged to the previous client's GameClient
         PacketExceptionCount = 0;
@@ -1489,8 +1490,22 @@ public sealed class NetState : IDisposable
         // KR, Enhanced, and third-party clients send this during login handshake.
     }
 
+    /// <summary>Shortest gap between two crash / bug reports (0xF4, 0xE0) acted on for
+    /// one connection. Each one writes a Warning line and runs @UserBugReport, and it
+    /// is the client that decides how often they come. Zero disables the limit.</summary>
+    public static int CrashReportMinIntervalMs { get; set; } = 10_000;
+
+    private long _nextCrashReportMs;
+
     internal void OnCrashReport()
     {
+        if (CrashReportMinIntervalMs > 0)
+        {
+            long now = Environment.TickCount64;
+            if (now < _nextCrashReportMs)
+                return;
+            _nextCrashReportMs = now + CrashReportMinIntervalMs;
+        }
         _logger.LogWarning("Client #{Id} ({EP}) sent crash report", Id, RemoteEndPoint);
         CrashReportHandler?.Invoke(this);
     }

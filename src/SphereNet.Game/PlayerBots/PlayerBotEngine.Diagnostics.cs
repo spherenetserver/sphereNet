@@ -114,6 +114,7 @@ public sealed partial class PlayerBotEngine
             BotMode.Travel => $"Travel -> {m.Goal?.Name ?? "?"}",
             BotMode.Linger => m.At != null ? $"Linger at {m.At.Name}" : "Linger",
             BotMode.Fight or BotMode.Flee => $"{m.Mode} {m.Foe?.GetName() ?? ""}".TrimEnd(),
+            BotMode.Work or BotMode.Sell when m.Work is { } w => $"{w.Job} {(w.Skill != Core.Enums.SkillType.None ? w.Skill + " " : "")}at {w.Place.Name}",
             _ => m.Mode.ToString(),
         };
         return stall > StallReportMs ? $"{what} (stalled {stall / 1000}s)" : what;

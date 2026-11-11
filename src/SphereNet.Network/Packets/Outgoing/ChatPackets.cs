@@ -18,6 +18,10 @@ public sealed class PacketChatSystem : PacketWriter
     public const ushort LeftChannel = 0x03F4;      // channel name
     public const ushort ChannelMessage = 0x0025;   // U16 msgType + username + text
     public const ushort EmoteMessage = 0x0027;     // U16 msgType + username + text
+    /// <summary>CHATMSG_InvalidConferenceName (sphereproto.h:387): "That is not a
+    /// valid conference name". One of the numbered system lines the client words
+    /// itself (ClassicUO PacketHandlers.cs ChatMessage, cmd 0x0001-0x0024).</summary>
+    public const ushort InvalidConferenceName = 0x0007;
 
     private readonly ushort _cmd;
     private readonly ushort? _code;     // leading U16 (user type / message type)
@@ -58,6 +62,12 @@ public sealed class PacketChatSystem : PacketWriter
 
     public static PacketChatSystem MakeLeftChannel(string name) =>
         new(LeftChannel, null, name, null, null);
+
+    /// <summary>A numbered chat system line: [cmd = the message][lang:4] then the two
+    /// parameters, each a terminated string even when empty (PacketChatMessage,
+    /// send.cpp:3771-3790).</summary>
+    public static PacketChatSystem MakeSystemMessage(ushort message, string param1 = "", string param2 = "") =>
+        new(message, null, param1, param2, null);
 
     public static PacketChatSystem MakeChannelMessage(string username, string text, bool emote = false) =>
         new(emote ? EmoteMessage : ChannelMessage, 0, username, text, null);

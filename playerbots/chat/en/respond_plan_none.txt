@@ -1,0 +1,5 @@
+# respond_plan_none.txt - see docs/PLAYERBOTS.md (Talking). Asked its plan with none in hand.
+
+no plan, just going with the flow
+nothing planned really
+gonna see how the day goes

@@ -249,6 +249,19 @@ public sealed class SpeechEngine
     private int NpcHearRange =>
         NpcDistanceHear != 0 ? Math.Abs(NpcDistanceHear) : DefaultNpcHearSight;
 
+    /// <summary>The radius of the NPC pass of Event_Talk_Common (iFullDist,
+    /// CClientEvent.cpp:1908-1913) - pets hear their orders in that same pass.</summary>
+    public int NpcHearRadius => NpcHearRange;
+
+    /// <summary>Whether <paramref name="npc"/> hears a line <paramref name="speaker"/>
+    /// says, by the gate every NPC goes through in that pass - a pet being given an
+    /// order included: within NPCDISTANCEHEAR and, unless the setting is negative,
+    /// in the speaker's line of sight (CClientEvent.cpp:1963-1967).</summary>
+    public bool NpcHearsSpeaker(Character speaker, Character npc) =>
+        speaker.MapIndex == npc.MapIndex &&
+        speaker.Position.GetDistanceTo(npc.Position) <= NpcHearRange &&
+        (IgnoreHearLineOfSight || _world.CanSeeLOSFor(speaker, npc));
+
     /// <summary>GM command prefix (configurable).</summary>
     public char CommandPrefix { get; set; } = '.';
 

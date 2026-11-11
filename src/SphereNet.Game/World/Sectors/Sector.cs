@@ -128,6 +128,20 @@ public sealed class Sector : IScriptObj
     public IReadOnlyList<Character> OnlinePlayers => _onlinePlayers;
     public IReadOnlyList<Item> Items => _items;
 
+    /// <summary>The world's active-set refresh this sector was last added to
+    /// (GameWorld.RefreshActiveSectors); 0 = never. The sector is in the set of the
+    /// current tick when this equals the world's generation counter.</summary>
+    internal int ActiveGeneration;
+
+    /// <summary>The refresh in which a player standing in this sector last had its
+    /// 5x5 window added, so further players of the same sector skip the 25 cells.</summary>
+    internal int WindowGeneration;
+
+    /// <summary>The lists themselves, for the world's range walks: indexing the
+    /// read-only views above is an interface call per element.</summary>
+    internal List<Character> CharacterList => _characters;
+    internal List<Item> ItemList => _items;
+
     public int CharacterCount => _characters.Count;
     public int ItemCount => _items.Count;
     public int ClientCount => _characters.Count(c => c.IsPlayer && c.IsOnline);
@@ -1078,8 +1092,16 @@ public sealed class Sector : IScriptObj
                 return true;
             }
             case "RESTOCK":
-                // Restock NPCs — trigger via callback
+            {
+                // CSector::Restock (CSector.cpp:1173-1199). The spawn points of this
+                // sector each get one component tick; the vendor half is the world
+                // verb's (the server's RESTOCK), which is where the restock trigger
+                // is wired.
+                if (Objects.ObjBase.ResolveWorld?.Invoke() is { } restockWorld)
+                    foreach (var item in _items.ToList())
+                        restockWorld.RestockSpawner(item);
                 return true;
+            }
             default:
                 // CScriptObj::r_Verb's default is the property write (r_LoadVal), so
                 // "SECTOR.SEASON 3" or "SECTOR.RAINCHANCE 40" set the value.

@@ -145,6 +145,11 @@ public sealed partial class PlayerBotEngine
     /// <summary>Searches waiting to run (the host asks before its parallel phase).</summary>
     public int PendingSearches => _batchRan ? 0 : _batch.Count;
 
+    private long _searchFaults;
+
+    /// <summary>Tile searches that threw, since start.</summary>
+    public long SearchFaults => Interlocked.Read(ref _searchFaults);
+
     private void RunOneSearch(int i)
     {
         var r = _batch[i];
@@ -160,9 +165,14 @@ public sealed partial class PlayerBotEngine
                 maxNodes: r.MaxNodes, maxRadius: r.Radius, deadline: deadline, options: r.Options);
             timedOut = path == null && Pathfinder.LastSearchTimedOut;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             path = null; // a search that throws is a search that found nothing
+            // ...but it is counted, and the first few say what threw: swallowed, a
+            // pathfinder fault looked exactly like "no way there". Runs on a worker.
+            if (Interlocked.Increment(ref _searchFaults) <= 5)
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(_logger, ex,
+                    "[playerbots] path search {From} -> {To} threw", r.From, r.To);
         }
         _batchResults[i] = new SearchResult
         {
@@ -217,7 +227,10 @@ public sealed partial class PlayerBotEngine
                 m.SearchFailures = 0;
                 m.SearchTimeouts = 0;
                 m.NextSearchMs = now + 1000;
-                if (r.Corridor is { } key && Chebyshev(path[^1], r.To) <= 1)
+                // A road link's way is kept from any search along it; the way into a
+                // stopping spot only while none is kept (one found at a rescue starts at
+                // the road node, where every bot joins it).
+                if (r.Corridor is { } key && Chebyshev(path[^1], r.To) <= 1 && (key.To >= 0 || !_corridors.ContainsKey(key)))
                 {
                     StoreCorridor(key, path);
                     m.TilePathCorridor = key;
@@ -251,6 +264,31 @@ public sealed partial class PlayerBotEngine
     private readonly Dictionary<(int From, int To), List<Point3D>> _corridors = [];
     private const int MaxCorridors = 20_000;
 
+    /// <summary>Stopping spots per place a kept way into one can be told apart for.</summary>
+    private const int SpotsPerPlace = 64;
+
+    /// <summary>The key of the kept way along the last leg, from road node
+    /// <paramref name="node"/> into stopping spot <paramref name="spot"/> of a place (-1:
+    /// the place itself, for one the data gives no spot): the node and a negative number
+    /// naming the place and the spot, so it never meets a road link's key. Null for a
+    /// place made up at runtime.</summary>
+    private static (int From, int To)? ArrivalKey(BotDestination goal, int spot, int node) =>
+        goal.Index < 0 || node < 0 || spot < -1 || spot >= SpotsPerPlace - 1
+            ? null
+            : (node, -1 - (goal.Index * SpotsPerPlace + spot + 1));
+
+    /// <summary>The place and the spot an arrival key names.</summary>
+    private BotDestination? ArrivalOf(int to, out int spot)
+    {
+        int code = -1 - to;
+        spot = code % SpotsPerPlace - 1;
+        int index = code / SpotsPerPlace;
+        return index >= 0 && index < Nav.Destinations.Count ? Nav.Destinations[index] : null;
+    }
+
+    private string CorridorEndName(int to) =>
+        to >= 0 ? Nav.Waypoints[to].Name : ArrivalOf(to, out int spot) is { } d ? $"{d.Name} spot {spot}" : "?";
+
     public int CorridorCount => _corridors.Count;
 
     private void StoreCorridor((int From, int To) key, List<Point3D> path)
@@ -272,8 +310,10 @@ public sealed partial class PlayerBotEngine
     private long _nextCorridorSaveMs;
     private const long CorridorSaveEveryMs = 300_000;
 
-    /// <summary>Read the kept ways: one per line, "from|to|x,y,z;x,y,z;..." by node name.
-    /// A line whose nodes are gone or whose path does not end at its node is skipped.</summary>
+    /// <summary>Read the kept ways: one per line, "from|to|x,y,z;x,y,z;..." by node name,
+    /// and "spot|from|place|spot|x,y,z;..." for the way from a road node into a stopping
+    /// spot (spot -1: the place itself). A line whose nodes or place are gone or whose
+    /// path does not end where it should is skipped.</summary>
     public int LoadCorridors()
     {
         if (CorridorFile == null || !File.Exists(CorridorFile)) return 0;
@@ -281,12 +321,31 @@ public sealed partial class PlayerBotEngine
         foreach (string line in File.ReadLines(CorridorFile))
         {
             var parts = line.Split('|');
-            if (parts.Length != 3) continue;
-            int from = Nav.FindWaypoint(parts[0]), to = Nav.FindWaypoint(parts[1]);
-            if (from < 0 || to < 0) continue;
-            byte map = Nav.Waypoints[to].Pos.Map;
+            int from, to;
+            Point3D end;
+            string points;
+            if (parts.Length == 5 && parts[0] == "spot")
+            {
+                from = Nav.FindWaypoint(parts[1]);
+                if (from < 0 || Nav.FindDestination(parts[2]) is not { } place || !int.TryParse(parts[3], out int spot) ||
+                    spot < -1 || spot >= place.Arrivals.Count || ArrivalKey(place, spot, from) is not { } key)
+                    continue;
+                to = key.To;
+                end = spot >= 0 ? place.Arrivals[spot] : place.Pos;
+                points = parts[4];
+            }
+            else if (parts.Length == 3)
+            {
+                from = Nav.FindWaypoint(parts[0]);
+                to = Nav.FindWaypoint(parts[1]);
+                if (from < 0 || to < 0) continue;
+                end = Nav.Waypoints[to].Pos;
+                points = parts[2];
+            }
+            else continue;
+            byte map = end.Map;
             var path = new List<Point3D>();
-            foreach (string t in parts[2].Split(';', StringSplitOptions.RemoveEmptyEntries))
+            foreach (string t in points.Split(';', StringSplitOptions.RemoveEmptyEntries))
             {
                 var c = t.Split(',');
                 if (c.Length != 3 || !short.TryParse(c[0], out short x) || !short.TryParse(c[1], out short y) ||
@@ -297,7 +356,7 @@ public sealed partial class PlayerBotEngine
                 }
                 path.Add(new Point3D(x, y, z, map));
             }
-            if (path is not { Count: > 0 } || Chebyshev(path[^1], Nav.Waypoints[to].Pos) > 1) continue;
+            if (path is not { Count: > 0 } || Chebyshev(path[^1], end) > 1) continue;
             _corridors[(from, to)] = path;
             n++;
         }
@@ -315,7 +374,13 @@ public sealed partial class PlayerBotEngine
         var sb = new System.Text.StringBuilder();
         foreach (var ((from, to), path) in _corridors)
         {
-            sb.Append(Nav.Waypoints[from].Name).Append('|').Append(Nav.Waypoints[to].Name).Append('|');
+            if (to >= 0)
+                sb.Append(Nav.Waypoints[from].Name).Append('|').Append(Nav.Waypoints[to].Name).Append('|');
+            else if (ArrivalOf(to, out int spot) is { } place)
+                sb.Append("spot|").Append(Nav.Waypoints[from].Name).Append('|').Append(place.Name).Append('|')
+                  .Append(spot).Append('|');
+            else
+                continue;
             for (int i = 0; i < path.Count; i++)
             {
                 if (i > 0) sb.Append(';');
@@ -353,7 +418,7 @@ public sealed partial class PlayerBotEngine
         mind.TilePathCorridor = key;
         mind.FollowSide = 0;
         WindowCorridorUses++;
-        mind.Note(now, $"follows the kept way {Nav.Waypoints[key.From].Name} -> {Nav.Waypoints[key.To].Name}");
+        mind.Note(now, $"follows the kept way {Nav.Waypoints[key.From].Name} -> {CorridorEndName(key.To)}");
         return true;
     }
 }

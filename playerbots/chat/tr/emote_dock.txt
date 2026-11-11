@@ -1,0 +1,10 @@
+# emote_dock.txt - iskeleden suya bakan bot; emote.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+*suya dalıp gider*
+*dalgaları izler*
+*deniz havasını içine çeker*
+*suda taş sektirir*
+*bir martıyı izler*
+*babaya yaslanır*
+*ufka bakar*

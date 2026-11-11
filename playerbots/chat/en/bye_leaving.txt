@@ -1,0 +1,11 @@
+# bye_leaving.txt - said after a player who walks off in the middle of a talk with the bot. {name} is the player.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+ok bye then
+see ya {name}
+cya
+later {name}
+take care
+oh, ok. bye
+[friend] see u around {name}
+[chatty] aw, bye {name}!

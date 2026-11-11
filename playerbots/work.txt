@@ -1,0 +1,46 @@
+# The trades bots work at, where they ply them and where they sell.
+# Skills by their SkillType name, items by their ItemType name, places by the
+# destinations.json "Type" values. A bot has a trade when it has the skill at 30.0 or
+# more; the tool it lacks is bought (shopping.txt).
+#
+# gather <skill> <tool type> <place type>...
+#   The tool is double-clicked and its target cursor answered on a tile of the skill's
+#   resource (rock, a tree, water) near the place.
+gather Mining         WeaponMacePick  MiningSpot
+gather Lumberjacking  WeaponAxe       LumberSpot
+gather Fishing        FishPole        Dock
+#
+# smelt <place type>...
+#   Where ore is carried to and double-clicked beside the forge.
+smelt Forge
+#
+# craft <skill> <tool type> hand|pack <material type,...> <place type>...
+#   hand: the tool must be held (a smith's hammer); pack: it is carried.
+#   The materials are what the craft's recipes may be made of; a bot keeps them
+#   (never sells them) and buys them when it gathers nothing itself (shopping.txt).
+#   Smithing needs a forge and cooking a fire within reach (a forge is one).
+craft Blacksmithing  WeaponMaceSmith  hand  Ingot              Forge
+craft Carpentry      Carpentry        pack  Log,Board          VendorCarpenter
+craft Tailoring      SewingKit        pack  Cloth,ClothBolt    VendorTailor
+craft Cooking        CookingTool      pack  Fish,MeatRaw,FoodRaw  Forge
+#
+# sell <item type | prefix* | *> <place type>...
+#   Where goods of a type are taken; the vendor there that offers the most gets them.
+#   prefix* is every item type whose name starts so; * is everything else.
+sell Ingot      VendorSmith VendorProvisioner VendorWeaponer
+sell Ore        VendorSmith
+sell Log        VendorCarpenter VendorBowyer VendorProvisioner
+sell Board      VendorCarpenter VendorProvisioner
+sell Fish       Dock VendorProvisioner
+sell Hide       VendorTailor
+sell Leather    VendorTailor
+sell Clothing   VendorTailor VendorProvisioner
+sell Cloth      VendorTailor
+sell Weapon*    VendorWeaponer VendorSmith VendorProvisioner
+sell Armor*     VendorSmith VendorWeaponer VendorProvisioner
+sell Shield     VendorSmith VendorWeaponer VendorProvisioner
+sell Container  VendorCarpenter VendorProvisioner
+sell Musical    VendorCarpenter
+sell Carpentry  VendorCarpenter VendorProvisioner
+sell Food       VendorProvisioner
+sell *          VendorProvisioner

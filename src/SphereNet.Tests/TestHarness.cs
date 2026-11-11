@@ -58,6 +58,35 @@ internal static class TestHarness
                 new SphereNet.Scripting.Definitions.ItemDef(ResourceId.Invalid) { DispIndex = (ushort)id });
     }
 
+    /// <summary>Create a character on the client's account and enter the world with
+    /// it, the way the creation packets do (0x00 / 0xF8 leave a pending request and
+    /// then run the select). A play request (0x5D) makes no character: on an empty
+    /// slot it is refused (Source-X Setup_Play, CClientMsg.cpp:2924-2926).</summary>
+    public static void CreateAndEnterCharacter(GameClient client, string name)
+    {
+        client.PendingCharCreate = new CharCreateInfo
+        {
+            Name = name, Race = 1, Str = 30, Dex = 25, Int = 25, Skills = [],
+        };
+        client.HandleCharSelect(-1, name);
+    }
+
+    /// <summary>Put <paramref name="item"/> on <paramref name="holder"/>'s cursor the
+    /// way a completed pickup leaves it: out of whatever held it, parented to the
+    /// character on no layer, and recorded as the drag. The drop and the equip both
+    /// answer for that item alone (Source-X looks it up on LAYER_DRAGGING,
+    /// CClientEvent.cpp:283-291, receive.cpp:541-547), so the record without the
+    /// parenting is not a drag.</summary>
+    public static void HoldOnCursor(GameWorld world, Character holder, SphereNet.Game.Objects.Items.Item item)
+    {
+        if (item.ContainedIn.IsValid)
+            world.FindItem(item.ContainedIn)?.RemoveItem(item);
+        else
+            world.GetSector(item.Position)?.RemoveItem(item);
+        item.ContainedIn = holder.Uid;
+        holder.SetTag("DRAGGING", item.Uid.Value.ToString());
+    }
+
     /// <summary>Give an art id an ITEMDEF that names its wearable layer, the way the
     /// client's tiledata does in a real install. The equip packet's layer byte is not
     /// trusted - the item's own layer is (receive.cpp:554-564) - so an item a test

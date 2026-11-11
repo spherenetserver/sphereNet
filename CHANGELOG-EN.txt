@@ -4,6 +4,135 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-11] - Packet abuse guards, spell effects, character rules, NPC fights, script symbols, performance, player bot work, combat, manners and planning
+------------------------------------------------------------------------
+FIX - A client could disconnect every bystander by spamming the resync request (0x22): each
+      one broadcast a full 0x78 to all viewers until their output quota dropped them. A
+      client-requested resync now refreshes only the requester, at most once a second
+      (receive.cpp:590-606).
+FIX - 0x13 equip accepted any item parented to the character, so re-sending it for a worn
+      item fired @EquipTest/@Equip again without @Unequip. Only the dragged item can be
+      equipped (receive.cpp:541-547).
+FIX - A vendor sale line with amount 0 cloned the item into an owned vendor's box; an item
+      sold whole while still on the cursor could be dropped back out; items inside a trade
+      window could be sold, and a partial sale did not reset the trade's accept marks.
+FIX - Play-character (0x5D) on an empty slot created a 50/50/50 character without the
+      creation packet. It returns to the character list (CClientMsg.cpp:2924-2926).
+FIX - EquipLastWeapon while dead lost the weapon; it now goes through pickup and equip.
+FIX - Chat conference names are validated (CChat.cpp:29-33, 437-442); the craft gump bounds
+      its button to the page shown; the own trade container cannot be lifted; 0xC8 view
+      range is answered (receive.cpp:3498-3509); bug-report packets and party text are
+      capped.
+FIX - Every landed spell effect ends with its effect and sound on THAT target, read back from
+      LOCAL.Sound / CreateObject1 / EffectExplode / EffectColor / EffectRender: area spells
+      show on each victim, potions have their drink sound, a reflected spell is drawn on the
+      caster, a refused effect shows nothing (CCharSpell.cpp:3702-3709, 4226-4236).
+FIX - Recall into a region flagged anti-magic-teleport was allowed; it is refused, while
+      destination NOMAGIC / RECALL_IN no longer refuse it. Gate is refused only by
+      destination ANTIMAGIC_ALL / GATE (CCharSpell.cpp:119-144, 285-292, 421).
+FIX - A new cast during a cast was dropped; it aborts the running one at the fail price and
+      starts (CCharSkill.cpp:4407-4409).
+FIX - A spell aimed at an item runs the item's own spell effect: wand recharge, 1 magic
+      damage from a harmful spell (ignites explosion potions), the effect on the item
+      (CItem.cpp:5594-5768).
+FIX - Dispel Field refuses permanent fields; cast fields carry ATTR_MAGIC instead of
+      ATTR_MOVE_NEVER (CCharSpell.cpp:2354, 3192-3202).
+FIX - Area spells without a target flag (Arch Cure, Arch Protection, Mass Curse, Reveal,
+      Mass Dispel, Earthquake) cast on the caster's spot with no cursor
+      (CClientUse.cpp:1053-1087).
+FIX - Summon Familiar opens sm_summon_familiar; Teleport's destination is checked before
+      the cast is paid; a cast always reveals a hidden caster; an NPC that cannot speak
+      casts silently; Recall shows its own effect at both ends; the invented "You cast"
+      line is gone; the target prompt is sent; LOCAL.WOP is numeric with WOPTalkMode and
+      ARGO set; Evil Omen halves the resist; an untargeted summon appears where the
+      caster stands at completion; EQUIPPEDCAST=0 clears the hands of every caster
+      (CCharSpell.cpp:3040-3041, 3538-3540, 3573-3639, 3728-3733, 2837-2862).
+FIX - The status window showed a stat cap of 225; it sends the real STATSUM.
+FIX - One touch rule for item use: 2 tiles in 3D with line of sight, and a ghost may use only
+      shrines, telescopes, sign gumps and ship planks (reach_ghost otherwise); @DClick no
+      longer fires for a ghost (CCharStatus.cpp:1293-1430, CClientUse.cpp:92-104).
+FIX - Ghost speech plays a ghost sound to each listener who hears "oOoO" and keeps its hue;
+      a ghost with Spirit Speak or GM mode speaks clearly (CWorldComm.cpp:63-76, 163-178).
+FIX - Mounting reaches 2 tiles with line of sight, and double-clicking another mount while
+      riding swaps (CCharAct.cpp:3957, 4011).
+FIX - No invented death/resurrection lines; the resurrection effect plays once;
+      SPELL_RES_REJOIN only when the corpse is raised (CCharSpell.cpp:493-525).
+FIX - The paperdoll opens on every request and its dress flag follows CanDress; speaking no
+      longer reveals regardless of REVEALFLAGS; the skill button uses the SkillWait rules;
+      a character dying in war mode stays manifested; meditation ends only when attacked;
+      a figurine's pet appears at the figurine; hunger and regen exemptions follow GM mode
+      and stone state (CCharSkill.cpp:3977-4050, CCharAct.cpp:4490-4514, 5780, 6122).
+FIX - NPC fights started by the AI go through the Fight_Attack contract: @Attack can veto,
+      the attacker list is filled, the NPC enters war stance and leaves it when the fight
+      ends (CCharFight.cpp:1399-1487).
+FIX - A fighting NPC re-picks its target from the attacker list; a removed attacker row ends
+      or redirects the fight (CCharFight.cpp:1614-1619, CCharAttacker.cpp:339-346).
+FIX - A GUARDED + SAFE region is not guarded (jails); a player's guard call depends only on
+      the criminal's area; an engaged guard re-teleports onto a fleeing criminal
+      (CRegion.cpp:713-718, CCharFight.cpp:181, 222, CCharNPCAct_Fight.cpp:211-218).
+FIX - Region crossing banners fire only on change, and login/logout run the region enter/exit
+      step with the login guard banner (CCharAct.cpp:5139-5221, CClientMsg.cpp:2854-2860).
+FIX - An idle owned pet or summon guards its owner; a bare pet command is understood; pet
+      commands are heard at NPCDISTANCEHEAR with line of sight; dropping an item on an NPC
+      no longer strips NEWBIE/OWNED; @ReceiveItem RETURN 1 bounces the item; hireling
+      wages come from the bank-box purse (an old HIRE_BALANCE tag is folded in once)
+      (CCharNPCAct.cpp:267, 1030-1039, 2073-2211, CCharNPCPet.cpp:666-723).
+FIX - NPCs without SPEECH hear nothing and do not turn; doors are opened only on idle walks;
+      NPC teleports show their effect and sound; @NPCActFollow fires from fight movement;
+      @RegPeriodic fires per occupied sector; a ranged NPC shoots at its minimum distance;
+      rooms fire @RegionEnter / @RegionLeave with the room as ARGO.
+FIX - A bare symbol starting with D (Dog, DeepSeaSerpent) evaluated to 0, and
+      <RESOURCETYPE <dARGS>> lost the type: 186 worldgen spawners stayed empty
+      (CExpression.cpp:1221-1237, CScriptObj.cpp:607-612).
+FIX - A CHARDEF ITEM= two-handed weapon now takes the one-handed one out of the hand; a fish
+      cut with a blade becomes the fish steak by definition; potions of a spell number
+      above 999 (Refresh, Mana...) took effect only below 1000 (CCharStatus.cpp:410-421,
+      CClientTarg.cpp:1951, CCharUse.cpp:1083).
+FIX - Under the Host the first stats request stalled boot for 8 s and the boot report
+      (config warnings, unread ini keys) was dropped; the panel pinned an older Serilog that
+      broke the server when the Host was built last.
+ADD - Player bots work: tradesmen (miner-smith, lumberjack-carpenter, fisher-cook, tailor)
+      gather with their tools, smelt, craft what the pack's skill menus offer and sell to
+      vendors through their client; trade talk names goods they carry.
+ADD - Player bots fight with sense: rescans and target switches, retreat by the fight's
+      trend, a mage repertoire (wards, openers, poison, combos, summons, Teleport / Wall of
+      Stone, meditation), potions, weapon by best skill, archer kiting, prey sized up from
+      the creature, memory of what killed them, assisting others, escapes by Recall,
+      Invisibility, hiding or guards.
+ADD - Player bots have manners: they face whoever speaks to them, bow or salute, emote, eat,
+      idle with a purpose by place (bank, chair, shop, forge, training dummy, board), thank
+      for heals and buffs, react to theft and nearby fights, walk to a healer as ghosts,
+      run back to far corpses, conjure mounts and kits only out of sight, vary walking and
+      running, and do not repeat each other's lines.
+FIX - Character range queries walked every ground item of the sector; spawner timers searched
+      the whole resource table for their MORE1; NPCs cast a line-of-sight ray at every item
+      they did not want; sector activity used two hash sets per tick. On a 5,200-character
+      world with 300 bots the main thread's time per tick roughly halved.
+FIX - Item timers due in one tick share a 25 ms budget; what is left runs the next tick with
+      its deadline kept, so a boot or a long sleep no longer stalls the loop for 300-400 ms.
+FIX - RESTOCK also ticks every spawn point, awake or asleep, in 25 ms slices (CSector::Restock,
+      CSector.cpp:1190-1198); RESPAWN raises dead NPCs with a home, as before.
+FIX - The pathfinder allowed steps the real walk refuses: a neighbouring goal skipped the walk
+      rule, and diagonals cut corners. Searches now ask the real step's question.
+ADD - [slow_tick], [world_tick_detail] and PERF REPORT carry the main thread's CPU time, so a
+      slow tick on a busy host can be told from real work.
+ADD - Player bots plan their day by needs: money, supplies, safety, load, purse, skill growth,
+      company and adventure, weighted by class, nerve, trait and role (playerbots/plans.txt).
+      They string 2-4 activities (hunt, work, sell, shop, bank, rest, socialise, wander, go
+      home), pick hunting grounds that fit their strength, re-plan on urgent needs and
+      interrupts, keep the plan across a restart (PLAYERBOT.PLAN) and explain it when asked;
+      console PLAYERBOTS PLAN shows the scores.
+FIX - A double-click whose equip is refused no longer opens the item's target cursor, and the
+      pick, cannon-ball and board prompts name an item named by its ITEMDEF
+      (CClientUse.cpp:122-131, 431, 468).
+FIX - Player bots: a gathering tool must be one the trade's skill script can use (in hand,
+      with charges, read from the pack's [SKILL] section) and is taken into the hand before
+      use; a trade that will not start rests 30 minutes; a criminal ghost waits out its flag
+      instead of being raised among guards; needs are weighed by how much they matter and
+      dropped when no shop in reach sells them; gold is banked from 600; the nerve rolled for
+      a bot is kept (PLAYERBOT.NERVE); a way found into a hard shop arrival is kept for the
+      next bot.
+
 [2026-11-10] - Staff verb privilege gate, hit and damage rules, combat flow, repair and skill menus, container limits, house placement, nested random
 ------------------------------------------------------------------------
 FIX - A staff member could raise their own privilege: .xplevel and .xprivset acted on the

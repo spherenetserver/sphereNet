@@ -172,6 +172,7 @@ public sealed partial class NpcAI
         SweepGone(_idleMode);
         SweepGone(_homeStepFailures);
         SweepGone(_talkState);
+        SweepFightWar();
     }
 
     private void SweepGone<T>(Dictionary<uint, T> map)
@@ -928,9 +929,10 @@ public sealed partial class NpcAI
     {
         if (dest.X < 0 || dest.Y < 0 || _world.GetSector(dest) == null)
             return false;
+        var from = npc.Position;
         if (!_world.MoveCharacter(npc, dest))
             return false;
-        OnNpcTeleport?.Invoke(npc);
+        OnNpcTeleport?.Invoke(npc, from);
         return true;
     }
 
@@ -1267,7 +1269,13 @@ public sealed partial class NpcAI
         // Reference parity (NPC door handling in the idle look-at path): a
         // blocked adjacent step may just be a closed door — try to open it
         // (50% per attempt, like the reference) and re-check the tile.
-        if (blocked && OnNpcOpenDoor != null &&
+        //
+        // Only an IDLE walk does this. Source-X opens doors in NPC_LookAtItem
+        // (CCharNPCAct.cpp:982-1001), which the look-around reaches only for an NPC
+        // that is not using a skill (:1193); NPC_WalkToPoint itself (:493-582) -
+        // the step of a chase, a flee, a follow or a scripted walk - knows nothing
+        // about doors, so a closed door stops a pursuer.
+        if (blocked && OnNpcOpenDoor != null && IsIdleWalk(npc) &&
             (CharDefHelper.GetCanFlags(npc) & CanFlags.C_UseHands) != 0 && _rand.Next(2) == 0)
         {
             var door = FindClosedDoorAt(stepTile);
@@ -1341,6 +1349,17 @@ public sealed partial class NpcAI
             _nextPathfindMs.Remove(uid);
         }
         return 1;
+    }
+
+    /// <summary>Whether the NPC is walking about on its own account - idle,
+    /// wandering, looking or heading home - rather than chasing, fleeing,
+    /// following an owner or carrying out a scripted action.</summary>
+    private static bool IsIdleWalk(Character npc)
+    {
+        if (npc.FightTarget.IsValid || npc.IsStatFlag(StatFlag.War) || npc.NpcMaster.IsValid)
+            return false;
+        return npc.Action == SkillType.None ||
+               (NpcAction)npc.Action is NpcAction.Wander or NpcAction.Looking or NpcAction.GoHome;
     }
 
     /// <summary>One NPC_WalkToPoint step for a caller outside the brain - Source-X
@@ -1479,6 +1498,10 @@ public sealed partial class NpcAI
 
     /// <summary>Test seam: the uids admitted for this tick's prestage searches.</summary>
     internal IReadOnlyCollection<uint> AdmittedPathfinders => _pathfindAdmitted;
+
+    /// <summary>How many creatures may run a prestage A* this tick - the amount of
+    /// real work the parallel build phase has to share out.</summary>
+    public int PrestageSearchesAdmitted => _pathfindAdmitted.Count;
 
     /// <summary>Read-only mirror of the conditions under which the serial
     /// <see cref="MoveToward"/> would run a full A* this tick for a combat/pet

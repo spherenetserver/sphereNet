@@ -5,7 +5,7 @@ using SphereNet.Game.Objects.Characters;
 
 namespace SphereNet.Game.PlayerBots;
 
-public enum BotMode { Linger, Travel, Fight, Flee, Reclaim, Loot, Shop }
+public enum BotMode { Linger, Travel, Fight, Flee, Reclaim, Loot, Shop, Work, Sell }
 
 /// <summary>Why the last step a bot tried was refused: a wall or the lie of the land
 /// (walk round it or search), somebody standing there (wait, step aside), out of
@@ -246,7 +246,7 @@ public sealed class BotMind
     public Dictionary<uint, long> Greeted { get; } = [];
     /// <summary>What a player is haggling with this bot about: the goods and the last price.</summary>
     // The last lines this bot said, so the next pick is another one when it can be.
-    private readonly string[] _said = new string[6];
+    private readonly string[] _said = new string[20];
     private int _saidNext;
 
     public void NoteSaid(string line)
@@ -286,6 +286,16 @@ public sealed class BotMind
     public bool ShopListOpen { get; set; }
     public long NextSupplyCheckMs { get; set; }
 
+    /// <summary>The job in hand - a gathering shift, a smelt, a craft, a sale - from
+    /// the trip to it until it ends (the engine's Work and Sell parts); null when none.</summary>
+    public BotWork? Work { get; set; }
+    /// <summary>Jobs of a trade in a row that would not start, and the trades it leaves
+    /// alone until the time noted (runtime: the engine's Work part).</summary>
+    public Dictionary<SkillType, int> TradeMisstarts { get; } = [];
+    public Dictionary<SkillType, long> TradeRestUntil { get; } = [];
+    /// <summary>When this death's criminal ghost began to wait its flag out (runtime).</summary>
+    public long CriminalWaitSinceMs { get; set; }
+
     // Self care and the trade a rogue plies.
     public long NextMeditateMs { get; set; }
     public long NextCureMs { get; set; }
@@ -312,6 +322,8 @@ public sealed class BotMind
     /// <summary>Foes found out of reach (behind a fence, over water), left alone
     /// until the time noted.</summary>
     public Dictionary<uint, long> AvoidFoes { get; } = [];
+    /// <summary>What it knows of the fight it is in, and of the kinds it has met.</summary>
+    public BotTactics Tac { get; } = new();
 
     public bool Avoids(Character c, long now)
     {
@@ -389,11 +401,18 @@ public sealed class BotMind
     /// <summary>Acts that threw, in a row.</summary>
     public int ActFaults { get; set; }
 
+    /// <summary>Presence and manners: where it looks, what it is busy with while it
+    /// stands about, a ghost's own way to a healer (see <see cref="BotManners"/>).</summary>
+    public BotManners Manners { get; } = new();
+
+    /// <summary>Its day plan and what its drives remember (see the engine's Planner part).</summary>
+    public BotPlan Plan { get; } = new();
+
     /// <summary>How big a monster this bot takes on, as a multiple of its own hit
     /// points; and the hit-point percentage at which it runs. Rolled per bot, so
     /// some gamble and some are careful.</summary>
-    public double Nerve { get; }
-    public int FleeAt { get; }
+    public double Nerve { get; internal set; }
+    public int FleeAt { get; internal set; }
 
     public bool IsFighter { get; }
     public bool IsCaster { get; }

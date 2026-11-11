@@ -39,6 +39,8 @@ internal sealed class LoadBot
 
     private Socket? _socket;
     private TaskCompletionSource<bool>? _charListSeen;
+    /// <summary>Slot 0 of the 0xA9 list held no character: the bot creates one.</summary>
+    private volatile bool _slotEmpty;
     private TaskCompletionSource<bool>? _loginConfirmed;
     private byte _nextSeq;
     private int _stepsInFlight;
@@ -107,7 +109,11 @@ internal sealed class LoadBot
 
             if (!await WaitAsync(_charListSeen.Task, 30_000, ct))
                 return Fail("no 0xA9 character list");
-            await SendAsync(_socket, BotPacketBuilder.BuildCharSelect(0, _charName), ct);
+            // A play request on an empty slot is refused; an account with no
+            // character yet creates one, as a client does.
+            await SendAsync(_socket, _slotEmpty
+                ? BotPacketBuilder.BuildCharCreate(_charName)
+                : BotPacketBuilder.BuildCharSelect(0, _charName), ct);
             if (!await WaitAsync(_loginConfirmed.Task, 30_000, ct))
                 return Fail("no 0x1B login confirm");
 
@@ -308,6 +314,7 @@ internal sealed class LoadBot
                 break;
             }
             case 0xA9:
+                _slotEmpty = BotPacketBuilder.IsCharListSlotEmpty(p, 0);
                 _charListSeen?.TrySetResult(true);
                 break;
             case 0x1B when p.Length >= 17:

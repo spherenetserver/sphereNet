@@ -126,6 +126,8 @@ public sealed partial class PlayerBotEngine
         foreach (string list in TokenLists)
             if (Chat.Pick("token_" + list, _rng, null, lang) is { } word)
                 scene.Tokens[list] = word;
+        // The goods the first speaker really carries are the goods of a scene it sells in.
+        NameCarriedGoods(a, chosen.Steps.Length > 0 ? chosen.Steps[0].Categories[0] : "", scene.Tokens);
         scene.Tokens["price"] = scene.BasePrice.ToString();
         if (DungeonName() is { } dungeon) scene.Tokens["dungeon"] = dungeon;
         if (news != null)
@@ -282,6 +284,8 @@ public sealed partial class PlayerBotEngine
         if (_minds.Count == 0) return;
         long now = NowMs();
         if (killer != null) NotePkKill(victim, killer, now);
+        // A bot remembers the kind of creature that killed it.
+        NoteBotDeath(victim, killer, now);
         string place = PlaceName(victim.Position);
         if (victim.IsPlayer && killer != null && killer.IsPlayer && killer != victim)
             Gossip.Add(new BotGossipEvent("pk", BaseName(victim), victim.Uid.Value, BaseName(killer), killer.Uid.Value, place, now));

@@ -1,0 +1,7 @@
+# emote_train.txt - talim mankeninde ya da ok hedefinde çalışan bot; emote.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+*soluklanır*
+*alnındaki teri siler*
+*kollarını silkeler*
+*yeniden duruşunu alır*

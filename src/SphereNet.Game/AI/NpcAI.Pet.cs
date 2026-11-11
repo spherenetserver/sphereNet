@@ -92,6 +92,9 @@ public sealed partial class NpcAI
     {
         if (npc.TickPetOwnershipTimers(Environment.TickCount64))
         {
+            // The summon's time is up: the vanish effect and its sound, then the
+            // creature goes (CCharSpell.cpp:595-606).
+            OnNpcSummonVanish?.Invoke(npc);
             _world.DeleteObject(npc);
             return;
         }
@@ -150,7 +153,7 @@ public sealed partial class NpcAI
                 ActFight(npc, aggressor!, 50);
                 return;
             }
-            npc.FightTarget = Serial.Invalid;
+            NpcFightEnd(npc);
         }
 
         switch (npc.PetAIMode)
@@ -172,47 +175,65 @@ public sealed partial class NpcAI
                         ActFight(npc, current!, 50);
                         return;
                     }
-                    npc.FightTarget = Serial.Invalid;
+                    NpcFightEnd(npc);
                 }
                 // Source-X NPC_Act_Guard (CCharNPCAct.cpp:1291): attack what the
                 // guarded character is fighting when it can be seen, else follow it
-                // (to distance 1). Nothing scans for other attackers.
+                // (to distance 1). Nothing scans for other attackers. The attack is
+                // Fight_Attack (:1302), so @Attack can refuse it - then the pet
+                // just follows.
                 var guardFoe = guardTarget.FightTarget.IsValid ? _world.FindChar(guardTarget.FightTarget) : null;
                 if (IsValidPetEnemy(npc, master, guardFoe, guardTarget) &&
                     CanSeeChar(npc, guardTarget) && _world.CanSeeLOSFor(npc, guardTarget, LosFlags.NbWindows))
                 {
-                    bool newFight = npc.FightTarget != guardFoe!.Uid;
-                    npc.FightTarget = guardFoe.Uid;
-                    if (newFight)
-                        NpcAttackCrimeCheck(npc, guardFoe);
-                    ActFight(npc, guardFoe, 50);
-                    return;
+                    var guardFight = NpcFightAttack(npc, guardFoe!);
+                    if (guardFight != null && IsValidPetEnemy(npc, master, guardFight, guardTarget))
+                    {
+                        ActFight(npc, guardFight, 50);
+                        return;
+                    }
+                    if (guardFight != null)
+                        NpcFightEnd(npc);
                 }
                 ActFollow(npc, guardTarget);
                 break;
             }
             case PetAIMode.Attack:
             {
-                Character? target = ResolvePetTargetCharacter(npc, "ATTACK_TARGET");
-                if (target == null && master.FightTarget.IsValid)
-                    target = _world.FindChar(master.FightTarget);
-                if (target == null && npc.FightTarget.IsValid)
-                    target = _world.FindChar(npc.FightTarget);
-                if (IsValidPetEnemy(npc, master, target))
+                // The fight the order started is the pet's own from then on: when its
+                // swing could not be taken it may have turned on somebody else from
+                // its attacker list (Fight_HitTry, CCharFight.cpp:1614-1619), and the
+                // order is not read again each tick to undo that. The ordered
+                // character comes back once the pet has nobody in hand.
+                Character? target = npc.FightTarget.IsValid ? _world.FindChar(npc.FightTarget) : null;
+                bool inFight = IsValidPetEnemy(npc, master, target);
+                if (!inFight)
                 {
-                    bool newFight = npc.FightTarget != target!.Uid;
-                    npc.FightTarget = target.Uid;
-                    if (newFight)
-                        NpcAttackCrimeCheck(npc, target);
-                    int motivation = GetAttackMotivation(npc, target);
-                    ActFight(npc, target, Math.Max(motivation, 50));
+                    target = ResolvePetTargetCharacter(npc, "ATTACK_TARGET");
+                    if (target == null && master.FightTarget.IsValid)
+                        target = _world.FindChar(master.FightTarget);
+                    if (IsValidPetEnemy(npc, master, target))
+                    {
+                        // The owner named this one (Fight_Attack fToldByMaster,
+                        // CCharNPCPet.cpp:449): no re-pick.
+                        target = NpcFightAttack(npc, target!, toldByMaster: true);
+                        inFight = target != null;
+                    }
+                }
+                if (inFight)
+                {
+                    int motivation = GetAttackMotivation(npc, target!);
+                    ActFight(npc, target!, Math.Max(motivation, 50));
                     return;
                 }
                 // Target dead/gone — revert to the mode the pet was in before the
-                // attack order (Guard/Follow), instead of trailing the master.
-                npc.FightTarget = Serial.Invalid;
+                // attack order, instead of trailing the master. With no order to go
+                // back to the pet is idle, and an idle pet that sees its owner
+                // guards it (NPC_LookAtChar, CCharNPCAct.cpp:1030-1039;
+                // NPC_Act_Guard, :1292-1311).
+                NpcFightEnd(npc);
                 npc.RemoveTag("ATTACK_TARGET");
-                PetAIMode revertMode = PetAIMode.Follow;
+                PetAIMode revertMode = PetAIMode.Guard;
                 // byte, not int: Enum.IsDefined throws for a boxed Int32 on this
                 // byte-backed enum (see FinishGoOrder).
                 if (npc.TryGetTag("PREV_PET_MODE", out string? prevTag) &&

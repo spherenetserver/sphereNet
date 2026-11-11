@@ -29,6 +29,10 @@ public sealed partial class GameClient
     // until those partials get their own phase-3 conversion. The pet-command
     // bridge also keeps the test-harness reflection entry point stable.
     internal bool TryHandlePetCommand(string text) => ItemUse.TryHandlePetCommand(text);
+
+    /// <summary>A line the nearest NPC heard, tried as a pet command first
+    /// (NPC_OnHear -> NPC_OnHearPetCmd, CCharNPCAct.cpp:267).</summary>
+    public bool HearBarePetCommand(Character npc, string text) => ItemUse.HearBarePetCommand(npc, text);
     internal bool HeardPetCommand(Character pet) => ItemUse.PetCommandHearers.Contains(pet.Uid);
 
     internal bool HasAmmoInBackpack(Core.Enums.ItemType ammo) => ItemUse.HasAmmoInBackpack(ammo);

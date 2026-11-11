@@ -243,6 +243,7 @@ public sealed partial class PlayerBotEngine
                 _watchers.Remove(uid);
         foreach (var w in _watching)
             Direct(w, now);
+        AttendAudience(now);
     }
 
     private static bool Within(Point3D a, Point3D b, int range) =>

@@ -153,24 +153,34 @@ public sealed class WalkCheck
     /// <paramref name="newZ"/> to the Z the mover should land on.</summary>
     public bool CheckMovement(Character mover, Point3D loc, Direction d, out int newZ)
     {
-        return CheckMovementDetailed(mover, loc, d, out newZ, out _);
+        return CheckMovementCore(mover, loc, d, checkChars: true, describeAccepted: false, out newZ, out _);
     }
 
     /// <summary>Same as <see cref="CheckMovement"/> but also returns a
     /// <see cref="Diagnostic"/> breakdown of which stage accepted/rejected the
-    /// step. Intended for walk-reject telemetry.</summary>
+    /// step. Intended for walk-reject telemetry. This overload describes the tile
+    /// ahead whatever the answer - it is the one a probe calls.</summary>
     public bool CheckMovementDetailed(Character mover, Point3D loc, Direction d,
         out int newZ, out Diagnostic diag) =>
-        CheckMovementDetailed(mover, loc, d, checkChars: true, out newZ, out diag);
+        CheckMovementCore(mover, loc, d, checkChars: true, describeAccepted: true, out newZ, out diag);
 
     /// <summary>As above. With <paramref name="checkChars"/> false the characters on
     /// the destination are left to the caller: a real walking step runs Source-X's
     /// ShoveCharAtPosition itself, AFTER CheckValidMove, so @PersonalSpace and
     /// @charShove get to change the cost and the full-stamina rule before either is
     /// judged (CanMoveWalkTo, CCharAct.cpp:4763-4768 -> :4641-4668). Judging the
-    /// default rule here first refused the step before the scripts ever ran.</summary>
+    /// default rule here first refused the step before the scripts ever ran.
+    ///
+    /// This is the overload a walking step takes, so the text dump of the tile ahead
+    /// (<see cref="Diagnostic.FwdStaticDump"/>, <see cref="Diagnostic.FwdMobileDump"/>)
+    /// is only written for a REFUSED step - the only time anything reads it. The
+    /// counts are always filled.</summary>
     public bool CheckMovementDetailed(Character mover, Point3D loc, Direction d, bool checkChars,
-        out int newZ, out Diagnostic diag)
+        out int newZ, out Diagnostic diag) =>
+        CheckMovementCore(mover, loc, d, checkChars, describeAccepted: false, out newZ, out diag);
+
+    private bool CheckMovementCore(Character mover, Point3D loc, Direction d, bool checkChars,
+        bool describeAccepted, out int newZ, out Diagnostic diag)
     {
         newZ = loc.Z;
         diag = default;
@@ -211,31 +221,7 @@ public sealed class WalkCheck
             return false;
 
         var mobsForward = CollectMobiles(mapId, xForward, yForward, mover);
-
-        // Raw tile inventory at the forward tile, for the reject log: every
-        // static's (id, z, height, flags, name) and every character on it.
-        int fwdImpassable = 0;
-        int fwdStaticCount = 0;
-        var dump = new System.Text.StringBuilder();
-        md.ForEachStatic(mapId, xForward, yForward, s =>
-        {
-            fwdStaticCount++;
-            var sd = md.GetItemTileData(s.TileId);
-            if (sd.IsImpassable) fwdImpassable++;
-            if (dump.Length > 0) dump.Append(',');
-            string nm = sd.Name ?? "";
-            if (nm.Length > 12) nm = nm.Substring(0, 12);
-            dump.Append($"0x{s.TileId:X}@{s.Z}h{sd.Height}f0x{(ulong)sd.Flags:X}'{nm}'");
-        });
         var fwdLandTile = md.GetTerrainTile(mapId, xForward, yForward);
-        var mobDump = new System.Text.StringBuilder();
-        foreach (var mob in mobsForward)
-        {
-            if (mobDump.Length > 0) mobDump.Append(',');
-            string nm = mob.Name ?? "";
-            if (nm.Length > 12) nm = nm.Substring(0, 12);
-            mobDump.Append($"0x{mob.Uid.Value:X} z={mob.Z} dead={mob.IsDead} player={mob.IsPlayer} war={mob.IsInWarMode} '{nm}'");
-        }
 
         // Source-X CChar::CheckValidMove (CCharStatus.cpp:1978): a diagonal step first
         // needs both orthogonal neighbours of the starting point, then the
@@ -271,13 +257,46 @@ public sealed class WalkCheck
 
         if (!moveOk) newZ = loc.Z;
 
+        // Raw tile inventory at the forward tile, for the reject log: every
+        // static's (id, z, height, flags, name) and every character on it. The text
+        // is written only for a step that was refused (or for a probe): it used to be
+        // formatted on every call, accepted steps included, and a walker takes
+        // thousands of accepted steps for each one anybody asks about.
+        bool describe = !moveOk || describeAccepted;
+        int fwdImpassable = 0;
+        int fwdStaticCount = 0;
+        System.Text.StringBuilder? dump = describe ? new System.Text.StringBuilder() : null;
+        md.ForEachStatic(mapId, xForward, yForward, s =>
+        {
+            fwdStaticCount++;
+            var sd = md.GetItemTileData(s.TileId);
+            if (sd.IsImpassable) fwdImpassable++;
+            if (dump == null) return;
+            if (dump.Length > 0) dump.Append(',');
+            string nm = sd.Name ?? "";
+            if (nm.Length > 12) nm = nm.Substring(0, 12);
+            dump.Append($"0x{s.TileId:X}@{s.Z}h{sd.Height}f0x{(ulong)sd.Flags:X}'{nm}'");
+        });
+        System.Text.StringBuilder? mobDump = null;
+        if (describe && mobsForward.Count > 0)
+        {
+            mobDump = new System.Text.StringBuilder();
+            foreach (var mob in mobsForward)
+            {
+                if (mobDump.Length > 0) mobDump.Append(',');
+                string nm = mob.Name ?? "";
+                if (nm.Length > 12) nm = nm.Substring(0, 12);
+                mobDump.Append($"0x{mob.Uid.Value:X} z={mob.Z} dead={mob.IsDead} player={mob.IsPlayer} war={mob.IsInWarMode} '{nm}'");
+            }
+        }
+
         diag = new Diagnostic(loc.Z, loc.Z, forwardOk, forwardNewZ,
             checkDiagonals, leftOk, rightOk, mobBlocked,
             fwdLandTile.Z, fwdLandTile.Z, fwdLandTile.Z,
             false, true, 0, 0,
             fwdReason,
-            fwdStaticCount, fwdImpassable, fwdLandTile.TileId, dump.ToString(),
-            mobsForward.Count, mobDump.ToString())
+            fwdStaticCount, fwdImpassable, fwdLandTile.TileId, dump?.ToString() ?? "",
+            mobsForward.Count, mobDump?.ToString() ?? "")
         {
             ForwardOnRoof = moveOk && SourceXWalk.IsRoofFloor(fwdFloorFlags),
         };
@@ -286,15 +305,29 @@ public sealed class WalkCheck
 
     /// <summary>Source-X CChar::CheckValidMove with fPathFinding for one step of a
     /// route search: no diagonal side test and no characters. Returns the height the
-    /// mover would stand at.</summary>
+    /// mover would stand at. With <paramref name="diagonalSides"/> the diagonal side
+    /// test is applied as a real step applies it, so the answer is the step's own
+    /// (still without characters).</summary>
     public bool CheckPathStep(Character mover, int mapId, int fromX, int fromY, int fromZ,
-        Direction d, out int newZ)
+        Direction d, out int newZ, bool diagonalSides = false)
     {
         newZ = fromZ;
         if (_world.MapData == null)
             return false;
-        return _sourceX.CheckValidMove(mover, mapId, fromX, fromY, fromZ, d, pathFinding: true,
+        return _sourceX.CheckValidMove(mover, mapId, fromX, fromY, fromZ, d, pathFinding: !diagonalSides,
             out newZ, out _);
+    }
+
+    /// <summary>The terrain half of a real step from one tile in all eight directions,
+    /// for a route search expanding a node (<see cref="SourceXWalk.CheckValidMoves"/>):
+    /// bit <c>(int)Direction</c> of the result is set where the step would be
+    /// accepted, <paramref name="newZ"/> holds the landing heights. Characters are not
+    /// considered. Returns 0 without map data.</summary>
+    public int CheckPathSteps(Character mover, int mapId, int fromX, int fromY, int fromZ, Span<int> newZ)
+    {
+        if (_world.MapData == null)
+            return 0;
+        return _sourceX.CheckValidMoves(mover, mapId, fromX, fromY, fromZ, newZ);
     }
 
     // -----------------------------------------------------------------

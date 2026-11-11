@@ -186,9 +186,12 @@ public sealed partial class NpcAI
         SpellFlag? resolved = ResolveNpcSpellFlags != null ? ResolveNpcSpellFlags(spell) : FallbackSpellFlags(spell);
         if (resolved is not SpellFlag flags)
             return false; // no [SPELL] definition (:281-283)
-        // A wand pays with its charge; the caster's own mana/skill gate applies to
-        // spells it casts itself.
-        if (!fromWand && !CanAffordNpcSpell(npc, spell))
+        // The caster's own skill and mana gate applies to a wand's spell too:
+        // NPC_FightMagery hands NPC_FightCast the NPC itself as the source for
+        // every candidate (CCharNPCAct_Magic.cpp:244), so the skill requirement
+        // (:298) and Spell_CanCast (:300) are the NPC's. A creature that could not
+        // cast the spell from its own book does not cast it from a wand either.
+        if (!CanAffordNpcSpell(npc, spell))
             return false;
         if (flags.HasFlag(SpellFlag.PlayerOnly))
             return false;

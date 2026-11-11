@@ -104,7 +104,6 @@ public sealed class ClientItemUseHandler
     private void BroadcastDeleteObject(uint uid) => _client.BroadcastDeleteObject(uid);
     private void BroadcastDrawObject(Character ch) => _client.BroadcastDrawObject(ch);
     private Character? DismountCharacter() => _client.DismountCharacter();
-    private bool TryMountCharacter(Character mount) => _client.TryMountCharacter(mount);
     private void ResetWalkValidator() => _client.ResetWalkValidator();
     private void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) => _client.SetPendingTarget(callback, cursorType);
 
@@ -509,14 +508,15 @@ public sealed class ClientItemUseHandler
             // (Cmd_Use_Item clears fTestTouch for it, CClientUse.cpp:31).
             // An engine-made use with fTestTouch off skips it too (Use_Obj,
             // CCharUse.cpp:1971 -> Event_DoubleClick).
-            if (testTouch && _character.PrivLevel < PrivLevel.GM &&
-                (CanFlagsOf(item) & Core.Enums.CanFlags.I_ForceDC) == 0)
+            //
+            // The test is CChar::CanTouch itself (CClientUse.cpp:92-101 ->
+            // CCharStatus.cpp:1293-1430), and it runs BEFORE @DClick (:104): two tiles
+            // in 3D and line of sight to the item's top-level object; GM mode passes;
+            // and a ghost, a sleeper or a statue touches nothing but a shrine, a
+            // telescope, a sign in view and a ship's plank, side or rope - so for the
+            // dead neither the trigger nor the use is reached.
+            if (testTouch && (CanFlagsOf(item) & Core.Enums.CanFlags.I_ForceDC) == 0)
             {
-                // Loose ground item: simple tile-distance reach. A contained item
-                // must be reachable through its top parent (Source-X CClientUse:
-                // a crafted/stale DClick can't reach into a far or moved
-                // container). CanReachTargetItem covers both the on-ground and
-                // worn-by-a-mobile top-container cases.
                 bool reachable = CanReachTargetItem(item);
                 if (!reachable)
                 {
@@ -590,29 +590,26 @@ public sealed class ClientItemUseHandler
                         return;
                     }
 
-                    // Already riding — block with message instead of falling through to paperdoll
-                    if (_character.IsMounted)
-                    {
-                        SysMessage(ServerMessages.Get("mount_already_riding"));
-                        return;
-                    }
-
-                    // UO mount-range rule: the mount must be adjacent (within 1 tile).
-                    // Without this check, a distant mount gets accepted by the server
-                    // while the client teleports the player to the mount's tile — the
-                    // classic "I got yanked onto my horse" glitch.
-                    int dx = Math.Abs(_character.X - ch.X);
-                    int dy = Math.Abs(_character.Y - ch.Y);
-                    if (_character.MapIndex != ch.MapIndex || dx > 1 || dy > 1)
-                    {
-                        // Horse_Mount's CanTouch refusal (CCharAct.cpp:3956).
-                        SysMessage(ServerMessages.Get(Msg.MsgMountDist));
-                        return;
-                    }
-
-                    if (TryMountCharacter(ch))
+                    // Reach is Horse_Mount's own CanTouch(pHorse) - two tiles in 3D
+                    // and line of sight, DEFMSG_MSG_MOUNT_DIST otherwise
+                    // (CCharAct.cpp:3957-3964) - and a rider already in the saddle is
+                    // not refused: Horse_Mount gets them off the old mount first
+                    // ("Horse_UnMount(); // unmount if already mounted", :4011), so a
+                    // double-click on another mount of theirs swaps. Both are decided
+                    // in MountEngine.TryMount, after the ownership and ceiling tests.
+                    uint swappedMountItemUid = _character.GetEquippedItem(Layer.Horse)?.Uid.Value ?? 0;
+                    if (_client.TryMountCharacter(ch, out Character? swappedOut))
                     {
                         uint mountNpcUid = ch.Uid.Value;
+
+                        // The mount that was left stands where the rider is; its mount
+                        // item is gone from the rider.
+                        if (swappedOut != null)
+                        {
+                            if (swappedMountItemUid != 0)
+                                BroadcastDeleteObject(swappedMountItemUid);
+                            BroadcastCharacterAppear?.Invoke(swappedOut);
+                        }
 
                         // Re-seat after the body type change (foot→mounted) via
                         // the shared standing resolver (multi decks included).
@@ -875,39 +872,36 @@ public sealed class ClientItemUseHandler
     private void HandleItemUse(Item item)
     {
         if (_character == null) return;
-        if (_character.IsDead)
+        // Nothing here refuses the dead as such. What a ghost may use is decided by
+        // the touch test ahead of @DClick (CChar::CanTouch, CCharStatus.cpp:1308-1360:
+        // shrine, telescope, sign, ship plank / side / rope, CAN_I_FORCEDC, and
+        // anything at all in GM mode), which answers DEFMSG_REACH_GHOST; an item that
+        // passed it - or a use made with the touch test off - is used.
+        if (_character.IsDead && item.ItemType == ItemType.Shrine)
         {
-            if (item.ItemType == ItemType.Shrine)
-            {
-                // A shrine resurrects THROUGH the spell: Source-X calls
-                // OnSpellEffect(SPELL_Resurrection, ...) with the shrine as the source
-                // (CClientUse.cpp:327), so @SpellEffect can refuse it before anything
-                // happens (CCharSpell.cpp:3712). SphereNet went straight to the
-                // resurrection, so only @Resurrect was ever consulted.
-                if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellEffect,
-                        new TriggerArgs
-                        {
-                            CharSrc = _character,
-                            ItemSrc = item,
-                            O1 = item,
-                            N1 = (int)SpellType.Resurrection,
-                        }) == TriggerResult.True)
-                    return;
-
-                OnResurrect();
-                SysMessage(ServerMessages.GetFormatted(Msg.HealingRes, _character.Name));
+            // A shrine resurrects THROUGH the spell: Source-X calls
+            // OnSpellEffect(SPELL_Resurrection, ...) with the shrine as the source
+            // (CClientUse.cpp:327), so @SpellEffect can refuse it before anything
+            // happens (CCharSpell.cpp:3712). SphereNet went straight to the
+            // resurrection, so only @Resurrect was ever consulted.
+            if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellEffect,
+                    new TriggerArgs
+                    {
+                        CharSrc = _character,
+                        ItemSrc = item,
+                        O1 = item,
+                        N1 = (int)SpellType.Resurrection,
+                    }) == TriggerResult.True)
                 return;
-            }
-            SysMessage(ServerMessages.Get("death_cant_while_dead"));
+
+            OnResurrect();
+            SysMessage(ServerMessages.GetFormatted(Msg.HealingRes, _character.Name));
             return;
         }
-        // Frozen chars can't use items — EXCEPT struggling against the web
-        // that holds them (Source-X Use_Item_Web runs while stuck).
-        if (_character.IsStatFlag(StatFlag.Freeze) && item.ItemType != ItemType.Web)
-        {
-            SysMessage(ServerMessages.Get("msg_frozen"));
-            return;
-        }
+        // Nor the frozen: Cmd_Use_Item has no freeze test of its own. The same touch
+        // test refuses a paralysed character (DEFMSG_REACH_FAIL) except for a
+        // container it carries and an ATTR_CANUSE_PARALYZED item
+        // (CCharStatus.cpp:1322-1356) - which a second refusal here took away again.
 
         // Bank check redeem (Source-X): double-clicking a check converts it to gold
         // in the container it sits in (bank box or backpack) and consumes the check.
@@ -928,9 +922,14 @@ public sealed class ClientItemUseHandler
             !((item.ItemType is ItemType.LightLit or ItemType.LightOut) && !item.ContainedIn.IsValid))
         {
             Layer wearLayer = ResolveWearableLayer(item);
+            // A refused equip ends the use there (CClientUse.cpp:122-131: CanMoveItem,
+            // then ItemEquip, each `return false`): the use-type behaviour below - a
+            // pick's or a hatchet's target cursor - is not offered for a tool that never
+            // reached the hand.
             if (wearLayer is not Layer.None and not Layer.Pack and not Layer.Hair and not Layer.FacialHair &&
-                (int)wearLayer < (int)Layer.Horse)
-                _client.TryDClickEquip(item, wearLayer);
+                (int)wearLayer < (int)Layer.Horse &&
+                !_client.TryDClickEquip(item, wearLayer))
+                return;
         }
 
         // Source-X Cmd_Use_Item detaches a spawned ground item before running
@@ -1357,7 +1356,9 @@ public sealed class ClientItemUseHandler
                 break;
 
             case ItemType.WeaponMacePick:
-                SysMessage(ServerMessages.GetFormatted(Msg.ItemuseMacepickTarg, item.Name ?? "pick"));
+                // DEFMSG_ITEMUSE_MACEPICK_TARG takes pItem->GetName() (CClientUse.cpp:431):
+                // the displayed name, its ITEMDEF's for an item named by its definition.
+                SysMessage(ServerMessages.GetFormatted(Msg.ItemuseMacepickTarg, item.GetName()));
                 SetPendingItemTarget(item, NativeTargetUse(item)!);
                 break;
 
@@ -1521,7 +1522,8 @@ public sealed class ClientItemUseHandler
                 // plus the message items as container contents — the client
                 // then requests each header itself.
                 _netState.Send(new PacketBulletinBoardOut(item.Uid.Value,
-                    string.IsNullOrEmpty(item.Name) ? "bulletin board" : item.Name));
+                    // board->GetName() (send.cpp PacketBulletinBoard): the displayed name.
+                    item.GetName() is { Length: > 0 } boardName ? boardName : "bulletin board"));
                 foreach (var msg in item.Contents)
                 {
                     SendContainerItemPacket(new PacketContainerItem(
@@ -1631,7 +1633,8 @@ public sealed class ClientItemUseHandler
             case ItemType.CannonBall:
                 // Source-X IT_CANNON_BALL (CClientUse): target the muzzle to
                 // feed this ball into it.
-                SysMessage(ServerMessages.GetFormatted(Msg.ItemuseCballPromt, item.Name ?? "cannon ball"));
+                // pItem->GetName() (CClientUse.cpp:468), as for the pick.
+                SysMessage(ServerMessages.GetFormatted(Msg.ItemuseCballPromt, item.GetName()));
                 SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
                 {
                     var muzzle = _world.FindItem(new Serial(serial));
@@ -1883,20 +1886,30 @@ public sealed class ClientItemUseHandler
                     break;
                 }
 
+                // Use_Figurine (CCharUse.cpp:1127-1221) says two things and nothing
+                // else: DEFMSG_MSG_FIGURINE_NOTYOURS above, and
+                // DEFMSG_PETSLOTS_TRY_CONTROL when the figurine's own FOLLOWERSLOTS do
+                // not fit (:1141-1163, see FigurineSlotsRefused). The creature comes
+                // out where the FIGURINE is - its top-level object's tile
+                // ("MoveToChar(pItem->GetTopLevelObj()->GetTopPoint())", :1215), so a
+                // figurine used from the ground two tiles off puts it there - facing
+                // as the user faces (:1213), and makes its idle sound (:1218).
+                Point3D figurineAt = FigurineTopPoint(item);
+
                 // Snapshot figurine (Source-X pet shrink/restore): recreate the stored
-                // pet beside the player and consume the figurine.
+                // pet and consume the figurine.
                 if (SphereNet.Game.NPCs.PetFigurine.IsPetFigurine(item))
                 {
                     var restored = SphereNet.Game.NPCs.PetFigurine.Restore(
-                        _character, item, _world, _character.Position);
+                        _character, item, _world, figurineAt);
                     if (restored != null)
                     {
                         _netState.Send(new PacketDeleteObject(item.Uid.Value));
-                        SysMessage("Your pet materializes beside you.");
+                        FigurineCreatureArrived(restored);
                     }
                     else
                     {
-                        SysMessage("You have too many followers to restore that now.");
+                        FigurineSlotsRefused(item);
                     }
                     break;
                 }
@@ -1907,35 +1920,35 @@ public sealed class ClientItemUseHandler
                 // it (m_ttFigurine.m_idChar, CItemBase.h:119). Reading MORE1 as the
                 // stored uid matched neither: a legacy figurine's creature id was
                 // looked up as a character and of course found none.
+                //
+                // "CChar *pPet = pItem->m_itFigurine.m_UID.CharFind(); if ( !pPet )"
+                // (CCharUse.cpp:1166-1167): a stored uid that no longer finds its
+                // creature is the same as none - a new one is made from MORE1 / TDATA3.
+                // A figurine that names no creature either only logs (:1175); the
+                // player is told nothing.
                 uint linkedSerial = item.More2;
-                if (linkedSerial != 0)
+                var pet = linkedSerial != 0 ? _world.FindChar(new Serial(linkedSerial)) : null;
+                if (pet != null && !pet.IsDeleted && !pet.IsPlayer)
                 {
-                    var pet = _world.FindChar(new Serial(linkedSerial));
-                    if (pet != null && !pet.IsDeleted && !pet.IsPlayer)
+                    if (!pet.TryAssignOwnership(_character, _character,
+                            summoned: false, enforceFollowerCap: true))
                     {
-                        if (!pet.TryAssignOwnership(_character, _character,
-                                summoned: false, enforceFollowerCap: true))
-                        {
-                            SysMessage("You have too many followers to restore that now.");
-                            break;
-                        }
-                        if (!_world.PlaceCharacter(pet, _character.Position))
-                        {
-                            SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
-                            break;
-                        }
-                        pet.ClearStatFlag(StatFlag.Ridden);
-                        _world.RemoveItem(item);
-                        SysMessage("Your pet materializes beside you.");
+                        FigurineSlotsRefused(item);
+                        break;
                     }
-                    else
+                    if (!_world.PlaceCharacter(pet, figurineAt))
                     {
-                        SysMessage("The creature is lost.");
+                        SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
+                        break;
                     }
+                    pet.ClearStatFlag(StatFlag.Ridden);
+                    _world.RemoveItem(item);
+                    FigurineCreatureArrived(pet);
                 }
-                else if (!RestoreFigurineCreature(item))
+                else if (!RestoreFigurineCreature(item, figurineAt))
                 {
-                    SysMessage(ServerMessages.Get(Msg.MsgFigurineNotyours));
+                    _logger.LogDebug("[figurine] 0x{Uid:X8} (id 0x{Id:X4}) names no creature",
+                        item.Uid.Value, item.BaseId);
                 }
                 break;
             }
@@ -2696,11 +2709,18 @@ public sealed class ClientItemUseHandler
     /// stone player cannot; idle, the player is revealed - not for Stealth, nor for
     /// Snooping / Stealing when REVEALFLAGS spares them - and goes on; in war mode, or
     /// busy with anything but meditation, hiding or stealth, they must wait.</summary>
-    private bool SkillWait(SkillType skill)
+    private bool SkillWait(SkillType skill) =>
+        SkillWait(skill, _character != null && _character.HasActiveSkillPending() ? _character.SkillPendingId : -1, null);
+
+    /// <summary>The same test for a caller that knows more of what the character is
+    /// busy with than the pending-skill slot shows (the skill button: a craft being
+    /// stroked, a cast). <paramref name="current"/> is Skill_GetActive, -1 when idle;
+    /// <paramref name="abortCurrent"/> is its Skill_Fail(true), run after the pending
+    /// skill is dropped.</summary>
+    internal bool SkillWait(SkillType skill, int current, Action? abortCurrent)
     {
         if (_character == null) return true;
         int skillTry = (int)skill;
-        int current = _character.HasActiveSkillPending() ? _character.SkillPendingId : -1;
         if (_triggerDispatcher != null)
         {
             var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillWait,
@@ -2713,7 +2733,10 @@ public sealed class ClientItemUseHandler
                 return false;
             }
         }
-        if (_character.IsDead || _character.IsStatFlag(StatFlag.Freeze | StatFlag.Stone))
+        // "IsStatFlag(STATF_DEAD|STATF_SLEEPING|STATF_FREEZE|STATF_STONE) ||
+        // Can(CAN_C_STATUE)" (CCharSkill.cpp:4014-4018).
+        if (_character.IsStatFlag(StatFlag.Dead | StatFlag.Sleeping | StatFlag.Freeze | StatFlag.Stone) ||
+            (CharDefHelper.GetCanFlags(_character) & Core.Enums.CanFlags.C_Statue) != 0)
         {
             SysMessage(ServerMessages.Get(Msg.Skillwait1));
             return true;
@@ -2745,6 +2768,7 @@ public sealed class ClientItemUseHandler
             int aborted = _character.ClearActiveSkillPending();
             if (aborted >= 0)
                 Character.ActiveSkillAborted?.Invoke(_character, aborted);
+            abortCurrent?.Invoke();
         }
     }
 
@@ -2850,66 +2874,19 @@ public sealed class ClientItemUseHandler
         DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(item))?.Can
             ?? Core.Enums.CanFlags.None;
 
-    /// <summary>Whether the reach test skips line of sight, or skips distance, for this
-    /// item and this reacher.
+    /// <summary>CChar::CanTouch for an item (CCharStatus.cpp:1293-1430), through the
+    /// one port of it (<see cref="Scripting.ScriptTouchAccess.CanTouch(Character, ObjBase, GameWorld?)"/>).
     ///
-    /// Upstream's touch test consults three CAN flags before refusing: the item's
-    /// CAN_I_DCIGNORELOS / CAN_I_DCIGNOREDIST and the reacher's CAN_C_DCIGNORELOS /
-    /// CAN_C_DCIGNOREDIST (CanTouch, CCharStatus.cpp:1415-1430). Every one of them was
-    /// parsed into the flag enum and then never read, so a definition that asked for them
-    /// got nothing - and the shipped pack asks on all twelve tillermen (a ship's own hull
-    /// stands between the tiller and anyone on the shore, so redeeding from the dock was
-    /// refused outright) and on the archery butte (shot at from a bow's range).</summary>
-    private (bool IgnoreLos, bool IgnoreDist) ReachExemptions(Item item)
-    {
-        var itemCan = CanFlagsOf(item);
-        var charCan = _character != null
-            ? CharDefHelper.GetCanFlags(_character)
-            : Core.Enums.CanFlags.None;
-        return ((itemCan & Core.Enums.CanFlags.I_DcIgnoreLOS) != 0 ||
-                (charCan & Core.Enums.CanFlags.C_DcIgnoreLOS) != 0,
-                (itemCan & Core.Enums.CanFlags.I_DcIgnoreDist) != 0 ||
-                (charCan & Core.Enums.CanFlags.C_DcIgnoreDist) != 0);
-    }
-
+    /// This used to be a second, looser rule of its own: three tiles flat where the
+    /// reference allows two in 3D ("if (( iDist > 2 ) && fCanTouch)", :1421), nothing
+    /// about the reacher being dead, asleep, frozen or stone (:1352-1361), no look
+    /// into the containers on the way (:1383-1397), and the privilege LEVEL where
+    /// the reference asks for GM mode (:1410). The double-click, the pick-up, the drop
+    /// onto a container and the item targets all ask it.</summary>
     private bool CanReachTargetItem(Item? obj)
     {
         if (obj == null || _character == null) return false;
-        var topCont = GetTopContainer(obj);
-        if (topCont == null) return false;
-
-        // The flags are read off the object that was dclicked, as upstream reads them off
-        // the item it was handed - not off the top-level container it resolves to.
-        var (ignoreLos, ignoreDist) = ReachExemptions(obj);
-
-        if (topCont.ContainedIn.IsValid)
-        {
-            var wearer = _world.FindChar(topCont.ContainedIn);
-            if (wearer != null)
-            {
-                if (wearer == _character) return true;
-                if (wearer.MapIndex != _character.MapIndex) return false;
-                if (_character.PrivLevel >= PrivLevel.GM) return true;
-                return (ignoreDist ||
-                        _character.Position.GetDistanceTo(wearer.Position) <= 3) &&
-                    (ignoreLos || _world.CanSeeLOSFor(_character, wearer));
-            }
-        }
-
-        Point3D point = topCont.Position;
-        if (point.Map != _character.MapIndex) return false;
-        if (_character.PrivLevel >= PrivLevel.GM) return true;
-        // Tillermen have no plank-distance exemption in CChar::CanTouch.
-        // Source-X's default GetDist3D scales Z by half PLAYER_HEIGHT (8).
-        int distance = _character.Position.GetDistanceTo(point);
-        int reach = 3;
-        if (obj.ItemType == ItemType.ShipTiller)
-        {
-            distance = Math.Max(distance, Math.Abs(_character.Z - point.Z) / 8);
-            reach = 2;
-        }
-        return (ignoreDist || distance <= reach) &&
-            (ignoreLos || _world.CanSeeLOSFor(_character, _character.Position, point));
+        return Scripting.ScriptTouchAccess.CanTouch(_character, obj, _world);
     }
 
     private void DetachFromItemSpawner(Item item)
@@ -3425,7 +3402,7 @@ public sealed class ClientItemUseHandler
     /// never held a creature, it names one. Without this path every one of them
     /// answered "This figurine is not yours" and could not be opened.
     /// </summary>
-    private bool RestoreFigurineCreature(Item figurine)
+    private bool RestoreFigurineCreature(Item figurine, Point3D figurineAt)
     {
         if (_character == null) return false;
 
@@ -3459,11 +3436,11 @@ public sealed class ClientItemUseHandler
                                     enforceFollowerCap: true))
         {
             _world.DeleteObject(pet);
-            SysMessage("You have too many followers to restore that now.");
+            FigurineSlotsRefused(figurine);
             return true;   // answered; not an unopenable figurine
         }
 
-        if (!_world.PlaceCharacter(pet, _character.Position))
+        if (!_world.PlaceCharacter(pet, figurineAt))
         {
             _world.DeleteObject(pet);
             SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
@@ -3472,8 +3449,41 @@ public sealed class ClientItemUseHandler
 
         pet.ClearStatFlag(StatFlag.Ridden);
         _world.RemoveItem(figurine);
-        SysMessage("Your pet materializes beside you.");
+        FigurineCreatureArrived(pet);
         return true;
+    }
+
+    /// <summary>Where a figurine's creature appears: the tile of the figurine's
+    /// top-level object - the figurine itself on the ground, else whoever carries the
+    /// container it is in (Use_Figurine, CCharUse.cpp:1215).</summary>
+    private Point3D FigurineTopPoint(Item figurine)
+    {
+        var top = GetTopContainer(figurine) ?? figurine;
+        var holder = top.ContainedIn.IsValid ? _world.FindChar(top.ContainedIn) : null;
+        return holder?.Position ?? top.Position;
+    }
+
+    /// <summary>The creature out of its figurine (Use_Figurine, CCharUse.cpp:1213,
+    /// 1218): it faces the way its new owner faces and makes its idle sound. No line
+    /// of text.</summary>
+    private void FigurineCreatureArrived(Character pet)
+    {
+        if (_character == null) return;
+        pet.Direction = _character.Direction;
+        ushort sound = CharacterSounds.Resolve(pet, SphereNet.Game.AI.CreatureSoundType.Idle);
+        if (sound != 0)
+            BroadcastNearby?.Invoke(pet.Position, UpdateRange,
+                new PacketSound(sound, pet.X, pet.Y, pet.Z), 0);
+    }
+
+    /// <summary>The follower slots refused the creature. Use_Figurine says
+    /// DEFMSG_PETSLOTS_TRY_CONTROL only when the FIGURINE carries its own
+    /// FOLLOWERSLOTS (CCharUse.cpp:1141-1163); when it is the creature's own slot
+    /// count that does not fit, the use just fails (:1196-1203).</summary>
+    private void FigurineSlotsRefused(Item figurine)
+    {
+        if (figurine.TryGetTag("FOLLOWERSLOTS", out _))
+            SysMessage(ServerMessages.Get(Msg.PetslotsTryControl));
     }
 
     /// <summary>Resolve the DEFINITION an ore smelts into.
@@ -4331,7 +4341,28 @@ public sealed class ClientItemUseHandler
         // the pack's 097a is t_meat_raw, not cooked food. With no definition the
         // reference's SetID fails and the type stays.
         if (DefinitionLoader.GetItemDef(0x097A) is { } steakDef)
+        {
             fish.ItemType = steakDef.Type;
+            // SetID re-bases the item: its DEFINITION is the steak's from here on
+            // (CItem::SetID -> SetBaseID -> SetBase, CItem.cpp:2169-2178, :2120-2135,
+            // :2075). The instance went on naming the fish it was cut from, so every
+            // resource match - RESOURCES=i_fish_cut_raw of the cooked steak, a
+            // vendor's buy sample - still saw a whole fish and the steaks could not
+            // be cooked or sold as what they are.
+            var fishDef = DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(fish));
+            fish.RemoveTag("SCRIPTDEF");
+            if (!string.IsNullOrWhiteSpace(steakDef.DefName))
+                fish.SetTag("ITEMDEF", steakDef.DefName);
+            else
+                fish.RemoveTag("ITEMDEF");
+            // What the definition gave the instance goes with it: the TDATA (what a
+            // steak cooks into) and the name, unless the fish had one of its own.
+            fish.TData1 = steakDef.TData1;
+            fish.TData2 = steakDef.TData2;
+            if (fishDef != null && !string.IsNullOrWhiteSpace(steakDef.Name) &&
+                string.Equals(fish.Name, DefinitionLoader.ResolveNames(fishDef.Name ?? ""), StringComparison.Ordinal))
+                fish.Name = DefinitionLoader.ResolveNames(steakDef.Name);
+        }
         fish.Hue = new Core.Types.Color(0);
         fish.Amount = (ushort)Math.Min(ushort.MaxValue, Math.Max(1, (int)fish.Amount) * 4);
         Item.OnVisualUpdate?.Invoke(fish);
@@ -5085,7 +5116,7 @@ public sealed class ClientItemUseHandler
         Character? named = null;
         string verb = "", args = "";
         int bestDist = int.MaxValue;
-        foreach (var pet in _world.GetCharsInRange(_character.Position, 12))
+        foreach (var pet in _world.GetCharsInRange(_character.Position, PetCommandHearRange))
         {
             if (!IsPetCommandCandidate(pet))
                 continue;
@@ -5114,6 +5145,40 @@ public sealed class ClientItemUseHandler
         finally { _petCommandArgs = ""; }
         return true;
     }
+
+    /// <summary>A pet command with nothing in front of it - no "all", no name. Source-X
+    /// hands a spoken line to ONE NPC, the nearest that heard it (CClientEvent.cpp:
+    /// 2037), and CChar::NPC_OnHear opens with NPC_OnHearPetCmd (CCharNPCAct.cpp:267):
+    /// "pets always have a basic set of actions". So "stay" said next to one's own
+    /// pet is an order to it.
+    ///
+    /// True = the line was a pet command and is spent, whether or not it was obeyed:
+    /// the pet's SPEECHPET blocks may keep it (CCharNPCPet.cpp:80-84), and an NPC
+    /// that does not take orders from the speaker understands the word and does
+    /// nothing (:147-150) - either way the NPC's ordinary speech does not run.</summary>
+    internal bool HearBarePetCommand(Character npc, string text)
+    {
+        if (_character == null || npc.IsPlayer || npc.IsDeleted ||
+            (CharDefHelper.GetCanFlags(npc) & CanFlags.C_Statue) != 0)
+            return false;
+        string line = text.Trim();
+        if (!TryParsePetVerb(line, out string verb, out string args))
+            return false;
+        if (PetSpeechKeepsCommand(npc, line))
+            return true;
+        if (!IsPetCommandCandidate(npc) ||
+            !npc.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(verb)))
+            return true;
+        _petCommandArgs = args;
+        try { ApplyPetVerb(npc, verb); }
+        finally { _petCommandArgs = ""; }
+        return true;
+    }
+
+    /// <summary>How far a pet hears an order: the NPC hearing radius, NPCDISTANCEHEAR
+    /// (14 when unset) - the pet pass is part of the same walk over the NPCs in
+    /// earshot (CClientEvent.cpp:1908-1918).</summary>
+    private int PetCommandHearRange => _client.SpeechEng?.NpcHearRadius ?? 14;
 
     /// <summary>NPC_OnHearPetCmd opens with OnTriggerSpeech(true, pszCmd) (CCharNPCPet.cpp:80):
     /// the SPEECHPET blocks run on the pet with the command as spoken, and a RETURN 1
@@ -5649,10 +5714,7 @@ public sealed class ClientItemUseHandler
     /// <summary>What a hireling has been paid in advance - upstream's bank
     /// m_Check_Amount, which this engine keeps in HIRE_BALANCE for a creature that is
     /// no vendor (Character.CheckHirelingStatus).</summary>
-    private static long HirelingPurse(Character pet) =>
-        pet.TryGetTag("HIRE_BALANCE", out string? raw) && ScriptNumber.TryParseLong(raw, out long paid)
-            ? Math.Max(0, paid)
-            : 0;
+    private static long HirelingPurse(Character pet) => VendorEngine.GetVendorGold(pet);
 
     /// <summary>Source-X NPC_PetRelease (CCharNPCPet.cpp:860). @PetRelease runs first
     /// on the pet with the owner as SRC and may keep it (RETURN 1). A conjured
@@ -5969,7 +6031,27 @@ public sealed class ClientItemUseHandler
                         priced.Price = price;
                     }
                     else
-                        SendInputPromptGump(priced, "PRICE", 9);
+                    {
+                        // No price named: ask for it on the console prompt
+                        // (addPromptConsole(CLIMODE_PROMPT_VENDOR_PRICE,
+                        // DEFMSG_NPC_VENDOR_SETPRICE_2), CCharNPCPet.cpp:541), and
+                        // the answer goes through the same NPC_SetVendorPrice - the
+                        // vendor announces it (CClientEvent.cpp:1729-1740). An
+                        // empty or cancelled answer sets nothing.
+                        var vendor = pet;
+                        _client.SendPrompt(priced.Uid.Value, ServerMessages.Get(Msg.NpcVendorSetprice2),
+                            (_, _, type, answer) =>
+                            {
+                                if (type == 0 || string.IsNullOrWhiteSpace(answer) ||
+                                    priced.IsDeleted || vendor.IsDeleted ||
+                                    !ReferenceEquals(priced.ResolveTopObject(), vendor))
+                                    return;
+                                int asked = ParseLeadingPrice(answer.Trim());
+                                NpcSpeech(vendor, ServerMessages.GetFormatted(Msg.NpcVendorSetprice1,
+                                    priced.GetName(), asked));
+                                priced.Price = asked;
+                            });
+                    }
                 }
                 else
                     NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetInvOnly));
@@ -6172,7 +6254,7 @@ public sealed class ClientItemUseHandler
         if (_character == null)
             return Enumerable.Empty<Character>();
 
-        return _world.GetCharsInRange(_character.Position, 12)
+        return _world.GetCharsInRange(_character.Position, PetCommandHearRange)
             .Where(p =>
                 IsPetCommandCandidate(p) &&
                 p.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(verb)));
@@ -6183,7 +6265,9 @@ public sealed class ClientItemUseHandler
         !p.IsPlayer &&
         !p.IsDeleted &&
         PetListensTo(p, _character) &&
-        !p.IsStatFlag(StatFlag.Ridden);
+        !p.IsStatFlag(StatFlag.Ridden) &&
+        // "Can't see or too far, can't hear" (CClientEvent.cpp:1963-1967).
+        (_client.SpeechEng?.NpcHearsSpeaker(_character, p) ?? true);
 
     /// <summary>
     /// Source-X CClient::Cmd_VendorBuy parity. Public entry used when the

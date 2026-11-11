@@ -1,0 +1,12 @@
+# token_work.txt - bir is (toplama ya da zanaat skilli, Smelt, Sell, Work) = botun ne yaptigini soyledigi soz
+
+Mining=maden kazıyorum
+Lumberjacking=odun kesiyorum
+Fishing=balık tutuyorum
+Smelt=cevher eritiyorum
+Blacksmithing=demir dövüyorum
+Carpentry=marangozluk yapıyorum
+Tailoring=dikiş dikiyorum
+Cooking=yemek pişiriyorum
+Sell=mallarımı satıyorum
+Work=çalışıyorum

@@ -1,0 +1,8 @@
+# thanks_cure.txt - botun zehrini geçirene söylenir. {name} iyileştiren.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+cure için sağol!
+sağol {name}, zehir fenaydı
+cure için teşekkürler
+oh, geçti. eyvallah {name}
+[friend] yine kurtardın beni {name}

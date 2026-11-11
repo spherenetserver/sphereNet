@@ -701,6 +701,37 @@ public sealed partial class ExpressionParser
         return ReadNumber(text, ref pos);
     }
 
+    /// <summary>The undecorated value behind <c>&lt;dNAME&gt;</c>, <c>&lt;hNAME&gt;</c>,
+    /// <c>&lt;EVAL x&gt;</c> or <c>&lt;HVAL x&gt;</c> when that value is a name rather
+    /// than a number; false for anything else.</summary>
+    private bool TryUnwrapNumericWrapper(string arg, out string name)
+    {
+        name = "";
+        if (arg.Length < 4 || arg[0] != '<' || arg[^1] != '>')
+            return false;
+        int depth = 0;
+        for (int i = 0; i < arg.Length - 1; i++)
+        {
+            if (arg[i] == '<') depth++;
+            else if (arg[i] == '>' && --depth == 0)
+                return false; // the first bracket closes before the end: not one wrapper
+        }
+        string inner = arg[1..^1].Trim();
+        string? value = null;
+        if (inner.StartsWith("EVAL ", StringComparison.OrdinalIgnoreCase) ||
+            inner.StartsWith("HVAL ", StringComparison.OrdinalIgnoreCase))
+            value = ResolveAngleBrackets(inner[5..].Trim());
+        else if (inner.Length > 1 && inner[0] is 'd' or 'D' or 'h' or 'H')
+            value = VariableResolver?.Invoke(ResolveAngleBrackets(inner[1..]));
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+        value = value.Trim();
+        if (Core.Types.ScriptNumber.TryParseToken(value, out _))
+            return false;
+        name = value;
+        return true;
+    }
+
     /// <summary>Evaluate a Sphere brace expression: each token is evaluated as a full
     /// expression (so &lt;...&gt;/hex/identifiers work), then <see cref="BraceRange"/>
     /// decides what the list means.</summary>
@@ -1313,7 +1344,16 @@ public sealed partial class ExpressionParser
             string? fullVal = VariableResolver?.Invoke(fullName) ?? FunctionResolver?.Invoke(fullName);
             if (fullVal != null)
                 return fullVal;
-            return Evaluate(resolved.AsSpan()).ToString();
+            // Only a remainder that IS an expression (<d<LOCAL.X>> expanded to a
+            // number, <d(1+2)>) is evaluated here. A remainder that is just another
+            // name means the whole token is a plain symbol starting with D - a
+            // [DEFNAME] alias such as Dog or DeepSeaSerpent - and upstream looks a bare
+            // symbol up in VAR/RESDEF/DEF (CExpression.cpp:1221-1237); the d prefix
+            // exists only in r_WriteVal (CScriptObj.cpp:542). Answering "0" here hid
+            // the name from the resource lookup, so IF (<LOCAL.SPAWN_ARRAY>) was
+            // false for every list whose first member starts with D.
+            if (resolved.Length > 0 && !char.IsLetter(resolved[0]) && resolved[0] != '_')
+                return Evaluate(resolved.AsSpan()).ToString();
         }
 
         // H — force a HEX reading of the rest, the mirror of the D above
@@ -1469,7 +1509,18 @@ public sealed partial class ExpressionParser
         {
             int sp = varExpr.IndexOf(' ');
             bool wantIndex = varExpr[..sp].Equals("RESOURCEINDEX", StringComparison.OrdinalIgnoreCase);
-            return ResourceTypeIndexResolver(ResolveAngleBrackets(varExpr[(sp + 1)..].Trim()), wantIndex);
+            string resArg = varExpr[(sp + 1)..].Trim();
+            string resText = ResolveAngleBrackets(resArg);
+            // Upstream computes ResGetType(Exp_GetVal(arg)) (CScriptObj.cpp:607-612) and a
+            // resource name evaluates there to its full id, type bits included
+            // (CResourceDef.cpp). Here a name evaluates to its bare index, so
+            // <RESOURCETYPE <dARGS>> / <RESOURCETYPE <EVAL x>> had lost the type by the
+            // time it was asked for. When the argument is one decimal/eval wrapper
+            // around something that is not itself a number, ask about that name.
+            if (!wantIndex && Core.Types.ScriptNumber.TryParseToken(resText, out _) &&
+                TryUnwrapNumericWrapper(resArg, out string resName))
+                resText = resName;
+            return ResourceTypeIndexResolver(resText, wantIndex);
         }
 
         // RESDEF/RESDEF0, BCRYPTHASH/BCRYPTVALIDATE, SYSCMD/SYSSPAWN.

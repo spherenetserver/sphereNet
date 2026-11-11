@@ -8,13 +8,23 @@ using SphereNet.Game.Objects.Items;
 namespace SphereNet.Game.PlayerBots;
 
 /// <summary>Fighting. A bot defends itself against anything that attacks it; a
-/// fighter out of a guarded town also picks fights with monsters it rates itself
-/// against - ones it can see (a monster behind a fence or a wall is no prey). Every
-/// blow, spell and bandage goes through the bot's client, so the combat rules a
+/// fighter out of a guarded town also picks fights with monsters it sizes itself up
+/// against (see the Prey part) - ones it can see (a monster behind a fence or a wall is
+/// no prey) - and a bold one joins a fight a monster has forced on somebody else. Every
+/// blow, spell, potion and bandage goes through the bot's client, so the combat rules a
 /// connected player meets (swing timing, crime and notoriety, spell fizzles, reagents,
-/// bandage delay) apply unchanged. A foe the bot cannot get at - it never stands in
-/// reach of it for <see cref="FoeGiveUpMs"/> - is given up and left alone for
-/// <see cref="FoeAvoidMs"/>; one that keeps striking from out of reach is run from.</summary>
+/// bandage and potion delay) apply unchanged.
+///
+/// One act of a fight: look the fight over (the Tactics part: other attackers, a better
+/// foe, the trend) and break off when it is going badly; look after itself (a potion, a
+/// bandage with the skill for it); then fight the way its kind does - a mage by its
+/// repertoire (the Spellcraft part), an archer keeping its distance and stepping back
+/// from a foe that closes while the bow is not ready, a warrior at arm's length - and an
+/// archer out of arrows with the blade it carries, or not at all.
+///
+/// A foe the bot cannot get at - it never stands in reach of it for
+/// <see cref="FoeGiveUpMs"/> - is given up and left alone for <see cref="FoeAvoidMs"/>;
+/// one that keeps striking from out of reach is run from.</summary>
 public sealed partial class PlayerBotEngine
 {
     /// <summary>Time a bot keeps at a foe it cannot reach.</summary>
@@ -31,9 +41,14 @@ public sealed partial class PlayerBotEngine
         mind.NextScanMs = now + 1500;
         var ch = mind.Char;
 
-        Character? threat = null, prey = null;
-        int threatDist = int.MaxValue, preyDist = int.MaxValue;
+        Character? threat = null;
+        int threatDist = int.MaxValue;
         bool guarded = _world.FindRegion(ch.Position)?.IsGuarded == true;
+        // It looks for a fight of its own choosing only when it has nothing in hand:
+        // not on the way back to its body, at a shop counter or over a kill.
+        bool free = mind.IsFighter && mind.Mode is BotMode.Linger or BotMode.Travel;
+        List<Character>? monsters = null;
+        List<(Character Monster, Character Victim)>? fights = null;
         foreach (var c in _world.GetCharsInRange(ch.Position, 10))
         {
             if (c == ch || c.IsDeleted || c.IsDead || c.MapIndex != ch.MapIndex) continue;
@@ -44,30 +59,47 @@ public sealed partial class PlayerBotEngine
             // Anything set on this bot is fought back: a monster, a player or another
             // bot. A player is a threat once in war mode against it, as a player would
             // read the attack; striking back at an aggressor is not a crime.
-            if (c.FightTarget == ch.Uid && (!c.IsPlayer || c.IsInWarMode))
+            if (IsOn(c, ch))
             {
                 if (avoided && (d > 1 || Math.Abs(c.Z - ch.Z) > ReachZ)) continue;
                 if (d < threatDist) { threat = c; threatDist = d; }
                 continue;
             }
-            if (avoided || guarded || !mind.IsFighter || c.IsPlayer || c.OwnerSerial.IsValid) continue;
-            if (c.NpcBrain is not (NpcBrainType.Monster or NpcBrainType.Berserk or NpcBrainType.Dragon)) continue;
-            // A monster a player is already fighting is that player's: no kill stealing.
-            if (c.FightTarget.IsValid && _world.FindChar(c.FightTarget) is { HasClient: true }) continue;
-            if (d > 8 || d >= preyDist || c.MaxHits > ch.MaxHits * mind.Nerve) continue;
-            // Prey is what it can see: a monster behind a fence is not.
-            if (!_world.CanSeeLOS(ch.Position, c.Position)) continue;
-            // Nor, for a blade, one up on a ledge it cannot climb to.
+            if (avoided || !free || !IsMonster(c)) continue;
+            // A monster somebody else is fighting: theirs, unless they need a hand.
+            if (c.FightTarget.IsValid && _world.FindChar(c.FightTarget) is { IsDead: false, IsPlayer: true } other)
+            {
+                (fights ??= []).Add((c, other));
+                continue;
+            }
+            // Prey: out of the guards' reach, near, and for a blade not up on a ledge
+            // it cannot climb to.
+            if (guarded || d > 8) continue;
             if (!mind.IsArcher && !mind.IsCaster && Math.Abs(c.Z - ch.Z) > ReachZ) continue;
-            prey = c;
-            preyDist = d;
+            (monsters ??= []).Add(c);
         }
         // A real player set on it: the bond with them sours.
         if (threat is { HasClient: true }) OnAttackedByPlayer(mind, threat, now);
         var victim = threat == null ? PickVictim(mind, now, guarded) : null;
-        var foe = threat ?? victim ?? (prey != null && _rng.Next(100) < 70 ? prey : null);
-        if (foe == null) return false;
+        var foe = threat ?? victim;
+        bool assisting = false;
+        if (foe == null && fights != null && PickAssist(mind, fights, now) is { } helped)
+        {
+            foe = helped;
+            assisting = true;
+        }
+        if (foe == null && monsters != null && _rng.Next(100) < 70)
+            foe = PickPrey(mind, monsters, now);
+        if (foe == null)
+            return fights != null && !guarded && ShyAway(mind, fights, now);
         Engage(mind, foe, now);
+        if (assisting)
+        {
+            mind.Tac.Assisting = true;
+            WindowAssists++;
+            mind.Note(now, $"joins the fight against {foe.GetName()}");
+            if (_rng.Next(100) < 60) Speak(mind, "combat_assist", fallback: null);
+        }
         if (victim != null && _rng.Next(100) < 70) Speak(mind, "pk_taunt", fallback: null);
         // Set on in a guarded town by a criminal or a murderer: call the guards, as
         // anyone would (the words reach the guard call like a player's).
@@ -78,12 +110,25 @@ public sealed partial class PlayerBotEngine
 
     private void Engage(BotMind mind, Character foe, long now)
     {
-        if (mind.Mode != BotMode.Fight) mind.ResumeMode = mind.Mode == BotMode.Flee ? BotMode.Travel : mind.Mode;
+        var tac = mind.Tac;
+        if (mind.Mode != BotMode.Fight)
+        {
+            mind.ResumeMode = mind.Mode == BotMode.Flee ? BotMode.Travel : mind.Mode;
+            // A new fight: nothing is known of it yet.
+            tac.EndFight();
+        }
         mind.Mode = BotMode.Fight;
         mind.Foe = foe;
         mind.FightStartedMs = now;
         mind.FightInReachMs = now;
         mind.TilePath = null;
+        tac.NextLookMs = now + 500;
+        tac.SwitchedMs = now;
+        tac.SampleFoe = 0;
+        tac.FoeLossRate = 0;
+        tac.NextSpellMs = now + _rng.Next(100, 500);
+        NoteFoe(mind, foe, now);
+        NoteHuntFoe(mind, foe);
         mind.Note(now, $"fights {foe.GetName()} at {foe.Position}");
         WindowFights++;
         mind.Client!.HandleAttack(foe.Uid.Value);
@@ -96,6 +141,7 @@ public sealed partial class PlayerBotEngine
         var ch = mind.Char;
         var foe = mind.Foe;
         var client = mind.Client;
+        var tac = mind.Tac;
         if (client == null || foe == null || foe.IsDeleted || foe.IsDead || foe.MapIndex != ch.MapIndex ||
             ch.Position.GetDistanceTo(foe.Position) > 18 || now - mind.FightStartedMs > 180_000)
         {
@@ -110,38 +156,54 @@ public sealed partial class PlayerBotEngine
             return;
         }
 
-        int hp = ch.MaxHits > 0 ? ch.Hits * 100 / ch.MaxHits : 100;
-        if (hp < mind.FleeAt)
+        // The fight looked over: who else is on it, and whether another foe comes first.
+        foe = LookAbout(mind, foe, now);
+        NoteFoe(mind, foe, now);
+
+        int hp = Pct(ch);
+        if (WhyRetreat(mind, foe, now, hp) is { } why)
         {
-            client.HandleWarMode(false);
-            mind.Mode = BotMode.Flee;
-            mind.FleeFrom = foe.Position;
-            mind.FleeUntilMs = now + _rng.Next(10_000, 20_000);
-            mind.TilePath = null;
-            if (_rng.Next(100) < 50) Speak(mind, "combat_flee", fallback: null);
-            mind.NextActMs = now + 100;
+            StartRetreat(mind, foe, now, why);
             return;
         }
 
-        if (ch.IsPoisoned && now >= mind.NextCureMs && TryCure(mind, now))
+        bool caster = mind.IsCaster;
+        // What it carries for itself: a potion when it matters, a bandage with the
+        // skill for it. A caster heals and cures by spell first (below).
+        if (TryDrink(mind, now, hp, foe))
+        {
+            mind.NextActMs = now + 400;
+            return;
+        }
+        if (hp < (caster ? 45 : 65) && TryBandageSelf(mind, now))
         {
             mind.NextActMs = now + 400;
             return;
         }
 
-        if (hp < 60 && now >= mind.NextHealMs && TryHeal(mind, now, hp))
+        // The bow: are there arrows left?
+        var weapon = ch.FightWeapon();
+        if (weapon != null && CombatHelper.IsRangedWeapon(weapon))
         {
-            mind.NextActMs = now + 400;
-            return;
+            CheckAmmo(mind, now);
+            weapon = ch.FightWeapon();
+            if (tac.OutOfAmmo && weapon != null && CombatHelper.IsRangedWeapon(weapon))
+            {
+                // Neither arrows nor a blade: nothing to fight with. Off to buy some.
+                LeaveForAmmo(mind, foe, now);
+                return;
+            }
         }
+        bool shoots = ShootsNow(mind);
+        bool distant = shoots || (caster && !tac.Brawling);
 
         int dist = ch.Position.GetDistanceTo(foe.Position);
         // Keep the range the weapon wants: blades close in, bows and casters hang back.
-        int want = mind.IsArcher ? 6 : mind.IsCaster ? 5 : Math.Max(1, CombatHelper.GetWeaponRange(EquippedWeapon(ch)).Max);
+        int want = WantedRange(mind, shoots);
         // In reach is where a blow lands: the combat rule wants sight even next to the
         // foe, so one on a ledge above or below is not in reach however near it stands.
         bool sight = dist <= 12 && Math.Abs(ch.Z - foe.Z) <= ReachZ && _world.CanSeeLOS(ch.Position, foe.Position);
-        if (dist <= want && sight)
+        if (dist <= (distant ? 10 : want) && sight)
             mind.FightInReachMs = now;
         else if (now - mind.FightInReachMs > FoeGiveUpMs)
         {
@@ -149,25 +211,53 @@ public sealed partial class PlayerBotEngine
             return;
         }
 
-        if (mind.IsCaster && sight && now >= mind.NextCastMs && ch.Mana >= 20 && dist <= 10 && !ch.TryGetCastingSpell(out _) &&
-            PickAttackSpell(ch) is { } attack)
-        {
-            client.HandleCastSpell(attack, foe.Uid.Value);
-            mind.NextCastMs = now + _rng.Next(3000, 4500);
-            mind.NextActMs = now + 500;
+        if (caster && ActMage(mind, foe, now, dist, sight, hp, IsGuardedAt(ch.Position)))
             return;
+        // Out of mana it may have closed in to brawl; the range it wants is then a fist's.
+        if (caster && tac.Brawling)
+        {
+            distant = false;
+            want = WantedRange(mind, shoots);
         }
+
+        // The engine drops the fight target on some refusals (a cast, a war-mode
+        // change): a fighter that means to strike takes it up again.
+        if ((shoots || !distant) && ch.FightTarget != foe.Uid && !ch.IsCasting)
+            client.HandleAttack(foe.Uid.Value);
+
+        if (shoots && Kite(mind, foe, now, dist, sight, want))
+            return;
 
         bool stepped = false;
         bool run = dist > want + 2;
         if (dist > want || !sight)
             stepped = StepToward(mind, foe.Position, run, searchWithin: 14);
-        else if ((mind.IsArcher || mind.IsCaster) && dist < 3)
+        else if (caster && distant && dist < want - 1 && IsOn(foe, ch) && !IsHeld(foe) && !ch.IsCasting)
         {
+            // A caster does not let a blade come to it: back to its distance.
             run = true;
             stepped = StepToward(mind, Away(ch.Position, foe.Position, 4), run: true);
         }
+        // Standing its ground it faces its foe, as a player turns to: where the
+        // combat rules ask for it (COMBAT_FACECOMBAT) no blow starts otherwise.
+        if (!stepped && sight && !ch.IsCasting) client.FaceTarget(foe);
         mind.NextActMs = now + (stepped ? MovementEngine.GetMoveDelay(ch.IsMounted, run) : Math.Min(StepDelay(mind, false, run, now), 350));
+    }
+
+    /// <summary>An archer with neither arrows nor a blade leaves the fight - running
+    /// if the foe is after it - and its next trip is to where arrows are sold.</summary>
+    private void LeaveForAmmo(BotMind mind, Character foe, long now)
+    {
+        mind.NextSupplyCheckMs = 0;
+        mind.LingerUntilMs = Math.Min(mind.LingerUntilMs, now + 5000);
+        if (IsOn(foe, mind.Char))
+        {
+            StartRetreat(mind, foe, now, "out of ammunition");
+            return;
+        }
+        mind.Note(now, $"leaves {foe.GetName()} alone: out of ammunition");
+        mind.AvoidFoes[foe.Uid.Value] = now + 60_000;
+        EndFight(mind, now, won: false);
     }
 
     /// <summary>A foe the bot has not stood in reach of for a while: behind a fence,
@@ -190,6 +280,9 @@ public sealed partial class PlayerBotEngine
             mind.FleeUntilMs = now + _rng.Next(8_000, 14_000);
             mind.FleeTarget = null;
             mind.TilePath = null;
+            mind.Tac.Escape = BotEscape.Run;
+            mind.Tac.EscapeSinceMs = now;
+            mind.Tac.GuardPoint = null;
             mind.NextActMs = now + 100;
             return;
         }
@@ -202,91 +295,38 @@ public sealed partial class PlayerBotEngine
         if (won && _rng.Next(100) < 40) Speak(mind, "combat_victory", fallback: null);
         var foe = mind.Foe;
         mind.EndFightState();
+        mind.Tac.EndFight();
         mind.Mode = mind.ResumeMode;
         mind.ResetLeg(now);
         mind.NextActMs = now + _rng.Next(800, 2500);
+        // Whatever else was on it is seen at once, not after the walk to the body.
+        mind.NextScanMs = now;
         // A player killer moves on from where it killed, after the body.
         if (won && IsPk(mind)) mind.LingerUntilMs = 0;
         // Won beside the player it goes about with: that is a bond.
         if (won && foe is { IsPlayer: false }) OnFightWonBeside(mind, now);
+        // A kind it has beaten is one it goes for again.
+        if (won && foe is { IsPlayer: false }) RememberBeaten(mind, foe);
+        if (won && foe is { IsPlayer: false }) NoteHuntKill(mind);
         // The body of what it killed: supplies off a monster, anything off a victim.
-        if (won && foe != null && !mind.Char.IsDead)
-            StartLoot(mind, foe, now);
+        if (won && foe != null && !mind.Char.IsDead && StartLoot(mind, foe, now))
+            mind.Tac.ArmsDirty = true;
     }
 
-    private void ActFlee(BotMind mind, long now)
-    {
-        var ch = mind.Char;
-        var foe = mind.Foe;
-        bool clear = foe == null || foe.IsDead || foe.IsDeleted || ch.Position.GetDistanceTo(foe.Position) >= 16;
-        if (now >= mind.FleeUntilMs || clear)
-        {
-            int hp = ch.MaxHits > 0 ? ch.Hits * 100 / ch.MaxHits : 100;
-            if (!clear && foe != null && hp >= mind.FleeAt + 15 && !mind.Avoids(foe, now))
-            {
-                Engage(mind, foe, now);
-                return;
-            }
-            mind.EndFightState();
-            mind.Mode = mind.ResumeMode;
-            mind.ResetLeg(now);
-            mind.NextActMs = now + 500;
-            return;
-        }
-        if (now >= mind.NextHealMs && TryHeal(mind, now, ch.MaxHits > 0 ? ch.Hits * 100 / ch.MaxHits : 100))
-        {
-            mind.NextActMs = now + 300;
-            return;
-        }
-        var from = foe?.Position ?? mind.FleeFrom;
-        if (ch.IsPoisoned && now >= mind.NextCureMs && TryCure(mind, now))
-        {
-            mind.NextActMs = now + 300;
-            return;
-        }
-        // Run for the road, away from the threat, rather than straight into a wall.
-        if (mind.FleeTarget == null || now - mind.FleeTargetMs > 3000)
-        {
-            mind.FleeTarget = FleePoint(ch.Position, from) ?? WideFleePoint(ch.Position, from);
-            mind.FleeTargetMs = now;
-        }
-        bool stepped = StepToward(mind, mind.FleeTarget ?? Away(ch.Position, from, 8), run: true, searchWithin: 30);
-        mind.NextActMs = now + (stepped ? MovementEngine.GetMoveDelay(ch.IsMounted, true) : 300);
-    }
-
-    /// <summary>Greater Heal for a caster with the mana, else a bandage on itself,
-    /// else a heal potion when it is going badly.</summary>
+    /// <summary>Mend itself: a caster's heal (Greater Heal or Heal, as the wound and
+    /// its mana call for), else a bandage when it has the Healing for one. Potions are
+    /// drunk by <see cref="TryDrink"/>, behind their own delay.</summary>
     private bool TryHeal(BotMind mind, long now, int hp)
     {
         var ch = mind.Char;
-        var client = mind.Client!;
-        if (mind.IsCaster && ch.Mana >= 11 && !ch.TryGetCastingSpell(out _) && HasSpell(ch, SpellType.GreaterHeal))
+        if (mind.Client == null) return false;
+        if (mind.IsCaster && !ch.IsCasting && HealChoice(mind, hp, null) is { } heal && CastOn(mind, heal, ch, now))
         {
-            client.HandleCastSpell(SpellType.GreaterHeal, ch.Uid.Value);
-            mind.NextHealMs = now + 4000;
+            mind.NextHealMs = now + 3000;
             return true;
         }
-        var bandage = FindInPack(ch, i => i.ItemType == ItemType.Bandage);
-        if (bandage != null)
-        {
-            client.HandleDoubleClick(bandage.Uid.Value);
-            if (client.HasPendingTarget)
-                client.HandleTargetResponse(0, client.ActiveTargetCursorId, ch.Uid.Value, ch.X, ch.Y, ch.Z, 0);
-            mind.NextHealMs = now + 9000;
-            return true;
-        }
-        if (hp < 40)
-        {
-            var potion = FindInPack(ch, i => i.ItemType == ItemType.Potion &&
-                i.GetName().Contains("heal", StringComparison.OrdinalIgnoreCase));
-            if (potion != null)
-            {
-                client.HandleDoubleClick(potion.Uid.Value);
-                mind.NextHealMs = now + 10_000;
-                return true;
-            }
-        }
-        mind.NextHealMs = now + 5000;
+        if (TryBandageSelf(mind, now)) return true;
+        mind.NextHealMs = now + 3000;
         return false;
     }
 
@@ -319,22 +359,20 @@ public sealed partial class PlayerBotEngine
         return p.GetDistanceTo(threat) > here.GetDistanceTo(threat) ? p : null;
     }
 
-    /// <summary>Poisoned: Cure for a caster with the mana, else a cure potion.</summary>
+    /// <summary>Poisoned: Cure for a caster who can cast it, else a cure potion.</summary>
     private bool TryCure(BotMind mind, long now)
     {
         var ch = mind.Char;
         var client = mind.Client;
         mind.NextCureMs = now + 5000;
         if (client == null) return false;
-        if (mind.IsCaster && ch.Mana >= 6 && !ch.TryGetCastingSpell(out _) && HasSpell(ch, SpellType.Cure))
-        {
-            client.HandleCastSpell(SpellType.Cure, ch.Uid.Value);
+        if (mind.IsCaster && !ch.IsCasting && CanCast(mind, SpellType.Cure) && CastOn(mind, SpellType.Cure, ch, now))
             return true;
-        }
-        var potion = FindInPack(ch, i => i.ItemType == ItemType.Potion &&
-            i.GetName().Contains("cure", StringComparison.OrdinalIgnoreCase));
+        if (Clients.ClientWorldFeaturesHandler.HasPotionUsedMarker(ch)) return false;
+        var potion = FindPotion(ch, SpellType.Cure, SpellType.ArchCure);
         if (potion == null) return false;
         client.HandleDoubleClick(potion.Uid.Value);
+        WindowPotions++;
         mind.NextCureMs = now + 10_000;
         return true;
     }
@@ -361,24 +399,6 @@ public sealed partial class PlayerBotEngine
     internal static bool HasSpell(Character ch, SpellType spell) =>
         !Character.SpellbookRequiredEnabled ||
         (ch.FindSpellbook((int)spell) is { } book && book.ContainsSpell((int)spell));
-
-    /// <summary>An attack spell from its book, the stronger ones more often with the
-    /// magery for them; none when its book holds no attack spell.</summary>
-    private SpellType? PickAttackSpell(Character ch)
-    {
-        int magery = ch.GetSkill(SkillType.Magery);
-        int roll = _rng.Next(100);
-        if (magery >= 800 && roll < 45 && HasSpell(ch, SpellType.EnergyBolt)) return SpellType.EnergyBolt;
-        if (magery >= 600 && roll < 75 && HasSpell(ch, SpellType.Lightning)) return SpellType.Lightning;
-        if (magery >= 300 && roll < 90 && HasSpell(ch, SpellType.Fireball)) return SpellType.Fireball;
-        if (HasSpell(ch, SpellType.MagicArrow)) return SpellType.MagicArrow;
-        foreach (var s in AttackSpells)
-            if (HasSpell(ch, s)) return s;
-        return null;
-    }
-
-    private static readonly SpellType[] AttackSpells =
-        [SpellType.Fireball, SpellType.Lightning, SpellType.Harm, SpellType.EnergyBolt, SpellType.MindBlast];
 
     private Item? FindInPack(Character ch, Func<Item, bool> match)
     {

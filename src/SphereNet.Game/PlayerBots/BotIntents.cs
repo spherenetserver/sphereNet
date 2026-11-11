@@ -61,6 +61,8 @@ public enum BotIntentKind
     Dismiss,
     /// <summary>Do you remember me.</summary>
     Remember,
+    /// <summary>What is your plan, what next, why.</summary>
+    Plan,
 }
 
 /// <summary>What a player's line asks for. <see cref="PlaceType"/> is the destination
@@ -275,7 +277,7 @@ public sealed class BotIntents
         BotIntentKind.Carry, BotIntentKind.Gift, BotIntentKind.Appraise, BotIntentKind.Remember, BotIntentKind.Friend,
         BotIntentKind.Companion, BotIntentKind.Dismiss, BotIntentKind.LeaveParty, BotIntentKind.Status,
         BotIntentKind.Stay, BotIntentKind.Gate, BotIntentKind.Mark, BotIntentKind.Guide, BotIntentKind.Protect,
-        BotIntentKind.Heal, BotIntentKind.Buff, BotIntentKind.Follow, BotIntentKind.Doing,
+        BotIntentKind.Heal, BotIntentKind.Buff, BotIntentKind.Follow, BotIntentKind.Plan, BotIntentKind.Doing,
         BotIntentKind.Here, BotIntentKind.WhoAreYou, BotIntentKind.News,
     ];
 

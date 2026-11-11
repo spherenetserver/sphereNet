@@ -511,7 +511,8 @@ public static partial class Program
 
     private static void BroadcastNearby(Point3D center, int range, PacketWriter packet, uint excludeUid)
     {
-        if (_recordingEngine.HasActiveRecordings)
+        // Null only where the host was never started (a harness driving one service).
+        if (_recordingEngine is { HasActiveRecordings: true })
         {
             var built = packet.Build();
             _recordingEngine.CaptureFromBroadcast(center, range, built.Span.ToArray());
@@ -1394,9 +1395,12 @@ public static partial class Program
     private static void OnResyncRequest(NetState state)
     {
         if (!_clients.TryGetValue(state.Id, out var client)) return;
-        _log.LogWarning("[resync_request] Client #{Id} requested resync — walk seq was {Seq}",
+        // Debug, not Warning: the line is written per packet, and the packet is the
+        // client's to repeat. HandleResyncRequest refreshes the requester alone and
+        // limits the full refresh (Source-X PacketResynchronize, receive.cpp:590-606).
+        _log.LogDebug("[resync_request] Client #{Id} requested resync - walk seq was {Seq}",
             state.Id, state.WalkSequence);
-        client.Resync();
+        client.HandleResyncRequest();
     }
 
     /// <summary>
@@ -1430,20 +1434,31 @@ public static partial class Program
     /// fixed-location effect where the character stood and where it arrived
     /// (EffectLocation EFFECT_XYZ, CCharSpell.cpp:236) and plays the sound; an
     /// insubstantial character shows nothing. <paramref name="from"/> is null when
-    /// the caller no longer knows the starting point.</summary>
-    private static void ShowTeleportEffect(Character ch, Point3D? from)
+    /// the caller no longer knows the starting point.
+    ///
+    /// A caller that passes an effect or a sound of its own - Spell_Recall hands over
+    /// the spell's EFFECT_ID and SOUND (CCharSpell.cpp:419-421) - gets exactly those:
+    /// the configured pair is looked up only when NEITHER is given (:178), and then
+    /// not for an insubstantial character.</summary>
+    private static void ShowTeleportEffect(Character ch, Point3D? from, int ownEffect = 0, int ownSound = 0)
     {
-        if (ch.IsDeleted || ch.IsStatFlag(StatFlag.Insubstantial))
+        if (ch.IsDeleted)
             return;
-        bool staff = ch.IsPlayer &&
-                     ch.PrivLevel >= PrivLevel.GM &&
-                     !ch.IsStatFlag(StatFlag.Incognito);
-        int effectId = ch.IsPlayer
-            ? (staff ? _config.TeleportEffectStaff : _config.TeleportEffectPlayers)
-            : _config.TeleportEffectNpc;
-        int soundId = ch.IsPlayer
-            ? (staff ? _config.TeleportSoundStaff : _config.TeleportSoundPlayers)
-            : _config.TeleportSoundNpc;
+        int effectId = ownEffect, soundId = ownSound;
+        if (ownEffect == 0 && ownSound == 0)
+        {
+            if (ch.IsStatFlag(StatFlag.Insubstantial))
+                return;
+            bool staff = ch.IsPlayer &&
+                         ch.PrivLevel >= PrivLevel.GM &&
+                         !ch.IsStatFlag(StatFlag.Incognito);
+            effectId = ch.IsPlayer
+                ? (staff ? _config.TeleportEffectStaff : _config.TeleportEffectPlayers)
+                : _config.TeleportEffectNpc;
+            soundId = ch.IsPlayer
+                ? (staff ? _config.TeleportSoundStaff : _config.TeleportSoundPlayers)
+                : _config.TeleportSoundNpc;
+        }
 
         if (effectId > 0)
         {
@@ -1454,6 +1469,20 @@ public static partial class Program
         if (soundId > 0)
             BroadcastNearby(ch.Position, 18,
                 new PacketSound((ushort)soundId, ch.X, ch.Y, ch.Z), 0);
+    }
+
+    /// <summary>A summoned creature running out of time (Spell_Effect_Remove,
+    /// LAYER_SPELL_Summon, CCharSpell.cpp:595-606): the teleport-vanish effect on
+    /// the creature - Effect(EFFECT_XYZ, ITEMID_FX_TELE_VANISH, this, 8, 20) - and
+    /// Sound(0x201), just before it is deleted.</summary>
+    private static void ShowSummonVanish(Character ch)
+    {
+        if (ch.IsDeleted || ch.IsPlayer)
+            return;
+        var at = ch.Position;
+        BroadcastNearby(at, 18, new PacketEffect(2, ch.Uid.Value, 0, 0x3728,
+            at.X, at.Y, (short)at.Z, at.X, at.Y, (short)at.Z, 8, 20, true, false), 0);
+        BroadcastNearby(at, 18, new PacketSound(0x0201, at.X, at.Y, at.Z), 0);
     }
 
     private static PacketEffect TeleportEffectAt(Point3D p, int effectId) =>

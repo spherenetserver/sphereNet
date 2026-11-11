@@ -185,6 +185,14 @@ public sealed partial class GameClient
         if (_character == null || _chatEngine == null || channelName.Length == 0)
             return;
 
+        // A conference is only created under a valid name; the refusal is said
+        // (CChat::CreateChannel, CChat.cpp:29-33).
+        if (create && !IsValidConferenceName(channelName))
+        {
+            Send(PacketChatSystem.MakeSystemMessage(PacketChatSystem.InvalidConferenceName));
+            return;
+        }
+
         // Source-X checks the destination FIRST and only then leaves the old channel
         // (JoinChannel, CChat.cpp:70). Announcing the departure up front meant a wrong
         // password left the speaker in no channel at all - and took a one-member
@@ -394,10 +402,21 @@ public sealed partial class GameClient
             SendToChar?.Invoke(m, pkt);
     }
 
+    /// <summary>CChat::IsValidName for a conference, with the pack's obscene list.</summary>
+    private bool IsValidConferenceName(string name) =>
+        ChatEngine.IsValidConferenceName(name.Trim(),
+            _commands?.Resources != null ? _commands.Resources.IsObscene : null);
+
     private void ChatRename(string newName)
     {
         if (_character == null || _chatEngine == null || newName.Length == 0)
             return;
+        // CChatChannel::RenameChannel, CChatChannel.cpp:142-146.
+        if (!IsValidConferenceName(newName))
+        {
+            Send(PacketChatSystem.MakeSystemMessage(PacketChatSystem.InvalidConferenceName));
+            return;
+        }
         var channel = _chatEngine.Rename(_character.Uid, newName, out string oldName);
         if (channel == null)
             return;

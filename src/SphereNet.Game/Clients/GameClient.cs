@@ -491,7 +491,6 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
             Gumps.Clear();
             View.LastKnownPos.Clear();
             View.LastKnownItemState.Clear();
-            _paperdollThrottle.Clear();
             _logger.LogInformation("Client '{Name}' disconnected", _character.Name);
             _character = null;
         }
@@ -592,8 +591,14 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
             _spellEngine.TriggerDispatcher = triggerDispatcher;
     }
 
-    internal bool TryMountCharacter(Character mount)
+    internal bool TryMountCharacter(Character mount) => TryMountCharacter(mount, out _);
+
+    /// <param name="swappedOut">The creature the rider was on and got off to take
+    /// this one (Horse_Mount's own Horse_UnMount, CCharAct.cpp:4011); null when the
+    /// rider was on foot.</param>
+    internal bool TryMountCharacter(Character mount, out Character? swappedOut)
     {
+        swappedOut = null;
         if (_character == null || _mountEngine == null)
             return false;
 
@@ -607,7 +612,13 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
             return false;
 
         ushort mountItemId = (ushort)Math.Clamp(args.N1, 0, ushort.MaxValue);
-        return _mountEngine.TryMount(_character, mount, mountItemId);
+        // The swap goes through DismountCharacter so @Dismount runs for the mount
+        // being left, as Horse_UnMount runs it (CCharAct.cpp:4040-4047).
+        Character? left = null;
+        bool mounted = _mountEngine.TryMount(_character, mount, mountItemId,
+            () => left = DismountCharacter());
+        swappedOut = left;
+        return mounted;
     }
 
     internal Character? DismountCharacter()

@@ -1,0 +1,10 @@
+# thanks_buff.txt - bota yararlı bir büyü yapana söylenir (bless, protection, strength...). {name} büyüyü yapan.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+buff için sağol!
+sağol {name}
+güzel, sağol
+ooo, eyvallah {name}
+sağol, güçlendim
+[warrior] sağol, işe yarar
+[friend] sağol {name} :)

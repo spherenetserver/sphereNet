@@ -19,6 +19,10 @@ gift_per       100   # a present: one point per this much it is worth (make valu
 gift_max       10    # at most this many points for one present
 raised         8     # the player raised the bot from the dead
 attacked       -15   # the player set on the bot (once per two minutes)
+helped         2     # the player healed, cured or blessed the bot...
+helped_gap     120   # ...at most once this many seconds
+snooped        -3    # the bot caught the player going through its pack
+stolen         -10   # the bot caught the player stealing from it
 
 # Fading: a bond nobody keeps up loses this much a day after this many days unseen.
 decay_days     3

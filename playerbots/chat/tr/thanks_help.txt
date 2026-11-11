@@ -1,0 +1,7 @@
+# thanks_help.txt - daha uygun bir teşekkür yoksa söylenen düz teşekkür. {name} yardım eden.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+sağol!
+sağol {name}
+eyvallah
+teşekkürler {name}

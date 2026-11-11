@@ -93,6 +93,8 @@ public sealed partial class GameClient
     /// <summary>Advance the pending multi-stroke craft (tick pump).</summary>
     internal void TickPendingCraft() => WorldFeatures.TickPendingCraft();
     public void CancelPendingCraftOnInterrupt() => WorldFeatures.CancelPendingCraftOnInterrupt();
+    /// <summary>A craft started with <see cref="BeginPendingCraft"/> has not finished yet.</summary>
+    internal bool HasPendingCraft => WorldFeatures.HasPendingCraft;
 
     internal bool BeginPendingCraft(Crafting.CraftRecipe recipe, Core.Enums.SkillType craftSkill, bool reopenGump,
         int replicationQty = 1) =>

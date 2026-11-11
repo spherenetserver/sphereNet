@@ -153,7 +153,8 @@ public static class CrimeWitnessService
 
         criminal.MakeCriminal(mark);
 
-        if (world?.FindRegion(witness.Position)?.IsFlag(RegionFlag.Guarded) == true)
+        // m_pArea->IsGuarded() (CCharFight.cpp:86): guarded and not SAFE.
+        if (world?.FindRegion(witness.Position)?.IsGuarded == true)
             OnNpcCallGuards?.Invoke(witness, criminal);
     }
 

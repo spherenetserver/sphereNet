@@ -216,7 +216,12 @@ public class Region : IScriptObj
                 if (!_events.Contains(ev)) _events.Add(ev);
     }
 
-    public bool IsGuarded => IsFlag(RegionFlag.Guarded);
+    /// <summary>Source-X CRegion::IsGuarded (CRegion.cpp:713-718): "safe areas do
+    /// not need guards" - the GUARDED flag counts only while SAFE is not set with
+    /// it. The few places Source-X reads the raw flag (the looting ban,
+    /// CCharNPCAct.cpp:1603; the gate colour, CCharSpell.cpp:310) keep using
+    /// <see cref="IsFlag"/>.</summary>
+    public bool IsGuarded => IsFlag(RegionFlag.Guarded) && !IsFlag(RegionFlag.Safe);
 
     /// <summary>A RED guarded area, where notoriety is turned around (murderers pass
     /// as normal, good karma does not): Source-X reads it as IsGuarded() and a non-zero
@@ -225,6 +230,77 @@ public class Region : IScriptObj
     public bool IsGuardedRed =>
         IsGuarded && TryGetTag("RED", out string? red) &&
         SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(red) != 0;
+    /// <summary>The lines a character with a client is told on walking from one area
+    /// into another (CChar::MoveToRegion, CCharAct.cpp:5162-5198).
+    ///
+    /// An area flagged ANNOUNCE says its name and nothing else. Otherwise - and only
+    /// with an area being LEFT, and only for the living - each of these is said
+    /// when it CHANGED between the two areas, never just because the new area has
+    /// it: under / out of the guards' protection (IsGuarded, so a SAFE area is not
+    /// guarded), red / no longer red, PvP safe / not, safe / no longer safe.</summary>
+    public static List<string> CrossingBanners(Region? oldRegion, Region newRegion, bool moverIsDead)
+    {
+        var lines = new List<string>();
+        if (newRegion.IsFlag(RegionFlag.Announce))
+        {
+            string announce = newRegion.TryGetTag("ANNOUNCEMENT", out var custom) &&
+                !string.IsNullOrEmpty(custom) ? custom! : newRegion.Name;
+            lines.Add(Messages.ServerMessages.GetFormatted(Messages.Msg.MsgRegionEnter, announce));
+            return lines;
+        }
+        if (oldRegion == null || moverIsDead)
+            return lines;
+
+        if (newRegion.IsGuarded != oldRegion.IsGuarded)
+        {
+            // The owner comes from the area whose guards are meant: the new one on
+            // the way in, the old one on the way out; "the" when it names none.
+            var guardedArea = newRegion.IsGuarded ? newRegion : oldRegion;
+            string guardOwner = guardedArea.TryGetTag("GUARDOWNER", out var owner) && !string.IsNullOrEmpty(owner)
+                ? owner! : Messages.ServerMessages.Get(Messages.Msg.MsgRegionGuardArt);
+            lines.Add(Messages.ServerMessages.GetFormatted(
+                newRegion.IsGuarded ? Messages.Msg.MsgRegionGuards1 : Messages.Msg.MsgRegionGuards2, guardOwner));
+        }
+
+        bool redNew = newRegion.TagNumber("RED") != 0;
+        bool redOld = oldRegion.TagNumber("RED") != 0;
+        if (redNew != redOld)
+            lines.Add(Messages.ServerMessages.GetFormatted(Messages.Msg.MsgRegionReddef,
+                Messages.ServerMessages.Get(redNew ? Messages.Msg.MsgRegionRedenter : Messages.Msg.MsgRegionRedleft)));
+
+        if (newRegion.IsFlag(RegionFlag.NoPvP) != oldRegion.IsFlag(RegionFlag.NoPvP))
+            lines.Add(Messages.ServerMessages.Get(newRegion.IsFlag(RegionFlag.NoPvP)
+                ? Messages.Msg.MsgRegionPvpsafe : Messages.Msg.MsgRegionPvpnot));
+        if (newRegion.IsFlag(RegionFlag.Safe) != oldRegion.IsFlag(RegionFlag.Safe))
+            lines.Add(Messages.ServerMessages.Get(newRegion.IsFlag(RegionFlag.Safe)
+                ? Messages.Msg.MsgRegionSafetyget : Messages.Msg.MsgRegionSafetylose));
+        return lines;
+    }
+
+    /// <summary>What a character logging in is told about the ground it stands on
+    /// (CClient::Setup_Start, CClientMsg.cpp:2854-2860): in a guarded area that does
+    /// not announce itself, "you are under the protection of [owner] guards" - the
+    /// GUARDOWNER tag, else the default owner text - and, when the area is RED, the
+    /// red-region line.</summary>
+    public static List<string> LoginBanners(Region? region)
+    {
+        var lines = new List<string>();
+        if (region == null || !region.IsGuarded || region.IsFlag(RegionFlag.Announce))
+            return lines;
+        string guardOwner = region.TryGetTag("GUARDOWNER", out var owner) && !string.IsNullOrEmpty(owner)
+            ? owner! : Messages.ServerMessages.Get(Messages.Msg.MsgRegionGuardspt);
+        lines.Add(Messages.ServerMessages.GetFormatted(Messages.Msg.MsgRegionGuardsp, guardOwner));
+        if (region.TagNumber("RED") != 0)
+            lines.Add(Messages.ServerMessages.GetFormatted(Messages.Msg.MsgRegionReddef,
+                Messages.ServerMessages.Get(Messages.Msg.MsgRegionRedenter)));
+        return lines;
+    }
+
+    /// <summary>m_TagDefs.GetKeyNum: a tag read as a number, 0 when unset.</summary>
+    private long TagNumber(string tag) =>
+        TryGetTag(tag, out string? raw) && !string.IsNullOrWhiteSpace(raw)
+            ? SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(raw) : 0;
+
     public bool NoMagic => IsFlag(RegionFlag.NoMagic);
     public bool NoPvP => IsFlag(RegionFlag.NoPvP);
 

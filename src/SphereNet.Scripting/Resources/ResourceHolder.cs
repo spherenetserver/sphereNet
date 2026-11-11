@@ -1193,6 +1193,34 @@ public sealed class ResourceHolder
     }
 
     public IEnumerable<ResourceLink> GetAllResources() => _resources.GetAll();
+
+    private sealed record TypeSlice(ResType Type, int Version, ResourceLink[] Links);
+    private volatile TypeSlice? _typeSlice;
+
+    /// <summary>The resources whose own id is of <paramref name="type"/>, in the order
+    /// <see cref="GetAllResources"/> yields them.
+    ///
+    /// For a caller that looks through one kind of resource again and again. A spawn
+    /// point resolving its MORE1 asks "which [SPAWN] group has this index", and it
+    /// asked by walking all of the table - forty thousand entries of a sorted tree to
+    /// reach a hundred and fifty groups - every time a script wrote MORE1, which the
+    /// worldgen spawners do from @Timer. The slice is rebuilt when the table changes
+    /// (a resync) and remembered for the last type asked for.</summary>
+    public IReadOnlyList<ResourceLink> GetResourcesOfType(ResType type)
+    {
+        var slice = _typeSlice;
+        int version = _resources.Version;
+        if (slice != null && slice.Type == type && slice.Version == version)
+            return slice.Links;
+        var links = new List<ResourceLink>();
+        foreach (var link in _resources.GetAll())
+            if (link.Id.Type == type)
+                links.Add(link);
+        slice = new TypeSlice(type, version, [.. links]);
+        _typeSlice = slice;
+        return slice.Links;
+    }
+
     public int ResourceCount => _resources.Count;
     public int DefNameCount => _defNames.Count;
     public bool TryGetDefMessage(string key, out string value) => _defMessages.TryGetValue(key, out value!);

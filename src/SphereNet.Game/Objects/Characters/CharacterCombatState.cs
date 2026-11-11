@@ -551,11 +551,13 @@ public sealed class CharacterCombatState
         return true;
     }
 
-    /// <summary>ATTACKER.n.DELETE / ATTACKER.DELETE &lt;uid&gt; - drop one entry.</summary>
+    /// <summary>ATTACKER.n.DELETE / ATTACKER.DELETE &lt;uid&gt; - drop one entry. The
+    /// same Attacker_Delete as every other removal (CCharAttacker.cpp:349-359), so
+    /// @CombatDelete fires and an NPC that was fighting the row turns elsewhere.</summary>
     public bool RemoveAttacker(int index)
     {
         if (index < 0 || index >= _attackers.Count) return false;
-        _attackers.RemoveAt(index);
+        Delete(_attackers[index].Uid);
         return true;
     }
 
@@ -583,6 +585,12 @@ public sealed class CharacterCombatState
             return true;
         if (IndexOfAttacker(uid) >= 0)
             return true;
+
+        // The first row on an NPC's list is the start of its combat: @CombatStart,
+        // and RETURN 1 refuses the add (CCharAttacker.cpp:23-27).
+        if (_attackers.Count == 0 && !_owner.IsPlayer && Character.OnNpcCombatStart != null &&
+            !Character.OnNpcCombatStart(_owner, uid))
+            return false;
 
         var ctx = new CombatAddContext { Threat = threat, Ignore = false };
         if (Character.OnCombatAdd != null && !Character.OnCombatAdd(_owner, uid, ctx))
@@ -696,6 +704,16 @@ public sealed class CharacterCombatState
         {
             _attackers.RemoveAt(idx);
             Character.OnCombatDelete?.Invoke(_owner, uid);
+
+            // Source-X Attacker_Delete (CCharAttacker.cpp:339-346): an NPC that was
+            // fighting the character whose row just went drops that target and runs
+            // Fight_Attack(NPC_FightFindBestTarget()) - the next one off the list, or
+            // nobody. Rows go when ATTACKERTIMEOUT passes without the character
+            // doing damage (the elapsed time restarts on damage taken,
+            // CCharFight.cpp:927), when the fight memory retreats, and by script.
+            if (!_owner.IsPlayer && _owner.FightTarget == uid && !_owner.IsDeleted)
+                Character.OnNpcFightRowRemoved?.Invoke(_owner);
+
             if (_attackers.Count == 0)
                 Character.OnCombatEnd?.Invoke(_owner);
         }

@@ -159,6 +159,9 @@ public sealed class SourceXWave253Tests
         var weapon = world.CreateItem();
         weapon.ItemType = ItemType.WeaponSword;
         weapon.SetTag("HITLEECHLIFE", "7");
+        // With EQUIPPEDCAST off every caster's hands are emptied (Spell_CastStart,
+        // CCharSpell.cpp:3609-3615) - staff included - unless the weapon channels.
+        weapon.SetTag("SPELLCHANNELING", "1");
         Assert.True(caster.Equip(weapon, Layer.OneHanded));
 
         Assert.True(engine.CastStart(caster, SpellType.CurseWeapon, caster.Uid, caster.Position) >= 0);

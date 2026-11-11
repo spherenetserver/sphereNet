@@ -329,6 +329,9 @@ public class DefinitionAndSpellRegressionTests
         });
 
         var caster = world.CreateCharacter();
+        // A creature that can speak: one with no SPEECH casts in silence
+        // (NPC_CanSpeak, CCharSpell.cpp:3539-3540).
+        caster.DSpeech.Add(new ResourceId(ResType.Speech, 1));
         caster.MaxMana = 100;
         caster.Mana = 100;
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));

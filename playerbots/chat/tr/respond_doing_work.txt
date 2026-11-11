@@ -1,0 +1,8 @@
+# respond_doing_work.txt - bkz. docs/PLAYERBOTS.md (Talking). {work} botun o an yaptigi is (token_work).
+
+{work}
+{work}, şimdi duramam
+meşgulüm, {work}
+{work} işte, sen?
+{work}, ekmek parası
+{work}, her günkü gibi

@@ -66,9 +66,21 @@ public sealed class FieldAndSummonParityTests
             Assert.True(s.DecayTime > Environment.TickCount64 + 60_000,
                 "field segment still uses the fixed 30s decay"));
 
-        // A field is a spell manifestation, not lootable furniture.
-        Assert.All(segments, s => Assert.True(s.IsAttr(ObjAttributes.Move_Never),
-            "field segment can be picked up"));
+        // A field is a spell manifestation, not lootable furniture - but what keeps
+        // it on the ground is being a spell field, not ATTR_MOVE_NEVER: a cast field
+        // carries ATTR_MAGIC alone (Spell_Field, CCharSpell.cpp:2354), and MOVE_NEVER
+        // is what marks a permanent field Dispel Field leaves alone (:3195).
+        var lifter = world.CreateCharacter();
+        lifter.IsPlayer = true;
+        lifter.PrivLevel = PrivLevel.Player;
+        world.PlaceCharacter(lifter, segments[0].Position);
+        Assert.All(segments, s =>
+        {
+            Assert.False(s.IsAttr(ObjAttributes.Move_Never));
+            Assert.True(s.IsAttr(ObjAttributes.Magic));
+            Assert.False(ItemMoveRules.CanMove(lifter, s, out _), "field segment can be picked up");
+        });
+        world.DeleteObject(lifter);
         // Every field segment is IT_SPELL carrying its spell (Spell_Field,
         // CCharSpell.cpp:2312) - Fire Field included; its touch is the spell.
         Assert.All(segments, s => Assert.Equal(ItemType.Spell, s.ItemType));

@@ -1,0 +1,8 @@
+# respond_doing_work.txt - see docs/PLAYERBOTS.md (Talking). {work} is what the bot is working at (token_work).
+
+{work}
+busy {work}
+{work}, cant stop now
+just {work}, you?
+{work}. gotta eat somehow
+{work}, same as every day

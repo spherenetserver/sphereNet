@@ -195,13 +195,14 @@ public sealed partial class NpcAI
             if (foe != null && foe != npc && !foe.IsDead && !foe.IsDeleted &&
                 foe.MapIndex == npc.MapIndex && foe != master && IsAttackable(foe))
             {
-                bool newFight = npc.FightTarget != foe.Uid;
-                npc.FightTarget = foe.Uid;
-                if (newFight)
-                    NpcAttackCrimeCheck(npc, foe);
-                npc.Memory_Fight_Start(foe);
-                ActFight(npc, foe, 50);
-                return;
+                // `if ( Fight_Attack(...) ) return;` (CCharNPCAct.cpp:1302): a
+                // refused attack leaves the guardian following.
+                var fought = NpcFightAttack(npc, foe);
+                if (fought != null && fought != master)
+                {
+                    ActFight(npc, fought, 50);
+                    return;
+                }
             }
         }
         ActFollow(npc, guarded);

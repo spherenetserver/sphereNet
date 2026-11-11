@@ -267,8 +267,13 @@ public class SkillAuditRegressionTests
         Assert.False(ch.IsStatFlag(StatFlag.Hidden));
     }
 
+    /// <summary>A target cursor left up by one skill button is not an active skill:
+    /// Skill_Wait weighs Skill_GetActive only (CCharSkill.cpp:3984), so the next
+    /// button is not told to wait - @SkillWait sees SKILL_NONE - and the request's own
+    /// SetTargMode() drops the old cursor with @SkillTargetCancel
+    /// (CClientEvent.cpp:648, CClientMsg.cpp:1727-1741).</summary>
     [Fact]
-    public void SkillWait_BlocksNewSkillWhileTargetCursorIsOpen()
+    public void SkillWait_ANewSkillReplacesAnOpenSkillTargetCursor()
     {
         LoadDefinitions("""
             [SKILL 17]
@@ -303,10 +308,9 @@ public class SkillAuditRegressionTests
         Assert.True(client.HasPendingTarget);
         client.HandleUseSkill((int)SkillType.Hiding);
 
-        Assert.Equal((int)SkillType.Healing, waitCurrent);
-        Assert.Equal(-1, targetCancelled);
-        Assert.True(client.HasPendingTarget);
-        Assert.False(ch.IsStatFlag(StatFlag.Hidden));
+        Assert.Equal(-1, waitCurrent);
+        Assert.Equal((int)SkillType.Healing, targetCancelled);
+        Assert.False(client.HasPendingTarget);
     }
 
     [Fact]

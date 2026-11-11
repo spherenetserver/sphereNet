@@ -543,7 +543,12 @@ public static partial class Program
             };
         bool npcLookAtItemUsed = _triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtItem);
         bool npcSeeWantItemUsed = _triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCSeeWantItem);
-        if (npcLookAtItemUsed || npcSeeWantItemUsed)
+        // Only when a script actually has @NPCLookAtItem. The hook used to be wired for
+        // a pack that only has @NPCSeeWantItem as well, where it fires nothing and
+        // hands the want straight back - but its mere presence makes every item a
+        // creature scans "scripted", so each one got a line-of-sight ray on the way to
+        // a trigger that does not exist.
+        if (npcLookAtItemUsed)
             _npcAI.OnNpcLookAtItem = (npc, item, dist, want) =>
             {
                 // Source-X NPC_LookAtItem contract (CCharNPCAct.cpp:954):

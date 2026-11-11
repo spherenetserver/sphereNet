@@ -1,0 +1,8 @@
+# theft_guards.txt - soyulan bot korumalı şehirde muhafızları çağırır (muhafızların duyduğu söz guards). {other} hırsız.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+GUARDS! hırsız!
+GUARDS!!
+guards! {other} hırsız!
+GUARDS, HIRSIZ VAR
+guards yardım, soyuldum

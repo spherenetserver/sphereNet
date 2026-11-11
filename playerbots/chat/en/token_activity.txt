@@ -1,0 +1,11 @@
+# token_activity.txt - a day plan's activity (Hunt, Work, Sell, Shop, Bank, Rest, Social, Wander, Home) = what the bot calls it
+
+Hunt=hunting
+Work=working
+Sell=selling my loot
+Shop=buying supplies
+Bank=a bank run
+Rest=resting up
+Social=hanging out with people
+Wander=looking around
+Home=heading home

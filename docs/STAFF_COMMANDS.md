@@ -134,7 +134,7 @@ These are **not** in-game `.` commands. They are handled by `AdminCommandProcess
 | `LOG` | `<message>` | Write a line to the server log. |
 | `RESPAWN` | — | Source-X `RESPAWN`: every dead NPC that has a home is restocked from its script, moved near its home, given its `@Create` events and resurrected. Spawners are not touched (they refill on their own timers). |
 | `RESPAWN FULL` | — | Delete every spawner's children, refill each spawner fresh, then sweep spawned creatures and items whose spawner no longer exists. Runs in ~25 ms slices per tick; the log reports `[respawn_full] reset N spawners, swept M orphaned spawn children`. In game: `.serv.respawn full`. |
-| `RESTOCK` | — | Restock all vendors. |
+| `RESTOCK` | — | Source-X `RESTOCK`: restock all vendors, then give every spawn point in the world - awake or asleep - one spawn tick: its next check is scheduled and, below its amount, it makes one child (`@Timer` is not fired). A stopped spawn point stays stopped. The spawn points run in ~25 ms slices per tick; the log reports `[restock] ticked N spawn points, M produced a child`. |
 | `VENDORPACKS [CLEAR [min]]` | — | Report vendor backpacks inflated by restocks from before vendor-mode restock (results in the server log); `CLEAR` empties the backpacks holding `min` or more items (default 16, `0` for any) of NPCs the restock touches. Stock boxes, bank gold and worn gear are untouched. |
 | `GARBAGE` | — | World integrity sweep (Source-X FixWeirdness), deletion of objects created but never placed, then a .NET GC. Refused while a save is running. |
 | `SAVESTATICS` | `[file]` | Write every `ATTR_STATIC` item to the statics file (default `spherestatics.scp`). |

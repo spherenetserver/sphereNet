@@ -269,6 +269,7 @@ public sealed partial class PlayerBotEngine
             return true;
         }
         mind.DeadSinceMs = 0;
+        ForgetDeath(ch);
         mind.CorpseUid = Serial.Invalid;
         ch.RemoveTag(CorpseTag);
         DropResRobe(ch);

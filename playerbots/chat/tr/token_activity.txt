@@ -1,0 +1,11 @@
+# token_activity.txt - gunluk planin bir isi (Hunt, Work, Sell, Shop, Bank, Rest, Social, Wander, Home) = botun ona dedigi
+
+Hunt=av
+Work=iş
+Sell=ganimet satmak
+Shop=alışveriş
+Bank=banka işi
+Rest=dinlenmek
+Social=millete karışmak
+Wander=etrafı gezmek
+Home=eve dönmek

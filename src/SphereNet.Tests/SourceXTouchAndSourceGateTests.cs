@@ -262,7 +262,7 @@ public sealed class SourceXTouchAndSourceGateTests
         var helm = env.World.CreateItem();
         helm.BaseId = helmId;
         helm.ItemType = ItemType.Armor;
-        helm.ContainedIn = env.Player.Uid;
+        TestHarness.HoldOnCursor(env.World, env.Player, helm);
 
         // A forged packet names the backpack's layer.
         env.Client.HandleItemEquip(helm.Uid.Value, (byte)Layer.Pack, env.Player.Uid.Value);
@@ -278,7 +278,7 @@ public sealed class SourceXTouchAndSourceGateTests
         var gold = env.World.CreateItem();
         gold.ItemType = ItemType.Gold;
         gold.Amount = 100;
-        gold.ContainedIn = env.Player.Uid;
+        TestHarness.HoldOnCursor(env.World, env.Player, gold);
         var pack = env.Player.Backpack;
 
         env.Client.HandleItemEquip(gold.Uid.Value, (byte)Layer.Helm, env.Player.Uid.Value);

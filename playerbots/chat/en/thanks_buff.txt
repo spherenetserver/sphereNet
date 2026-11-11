@@ -1,0 +1,10 @@
+# thanks_buff.txt - said to whoever cast a helpful spell on the bot (bless, protection, strength...). {name} is the caster.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+ty for the buff!
+thanks {name}
+nice, ty
+ooh, thanks {name}
+ty, feeling stronger
+[warrior] ty, that will help
+[friend] ty {name} :)

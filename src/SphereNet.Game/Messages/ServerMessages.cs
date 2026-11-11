@@ -269,7 +269,6 @@ public static partial class ServerMessages
 
         // ===== Spell / Magic helpers (Source-X uses spell_*; our shorter aliases) =====
         Def("spell_cant_cast", "You cannot cast that spell.");
-        Def("spell_cast_ok", "You cast %s.");
         Def("spell_gen_fizzles", "The spell fizzles");
 
         // ===== Death / Resurrect =====

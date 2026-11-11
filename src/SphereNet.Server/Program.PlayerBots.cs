@@ -65,10 +65,16 @@ public static partial class Program
         engine.LoadDistribution(dataDir);
         engine.LoadMounts(dataDir);
         engine.LoadShopping(dataDir);
+        engine.LoadWork(dataDir);
+        engine.LoadPlans(dataDir);
         engine.LoadBonds(dataDir);
         LoadPlayerBotBrain(engine, dataDir);
         // Deaths become the news bots tell.
         _deathEngine.OnDeath += engine.OnDeath;
+        // What is done to a bot - a heal, a cure, a blessing, a hand in its pack - it reacts to.
+        SphereNet.Game.Magic.SpellEngine.OnHelpfulEffect = engine.OnHelpfulSpell;
+        SphereNet.Game.Skills.Information.ActiveSkillEngine.OnBandageHealed = engine.OnBandaged;
+        SphereNet.Game.Skills.Information.ActiveSkillEngine.OnTheftAttempt = engine.OnTheft;
         SphereNet.Game.Party.PartyManager.OnPartyMessage = engine.OnPartyChat;
         engine.BadSpotFile = Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "playerbots_badspots.txt");
         int badSpots = engine.LoadBadSpots();
@@ -121,7 +127,7 @@ public static partial class Program
                 "[playerbots] online={Count} tick avg={Avg}us max={Max}us deferred={Deferred} steps={Steps} " +
                 "searches={Searches} (failed {Failed}, slowest {SlowSearch}us) doors={Doors} fights={Fights} deaths={Deaths} reclaims={Reclaims} handbacks={HandBacks} rescues={Rescues} badspots={BadSpots} slowest act {SlowAct}us ({SlowWhat}) route {Route}us step {Step}us spawn {Spawn}us moves {Moves} avg {MoveAvg}us max {MoveMax}us at {MoveWhere} " +
                 "watchers={Watchers} seen avg={SeenAvg} max={SeenMax} lines={Lines} replies={Replies} scenes={Scenes} moved={Moved} mounts={Mounts} regears={Regears} robes={Robes} stalldoors={StallDoors} spotswitches={SpotSwitches} stallsearches={StallSearches} " +
-                "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} tends={Tends} orders={Orders} trades={Trades} liftwaits={LiftWaits} badlinks={BadLinks} searchtimeouts={Timeouts} retried={Retried} unlearned={Unlearned} settles={Settles} crowdleaves={CrowdLeaves} " +
+                "purchases={Purchases} meditations={Meditations} pkattacks={PkAttacks} thefts={Thefts} tends={Tends} orders={Orders} trades={Trades} liftwaits={LiftWaits} badlinks={BadLinks} searchtimeouts={Timeouts} retried={Retried} unlearned={Unlearned} arrivalways={ArrivalWays} settles={Settles} crowdleaves={CrowdLeaves} " +
                 "favors={Favors} favorfails={FavorFails} gates={Gates} gifts={Gifts} offers={Offers} newfriends={NewFriends} bondpoints={BondPoints} companionsnow={CompanionsNow} " +
                 "searchq={Queued} denied={Denied} dropped={Dropped} notrun={NotRun} backlog={Backlog} corridors={Corridors} corridoruses={CorridorUses} cornersplits={CornerSplits} " +
                 "waits={Waits} sidesteps={SideSteps} doorway={Doorway} portals={Portals} portalmisses={PortalMisses} noroute={NoRoute} stranded={Stranded} maprescues={MapRescues} " +
@@ -134,7 +140,7 @@ public static partial class Program
                 bots.Watching.Count, bots.WindowSeenSamples > 0 ? (bots.WindowSeenSum * 10 / bots.WindowSeenSamples) / 10.0 : 0,
                 bots.WindowSeenMax, bots.WindowLines, bots.WindowReplies, bots.WindowScenes, bots.WindowMovedHouse, bots.WindowMounts, bots.WindowRegears, bots.WindowRobesShed, bots.WindowStallDoors, bots.WindowSpotSwitches, bots.WindowStallSearches,
                 bots.WindowPurchases, bots.WindowMeditations, bots.WindowPkAttacks, bots.WindowThefts, bots.WindowPartyTends, bots.WindowPartyOrders, bots.WindowTrades, bots.WindowLiftWaits, bots.BadLinks,
-                bots.SearchTimeouts, bots.WindowSearchTimeouts, bots.WindowUnlearned, bots.WindowSettles, bots.WindowCrowdLeaves,
+                bots.SearchTimeouts, bots.WindowSearchTimeouts, bots.WindowUnlearned, bots.WindowArrivalWays, bots.WindowSettles, bots.WindowCrowdLeaves,
                 bots.WindowFavors, bots.WindowFavorFails, bots.WindowGates, bots.WindowGifts, bots.WindowOffers,
                 bots.WindowNewFriends, bots.WindowBondPoints, bots.CompanionCount,
                 bots.WindowSearchQueued, bots.WindowSearchDenied, bots.WindowSearchDropped, bots.WindowSearchesNotRun, bots.WindowSearchBacklog,
@@ -144,6 +150,22 @@ public static partial class Program
                 bots.WindowUnreachableFoes, bots.WindowGiveUps, bots.WindowActFaults, bots.WindowStaticDoors,
                 bots.WindowDeposits, bots.WindowWithdrawals, bots.WindowMarks, bots.WindowMarksTaken, bots.WindowMarksFailed, bots.WindowRecalls, bots.WindowCompanions,
                 bots.WindowPauses, bots.StallReport(), bots.RefusalReport());
+        if (bots.WindowFights > 0)
+            _log.LogInformation("[playerbots] combat {Report}", bots.CombatReport());
+        if (bots.WindowWorkTrips + bots.WindowGathers + bots.WindowSmelts + bots.WindowCrafts + bots.WindowSales > 0)
+            _log.LogInformation(
+                "[playerbots] work: jobs={Jobs} gathers={Gathers} smelts={Smelts} crafts={Crafts} sales={Sales} (gold {Gold}) givenup={GivenUp}",
+                bots.WindowWorkTrips, bots.WindowGathers, bots.WindowSmelts, bots.WindowCrafts, bots.WindowSales,
+                bots.WindowSaleGold, bots.WindowWorkGiveUps);
+        if (bots.WindowPlansMade + bots.WindowPlansKept + bots.WindowPlanFails > 0)
+            _log.LogInformation("[playerbots] plans {Report}", bots.PlanMixReport());
+        if (bots.Watching.Count > 0 || bots.WindowGhostWalks + bots.WindowCorpseRuns + bots.WindowDeathsResumed > 0)
+            _log.LogInformation(
+                "[playerbots] manners turns={Turns} gestures={Gestures} emotes={Emotes} meals={Meals} seats={Seats} practice={Practice} poiscans={PoiScans} " +
+                "thanks={Thanks} theftreacts={TheftReacts} fightreacts={FightReacts} ghostwalks={GhostWalks} ghostraises={GhostRaises} corpseruns={CorpseRuns} deathsresumed={DeathsResumed} conjurewaits={ConjureWaits} straymounts={Strays}",
+                bots.WindowTurns, bots.WindowGestures, bots.WindowEmotes, bots.WindowMeals, bots.WindowSeats, bots.WindowPractice, bots.WindowPoiScans,
+                bots.WindowThanks, bots.WindowTheftReacts, bots.WindowFightReacts, bots.WindowGhostWalks, bots.WindowGhostRaises,
+                bots.WindowCorpseRuns, bots.WindowDeathsResumed, bots.WindowConjureWaits, bots.StrayMounts);
         if (_botBrain is { } brain && bots.WindowThoughts + Interlocked.Read(ref brain.Thoughts) > 0)
         {
             long n = Interlocked.Exchange(ref brain.Thoughts, 0), total = Interlocked.Exchange(ref brain.TotalMs, 0);
@@ -168,7 +190,7 @@ public static partial class Program
     }
 
     /// <summary>Console PLAYERBOTS: STALLS [n] lists the bots stalled longest, TRACE
-    /// &lt;uid|name&gt; one bot's last decisions, NEAR x y [range [map]] the bots about a
+    /// &lt;uid|name&gt; one bot's last decisions, PLAN &lt;uid|name&gt; its drives, options and plan, NEAR x y [range [map]] the bots about a
     /// point and what they do, THINK &lt;bot&gt; &lt;line&gt; a line put to a bot's brain, PLACES [n] the fullest places, NAVCHECK [LINKS [LEARN]] the road data
     /// against the running world. Runs on the main loop (it reads bot state).</summary>
     private static void HandlePlayerBotsCommand(string args, Action<string> output)
@@ -201,6 +223,9 @@ public static partial class Program
             case "TRACE" when parts.Length > 1:
                 lines = bots.TraceOf(string.Join(' ', parts.Skip(1)));
                 break;
+            case "PLAN" when parts.Length > 1:
+                lines = bots.PlanReport(string.Join(' ', parts.Skip(1)));
+                break;
             case "NAVCHECK":
             {
                 bool links = parts.Any(p => p.Equals("LINKS", StringComparison.OrdinalIgnoreCase));
@@ -222,7 +247,7 @@ public static partial class Program
                 break;
             }
             default:
-                output("PLAYERBOTS STALLS [n] | PLAYERBOTS TRACE <uid|name> | PLAYERBOTS NAVCHECK [LINKS [LEARN]]");
+                output("PLAYERBOTS STALLS [n] | PLAYERBOTS TRACE <uid|name> | PLAYERBOTS PLAN <uid|name> | PLAYERBOTS NAVCHECK [LINKS [LEARN]]");
                 output($"online {bots.Count}, portals {bots.PortalPlaces} (+{bots.PortallessPlaces} without), corridors {bots.CorridorCount}, rescues {bots.StuckRescues}, stranded {bots.StrandedRescues}");
                 return;
         }

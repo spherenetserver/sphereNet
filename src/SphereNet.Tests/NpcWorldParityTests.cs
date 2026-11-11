@@ -145,9 +145,15 @@ public sealed class NpcWorldParityTests
             mine.BaseId = 0x0F0E;
             pack.AddItem(mine);
 
+            // The price is asked for on the console prompt (addPromptConsole with
+            // CLIMODE_PROMPT_VENDOR_PRICE, CCharNPCPet.cpp:541), not in an input gump;
+            // for an item that cannot be priced no prompt is opened, so an answer
+            // sets nothing.
             PetCommand(b.Client, "bob price");
             b.Client.HandleTargetResponse(0, b.Client.ActiveTargetCursorId, mine.Uid.Value, 0, 0, 0, 0);
             Assert.Empty(b.Client.Dialogs.PendingInputDlg);
+            b.Client.HandlePromptResponse(b.Owner.Uid.Value, mine.Uid.Value, 1, "250");
+            Assert.Equal(0, mine.Price);
 
             var stock = VendorEngine.GetVendorBox(b.Vendor, Layer.VendorStock)!;
             var forSale = b.World.CreateItem();
@@ -156,7 +162,9 @@ public sealed class NpcWorldParityTests
 
             PetCommand(b.Client, "bob price");
             b.Client.HandleTargetResponse(0, b.Client.ActiveTargetCursorId, forSale.Uid.Value, 0, 0, 0, 0);
-            Assert.Contains(b.Client.Dialogs.PendingInputDlg.Keys, k => k.Item1 == forSale.Uid.Value);
+            Assert.Empty(b.Client.Dialogs.PendingInputDlg);
+            b.Client.HandlePromptResponse(b.Owner.Uid.Value, forSale.Uid.Value, 1, "250gp");
+            Assert.Equal(250, forSale.Price);
         }
         finally { VendorEngine.World = old; }
     }

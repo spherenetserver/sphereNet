@@ -192,33 +192,11 @@ public sealed partial class GameClient : IHouseDesignClient
         }
 
         // 0xD7 0x1E — EquipLastWeapon client macro (Source-X PacketEquipLastWeapon,
-        // receive.cpp:4120): re-wield the last weapon held. No item is created —
-        // HandleItemEquip re-checks "still in my possession", so a dropped/traded
-        // weapon can't be summoned back.
+        // receive.cpp:4120): re-wield the last weapon held, through the ordinary
+        // pickup and equip (ItemPickup, then ItemEquip, :4142-4145).
         if (subCmd == EncodedCommandRegistry.EquipLastWeapon)
         {
-            var lastUid = _character.LastWeaponUid;
-            if (!lastUid.IsValid)
-                return;
-            if (_world.FindObject(lastUid) is not Item weapon || weapon.IsDeleted)
-                return;
-            // Already wielding it → no-op (mirrors Source-X's m_uidWeapon check).
-            if (ReferenceEquals(_character.GetEquippedItem(Layer.OneHanded), weapon) ||
-                ReferenceEquals(_character.GetEquippedItem(Layer.TwoHanded), weapon))
-                return;
-            // Mirror Source-X ItemPickup: pull the weapon out of the player's own
-            // pack into hand so the equip's possession check passes. A weapon that
-            // isn't sitting in the player's pack (dropped/traded/nested) is left alone.
-            if (weapon.ContainedIn != _character.Uid)
-            {
-                if (_world.FindObject(weapon.ContainedIn) is not Item pack ||
-                    pack.ContainedIn != _character.Uid)
-                    return;
-                pack.RemoveItem(weapon);
-                weapon.ContainedIn = _character.Uid;
-            }
-            byte layer = (byte)(weapon.IsTwoHanded ? Layer.TwoHanded : Layer.OneHanded);
-            HandleItemEquip(lastUid.Value, layer, _character.Uid.Value);
+            Inventory.HandleEquipLastWeapon();
             return;
         }
 

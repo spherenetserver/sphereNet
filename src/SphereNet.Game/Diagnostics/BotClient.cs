@@ -257,8 +257,11 @@ public sealed class BotClient : IDisposable
                 return false;
             }
 
-            // Step 7: Select character (slot 0)
-            await SendPacketAsync(BotPacketBuilder.BuildCharSelect(0, _charName), ct);
+            // Step 7: Play the character in slot 0 - or, on an account that has none
+            // yet, create it. A play request on an empty slot is refused.
+            await SendPacketAsync(BotPacketBuilder.IsCharListSlotEmpty(response, 0)
+                ? BotPacketBuilder.BuildCharCreate(_charName)
+                : BotPacketBuilder.BuildCharSelect(0, _charName), ct);
 
             // Step 8: Wait for login confirm (0x1B)
             bool loggedIn = false;

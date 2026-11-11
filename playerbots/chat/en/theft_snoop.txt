@@ -1,0 +1,10 @@
+# theft_snoop.txt - said to somebody the bot caught looking through its pack. {name} is the snooper.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+hey! hands off my pack
+oi {name}, get out of my bag
+what are u doing in my pack?
+keep ur hands to urself {name}
+i saw that, {name}
+[shy] um.. thats my bag
+[warrior] touch my pack again and see

@@ -457,13 +457,18 @@ public sealed class ClientScriptConsoleHandler
             // Summon Creature cast — the completed cast conveys the selection
             // (Source-X stores m_atMagery.m_uiSummonID then Spell_CastStart).
             // Outside a pending cast menu, keep the direct CV_SUMMON verb.
+            // The sm_summon_familiar menu (Cmd_Skill_Magery, CClientUse.cpp:1037-1047)
+            // picks through the same SUMMON entries. Its pick continues the spell
+            // that opened the menu, so Summon Familiar is paid for as itself; upstream's
+            // CV_SUMMON always carries on as SPELL_Summon (CClient.cpp:1547-1577).
             if (_character != null &&
                 _character.TryGetTag("CAST_MENU_SPELL", out string? pendingSummon) &&
-                pendingSummon == ((int)SpellType.SummonCreature).ToString())
+                ScriptNumber.TryParseInt(pendingSummon, out int pendingSummonId) &&
+                (SpellType)pendingSummonId is SpellType.SummonCreature or SpellType.SummonFamiliar)
             {
                 _character.RemoveTag("CAST_MENU_SPELL");
                 _character.SetTag("SUMMON_SELECT", args.Trim());
-                (_client as GameClient)?.ContinueMenuCast(SpellType.SummonCreature, _character.Uid.Value);
+                (_client as GameClient)?.ContinueMenuCast((SpellType)pendingSummonId, _character.Uid.Value);
                 return true;
             }
             // Reference CV_SUMMON: summon the given chardef as a temporary

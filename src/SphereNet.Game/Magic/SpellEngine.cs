@@ -113,7 +113,10 @@ public sealed partial class SpellEngine
         if (staysEquipped || HasSpellChanneling(held))
             return true;
 
-        var pack = caster.Backpack;
+        // ItemBounce puts it in the pack, making one for a caster who has none
+        // (GetPackSafe) - a creature that casts with a weapon in hand has no pack
+        // until then (Spell_Unequip, CCharSpell.cpp:2893).
+        var pack = caster.Backpack is { IsDeleted: false } own ? own : caster.GetPackSafe();
         if (pack == null || pack.IsDeleted)
         {
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryBusyhands));
@@ -185,6 +188,12 @@ public sealed partial class SpellEngine
     /// font (0 = default). Preferred over <see cref="OnSpellWords"/> when set.</summary>
     public Action<Character, string, ushort, byte>? OnSpellWordsEx { get; set; }
 
+    /// <summary>The power words with the talk mode @SpellCast left in
+    /// LOCAL.WOPTalkMode (Spell_CastStart, CCharSpell.cpp:3594, :3639): caster, words,
+    /// hue, font, talk mode (0 = the configured WOPTALKMODE). Preferred over
+    /// <see cref="OnSpellWordsEx"/> when set.</summary>
+    public Action<Character, string, ushort, byte, byte>? OnSpellWordsStyled { get; set; }
+
     /// <summary>sphere.ini WOPPLAYER / WOPSTAFF (Source-X m_fWordsOfPowerPlayer,
     /// default 1 / m_fWordsOfPowerStaff, default 0): whether a player / a Counsel+
     /// caster speaks the power words.</summary>
@@ -210,12 +219,6 @@ public sealed partial class SpellEngine
         : caster.SpeechColor != 0 ? caster.SpeechColor
         : (ushort)0x03B2;
 
-    /// <summary>Callback fired when a CLIENTLESS caster's spell completes —
-    /// the player completion path (TickSpellCast) sends its own bolt/impact
-    /// effect, but NPC casts have no client and were entirely invisible.
-    /// Args: caster, resolved char target (null = location/self), spell def.</summary>
-    public Action<Character, Character?, SpellDef>? OnNpcCastFx { get; set; }
-
     /// <summary>Callback fired when a character's personal light level
     /// changes (e.g. after Night Sight). Program.cs wires this to the
     /// matching GameClient so it can send a fresh 0x4E packet.</summary>
@@ -226,7 +229,12 @@ public sealed partial class SpellEngine
     /// instead of the bare Character.Kill() that skips them.</summary>
     public Action<Character, Character?>? OnTargetKilled { get; set; }
 
-    public Action<Character, Point3D, byte>? OnSpellTeleport { get; set; }
+    /// <summary>A character a spell has just moved (Spell_Teleport,
+    /// CCharSpell.cpp:223-245): the caster, the point it LEFT, and the effect and
+    /// sound the spell passed - Recall hands over its own EFFECT_ID and SOUND (:419-421);
+    /// 0 and 0 mean "the configured teleport effect" (:178-198). The host resyncs the
+    /// caster's client and shows the effect where it stood and where it arrived.</summary>
+    public Action<Character, Point3D, ushort, ushort>? OnSpellTeleport { get; set; }
 
     /// <summary>Remove a world item and broadcast its deletion (used by
     /// Dispel Field to clear a field item early).</summary>
@@ -442,9 +450,15 @@ public sealed partial class SpellEngine
     {
         if (IsMagicFlag(MagicConfigFlags.NoRevealOnCast))
             return;
-        // REVEALFLAGS decides as well: MAGICF_NOREVEALONCAST is the magic-side veto,
-        // REVEALF_SPELLCAST the stealth-side one, and upstream honours both.
-        caster.ClearHiddenState(RevealFlags.SpellCast);
+        // "if (m_iRevealFlags & REVEALF_SPELLCAST) Reveal(STATF_HIDDEN|STATF_INVISIBLE);
+        // else Reveal(STATF_HIDDEN);" (Spell_CastStart, CCharSpell.cpp:3625-3628): a
+        // cast always brings a HIDING caster out; the flag only decides whether
+        // invisibility is dropped with it. Reading the flag as "reveal or not" left a
+        // hidden mage casting from cover on a shard with the flag off.
+        if ((Character.ActiveRevealFlags & RevealFlags.SpellCast) != 0)
+            caster.ClearHiddenState();
+        else
+            caster.ClearHiddenOnly();
     }
 
     /// <summary>Precast mode from sphere.ini MAGICFLAGS bit 0x0002.</summary>
@@ -486,11 +500,16 @@ public sealed partial class SpellEngine
         uint effectColor = 0, effectRender = 0;
         if (TriggerDispatcher != null)
         {
+            // ARGO is the cast source - m_Act_Prv_UID.ObjFind(): the wand or scroll,
+            // or the caster for a cast from their own power (CCharSpell.cpp:3403).
+            // Every caller clears the source tags only after this runs.
+            TryResolveCastSource(caster, out _, out Item? failSource);
             var failArgs = new TriggerArgs
             {
                 CharSrc = caster,
                 N1 = (int)def.Id,
                 N2 = manaLoss,
+                O1 = failSource is { IsDeleted: false } ? failSource : caster,
                 Locals = new SphereNet.Scripting.Variables.VarMap(),
             };
             failArgs.Locals.SetInt("CreateObject1", SpellFailEffect);
@@ -599,7 +618,7 @@ public sealed partial class SpellEngine
         if (reason == null) return;
         string msg = reason switch
         {
-            "damaged" or "moved" or "equip_changed" => ServerMessages.Get(Msg.SpellGenFizzles),
+            "damaged" or "moved" or "equip_changed" or "new_cast" => ServerMessages.Get(Msg.SpellGenFizzles),
             _ => reason
         };
         if (caster.IsPlayer)
@@ -800,13 +819,38 @@ public sealed partial class SpellEngine
         /// (Cmd_Skill_Magery, CClientUse.cpp:1004). CastStart then only re-checks the
         /// caster's state, the way Spell_CastStart does (CCharSpell.cpp:3435-3450).</summary>
         public bool SelectTested { get; init; }
+
+        /// <summary>LOCAL.WOPTalkMode as @SpellCast left it (CCharSpell.cpp:3594,
+        /// :3639); 0 = the configured WOPTALKMODE.</summary>
+        public byte TalkMode { get; init; }
+    }
+
+    /// <summary>"if (skActive != SKILL_NONE) Skill_Fail(true); // fail previous skill
+    /// unfinished" (Skill_Start, CCharSkill.cpp:4407-4409): starting a cast while
+    /// another is still running aborts the running one - @SkillAbort, then
+    /// Spell_CastFail at the abort price (MANALOSSABORT / REAGENTLOSSABORT), the
+    /// fizzle effect and sound - and the new cast goes on. The new request used to be
+    /// dropped without a word instead.
+    ///
+    /// The source tags on the caster already belong to the NEW cast (the client binds
+    /// them before the skill starts), so they are kept across the abort.</summary>
+    private void AbortRunningCastForNewCast(Character caster)
+    {
+        if (!caster.IsCasting)
+            return;
+        caster.TryGetTag("WAND_UID", out string? wand);
+        caster.TryGetTag("SCROLL_UID", out string? scroll);
+        InterruptCast(caster, "new_cast");
+        if (wand != null) caster.SetTag("WAND_UID", wand);
+        else if (scroll != null) caster.SetTag("SCROLL_UID", scroll);
     }
 
     public CastPreparation? PrepareCast(Character caster, SpellType spell)
     {
-        if (caster.IsCasting || caster.IsDead) return null;
+        if (caster.IsDead) return null;
         var def = _spells.Get(spell);
         if (def == null) return null;
+        AbortRunningCastForNewCast(caster);
         caster.ActArg1 = (int)spell;
         // Skill_Start runs both pre-start hooks before Spell_CastStart.
         if (FireCastSkillTrigger(caster, spell, CharTrigger.SkillPreStart) == TriggerResult.True)
@@ -818,31 +862,47 @@ public sealed partial class SpellEngine
         // WOPSTAFF / WOPPLAYER pick whether the mantra is spoken at all; an
         // insubstantial caster and a wand never speak it (CCharSpell.cpp:3473-3486).
         bool speakWords = caster.PrivLevel >= PrivLevel.Counsel ? WopStaff : WopPlayer;
-        if (caster.IsStatFlag(StatFlag.Insubstantial))
+        // "(m_pNPC && !NPC_CanSpeak()) || IsStatFlag(STATF_INSUBSTANTIAL)"
+        // (CCharSpell.cpp:3539-3540): a creature with no SPEECH of its own or of its
+        // definition (NPC_CanSpeak, CCharNPCStatus.cpp:416-426) casts in silence. Only
+        // the insubstantial half was asked, so wolves and slimes spoke the mantra.
+        if ((!caster.IsPlayer && !AI.NpcAI.NpcCanSpeak(caster)) ||
+            caster.IsStatFlag(StatFlag.Insubstantial))
             speakWords = false;
-        if (TryResolveCastSource(caster, out var kind, out _))
+        Item? castItem = null;
+        if (TryResolveCastSource(caster, out var kind, out castItem))
         {
             if (kind == CastSourceKind.Wand) { difficulty = 1; speakWords = false; }
             else if (kind == CastSourceKind.Scroll) difficulty /= 2;
         }
-        string words = def.GetPowerWords();
+        // LOCAL.WOP is a number - 1 to speak the mantra, 0 to stay silent - read back
+        // as "> 0" (CCharSpell.cpp:3575, :3634); LOCAL.WOPTalkMode rides beside
+        // WOPColor / WOPFont (:3592-3594, :3637-3639). It used to hold the mantra's
+        // TEXT, so the stock "LOCAL.WOP=0" made the caster say "0".
         var locals = new SphereNet.Scripting.Variables.VarMap();
-        locals.Set("WOP", speakWords ? words : "");
+        locals.SetInt("WOP", speakWords ? 1 : 0);
         locals.SetInt("WOPColor", 0);
         locals.SetInt("WOPFont", 0);
+        locals.SetInt("WOPTalkMode", EffectiveWopTalkMode);
+        // ARGO: the wand or scroll the cast comes from, nothing for a cast from the
+        // caster's own power ("Init(spell, iDifficulty, 0, pItem)", :3573).
         var args = new TriggerArgs { CharSrc = caster, N1 = (int)spell,
-            N2 = difficulty, N3 = CalculateCastTimeTenths(caster, def), Locals = locals };
+            N2 = difficulty, N3 = CalculateCastTimeTenths(caster, def),
+            O1 = castItem is { IsDeleted: false } ? castItem : null, Locals = locals };
         if (TriggerDispatcher?.FireCharTrigger(caster, CharTrigger.SpellCast, args) == TriggerResult.True)
             return null;
         if (args.N1 < 0 || args.N1 > ushort.MaxValue || _spells.Get((SpellType)args.N1) == null)
             return null;
-        string changedWords = locals.Get("WOP") ?? "";
+        bool speak = locals.GetInt("WOP") > 0;
         return new CastPreparation((SpellType)args.N1,
             (int)Math.Clamp(args.N2, -100000, 100000),
             (int)Math.Clamp(args.N3, 0, int.MaxValue / 100) * 100,
-            changedWords == words ? null : changedWords,
+            speak ? null : "",
             (ushort)Math.Clamp(locals.GetInt("WOPColor"), 0, ushort.MaxValue),
-            (byte)Math.Clamp(locals.GetInt("WOPFont"), 0, byte.MaxValue));
+            (byte)Math.Clamp(locals.GetInt("WOPFont"), 0, byte.MaxValue))
+        {
+            TalkMode = (byte)Math.Clamp(locals.GetInt("WOPTalkMode"), 0, byte.MaxValue),
+        };
     }
 
     /// <summary>The player-state half of Spell_CanCast / Spell_CastStart
@@ -1069,7 +1129,6 @@ public sealed partial class SpellEngine
         CastPreparation? preparation = null)
     {
         LastCastRefusal = null;
-        if (caster.IsCasting) return RefuseCast("already casting");
         if (caster.IsDead) return RefuseCast("dead");
         if (preparation == null)
         {
@@ -1099,8 +1158,9 @@ public sealed partial class SpellEngine
 
         if (caster.IsDead || (Definitions.CharDefHelper.GetCanFlags(caster) & CanFlags.C_Statue) != 0)
             return RefuseCast("dead or statue");
-        if (caster.IsCasting)
-            return RefuseCast("already casting");
+        // A cast still running here was not seen by PrepareCast (the caller prepared
+        // before it began): Skill_Start aborts it the same way (CCharSkill.cpp:4407-4409).
+        AbortRunningCastForNewCast(caster);
         // Spell_CastStart re-checks the player's state whether or not the start-phase
         // Spell_CanCast already ran (CCharSpell.cpp:3438-3450): asleep or turned to
         // stone is "dead" for casting purposes, and frozen hands refuse unless
@@ -1153,10 +1213,12 @@ public sealed partial class SpellEngine
         // EQUIPPEDCAST is 0.
         // fAllowEquip (CCharSpell.cpp:3546-3556): a cast whose source is a wand or
         // an item flagged CAN_I_EQUIPONCAST leaves both hands as they are.
+        // "if (!g_Cfg.m_fEquippedCast && !fAllowEquip)" (:3609-3615) asks nothing
+        // about WHO casts: a creature and a GM empty their hands like anyone else.
+        // It was limited to players out of GM mode.
         bool castFromHeldSource = TryResolveCastSource(caster, out CastSourceKind unequipKind, out _) &&
                                   unequipKind == CastSourceKind.Wand;
-        if (!Character.EquippedCastEnabled && !castFromHeldSource && caster.IsPlayer &&
-            caster.PrivLevel < PrivLevel.GM)
+        if (!Character.EquippedCastEnabled && !castFromHeldSource)
         {
             if (!TrySpellUnequip(caster, Layer.OneHanded) ||
                 !TrySpellUnequip(caster, Layer.TwoHanded))
@@ -1185,7 +1247,9 @@ public sealed partial class SpellEngine
         var powerWords = wopOverride ?? def.GetPowerWords();
         if (!string.IsNullOrEmpty(powerWords))
         {
-            if (OnSpellWordsEx != null)
+            if (OnSpellWordsStyled != null)
+                OnSpellWordsStyled(caster, powerWords, wopHue, wopFont, preparation.TalkMode);
+            else if (OnSpellWordsEx != null)
                 OnSpellWordsEx(caster, powerWords, wopHue, wopFont);
             else
                 OnSpellWords?.Invoke(caster, powerWords);
@@ -1355,6 +1419,20 @@ public sealed partial class SpellEngine
                 return ServerMessages.Get(Msg.SpellTargLos);
         }
 
+        // "Check if the pos for tp is valid to make sure spellsuccess trigger not
+        // trigger unnecessarily" (Spell_TargCheck, CCharSpell.cpp:2837-2862): a
+        // Teleport aimed with TARG_XYZ is refused HERE - before the words, the wait
+        // and the costs - on a mount ceiling, a spot nobody can stand on or a
+        // REGION_ANTIMAGIC_TELEPORT area. It was only found out after the cast had
+        // been paid for.
+        if (def.Id == SpellType.Teleport && def.IsFlag(SpellFlag.TargXYZ) &&
+            !(def.IsFlag(SpellFlag.TargObj) && pickedObject != null))
+        {
+            Point3D telePoint = pickedObject != null ? pickedObject.GetTopLevelObj().Position : targetPos;
+            if (TeleportDestinationRefusal(caster, telePoint) is { } teleRefusal)
+                return ServerMessages.Get(teleRefusal);
+        }
+
         // Spell_TargCheck_Face (CCharSpell.cpp:2731-2738): the region at the TARGET
         // point refuses what its anti-magic flags refuse, as the caster's own region
         // does at the cast start. Only the caster's region was asked, so a caster
@@ -1393,6 +1471,35 @@ public sealed partial class SpellEngine
                 return ServerMessages.Get(Msg.SpellTargObj);
         }
 
+        return null;
+    }
+
+    /// <summary>Whether a non-GM may be teleported to <paramref name="dest"/>, as
+    /// Spell_Teleport (CCharSpell.cpp:119-144) and Spell_TargCheck (:2839-2862) both
+    /// ask: MOUNTHEIGHT headroom (DEFMSG_MSG_MOUNT_CEILING), a spot the character can
+    /// stand on - CheckValidMove(pt, nullptr, DIR_QTY, nullptr) - (DEFMSG_SPELL_TELE_CANT)
+    /// and no REGION_ANTIMAGIC_TELEPORT there (DEFMSG_SPELL_TELE_AM). Returns the
+    /// message key of the refusal, or null. Nothing else about the destination region
+    /// is asked: not ANTIMAGIC_ALL, not RECALL_IN.</summary>
+    private string? TeleportDestinationRefusal(Character caster, Point3D dest)
+    {
+        if (caster.PrivLevel >= PrivLevel.GM)
+            return null;
+        var md = _world.MapData;
+        if (Movement.WalkCheck.MountHeight && md != null &&
+            !_world.Standing.HasVerticalSpace(caster, dest.Map, dest.X, dest.Y, dest.Z, 0))
+            return Msg.MsgMountCeiling;
+        if (_world.GetSector(dest) == null)
+            return Msg.SpellTeleCant;
+        if (md != null)
+        {
+            var (mapW, mapH) = md.GetMapSize(dest.Map);
+            if (dest.X < 0 || dest.Y < 0 || dest.X >= mapW || dest.Y >= mapH ||
+                !md.IsPassable(dest.Map, dest.X, dest.Y, dest.Z))
+                return Msg.SpellTeleCant;
+        }
+        if (_world.FindRegion(dest) is { } region && region.IsFlag(RegionFlag.NoTeleport))
+            return Msg.SpellTeleAm;
         return null;
     }
 
@@ -1474,6 +1581,11 @@ public sealed partial class SpellEngine
         Character? summoned = null;
         if (def.IsFlag(SpellFlag.Summon))
         {
+            // "if (!pSpellDef->IsSpellType(SPELLFLAG_TARG_OBJ | SPELLFLAG_TARG_XYZ))
+            // m_Act_p = GetTopPoint();" (CCharSpell.cpp:3040-3041): a summon with no
+            // cursor appears where the caster stands NOW, not where the cast began.
+            if ((def.Flags & (SpellFlag.TargObj | SpellFlag.TargXYZ)) == 0)
+                targetPos = caster.Position;
             summoned = PrepareSummon(caster, targetPos, def, spell, skillVal, stage.CreateObject1,
                 stage.DurationTenths, stage.FollowerSlotsOverride);
             if (summoned == null)
@@ -1509,20 +1621,20 @@ public sealed partial class SpellEngine
             return true;
         }
 
-        // Dispel Field targets a field ITEM (not a character) and removes it.
+        // SPELL_Dispel_Field (CCharSpell.cpp:3192-3202): only an IT_SPELL item that
+        // is not ATTR_MOVE_NEVER is a field this spell takes down - a field a cast
+        // laid carries ATTR_MAGIC alone (:2354), while a permanent one (a dungeon's
+        // fire wall, a script's barrier) is MOVE_NEVER and stays. Anything else is
+        // DEFMSG_SPELL_DISPELLF_WT and the cast fails. The item's own OnSpellEffect
+        // then runs its triggers, the effect at its spot and the removal
+        // (CItem.cpp:5669-5677).
         if (spell == SpellType.DispelField)
         {
             var fieldItem = _world?.FindItem(targetUid);
-            if (fieldItem != null && !fieldItem.IsDeleted &&
-                (fieldItem.TryGetTag("FIELD_DAMAGE", out _) || fieldItem.ItemType == ItemType.Spell))
-            {
-                if (FireItemSpellEffect(caster, fieldItem, def, skillLevel, castSource) != TriggerResult.True)
-                    OnItemRemoved?.Invoke(fieldItem);
-            }
-            else
-            {
-                OnSysMessage?.Invoke(caster, "That is not a magical field.");
-            }
+            if (fieldItem == null || fieldItem.IsDeleted ||
+                fieldItem.IsAttr(ObjAttributes.Move_Never) || fieldItem.ItemType != ItemType.Spell)
+                return FailCastAtCompletion(caster, ServerMessages.Get(Msg.SpellDispellfWt));
+            ItemOnSpellEffect(caster, fieldItem, def, skillLevel, null);
             if (def.Sound > 0) OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
             return true;
         }
@@ -1641,7 +1753,10 @@ public sealed partial class SpellEngine
             if (scriptedChar != null)
                 ApplyCharEffect(caster, scriptedChar, def, skillLevel, stage.DurationTenths);
             else if (_world?.FindItem(targetUid) is { } scriptedItem)
-                FireItemSpellEffect(caster, scriptedItem, def, skillLevel, castSource);
+                // "pObj->OnSpellEffect(...)" on an item is CItem::OnSpellEffect whole
+                // (:3094): its triggers, then the wand recharge, the one point of
+                // HARM damage and the FX (CItem.cpp:5637-5765).
+                ItemOnSpellEffect(caster, scriptedItem, def, skillLevel, castSource);
         }
         else if (spell is SpellType.Recall or SpellType.GateTravel or SpellType.SacredJourney)
         {
@@ -1696,10 +1811,23 @@ public sealed partial class SpellEngine
                 var itemTarget = _world?.FindItem(targetUid);
                 if (itemTarget != null && CanSpellReachItem(caster, itemTarget))
                 {
-                    // Fire the scriptable @SpellEffect first; only apply the
-                    // hardcoded item-spell behavior when no script overrode it.
-                    if (FireItemSpellEffect(caster, itemTarget, def, skillLevel, castSource) != TriggerResult.True)
-                        ApplyItemTargetSpell(caster, itemTarget, def);
+                    if (spell == SpellType.Telekinesis)
+                    {
+                        // SPELL_Telekin acts as a double-click (CCharSpell.cpp:3170-3181);
+                        // the scriptable @SpellEffect still gets its say first.
+                        if (FireItemSpellEffect(caster, itemTarget, def, skillLevel, castSource) != TriggerResult.True)
+                            ApplyTelekinesis(caster, itemTarget);
+                    }
+                    else
+                    {
+                        // Spell_SimpleEffect -> CItem::OnSpellEffect (CCharSpell.cpp:3338,
+                        // CItem.cpp:5594-5768): the triggers, then the wand recharge
+                        // (:5642-5657), Magic Lock / Unlock (:5703-5719), the one point
+                        // of magic damage a HARM spell does to an item - which sets off
+                        // an explosion potion - (:5752-5753) and the bolt / target FX on
+                        // the item (:5755-5765). Only the triggers and three spells ran.
+                        ItemOnSpellEffect(caster, itemTarget, def, skillLevel, castSource);
+                    }
                 }
             }
         }
@@ -1731,13 +1859,13 @@ public sealed partial class SpellEngine
         if (def.IsFlag(SpellFlag.Good) && _world?.FindChar(targetUid) is { } helped && helped != caster)
             caster.FlagForHelpingCriminalIfNeeded(helped);
 
-        // NPC casters have no client-side completion path (the player's
-        // TickSpellCast sends the impact/bolt effect there); emit their
-        // completion FX through the host hook so observers see the spell land.
-        if (!caster.IsPlayer)
-            OnNpcCastFx?.Invoke(caster, _world?.FindChar(targetUid), def);
+        // The spell's visuals belong to each OnSpellEffect it made (the tail of
+        // ApplyCharEffect / ItemOnSpellEffect), not to the completed cast: one FX on
+        // "the target, else the caster" here drew nothing on an area spell's victims
+        // and drew a reflected spell on the wrong character.
 
-        // Sound
+        // The spell's sound at the caster (Spell_CastDone, CCharSpell.cpp:3361-3363),
+        // beside the one each effect plays on its target.
         if (def.Sound > 0)
             OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
 
@@ -1825,44 +1953,6 @@ public sealed partial class SpellEngine
     /// Wired to DeathEngine.</summary>
     public Action<Character, Item>? OnCorpseCrimeCheck { get; set; }
 
-    /// <summary>Hardcoded behavior for item-targeted spells. Runs only when no
-    /// @SpellEffect script overrode it.
-    ///
-    /// Magic Trap and Magic Untrap have no hard-coded effect upstream: Spell_CastDone
-    /// hands them to CItem::OnSpellEffect (CCharSpell.cpp:3117-3124), whose switch has
-    /// no case for either (CItem.cpp:5663), so what they do is the script's. SphereNet
-    /// wrote a TRAPPED tag that nothing ever read.</summary>
-    private void ApplyItemTargetSpell(Character caster, Item item, SpellDef def)
-    {
-        void Say(string text) => OnSysMessage?.Invoke(caster, text);
-        switch (def.Id)
-        {
-            case SpellType.MagicLock:
-                // SPELL_Magic_Lock → SetMagicLock (CItem.cpp:5703-5706): key, owner and
-                // lockable-type rules, not a bare type flip.
-                Skills.Information.ActiveSkillEngine.SetMagicLock(caster, item, Say);
-                break;
-            case SpellType.Unlock:
-            {
-                // SPELL_Unlock (CItem.cpp:5708-5719): Use_LockPick tests the lock (key,
-                // MAGICUNLOCKDOOR, carried by someone else), Magery is rolled against
-                // its complexity, and the second Use_LockPick unlocks or reports the
-                // failure.
-                if (_world == null) break;
-                int difficulty = Skills.Information.ActiveSkillEngine.UseLockPick(
-                    _world, caster, item, test: true, fail: false, Say, Random.Shared);
-                if (difficulty < 0) break;
-                bool success = SkillEngine.CheckSuccess(caster, SkillType.Magery, difficulty);
-                Skills.Information.ActiveSkillEngine.UseLockPick(
-                    _world, caster, item, test: false, fail: !success, Say, Random.Shared);
-                break;
-            }
-            case SpellType.Telekinesis:
-                ApplyTelekinesis(caster, item);
-                break;
-        }
-    }
-
     /// <summary>SPELL_Telekin (CCharSpell.cpp:3126): reaching into someone else's
     /// corpse is the looting crime and reveals the caster; then the target is used
     /// as a double-click without the touch test.</summary>
@@ -1914,14 +2004,15 @@ public sealed partial class SpellEngine
         return TriggerResult.Default;
     }
 
-    /// <summary>CItem::OnSpellEffect (CItem.cpp:5590-5764) as a field lays it on the
-    /// items of its tile (CCharSpell.cpp:2299): @SpellEffect and the spell's @Effect
-    /// with their ARGN1/ARGN2 readback, the wand recharge, the caster's anti-magic
-    /// area, the per-spell cases a field can reach, a HARM spell's one point of item
-    /// damage and the spell's FX. Returns false when the spell did not take.
-    /// Magic Lock, Unlock and Mark are targeted at one item and resolved by their own
-    /// cast branches; only a script rewriting ARGN1 could bring them here, and then
-    /// they do nothing further.</summary>
+    /// <summary>CItem::OnSpellEffect (CItem.cpp:5594-5768), for a spell aimed at one
+    /// item (Spell_SimpleEffect, CCharSpell.cpp:3338), a field laid on the items of
+    /// its tile (:2338) and an area sweep (:2182-2192): @SpellEffect and the spell's
+    /// @Effect with their ARGN1/ARGN2 readback, the wand recharge, the caster's
+    /// anti-magic area, the per-spell cases - Dispel, Lightning, Magic Lock, Unlock -
+    /// a HARM spell's one point of item damage and the spell's FX on the item.
+    /// Returns false when the spell did not take. Mark is resolved by its own cast
+    /// branch; only a script rewriting ARGN1 could bring it here, and then it does
+    /// nothing further.</summary>
     private bool ItemOnSpellEffect(Character caster, Item item, SpellDef def, int skillLevel, Item? sourceItem)
     {
         var args = new TriggerArgs
@@ -1989,7 +2080,7 @@ public sealed partial class SpellEngine
                 {
                     if (IsTopLevelItem(item))
                         SendItemEffect(2, effectId, caster, item, 9, 20, false, 0, 0);
-                    _world?.RemoveItem(item);
+                    RemoveDispelledItem(item);
                     return true;
                 }
                 break;
@@ -1999,10 +2090,33 @@ public sealed partial class SpellEngine
                 {
                     if (IsTopLevelItem(item))
                         SendItemEffect(2, effectId, caster, item, 8, 20, false, 0, 0);
-                    _world?.RemoveItem(item);
+                    RemoveDispelledItem(item);
                     return true;
                 }
                 break;
+            case SpellType.MagicLock:
+                // SPELL_Magic_Lock -> SetMagicLock (CItem.cpp:5703-5706): key, owner and
+                // lockable-type rules, not a bare type flip; a refusal ends the effect.
+                if (!Skills.Information.ActiveSkillEngine.SetMagicLock(caster, item,
+                        text => OnSysMessage?.Invoke(caster, text)))
+                    return false;
+                break;
+            case SpellType.Unlock:
+            {
+                // SPELL_Unlock (CItem.cpp:5708-5719): Use_LockPick tests the lock (key,
+                // MAGICUNLOCKDOOR, carried by someone else), Magery is rolled against
+                // its complexity, and the second Use_LockPick unlocks or reports the
+                // failure. It returns from here: no item damage, no FX.
+                if (_world == null) return false;
+                void Say(string text) => OnSysMessage?.Invoke(caster, text);
+                int difficulty = Skills.Information.ActiveSkillEngine.UseLockPick(
+                    _world, caster, item, test: true, fail: false, Say, Random.Shared);
+                if (difficulty < 0) return false;
+                bool success = SkillEngine.CheckSuccess(caster, SkillType.Magery, difficulty);
+                Skills.Information.ActiveSkillEngine.UseLockPick(
+                    _world, caster, item, test: false, fail: !success, Say, Random.Shared);
+                return success;
+            }
             case SpellType.Bless:
             case SpellType.Curse:
                 return false;
@@ -2037,6 +2151,16 @@ public sealed partial class SpellEngine
     }
 
     private static bool IsTopLevelItem(Item item) => !item.ContainedIn.IsValid && !item.IsEquipped;
+
+    /// <summary>"Delete()" of a dispelled IT_SPELL item (CItem.cpp:5674, :5684): through
+    /// the host hook when one is wired, so viewers lose the field at once.</summary>
+    private void RemoveDispelledItem(Item item)
+    {
+        if (OnItemRemoved != null)
+            OnItemRemoved(item);
+        if (!item.IsDeleted)
+            _world?.RemoveItem(item);
+    }
 
     /// <summary>Effect(EFFECT_OBJ, ITEMID_FX_GLOW, this, speed, loop) on a character: the
     /// glow of a spell that did not take hold, or of a reflection being spent.</summary>
@@ -2297,6 +2421,19 @@ public sealed partial class SpellEngine
         if (def.IsFlag(SpellFlag.Resist) && caster != target && !potion && !sourceless)
             resistPct = CalcMagicResist(target, def, caster);
 
+        // What the tail of OnSpellEffect shows and plays on THIS target
+        // (CCharSpell.cpp:3702-3709, :4226-4236): the spell's EFFECT_ID and SOUND -
+        // a potion makes one of the two drinking sounds instead - which the triggers
+        // may replace through LOCAL.CreateObject1 / Sound / EffectExplode /
+        // EffectColor / EffectRender (:3804-3816).
+        ushort fxId = def.EffectId;
+        int fxSound = potion ? (_rand.Next(2) == 0 ? 0x030 : 0x031) : def.Sound;
+        // "bolt (chasing) spells have explode = 1 by default (if not good spell)"
+        // seeds LOCAL.Explode (:3703, :3773), but the value read back is
+        // LOCAL.EffectExplode (:3805) - so a bolt explodes only when a script sets it.
+        bool fxExplode = false;
+        uint fxColor = 0, fxRender = 0;
+
         // @SpellEffect — Source-X CChar::OnSpellEffect fires this on the
         // AFFECTED char (not the caster) with SRC = caster, ARGN1 = spell,
         // ARGN2 = skill level, ARGO = the source item, and the LOCAL contract
@@ -2317,8 +2454,8 @@ public sealed partial class SpellEngine
             var fxLocals = new SphereNet.Scripting.Variables.VarMap();
             fxLocals.SetInt("DamageType", 0);
             fxLocals.SetInt("CreateObject1", def.EffectId);
-            fxLocals.SetInt("Explode", 0);
-            fxLocals.SetInt("Sound", def.Sound);
+            fxLocals.SetInt("Explode", def.IsFlag(SpellFlag.FxBolt) && !def.IsFlag(SpellFlag.Good) ? 1 : 0);
+            fxLocals.SetInt("Sound", fxSound);
             fxLocals.SetInt("Effect", effect);
             fxLocals.SetInt("Resist", resistPct);
             fxLocals.SetInt("Duration", durationTenths);
@@ -2368,6 +2505,13 @@ public sealed partial class SpellEngine
             durationTenths = (int)Math.Clamp(fxLocals.GetInt("Duration", durationTenths), 0, int.MaxValue);
             scriptDamageType = (DamageType)unchecked((uint)fxLocals.GetInt("DamageType"));
             bypassMagicReflection = fxLocals.GetInt("BypassMagicReflection") > 0;  // :3810
+            // :3804-3816 - an id past the item range falls back to the spell's own.
+            long rawFx = fxLocals.GetInt("CreateObject1", 0) & 0xFFFFF;
+            fxId = rawFx > 0xFFFF ? def.EffectId : (ushort)rawFx;
+            fxExplode = fxLocals.GetInt("EffectExplode", 0) > 0;
+            fxSound = (int)(fxLocals.GetInt("Sound", 0) & 0xFFFF);
+            fxColor = (uint)fxLocals.GetInt("EffectColor", 0);
+            fxRender = (uint)fxLocals.GetInt("EffectRender", 0);
         }
 
         // The definition the native switch dispatches on follows the read-back spell;
@@ -2457,20 +2601,67 @@ public sealed partial class SpellEngine
         int prevSkillLevel = _effectSkillLevel;
         int? prevDuration = _effectDurationTenths;
         bool prevReflected = _effectReflected;
+        bool prevTailSuppressed = _effectTailSuppressed;
         _effectSkillLevel = level;
         _effectDurationTenths = durationTenths;
         _effectReflected = reflecting;
+        _effectTailSuppressed = false;
+        bool showTail;
         try
         {
             ApplyCharEffectResolved(caster, target, def, effectDef, effect, resistPct, scriptDamageType);
+            showTail = !_effectTailSuppressed;
         }
         finally
         {
             _effectDurationTenths = prevDuration;
             _effectSkillLevel = prevSkillLevel;
             _effectReflected = prevReflected;
+            _effectTailSuppressed = prevTailSuppressed;
         }
+
+        // The tail every landed effect ends with (CCharSpell.cpp:4226-4236): the
+        // bolt from the source and / or the effect on this character, then the
+        // sound here. It is per TARGET - each victim of an area spell, whoever a
+        // field touches, the drinker of a potion, and the caster himself for a spell
+        // that came back off a reflection - and a refused effect never reaches it.
+        if (showTail)
+            SendSpellEffectTail(sourceless ? null : caster, target, def, fxId, fxSound,
+                fxExplode, fxColor, fxRender);
+        if (!harmful && caster != target)
+            OnHelpfulEffect?.Invoke(caster, target, def.Id);
         return true;
+    }
+
+    /// <summary>A beneficial spell (a heal, a cure, a blessing) landed on someone other
+    /// than its caster: the caster, the one helped and the spell. Listeners only take
+    /// note (the effect is still being applied further up the stack).</summary>
+    public static Action<Character, Character, SpellType>? OnHelpfulEffect { get; set; }
+
+    /// <summary>Set by a per-spell case that ends OnSpellEffect without its effect
+    /// and sound: Reveal that revealed nothing clears both (CCharSpell.cpp:4024-4030)
+    /// and Resurrection returns from inside the switch (:4084-4085).</summary>
+    private bool _effectTailSuppressed;
+
+    /// <summary>"if (iEffectID) { FX_BOLT: Effect(EFFECT_BOLT, id, pCharSrc, 5, 1, ...);
+    /// FX_TARG: Effect(EFFECT_OBJ, id, this, 0, 15, ...); } if (iSound) Sound(iSound);"
+    /// (CChar::OnSpellEffect, CCharSpell.cpp:4226-4236). The flags are those of the
+    /// definition the effect arrived with.</summary>
+    private void SendSpellEffectTail(Character? source, Character target, SpellDef def,
+        ushort effectId, int sound, bool explode, uint color, uint render)
+    {
+        if (effectId != 0)
+        {
+            ushort hue = (ushort)(color & 0xFFFF);
+            if (def.IsFlag(SpellFlag.FxBolt))
+                Character.BroadcastNearby?.Invoke(target.Position, 18,
+                    Clients.GameClient.BuildObjectEffect(0, source, target, effectId, 5, 1, explode, hue, render), 0);
+            if (def.IsFlag(SpellFlag.FxTarg))
+                Character.BroadcastNearby?.Invoke(target.Position, 18,
+                    Clients.GameClient.BuildObjectEffect(3, null, target, effectId, 0, 15, explode, hue, render), 0);
+        }
+        if (sound > 0)
+            OnPlaySound?.Invoke(target.Position, (ushort)sound);
     }
 
     /// <summary>MAGICF_OSIFORMULAS spell damage (CCharSpell.cpp:3669-3699): the
@@ -2806,9 +2997,13 @@ public sealed partial class SpellEngine
             fieldItem.Name = def.Name + " field";
             // A field segment is an IT_SPELL carrying its spell and the caster's
             // level (m_itSpell.m_spell / m_spelllevel), linked back to the caster
-            // (:2306-2315); it can never be picked up.
+            // (:2347-2353). Its only attribute is ATTR_MAGIC (:2354): it is NOT
+            // ATTR_MOVE_NEVER - that is what marks a permanent field Dispel Field
+            // must leave alone (:3195). It still cannot be picked up: a spell field
+            // on the ground is never liftable (ItemMoveRules, CCharAct.cpp:2976-2979),
+            // and it goes by its own decay timer below.
             fieldItem.ItemType = ItemType.Spell;
-            fieldItem.SetAttr(ObjAttributes.Move_Never);
+            fieldItem.SetAttr(ObjAttributes.Magic);
             fieldItem.MoreP = new Point3D((short)def.Id, (short)Math.Clamp(skill, 0, short.MaxValue), 0, 0);
             fieldItem.Link = caster.Uid;
             if (stage.EffectColor != 0)
@@ -2954,9 +3149,16 @@ public sealed partial class SpellEngine
             summonSel = sel.Trim();
         caster.RemoveTag("SUMMON_SELECT");
 
+        // Summon Familiar has no creature of its own: Spell_Summon_Try has no case for
+        // it (CCharSpell.cpp:2602-2681, "default: CREID_INVALID") - the familiar is
+        // whatever the sm_summon_familiar menu handed over, and with no pick (and no
+        // @Success CreateObject1) nothing is made and the cast fails before its cost.
+        // A vampire bat body used to be summoned instead.
+        if (spell == SpellType.SummonFamiliar && summonSel == null && createObject1 == 0)
+            return null;
+
         ushort summonBody = spell switch
         {
-            SpellType.SummonFamiliar => 0x013D,
             SpellType.BladeSpirit => 0x023E,     // CREID_BLADE_SPIRIT
             SpellType.EnergyVortex => 0x00A4,    // CREID_ENERGY_VORTEX
             SpellType.AirElemental => 0x000D,    // CREID_AIR_ELEM
@@ -3165,8 +3367,15 @@ public sealed partial class SpellEngine
             (int)def.Id);
         // A flat percent check, not the bell curve (Skill_UseQuick(..., true, false),
         // CCharSpell.cpp:3659).
-        return SkillEngine.UseQuick(target, SkillType.MagicResistance, chance,
+        int resist = SkillEngine.UseQuick(target, SkillType.MagicResistance, chance,
             useBellCurve: false) ? 25 : 0;
+        // "Effect 3: Only 50% of magic resistance used in next resistable spell"
+        // (CCharSpell.cpp:3728-3733): under FEATURE_AOS_UPDATE_B a target carrying a
+        // native (unscripted) Evil Omen resists with half - 12 percent, not 25.
+        if ((Character.FeatureAOS & CombatEngine.FeatureAosUpdateB) != 0 && target.EvilOmenActive &&
+            !(_spells.Get(SpellType.EvilOmen)?.IsFlag(SpellFlag.Scripted) ?? false))
+            resist /= 2;
+        return resist;
     }
 
     /// <summary>Source-X resist chance (CCharSpell.cpp:3650-3658), in percent:
@@ -3384,80 +3593,82 @@ public sealed partial class SpellEngine
         if (caster.PrivLevel < Core.Enums.PrivLevel.GM)
         {
             var srcRegion = _world.FindRegion(caster.Position);
-            var destRegion = _world.FindRegion(dest);
             if (srcRegion != null && srcRegion.NoMagic)
             {
                 OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
                 return false;
             }
-            if (destRegion != null && destRegion.NoMagic)
-            {
-                OnSysMessage?.Invoke(caster, "That location blocks magic.");
-                return false;
-            }
-            // Source-X anti-magic sub-flags (REGION_ANTIMAGIC_*): RECALL_OUT blocks
-            // leaving by recall, RECALL_IN (the Recall flag) blocks arriving by
-            // recall/gate, GATE blocks gate travel. The legacy numeric region
-            // properties (RECALLOUT/RECALLIN/GATEOUT/GATEIN = 0) still work too.
+            // The region the caster stands in: RECALL_OUT keeps a Recall in, GATE a
+            // Gate Travel (CRegion::CheckAntiMagic through Spell_CanCast). The legacy
+            // numeric region properties (RECALLOUT / GATEOUT = 0) still work too.
             if (def.Id == SpellType.Recall)
             {
                 if (srcRegion != null && (srcRegion.IsFlag(RegionFlag.RecallOut) ||
                     (srcRegion.TryGetProperty("RECALLOUT", out string? rOut) && rOut == "0")))
-                { OnSysMessage?.Invoke(caster, "You cannot recall from here."); return false; }
-                if (destRegion != null && (destRegion.IsFlag(RegionFlag.Recall) ||
-                    (destRegion.TryGetProperty("RECALLIN", out string? rIn) && rIn == "0")))
-                { OnSysMessage?.Invoke(caster, "You cannot recall to that location."); return false; }
+                { OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryAm)); return false; }
             }
             if (def.Id == SpellType.GateTravel)
             {
                 if (srcRegion != null && (srcRegion.IsFlag(RegionFlag.Gate) ||
                     (srcRegion.TryGetProperty("GATEOUT", out string? gOut) && gOut == "0")))
-                { OnSysMessage?.Invoke(caster, "You cannot open a gate here."); return false; }
-                if (destRegion != null && (destRegion.IsFlag(RegionFlag.Recall) || destRegion.IsFlag(RegionFlag.Gate) ||
-                    (destRegion.TryGetProperty("GATEIN", out string? gIn) && gIn == "0")))
-                { OnSysMessage?.Invoke(caster, "You cannot gate to that location."); return false; }
+                { OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryAm)); return false; }
             }
         }
 
-        if (_world.GetSector(dest) == null)
-        {
-            OnSysMessage?.Invoke(caster, "That location is unreachable.");
-            return false;
-        }
-
+        // "if (!ptNew.IsCharValid()) return false;" (Spell_Teleport, CCharSpell.cpp:114)
+        // and "!ptDest.IsValidPoint()" (Spell_CreateGate, :257): a mark off the map
+        // takes nobody anywhere, without a word.
         var md = _world.MapData;
+        if (_world.GetSector(dest) == null)
+            return false;
         if (md != null)
         {
             var (mapW, mapH) = md.GetMapSize(dest.Map);
             if (dest.X < 0 || dest.Y < 0 || dest.X >= mapW || dest.Y >= mapH)
-            {
-                OnSysMessage?.Invoke(caster, "That location is unreachable.");
                 return false;
-            }
-            // Don't teleport into a wall/water/impassable static — would leave
-            // the traveller stuck. Applies to both Recall and Gate destinations.
-            if (caster.PrivLevel < Core.Enums.PrivLevel.GM &&
-                !md.IsPassable(dest.Map, dest.X, dest.Y, dest.Z))
-            {
-                OnSysMessage?.Invoke(caster, "That location is blocked.");
-                return false;
-            }
         }
 
         if (def.Id == SpellType.Recall)
         {
+            // Spell_Recall is Spell_Teleport(mark, fTakePets = true, fCheckAntiMagic =
+            // true, ...) (CCharSpell.cpp:421), and what Spell_Teleport asks of the
+            // destination is the mount ceiling, CheckValidMove and
+            // REGION_ANTIMAGIC_TELEPORT (:119-144) - nothing else. The destination's
+            // ANTIMAGIC_ALL and RECALL_IN were refused here instead (they keep a rune
+            // from being MARKED there, CRegion::CheckAntiMagic), while a region flagged
+            // only region_antimagic_teleport - the pack's keeps and castles - let a
+            // Recall straight in.
+            if (TeleportDestinationRefusal(caster, dest) is { } teleRefusal)
+            {
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(teleRefusal));
+                return false;
+            }
             // Spell_Teleport's PRIV_JAILED check runs after its anti-magic checks
             // (CCharSpell.cpp:146-174), so it comes last here too.
             if (!RedirectJailedTravel(caster, ref dest))
                 return false;
-            byte oldMap = caster.MapIndex;
-            // Spell_Recall is Spell_Teleport(mark, fTakePets = true, ...)
-            // (CCharSpell.cpp:421): the pets following the caster go first (:203-221).
+            Point3D from = caster.Position;
+            // The pets following the caster go first (:203-221).
             OnTakePets?.Invoke(caster, dest);
             if (!_world.MoveCharacter(caster, dest))
                 return false;
-            OnSpellTeleport?.Invoke(caster, dest, oldMap);
+            // Recall shows the spell's own EFFECT_ID and plays its SOUND, where the
+            // caster left and where they arrived (:236-245, :419-421).
+            OnSpellTeleport?.Invoke(caster, from, def.EffectId, (ushort)Math.Clamp(def.Sound, 0, ushort.MaxValue));
             return true;
+        }
+
+        // Spell_CreateGate (CCharSpell.cpp:279-292): the destination refuses a gate
+        // when it is a ship (CreateGate) or carries REGION_ANTIMAGIC_ALL / _GATE -
+        // DEFMSG_SPELL_GATE_AM. It makes no walkability test of the far end, and
+        // RECALL_IN there does not stop a gate from opening.
+        if (caster.PrivLevel < Core.Enums.PrivLevel.GM && _world.FindRegion(dest) is { } gateDest &&
+            !gateDest.IsFlag(RegionFlag.Ship) &&
+            (gateDest.NoMagic || gateDest.IsFlag(RegionFlag.Gate) ||
+             (gateDest.TryGetProperty("GATEIN", out string? gIn) && gIn == "0")))
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGateAm));
+            return false;
         }
 
         return CreateGate(caster, def, dest);
@@ -3690,43 +3901,36 @@ public sealed partial class SpellEngine
             {
                 var dest = _effectTargetPos ?? caster.CastTargetPos;
                 if (dest.X == 0 && dest.Y == 0) break;
-                // Validate the destination like Recall/Gate do: off-map or an
-                // impassable tile (wall/water/blocking static) would strand the
-                // caster. Recall/Gate guarded this; Teleport did not.
+                // "if (!ptNew.IsCharValid()) return false;" (Spell_Teleport,
+                // CCharSpell.cpp:114): off the map moves nobody, without a word.
                 var teleMd = _world.MapData;
                 if (_world.GetSector(dest) == null)
-                {
-                    OnSysMessage?.Invoke(caster, "That location is unreachable.");
                     break;
-                }
                 if (teleMd != null)
                 {
                     var (mapW, mapH) = teleMd.GetMapSize(dest.Map);
-                    if (dest.X < 0 || dest.Y < 0 || dest.X >= mapW || dest.Y >= mapH ||
-                        (caster.PrivLevel < Core.Enums.PrivLevel.GM &&
-                         !teleMd.IsPassable(dest.Map, dest.X, dest.Y, dest.Z)))
-                    {
-                        OnSysMessage?.Invoke(caster, "That location is unreachable.");
+                    if (dest.X < 0 || dest.Y < 0 || dest.X >= mapW || dest.Y >= mapH)
                         break;
-                    }
                 }
-                // REGION_ANTIMAGIC_TELEPORT: can't teleport into this region.
-                if (caster.PrivLevel < Core.Enums.PrivLevel.GM)
+                // Spell_Teleport asks the same three questions Spell_TargCheck asked
+                // when the cast began (CCharSpell.cpp:119-144, :2837-2862): the mount
+                // ceiling, a spot to stand on and REGION_ANTIMAGIC_TELEPORT, each
+                // with its own message.
+                if (TeleportDestinationRefusal(caster, dest) is { } teleRefusal)
                 {
-                    var teleRegion = _world.FindRegion(dest);
-                    if (teleRegion != null && (teleRegion.IsFlag(RegionFlag.NoTeleport) || teleRegion.NoMagic))
-                    {
-                        OnSysMessage?.Invoke(caster, "You cannot teleport to that location.");
-                        break;
-                    }
+                    OnSysMessage?.Invoke(caster, ServerMessages.Get(teleRefusal));
+                    break;
                 }
                 // PRIV_JAILED: Spell_Teleport sends a prisoner back to the cell
-                // (CCharSpell.cpp:146-174; the spell calls it at :3140).
+                // (CCharSpell.cpp:146-174; the spell calls it at :3184).
                 if (!RedirectJailedTravel(caster, ref dest))
                     break;
-                byte oldMap = caster.MapIndex;
+                Point3D teleFrom = caster.Position;
+                // "Spell_Teleport(m_Act_p)" (:3184) passes no effect or sound of its
+                // own, so the configured teleport effect shows - at the point left
+                // and at the point reached (:178-198, :236-245).
                 if (_world.MoveCharacter(caster, dest))
-                    OnSpellTeleport?.Invoke(caster, dest, oldMap);
+                    OnSpellTeleport?.Invoke(caster, teleFrom, 0, 0);
                 break;
             }
             case SpellType.Recall:
@@ -3790,7 +3994,10 @@ public sealed partial class SpellEngine
                     CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
             case SpellType.Reveal:
-                target.ClearHiddenState();
+                // "if (!Reveal()) { iEffectID = ITEMID_NOTHING; iSound = SOUND_NONE; }"
+                // (CCharSpell.cpp:4024-4030): nothing shows on somebody who was not hidden.
+                if (!target.ClearHiddenState())
+                    _effectTailSuppressed = true;
                 break;
             case SpellType.Dispel:
             case SpellType.MassDispel:
@@ -3807,6 +4014,9 @@ public sealed partial class SpellEngine
                     SpellDispel(target, caster.PrivLevel >= PrivLevel.GM ? 150 : 50);
                 break;
             case SpellType.Resurrection:
+                // "return Spell_Resurrection(...)" leaves OnSpellEffect from inside the
+                // switch (CCharSpell.cpp:4084-4085): the resurrection shows itself.
+                _effectTailSuppressed = true;
                 if (target.IsDead)
                 {
                     caster.FlagForHelpingCriminalIfNeeded(target);

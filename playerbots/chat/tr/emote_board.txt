@@ -1,0 +1,7 @@
+# emote_board.txt - ilan tahtasını okuyan bot; emote.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+*ilanları okur*
+*parmağını tahtada gezdirir*
+*bir nota gözlerini kısarak bakar*
+*tahtayı okur*

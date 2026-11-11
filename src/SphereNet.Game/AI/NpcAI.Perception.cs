@@ -452,7 +452,8 @@ public sealed partial class NpcAI
         bool memBase = false;
 
         var npcRegion = _world.FindRegion(npc.Position);
-        bool guarded = npcRegion != null && npcRegion.IsFlag(RegionFlag.Guarded);
+        // m_pArea->IsGuarded() (CCharNPCStatus.cpp:753): guarded and not SAFE.
+        bool guarded = npcRegion != null && npcRegion.IsGuarded;
 
         if (NotoIsEvil(npc) && !guarded && target.IsPlayer)
         {
@@ -608,7 +609,7 @@ public sealed partial class NpcAI
 
     /// <summary>Source-X NPC_CanSpeak (CCharNPCStatus.cpp:416): an NPC talks when it
     /// has a SPEECH list of its own or its definition has one.</summary>
-    internal static bool NpcCanSpeak(Character npc)
+    public static bool NpcCanSpeak(Character npc)
     {
         if (npc.IsPlayer || npc.DSpeech.Count > 0)
             return true;

@@ -1,9 +1,31 @@
-# emotes.txt — wordless social layer. Lines in *asterisks* render as
-# real Emotes. Occasionally steals an ambient chat slot for any bot.
-# The stray "asdf" style lines are deliberate — imperfection reads human.
+# emotes.txt - small wordless gestures of a bot standing about; said as emotes (the asterisks are part of the line).
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
 
-asdf
-test
-oops wrong window
-qwe
-..
+*yawns*
+*stretches*
+*scratches head*
+*looks around*
+*hums a tune*
+*cracks knuckles*
+*checks backpack*
+*adjusts belt*
+*rubs eyes*
+*shrugs*
+*whistles*
+*sighs*
+*chuckles*
+*taps foot*
+*dusts off sleeves*
+*rolls shoulders*
+*glances at the sky*
+*counts on fingers*
+[mage] *flips through spellbook*
+[mage] *mutters a few words of power*
+[warrior] *checks blade edge*
+[archer] *tests bowstring*
+[mounted] *pats mount*
+[hurt] *winces*
+[chatty] *waves*
+[kind] *smiles*
+[shy] *looks at the ground*
+[stingy] *weighs coin pouch*

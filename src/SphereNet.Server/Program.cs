@@ -720,6 +720,7 @@ public static partial class Program
             }
         });
         _log = _loggerFactory.CreateLogger("SphereNet");
+        FlushBootReport();
 
         // Banner
         ConsoleAppend("===========================================");
@@ -1018,6 +1019,8 @@ public static partial class Program
         // Config-driven world clock (was a hardcoded 20s per game minute).
         _world.GameMinuteLengthMs = Math.Max(1, _config.GameMinuteLength) * 1000;
         _world.MaxContainerItems = _config.ContainerMaxItems;
+        // One tick runs item timers for at most this long; the rest stay due.
+        _world.ItemTimerBudgetMs = GameWorld.DefaultItemTimerBudgetMs;
         SphereNet.Game.Objects.Items.Item.ItemsMaxAmount = _config.ItemsMaxAmount;
         SphereNet.Game.Objects.Items.Item.MaxItemComplexity = _config.MaxItemComplexity;
         SphereNet.Game.Guild.GuildManager.DefaultMaxHouses = _config.MaxHousesGuild;

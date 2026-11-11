@@ -1,0 +1,9 @@
+# emote_eat.txt - a bot that has just eaten something out of its pack; emotes.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+*takes a bite*
+*eats*
+*munches*
+*chews slowly*
+*brushes off the crumbs*
+*licks fingers*

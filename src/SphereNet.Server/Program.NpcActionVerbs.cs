@@ -49,8 +49,8 @@ public static partial class Program
                                              SphereNet.Core.Enums.MemoryType.Friend)) != 0)
                 {
                     mem.More1 = (mem.More1 & 0xFFFF0000) | Character.NpcMemActSpeakHire;
-                    long balance = npc.TryGetTag("HIRE_BALANCE", out string? bs) &&
-                        ScriptNumber.TryParseLong(bs, out long b) ? b : 0;
+                    // The purse in the bank box (m_Check_Amount, CCharNPCPet.cpp:794).
+                    long balance = SphereNet.Game.Trade.VendorEngine.GetVendorGold(npc);
                     NpcSpeak(npc, ServerMessages.GetFormatted(Msg.NpcPetHireTime,
                         (balance / Math.Max(1, dayWage)).ToString()));
                     return true;

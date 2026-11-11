@@ -489,7 +489,27 @@ internal sealed class SourceXWalk
     /// CCharStatus.cpp:2052): a step whose floor carries CAN_I_ROOF puts the walker
     /// indoors (CCharAct.cpp:4831).</summary>
     public bool CanStandAt(Character ch, int mapId, int x, int y, int z, int climb,
-        bool pathFinding, out int newZ, out string reason, out uint bottomFlags)
+        bool pathFinding, out int newZ, out string reason, out uint bottomFlags) =>
+        CanStandAt(ch, mapId, x, y, z, climb, pathFinding, out newZ, out reason, out bottomFlags, explain: true);
+
+    // "accepted z=N" for every height, built once: the reason is only ever read by a
+    // diagnostic, and formatting it afresh allocated a string on every accepted step
+    // of every walker.
+    private static readonly string?[] s_acceptedReasons = new string?[256];
+
+    private static string AcceptedReason(int z)
+    {
+        int slot = z + 128;
+        if ((uint)slot >= (uint)s_acceptedReasons.Length)
+            return $"accepted z={z}";
+        return s_acceptedReasons[slot] ??= $"accepted z={z}";
+    }
+
+    /// <summary>As above. With <paramref name="explain"/> false the reason is left
+    /// empty: a route search asks this of every neighbour of every node it opens and
+    /// reads only the answer, never the text.</summary>
+    public bool CanStandAt(Character ch, int mapId, int x, int y, int z, int climb,
+        bool pathFinding, out int newZ, out string reason, out uint bottomFlags, bool explain)
     {
         newZ = z;
         reason = "";
@@ -593,12 +613,12 @@ internal sealed class SourceXWalk
             {
                 if ((pointFlags & Block) != 0 && (blockedBy & Climb) == 0)
                 {
-                    reason = $"land_blocked by=0x{blockedBy:X}";
+                    if (explain) reason = $"land_blocked by=0x{blockedBy:X}";
                     return false;
                 }
                 if (block.Bottom.Z > z + climb + height + 3)
                 {
-                    reason = $"land_too_high bottom={block.Bottom.Z}";
+                    if (explain) reason = $"land_too_high bottom={block.Bottom.Z}";
                     return false;
                 }
             }
@@ -606,7 +626,7 @@ internal sealed class SourceXWalk
             {
                 if ((blockedBy & Climb) == 0)
                 {
-                    reason = $"item_blocked by=0x{blockedBy:X}";
+                    if (explain) reason = $"item_blocked by=0x{blockedBy:X}";
                     return false;
                 }
                 if ((movementCan & CPassWalls) == 0)
@@ -625,7 +645,7 @@ internal sealed class SourceXWalk
                     }
                     else if (block.Bottom.Z > z + climb + 2)
                     {
-                        reason = $"too_high_to_climb bottom={block.Bottom.Z}";
+                        if (explain) reason = $"too_high_to_climb bottom={block.Bottom.Z}";
                         return false;
                     }
                 }
@@ -641,7 +661,7 @@ internal sealed class SourceXWalk
 
         if (!passThrough)
             newZ = block.Bottom.Z;
-        reason = $"accepted z={newZ}";
+        if (explain) reason = AcceptedReason(newZ);
         return true;
     }
 
@@ -731,8 +751,9 @@ internal sealed class SourceXWalk
         int d = (int)dir & 0x7;
         if (!pathFinding && (d & 1) != 0)
         {
-            foreach (int side in new[] { (d - 1) & 0x7, (d + 1) & 0x7 })
+            for (int n = 0; n < 2; n++)
             {
+                int side = (n == 0 ? d - 1 : d + 1) & 0x7;
                 int sx = fromX, sy = fromY;
                 WalkCheck.Offset((Direction)side, ref sx, ref sy);
                 if (!CanStandAt(ch, mapId, sx, sy, z, climb, pathFinding, out _, out string sideReason))
@@ -747,5 +768,43 @@ internal sealed class SourceXWalk
         int tx = fromX, ty = fromY;
         WalkCheck.Offset((Direction)d, ref tx, ref ty);
         return CanStandAt(ch, mapId, tx, ty, z, climb, pathFinding, out newZ, out reason);
+    }
+
+    /// <summary>The step rule from one tile in all eight directions at once, for a
+    /// route search expanding a node: bit <c>d</c> of the result is set when a real
+    /// step in direction <c>d</c> would be accepted, and <paramref name="newZ"/>[d] is
+    /// where it lands.
+    ///
+    /// It is the REAL step's rule, diagonal side test included: a diagonal needs both
+    /// orthogonal neighbours of the starting tile to be standable (CheckValidMove,
+    /// CCharStatus.cpp:1991-2006). Upstream's own path grid cannot apply that test -
+    /// CPathFinder::FillMap judges each cell on its own, with no direction
+    /// (CanMoveWalkTo(pt, true, true, DIR_QTY, true), CPathFinder.cpp:235) - and its
+    /// creatures then find out at the step, which is refused. A route search that
+    /// simulates each step from the node it leaves can ask the step's own question,
+    /// so the route it returns holds no step the walker is going to be refused.
+    ///
+    /// The two side tiles of a diagonal are the destinations of the two cardinal
+    /// steps next to it, judged from the same height with the same climb, so eight
+    /// CanStandAt calls and one climb lookup answer all eight directions.</summary>
+    public int CheckValidMoves(Character ch, int mapId, int fromX, int fromY, int z, Span<int> newZ)
+    {
+        int climb = ClimbHeightAt(ch, mapId, fromX, fromY, z);
+        int standable = 0;
+        for (int d = 0; d < 8; d++)
+        {
+            int tx = fromX, ty = fromY;
+            WalkCheck.Offset((Direction)d, ref tx, ref ty);
+            if (CanStandAt(ch, mapId, tx, ty, z, climb, pathFinding: true, out newZ[d], out _, out _, explain: false))
+                standable |= 1 << d;
+        }
+        int ok = standable;
+        for (int d = 1; d < 8; d += 2)
+        {
+            int sides = (1 << ((d - 1) & 0x7)) | (1 << ((d + 1) & 0x7));
+            if ((standable & sides) != sides)
+                ok &= ~(1 << d);
+        }
+        return ok;
     }
 }

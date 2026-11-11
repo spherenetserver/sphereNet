@@ -5,9 +5,29 @@
 # types are destinations.json "Type" values where a vendor of it stands.
 # Who needs what: Bandage a bot with Healing, Reagent a caster, WeaponArrow a bow
 # user, WeaponBolt a crossbow user, Rune a caster with Mark and Recall (blank runes,
-# counted as the blank and worn-out ones it carries, while it has room for more).
+# counted as the blank and worn-out ones it carries, while it has room for more),
+# Food a bot that went to eat and found its pack bare (an innkeeper sells it).
+# A potion need names the spell in the bottle (Potion:<spell>; a Heal or a Greater
+# Heal bottle both count as a heal potion): for a fighter who does not cast.
 bandage  Bandage      10  40  Healer VendorProvisioner
 reagent  Reagent      15  30  VendorMage VendorAlchemist
 arrow    WeaponArrow  30  100 VendorBowyer VendorProvisioner
 bolt     WeaponBolt   30  100 VendorBowyer VendorProvisioner
 rune     Rune         1   2   VendorMage
+heal     Potion:GreaterHeal  1  3  VendorAlchemist
+cure     Potion:Cure         1  2  VendorAlchemist
+refresh  Potion:Refresh      1  2  VendorAlchemist
+food     Food                1  3  Inn Tavern
+# A tradesman's tools and materials (work.txt): a bot with the skill of a trade (30.0)
+# buys the tool it lacks - counted in its hands and its pack - and, when it has the
+# tool of a craft but gathers nothing itself, the material the craft is made of.
+pickaxe  WeaponMacePick   1  1  VendorWeaponer VendorSmith VendorProvisioner
+axe      WeaponAxe        1  1  VendorWeaponer VendorSmith
+pole     FishPole         1  1  Dock VendorProvisioner
+hammer   WeaponMaceSmith  1  1  VendorSmith VendorWeaponer
+saw      Carpentry        1  1  VendorCarpenter VendorProvisioner
+sewkit   SewingKit        1  1  VendorTailor VendorProvisioner
+pan      CookingTool      1  1  VendorProvisioner
+ingot    Ingot            8  30 VendorSmith VendorProvisioner
+cloth    Cloth            8  40 VendorTailor
+board    Board            8  40 VendorCarpenter

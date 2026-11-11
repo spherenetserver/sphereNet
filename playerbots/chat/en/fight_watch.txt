@@ -1,0 +1,9 @@
+# fight_watch.txt - a fighter standing about turns to watch a fight that broke out near by.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+whoa, fight
+here we go
+oh, a fight
+look at that
+someones getting hurt
+this should be good

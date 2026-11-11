@@ -857,6 +857,7 @@ public sealed class DeathEngine
     /// </summary>
     public bool RestoreFromCorpse(Character resurrected)
     {
+        LastRejoinFellForward = false;
         Item? corpse = null;
         foreach (var item in _world.GetItemsInRange(resurrected.Position, 2))
         {
@@ -880,6 +881,9 @@ public sealed class DeathEngine
             break;
         }
         if (corpse == null) return false;
+        // m_itCorpse.m_facing_dir carries DIR_MASK_RUNNING for a body that fell
+        // forward (MakeCorpse, CItemCorpse.cpp:196-197).
+        LastRejoinFellForward = (corpse.Direction & 0x80) != 0;
 
         // Snapshot first — RemoveItem mutates the underlying list and
         // would otherwise invalidate the iterator after the first call.
@@ -947,6 +951,11 @@ public sealed class DeathEngine
         _world.DeleteObject(corpse);
         return true;
     }
+
+    /// <summary>Which way the corpse the last <see cref="RestoreFromCorpse"/>
+    /// rejoined had fallen - the animation the body gets up with is the one it went
+    /// down with (RaiseCorpse, CItemCorpse.cpp:270).</summary>
+    public bool LastRejoinFellForward { get; private set; }
 
     // === Death shroud / resurrection robe (Source-X CChar::Death / Spell_Resurrection) ===
 

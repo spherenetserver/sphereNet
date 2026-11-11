@@ -1,0 +1,10 @@
+# emote_dock.txt - a bot looking at the water from a dock; emotes.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+*gazes at the water*
+*watches the waves*
+*breathes in the sea air*
+*skips a stone*
+*watches a gull*
+*leans on a mooring post*
+*looks out to the horizon*

@@ -238,6 +238,9 @@ public sealed class ChatEngine
         channelName = channelName.Trim();
         if (channelName.Length == 0)
             return null;
+        // A new conference needs a valid name (CChat::CreateChannel, CChat.cpp:29-33).
+        if (create && !IsValidConferenceName(channelName))
+            return null;
 
         // Source-X keeps CreateChannel and JoinChannel apart (CChat.cpp:12/70): a join
         // needs the channel to exist, a create needs the name to be free, and neither
@@ -274,6 +277,33 @@ public sealed class ChatEngine
         channel!.Add(uid);
         _memberChannel[uid] = channel;
         return channel;
+    }
+
+    /// <summary>Longest conference name accepted. Upstream has no figure of its own -
+    /// the name is whatever fits its packet buffer - so this is the bound a character
+    /// name has (MAX_NAME_SIZE, sphereproto.h:754): the channel list goes to every
+    /// open chat window, and a name of several thousand characters went with it.</summary>
+    public const int MaxConferenceNameLength = 30;
+
+    /// <summary>CChat::IsValidName for a conference (CChat.cpp:437-457, fPlayer false):
+    /// not empty, not obscene, not "SYSTEM" - the name the engine signs its own lines
+    /// with - and made of ASCII letters, digits and spaces only. Only empty was
+    /// refused, so a channel could be called SYSTEM or carry control characters.
+    /// </summary>
+    public static bool IsValidConferenceName(string? name, Func<string, bool>? isObscene = null)
+    {
+        if (string.IsNullOrEmpty(name) || name.Length > MaxConferenceNameLength)
+            return false;
+        if (name.Equals("SYSTEM", StringComparison.OrdinalIgnoreCase))
+            return false;
+        foreach (char c in name)
+        {
+            if (c == ' ')
+                continue;
+            if (!char.IsAsciiLetterOrDigit(c))
+                return false;
+        }
+        return isObscene == null || !isObscene(name);
     }
 
     /// <summary>Leave the current channel. Empty ad-hoc channels are removed.
@@ -349,7 +379,9 @@ public sealed class ChatEngine
         oldName = "";
         newName = newName.Trim();
         var channel = ModeratedChannel(mod);
-        if (channel == null || newName.Length == 0 || channel.IsStatic ||
+        // The new name passes the same test as a created one
+        // (CChatChannel::RenameChannel, CChatChannel.cpp:142-146).
+        if (channel == null || !IsValidConferenceName(newName) || channel.IsStatic ||
             _channels.ContainsKey(newName))
             return null;
         oldName = channel.Name;

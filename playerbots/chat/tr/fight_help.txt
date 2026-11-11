@@ -1,0 +1,9 @@
+# fight_help.txt - kavgada ağır yaralı botun kendisiyle konuşan oyuncuya yardım çağrısı. {name} oyuncu.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+yardım et!
+YARDIM
+{name} yardım!
+heal lazım!
+ölüyorum burda, yardım
+azıcık yardım??

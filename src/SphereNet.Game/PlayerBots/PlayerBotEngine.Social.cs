@@ -56,7 +56,12 @@ public sealed partial class PlayerBotEngine
         foreach (var ch in _world.GetCharsInRange(speaker.Position, 10))
         {
             if (!ch.IsPlayerBot || ch.IsDead || !_minds.TryGetValue(ch.Uid.Value, out var mind)) continue;
-            if (mind.Mode == BotMode.Fight || mind.Mode == BotMode.Flee) continue;
+            if (mind.Mode == BotMode.Fight || mind.Mode == BotMode.Flee)
+            {
+                // In a fight it has a word for the one who means it, no more.
+                BusyReply(mind, speaker, w, words, now, lang);
+                continue;
+            }
             near.Add(mind);
             if (named == null && words.Contains(FirstName(ch).ToLowerInvariant()))
                 named = mind;
@@ -89,6 +94,7 @@ public sealed partial class PlayerBotEngine
                 BotIntentKind.News => 30,
                 BotIntentKind.Follow => 30,
                 BotIntentKind.Doing => 20,
+                BotIntentKind.Plan => 20,
                 BotIntentKind.Gate => 60,
                 BotIntentKind.Buff => 45,
                 BotIntentKind.Mark => 40,
@@ -112,6 +118,7 @@ public sealed partial class PlayerBotEngine
         if (target.Scene != null) EndScene(target.Scene);
         w.Focus = target;
         w.FocusUntilMs = now + FocusMs;
+        Attend(target, speaker, now);
         if (addressed)
         {
             Remember(target, speaker);
@@ -151,7 +158,7 @@ public sealed partial class PlayerBotEngine
         Action? action = null;
         string? topicType = intent.PlaceType, topicWord = intent.PlaceWord;
         // A question asked again at once: "like I said".
-        if (intent.Kind is BotIntentKind.Where or BotIntentKind.Far or BotIntentKind.Doing or BotIntentKind.Here or
+        if (intent.Kind is BotIntentKind.Where or BotIntentKind.Far or BotIntentKind.Doing or BotIntentKind.Plan or BotIntentKind.Here or
                 BotIntentKind.WhoAreYou or BotIntentKind.News or BotIntentKind.Question or BotIntentKind.HowAreYou or
                 BotIntentKind.Party or BotIntentKind.Res or BotIntentKind.Heal or BotIntentKind.Follow or
                 BotIntentKind.Bot or BotIntentKind.Selling &&
@@ -185,6 +192,10 @@ public sealed partial class PlayerBotEngine
                 break;
             case BotIntentKind.Doing:
                 (category, tokens, topicType, topicWord) = AnswerDoing(m, player, lang);
+                fallback = "respond_doing_idle";
+                break;
+            case BotIntentKind.Plan:
+                (category, tokens) = AnswerPlan(m, lang);
                 fallback = "respond_doing_idle";
                 break;
             case BotIntentKind.Here:
@@ -384,10 +395,13 @@ public sealed partial class PlayerBotEngine
         {
             case BotMode.Shop: return ("respond_doing_shop", null, null, null);
             case BotMode.Loot or BotMode.Reclaim: return ("respond_doing_reclaim", null, null, null);
+            case BotMode.Work or BotMode.Sell: return ("respond_doing_work", WorkTokens(m, lang), null, null);
         }
         if (m.BankStage > 0) return ("respond_doing_bank", null, null, null);
         if (m.Mode == BotMode.Travel && m.Goal is { } goal)
         {
+            // On the way to a step of its plan that has a reason worth telling.
+            if (PlanDoing(m, goal, lang) is { } planned) return planned;
             string phrase = PlacePhrase(goal, lang);
             var tokens = new Dictionary<string, string> { ["goal"] = phrase };
             string category = goal.Type.StartsWith("Dungeon", StringComparison.OrdinalIgnoreCase) ? "respond_doing_hunt"

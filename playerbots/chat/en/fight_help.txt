@@ -1,0 +1,9 @@
+# fight_help.txt - a badly hurt bot in a fight answers a player who speaks to it with a call for help. {name} is the player.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+help me!
+HELP
+{name} help!
+need a heal!
+im dying here, help
+little help??

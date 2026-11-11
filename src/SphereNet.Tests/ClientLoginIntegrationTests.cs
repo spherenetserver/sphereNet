@@ -65,6 +65,11 @@ public class ClientLoginIntegrationTests
         state.LoginRequestHandler = (_, acct, pwd) => client.HandleLoginRequest(acct, pwd);
         state.GameLoginHandler = (_, acct, pwd, authId) => client.HandleGameLogin(acct, pwd, authId);
         state.CharSelectHandler = (_, slot, name) => client.HandleCharSelect(slot, name);
+        state.CharCreateHandler = (_, info) =>
+        {
+            client.PendingCharCreate = info;
+            client.HandleCharSelect(-1, info.Name);
+        };
         state.ServerSelectHandler = (s, _) =>
         {
             s.AuthId = RelayAuthId;
@@ -265,9 +270,16 @@ public class ClientLoginIntegrationTests
         var (gameClient, game) = NewConnection(lf, world, accounts);
         Pump(nm, game, Concat(SeedBytes(), GameLoginPacket(RelayAuthId, "hero", "secret")));
 
-        // Select character slot 0; account has none yet, so the engine creates one
-        // and drives EnterWorld (login confirm 0x1B + start packets).
+        // The account has no character yet. A play request on its empty slot plays
+        // nothing (Source-X Setup_Play, CClientMsg.cpp:2924-2926): the list comes back.
+        TestHarness.ClearQueuedPackets(game);
         Pump(nm, game, CharSelectPacket(0, "Hero"));
+        Assert.Null(gameClient.Character);
+        Assert.Contains((byte)0xA9, Outgoing(game));
+
+        // The creation packet makes the character and drives EnterWorld (login
+        // confirm 0x1B + start packets).
+        Pump(nm, game, SphereNet.Game.Diagnostics.BotPacketBuilder.BuildCharCreate("Hero"));
 
         Assert.NotNull(gameClient.Character);
         Assert.True(gameClient.Character!.IsOnline);
@@ -288,7 +300,7 @@ public class ClientLoginIntegrationTests
 
         var (gameClient, game) = NewConnection(lf, world, accounts);
         Pump(nm, game, Concat(SeedBytes(), GameLoginPacket(RelayAuthId, "hero", "secret")));
-        Pump(nm, game, CharSelectPacket(0, "Hero"));
+        Pump(nm, game, SphereNet.Game.Diagnostics.BotPacketBuilder.BuildCharCreate("Hero"));
         return gameClient.Character!;
     }
 

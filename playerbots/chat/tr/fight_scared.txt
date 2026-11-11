@@ -1,0 +1,9 @@
+# fight_scared.txt - şehir halkından biri yakında çıkan kavgadan uzaklaşır.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+dur dur
+benden uzak olsun
+ben kaçar
+dışarıda halledin!
+dikkat!
+eyvah

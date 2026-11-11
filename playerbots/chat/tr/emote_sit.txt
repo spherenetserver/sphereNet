@@ -1,0 +1,11 @@
+# emote_sit.txt - sandalyede ya da bankta oturan bot; emote.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+*arkasına yaslanır*
+*dirseklerini masaya dayar*
+*ayaklarını uzatır*
+*bacaklarını gerer*
+*parmaklarıyla masada tempo tutar*
+*kupasının dibine bakar*
+*bir an içi geçer*
+*ortalığı dinler*

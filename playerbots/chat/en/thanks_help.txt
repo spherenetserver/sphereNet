@@ -1,0 +1,7 @@
+# thanks_help.txt - a plain thanks, when no fitter one can be said. {name} is the helper.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+thanks!
+ty {name}
+thx
+thank you {name}

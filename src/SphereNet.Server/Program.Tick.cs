@@ -477,6 +477,8 @@ public static partial class Program
         // the thread mid-tick, so the report carries both: the pause the collector took
         // during this tick and the collections that caused it.
         long tickGcPauseUs = GcPauseUs();
+        // ...and the processor time this thread was actually given: see ThreadCpuClock.
+        long tickCpuStartUs = SphereNet.Game.Diagnostics.ThreadCpuClock.NowUs();
         int tickGen0 = GC.CollectionCount(0);
         int tickGen1 = GC.CollectionCount(1);
         int tickGen2 = GC.CollectionCount(2);
@@ -531,10 +533,19 @@ public static partial class Program
         finally
         {
             long totalUs = ToMicroseconds(Stopwatch.GetTimestamp() - tickStart);
+            long tickCpuUs = SphereNet.Game.Diagnostics.ThreadCpuClock.SinceUs(tickCpuStartUs);
             if (totalUs > _telemetryMaxTickUs)
                 _telemetryMaxTickUs = totalUs;
             TickHistogram.Record((int)(totalUs / 1000));
             _perfWindow?.RecordTick(totalUs);
+            _perfWindow?.RecordTickCpu(totalUs, tickCpuUs);
+            // Same order as PerfMeasurementWindow.PhaseNames.
+            _perfWindow?.RecordPhases(
+            [
+                _telemetryWorldTickUs, _telemetryNpcBuildUs, _telemetryNpcApplyDecisionsUs,
+                _telemetryNpcApplyPurgeUs, _telemetryNpcApplyDirtyUs, _telemetryViewBuildUs,
+                _telemetryApplyUs, _telemetryPostApplyUs, _telemetryFlushUs,
+            ]);
             // In-process bot scenario: its gate judges only the ticks of its own window.
             _botEngine?.RecordServerTickSample((int)(totalUs / 1000));
 
@@ -547,10 +558,14 @@ public static partial class Program
                 _slowTickCount++;
                 _lastSlowTickDominantPhase = GetDominantTickPhase();
                 _log.LogWarning(
-                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms (world_tick={WorldTickMs}ms) compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms [commit={NpcApplyCommitMs}ms/{DecisionCount} purge={NpcApplyPurgeMs}ms dirty={NpcApplyDirtyMs}ms/{DirtyCount}] view_build={ViewBuildMs}ms) apply={ApplyMs}ms post_apply={PostApplyMs}ms flush={FlushMs}ms(worst {FlushStep} {FlushStepMs}ms gc={FlushStepGcMs}ms) gc={GcPauseMs}ms/{Gen0}/{Gen1}/{Gen2} heap={HeapMB}MB",
+                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms cpu={CpuMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms (world_tick={WorldTickMs}ms) compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms [commit={NpcApplyCommitMs}ms/{DecisionCount} purge={NpcApplyPurgeMs}ms dirty={NpcApplyDirtyMs}ms/{DirtyCount}] view_build={ViewBuildMs}ms) apply={ApplyMs}ms post_apply={PostApplyMs}ms flush={FlushMs}ms(worst {FlushStep} {FlushStepMs}ms gc={FlushStepGcMs}ms) gc={GcPauseMs}ms/{Gen0}/{Gen1}/{Gen2} heap={HeapMB}MB",
                     _multicoreRuntimeEnabled ? "multicore" : "single",
                     _tickCounter,
                     (totalUs / 1000.0).ToString("F1"),
+                    // Main-thread processor time inside the tick; far below total
+                    // means the thread was waiting (for a core, workers or the GC),
+                    // not working. "?" where the platform cannot say.
+                    tickCpuUs >= 0 ? (tickCpuUs / 1000.0).ToString("F1") : "?",
                     _lastSlowTickDominantPhase,
                     (_telemetrySnapshotUs / 1000.0).ToString("F1"),
                     (_telemetryWorldTickUs / 1000.0).ToString("F1"),
@@ -1096,7 +1111,15 @@ public static partial class Program
         // produce different worlds (review finding B5).
         // The acceptance count is sphere.ini NpcPathPrestagePerTick (default 8).
         _npcAI.BeginTickPathfindBudget(NpcPathPrestagePerTick, npcSnapshot, _tickCounter);
-        if (npcSnapshot.Count >= ParallelComputeMinBatch)
+        // The only work in BuildDecision worth a second core is a prestage A*, and
+        // who may run one this tick has just been decided. With fewer than two
+        // admitted there is nothing to share out: the rest of the build is a few
+        // field reads per creature, which this thread finishes in microseconds - and
+        // then, in a Parallel.ForEach, sat waiting for worker threads to be scheduled
+        // only so they could find the list empty. On a host with busy cores that wait
+        // was the phase: in a minute sampled on one, the workers did 150 ms of work
+        // between them while this thread spent seconds inside the parallel call.
+        if (npcSnapshot.Count >= ParallelComputeMinBatch && _npcAI.PrestageSearchesAdmitted >= 2)
         {
             var po = new ParallelOptions
             {
@@ -1386,6 +1409,9 @@ public static partial class Program
             if (now < expireAt)
                 continue;
 
+            // The guard's summon ran out (LAYER_SPELL_Summon, CCharSpell.cpp:595-606):
+            // it goes in the teleport-vanish effect with sound 0x201.
+            ShowSummonVanish(guard);
             var removePacket = new PacketDeleteObject(uid.Value);
             BroadcastNearby(guard.Position, 18, removePacket, 0);
             _world.DeleteObject(guard);
@@ -1502,6 +1528,7 @@ public static partial class Program
         FlushStep("decay", () => RunDecayCatchup(now));
         FlushStep("doors", () => CloseExpiredStaticDoors(now));
         FlushStep("respawn", ProcessRespawnResetChunk);
+        FlushStep("restock", ProcessRestockSpawnChunk);
 
         long lightMinute = _world.WorldClockMinutes;
         if (lightMinute != _lastLightWorldMinute)
@@ -1528,11 +1555,13 @@ public static partial class Program
         if (seasonChanged)
             FlushStep("season", () => BroadcastSeasonChange(playSound: true));
 
-        // Region periodic triggers (Source-X CSector environ tick): fire
-        // @CliPeriodic for every online player on their current region, and
-        // @RegPeriodic once per region that holds at least one player (a
-        // representative player is the SRC, mirroring iRegionPeriodic). Only
-        // regions with players present tick — uninhabited regions never fire.
+        // Region periodic triggers (Source-X CSector::_OnTick, CSector.cpp:1276-
+        // 1353): @CliPeriodic for every online player on its current area, and
+        // @RegPeriodic ONCE PER SECTOR that has clients in it - the first client
+        // character the sector walks fires its own area's trigger (iRegionPeriodic
+        // goes 2 -> 1 on it). So a large area whose players stand in three sectors
+        // ticks three times, and two areas sharing one sector tick once between
+        // them. Sectors without clients never fire.
         long periodicNowMs = Environment.TickCount64;
         if (PeriodDue(ref _nextRegionPeriodicMs, periodicNowMs, RegionPeriodicMs) && _triggerDispatcher != null)
         {
@@ -1545,8 +1574,8 @@ public static partial class Program
                 var region = _world.FindRegion(ch.Position);
                 if (region == null) continue;
 
-                // @RegPeriodic: once per region this tick (first player = SRC).
-                if (_regPeriodicFired.Add(region.Uid))
+                // @RegPeriodic: once per occupied sector (first player = SRC).
+                if (_regPeriodicFired.Add(RegPeriodicSectorKey(ch.Position)))
                     _triggerDispatcher.FireRegionEvents(region, "RegPeriodic", ch,
                         new TriggerArgs { CharSrc = ch, S1 = region.Name });
 

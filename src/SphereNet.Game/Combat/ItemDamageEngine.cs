@@ -182,7 +182,11 @@ public static class ItemDamageEngine
     /// the MORE1_DEFNAME routing tag.</summary>
     internal static SpellType ResolvePotionSpell(Item potion)
     {
-        if (potion.More1 is > 0 and < 1000)
+        // Any spell number, the Sphere ones (1000 and up: s_refresh, s_mana, s_restore,
+        // s_shrink ...) included: Use_Drink takes ResGetIndex(m_itPotion.m_Type) as it
+        // stands (CCharUse.cpp:1083), up to SPELL_QTY (uofiles_enums.h:909). A bound of
+        // 1000 here made every such bottle an empty one.
+        if (potion.More1 is > 0 and <= (uint)SpellType.Liquor)
             return (SpellType)potion.More1;
         if (potion.TryGetTag("MORE1_DEFNAME", out string? name) && !string.IsNullOrWhiteSpace(name) &&
             Definitions.DefinitionLoader.StaticResources?.ResolveDefName(name) is { IsValid: true } rid &&

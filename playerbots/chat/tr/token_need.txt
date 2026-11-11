@@ -1,0 +1,26 @@
+# token_need.txt - planin nedeni: bir istek (Money, Supplies, Safety, Load, Purse, Growth, Social, Adventure) ya da shopping.txt ihtiyaci icin Supplies.<ihtiyac>
+
+Money=biraz para lazım
+Supplies=malzemem azaldı
+Supplies.reagent=reagent bitti
+Supplies.bandage=bandaj bitti
+Supplies.arrow=ok bitti
+Supplies.bolt=bolt bitti
+Supplies.heal=heal pot kalmadı
+Supplies.cure=cure pot kalmadı
+Supplies.refresh=refresh pot kalmadı
+Supplies.rune=boş rün lazım
+Supplies.food=acıktım
+Supplies.pickaxe=kazmamı kaybettim
+Supplies.axe=baltamı kaybettim
+Supplies.pole=olta lazım
+Supplies.hammer=demirci çekici lazım
+Supplies.ingot=külçe bitti
+Supplies.cloth=kumaş bitti
+Supplies.board=tahta bitti
+Safety=hırpalandım, biraz dinlenmem lazım
+Load=çanta full doldu
+Purse=üstümde çok altın var
+Growth=skill kasmam lazım
+Social=çok yalnız kaldım
+Adventure=bu kasabadan sıkıldım

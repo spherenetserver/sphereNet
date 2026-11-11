@@ -163,8 +163,6 @@ public enum CharTrigger : short
     RegionLeave,
     RegionStep,
     Rename,
-    RoomEnter,
-    RoomLeave,
     RoomStep,
     Resurrect,
     Reveal,

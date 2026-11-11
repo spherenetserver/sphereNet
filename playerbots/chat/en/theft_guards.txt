@@ -1,0 +1,8 @@
+# theft_guards.txt - a robbed bot calls the watch in a guarded town (the word guards is what they hear). {other} is the thief.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+GUARDS! thief!
+GUARDS!!
+guards! {other} is a thief!
+GUARDS, THIEF HERE
+guards help, i was robbed

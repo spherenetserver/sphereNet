@@ -93,7 +93,28 @@ public sealed class Pathfinder
             return [goal];
 
         if (start.GetDistanceTo(goal) <= 1 && Math.Abs(start.Z - goal.Z) <= MaxClimb)
-            return IsWalkable(goal, canFlags, self, ignoreChars: true, options) ? [goal] : null;
+        {
+            if (self == null || _world.MapData == null)
+                return IsWalkable(goal, canFlags, self, ignoreChars: true, options) ? [goal] : null;
+
+            // A walker's one-step route is that step, so the step's own rule decides
+            // it - the same question the search below asks of every neighbour
+            // (CPathFinder fills each cell through CanMoveWalkTo, CPathFinder.cpp:235).
+            // This shortcut used to answer "yes" for any neighbouring tile within 12 of
+            // height that held no blocking object: IsWalkable leaves the terrain to the
+            // walk rule when there is a walker, and nothing here had asked it. A goal
+            // one tile east and ten down a ledge came back as a one-step path, the step
+            // was refused, and the walker asked again - three times a second, for good.
+            // When the direct step is not there the search goes on: the neighbour may
+            // still be reached the long way round (down the stairs, through the door).
+            var direct = DirectionOf(goal.X - start.X, goal.Y - start.Y);
+            if (_world.Standing.CheckPathStep(self, mapIndex, start.X, start.Y, start.Z, direct, out int directZ,
+                    diagonalSides: true) &&
+                Math.Abs(directZ - goal.Z) <= MaxClimb &&
+                IsWalkable(new Point3D(goal.X, goal.Y, (sbyte)directZ, mapIndex), canFlags, self,
+                    ignoreChars: true, options))
+                return [goal];
+        }
 
         var openSet = _tlOpenSet ??= new PriorityQueue<PathNode, int>();
         var closedSet = _tlClosedSet ??= new HashSet<long>();
@@ -110,6 +131,7 @@ public sealed class Pathfinder
         gScore[PackKey(startNode.X, startNode.Y, startNode.Z)] = 0;
 
         int nodesExplored = 0;
+        Span<int> stepZs = stackalloc int[8];
 
         while (openSet.Count > 0 && nodesExplored < maxNodes)
         {
@@ -129,6 +151,16 @@ public sealed class Pathfinder
                 _lastTimedOut = true;
                 return null;
             }
+
+            // A walker's route follows the walk rule itself, so it climbs and drops
+            // exactly as far as the step will and lands where the step lands. All
+            // eight directions are asked at once: the step's diagonal side test reads
+            // the two cardinal answers beside it, and the climb height of the tile
+            // being left is one lookup instead of eight.
+            bool walkerRule = self != null && _world.MapData != null;
+            int stepMask = walkerRule
+                ? _world.Standing.CheckPathSteps(self!, mapIndex, current.X, current.Y, current.Z, stepZs)
+                : 0;
 
             // Explore 8 neighbors
             for (int dx = -1; dx <= 1; dx++)
@@ -165,15 +197,14 @@ public sealed class Pathfinder
                     // every executed step resolves through WalkCheck.
                     sbyte nz;
                     int extraCost = 0;
-                    if (self != null && _world.MapData != null)
+                    if (walkerRule)
                     {
-                        // A creature's route follows the walk rule itself - CPathFinder
-                        // asks CanMoveWalkTo with fPathFinding for every cell
-                        // (CPathFinder.cpp:235) - so it climbs and drops exactly as
-                        // far as the step will, and lands where the step lands.
-                        var stepDir = DirectionOf(dx, dy);
-                        if (!_world.Standing.CheckPathStep(self, mapIndex, current.X, current.Y,
-                                current.Z, stepDir, out int stepZ))
+                        // CPathFinder asks CanMoveWalkTo for every cell
+                        // (CPathFinder.cpp:235); here it is asked as the step from
+                        // this node, which is what the walker will actually take.
+                        int stepDir = (int)DirectionOf(dx, dy);
+                        int stepZ = stepZs[stepDir];
+                        if ((stepMask & (1 << stepDir)) == 0)
                         {
                             // A shut, unlocked door is a way through for a walker
                             // that opens doors: it stands on the same floor.

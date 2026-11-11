@@ -1,0 +1,7 @@
+# emote_train.txt - a bot practising on a training dummy or an archery butte; emotes.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+*catches breath*
+*wipes sweat off brow*
+*shakes out arms*
+*squares up again*

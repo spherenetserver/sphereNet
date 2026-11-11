@@ -1,0 +1,6 @@
+# respond_doing_plan.txt - bkz. docs/PLAYERBOTS.md (Talking). Planin bir isine giderken: {goal} nereye, {now} ne, {why} neden.
+
+{goal} tarafına gidiyom, {why}
+{goal} tarafında {now}. {why}
+{goal}. {why}
+{why}, {goal} yolundayım

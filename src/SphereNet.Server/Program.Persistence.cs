@@ -380,7 +380,78 @@ public static partial class Program
                 n++;
             }
             _log.LogInformation("[restock] restocked {Count} vendors", n);
+            QueueRestockSpawners();
         });
+    }
+
+    private static List<SphereNet.Game.Objects.Items.Item>? _restockSpawnQueue;
+    private static int _restockSpawnIndex;
+    private static int _restockSpawnMade;
+
+    /// <summary>The other half of Source-X RESTOCK: CSector::Restock gives every
+    /// spawn point of every sector one component tick (pSpawn->OnTickComponent(),
+    /// CSector.cpp:1190-1198), asleep or not. Only the vendors were restocked here,
+    /// so nothing an operator could type moved the spawn points of a sleeping world
+    /// short of RESPAWN FULL, which kills what is there first.
+    ///
+    /// Upstream does the whole world in one go; a tick of a few thousand spawn points
+    /// each making a creature (its @Create and @NPCRestock scripts included) is
+    /// seconds of main loop, so the points are queued and worked through inside the
+    /// same per-tick budget RESPAWN FULL uses.</summary>
+    private static void QueueRestockSpawners()
+    {
+        if (_restockSpawnQueue != null)
+        {
+            _log.LogInformation("[restock] spawn points already in progress ({Done}/{Total})",
+                _restockSpawnIndex, _restockSpawnQueue.Count);
+            return;
+        }
+        var queue = new List<SphereNet.Game.Objects.Items.Item>();
+        foreach (var obj in _world.GetAllObjects())
+        {
+            if (obj is SphereNet.Game.Objects.Items.Item item && !item.IsDeleted &&
+                (item.SpawnChar != null || item.SpawnItem != null))
+                queue.Add(item);
+        }
+        if (queue.Count == 0)
+            return;
+        _restockSpawnQueue = queue;
+        _restockSpawnIndex = 0;
+        _restockSpawnMade = 0;
+        _log.LogInformation("[restock] queued {Count} spawn points; ~25ms per tick", queue.Count);
+    }
+
+    /// <summary>Advance a queued RESTOCK's spawn points inside ~25 ms per tick. Called
+    /// from post-tick maintenance.</summary>
+    private static void ProcessRestockSpawnChunk()
+    {
+        var queue = _restockSpawnQueue;
+        if (queue == null) return;
+
+        long start = Stopwatch.GetTimestamp();
+        while (_restockSpawnIndex < queue.Count)
+        {
+            var item = queue[_restockSpawnIndex++];
+            try
+            {
+                if (_world.RestockSpawner(item))
+                    _restockSpawnMade++;
+            }
+            catch (Exception ex)
+            {
+                // One spawn point's script fault is its own; the rest still get their tick.
+                SphereNet.Game.Diagnostics.TickFaults.Report(item, "restock spawn", ex);
+            }
+            if (ToMicroseconds(Stopwatch.GetTimestamp() - start) > 25_000)
+                break;
+        }
+
+        if (_restockSpawnIndex >= queue.Count)
+        {
+            _log.LogInformation("[restock] ticked {Count} spawn points, {Made} produced a child",
+                queue.Count, _restockSpawnMade);
+            _restockSpawnQueue = null;
+        }
     }
 
     /// <summary>The backpack-item count from which a vendor counts as inflated: one

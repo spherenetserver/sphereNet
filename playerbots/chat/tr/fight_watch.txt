@@ -1,0 +1,9 @@
+# fight_watch.txt - ayakta duran savaşçı yakında çıkan kavgayı izlemeye döner.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+oha kavga
+başladı yine
+oo kavga var
+şuna bak
+biri fena dayak yiyecek
+bu iyi olacak

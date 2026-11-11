@@ -432,6 +432,10 @@ public class Item : ObjBase
             MarkDirty(DirtyFlag.Amount);
             NotifyCarrierInventoryChanged();
             NotifyParentWeightChanged(StatusUnitWeight(amount) - oldWeight);
+            // A pile that grows or shrinks inside a secure trade window changes the
+            // offer as surely as adding or removing an item does.
+            if (_containedIn.IsValid)
+                NotifyEnclosingTradeChanged();
         }
     }
 
@@ -1935,10 +1939,26 @@ public class Item : ObjBase
     /// other path - a script move, an engine deletion - able to change the goods out
     /// from under an acceptance that had already been given.
     /// </summary>
+    /// <remarks>The window is found by walking up from this container, so a bag lying
+    /// in the window counts as part of the offer: only a direct child used to, and
+    /// what was taken out of (or put into) such a bag left both check marks standing.
+    /// </remarks>
     private void NotifyTradeContentChanged()
     {
+        if (OnTradeWindowChanged == null) return;
         if (_type == ItemType.EqTradeWindow)
-            OnTradeWindowChanged?.Invoke(this);
+            OnTradeWindowChanged(this);
+        else if (_containedIn.IsValid)
+            NotifyEnclosingTradeChanged();
+    }
+
+    /// <summary>Raise <see cref="OnTradeWindowChanged"/> for the secure trade window
+    /// this item lies in, at any depth; nothing when it is not in one.</summary>
+    private void NotifyEnclosingTradeChanged()
+    {
+        if (OnTradeWindowChanged != null &&
+            ItemMoveRules.FindEnclosingTradeWindow(this) is { } window)
+            OnTradeWindowChanged(window);
     }
 
     /// <summary>Implements the <c>CONT=</c> script setter: move this item into

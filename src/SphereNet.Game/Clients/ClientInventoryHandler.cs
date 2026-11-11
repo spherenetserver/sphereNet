@@ -131,17 +131,19 @@ public sealed class ClientInventoryHandler
         // The talk is settled (:765).
         mem.More1 &= 0xFFFF0000;
 
-        long balance = npc.TryGetTag("HIRE_BALANCE", out string? bs) &&
-            ScriptNumber.TryParseLong(bs, out long b) ? b : 0;
-        balance += gold.Amount;
-        npc.SetTag("HIRE_BALANCE", balance.ToString());
-        if (owner == null)
-        {
-            npc.PetAIMode = PetAIMode.Follow;
-            npc.SetTag("FOLLOW_TARGET", _character.Uid.Value.ToString());
-        }
+        // The wage goes into the hireling's bank-box purse - m_Check_Amount, the
+        // same number NPC_CheckHirelingStatus draws on (NPC_OnHirePayMore,
+        // CCharNPCPet.cpp:705-723). A balance an earlier save kept in
+        // TAG.HIRE_BALANCE is folded into the purse the first time it is read.
+        // A new hire starts from nothing ("zero any previous balance", :713); the
+        // owner paying more adds to what is left.
+        long balance = (owner == null ? 0 : VendorEngine.GetVendorGold(npc)) + gold.Amount;
+        VendorEngine.SetVendorGold(npc, balance);
+        // NPC_PetSetOwner gives no order: the new hireling is idle, and an idle pet
+        // that sees its owner guards it (Character.TryAssignOwnership).
         long daysPaid = balance / Math.Max(1, dayWage);
-        SysMessage(ServerMessages.GetFormatted(Msg.NpcPetHireTime, daysPaid.ToString()));
+        // The NPC says how long it is paid for (Speak, :722).
+        _client.NpcSpeech(npc, ServerMessages.GetFormatted(Msg.NpcPetHireTime, daysPaid.ToString()));
         gold.RemoveFromWorld(); // consumed into the wage balance
         return true;
     }
@@ -461,10 +463,29 @@ public sealed class ClientInventoryHandler
         // Own pet / hireling.
         if (npc.HasOwner(_character!.Uid))
         {
-            // Owned VENDOR: goods go into the vendor stock box (Source-X
-            // GetBank(LAYER_VENDOR_STOCK)); gold reached the hire-pay path
-            // earlier in the drop flow.
-            if (npc.NpcBrain == NpcBrainType.Vendor && !isGold)
+            // Owned VENDOR - NPC_IsVendor(), every vendor brain and not the VENDOR
+            // one alone (CCharNPCAct.cpp:2099). Gold from the owner is wage money:
+            // the vendor says DEFMSG_NPC_PET_MONEY and it goes into the purse
+            // (NPC_OnHirePayMore without fHire, :2101-2110, CCharNPCPet.cpp:705-723).
+            bool ownedVendor = VendorEngine.IsVendorLike(npc);
+            if (ownedVendor && isGold)
+            {
+                uint dayWage = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.HireDayWage ?? 0;
+                if (dayWage > 0)
+                {
+                    _client.NpcSpeech(npc, ServerMessages.Get(Msg.NpcPetMoney));
+                    long purse = VendorEngine.GetVendorGold(npc) + item.Amount;
+                    VendorEngine.SetVendorGold(npc, purse);
+                    _client.NpcSpeech(npc, ServerMessages.GetFormatted(Msg.NpcPetHireTime,
+                        (purse / dayWage).ToString()));
+                    _world.RemoveItem(item);
+                    _netState.Send(new PacketDropAck());
+                    return;
+                }
+            }
+
+            // Goods go into the vendor stock box (GetBank(LAYER_VENDOR_STOCK), :2114).
+            if (ownedVendor && !isGold)
             {
                 var stock = npc.GetEquippedItem(Layer.VendorStock);
                 if (stock == null)
@@ -574,7 +595,10 @@ public sealed class ClientInventoryHandler
                 bank.Name = "Bank Box";
                 _character.Equip(bank, Layer.BankBox);
             }
-            SysMessage($"{item.Amount} gold has been deposited into your bank box.");
+            // The banker says it, when it can speak (DEFMSG_NPC_BANKER_DEPOSIT,
+            // CCharNPCAct.cpp:2174-2179).
+            if (SphereNet.Game.AI.NpcAI.NpcCanSpeak(npc))
+                _client.NpcSpeech(npc, ServerMessages.GetFormatted(Msg.NpcBankerDeposit, item.Amount.ToString()));
             if (!bank.TryAddItem(item))
                 PlaceItemInPack(_character, item);
             _netState.Send(new PacketDropAck());
@@ -586,7 +610,7 @@ public sealed class ClientInventoryHandler
         // it, even though it "wants" gold for the ground-pickup score.
         if (isGold)
         {
-            SysMessage("It does not seem to want your gold.");
+            // Silently: `return false` with no line (CCharNPCAct.cpp:2184).
             PlaceItemInPack(_character, item);
             _netState.Send(new PacketDropAck());
             return;
@@ -594,7 +618,9 @@ public sealed class ClientInventoryHandler
 
         // Non-pet vendor: a dropped item is a quick-sell offer
         // (Source-X routes it into Event_VendorSell for that one item).
-        if (!isGold && npc.NpcBrain == NpcBrainType.Vendor && !npc.OwnerSerial.IsValid)
+        // NPC_IsVendor() && !STATF_PET (CCharNPCAct.cpp:2187): any vendor brain.
+        if (!isGold && VendorEngine.IsVendorLike(npc) && !npc.OwnerSerial.IsValid &&
+            !npc.IsStatFlag(StatFlag.Pet))
         {
             // Back into the pack first — the sell transaction consumes it
             // from there like a normal 0x9F response.
@@ -611,11 +637,18 @@ public sealed class ClientInventoryHandler
         int want = Character.NpcWantThisItem?.Invoke(npc, item) ?? 0;
         if (want <= 0)
         {
-            var refuse = _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCRefuseItem,
-                new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item });
+            // The refusal is silent unless @NPCRefuseItem is scripted: only then,
+            // and only when the script did not RETURN 1, is the giver told the NPC
+            // does not want it (DEFMSG_NPC_GENERIC_DONTWANT, CCharNPCAct.cpp:2200-2211).
+            bool refuseHooked = _triggerDispatcher?.IsCharTriggerUsed(CharTrigger.NPCRefuseItem) == true;
+            var refuse = refuseHooked
+                ? _triggerDispatcher!.FireCharTrigger(npc, CharTrigger.NPCRefuseItem,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item })
+                : TriggerResult.Default;
             if (refuse != TriggerResult.True)
             {
-                SysMessage("It does not seem to want that.");
+                if (refuseHooked)
+                    SysMessage(ServerMessages.Get(Msg.NpcGenericDontwant));
                 PlaceItemInPack(_character, item);
                 _netState.Send(new PacketDropAck());
                 return;
@@ -1460,9 +1493,32 @@ public sealed class ClientInventoryHandler
         if (_character == null) return;
 
         var item = _world.FindItem(new Serial(serial));
-        if (item == null) return;
+        bool isDragTag = _character.TryGetTag("DRAGGING", out var dragTag) && dragTag == serial.ToString();
 
-        if (!_character.TryGetTag("DRAGGING", out var dragTag) || dragTag != serial.ToString())
+        // The drop is of the item on LAYER_DRAGGING and of nothing else: upstream
+        // looks it up there and cancels the drag when it is not, or when the item is
+        // gone (Event_Item_Drop, CClientEvent.cpp:283-291). Two cases went past that.
+        // An item that no longer exists - a dragged pile sold whole to a vendor -
+        // returned without a word, so the client kept it on the cursor. And an item
+        // that had left the cursor while the drag was still recorded - the same sale
+        // to a player's vendor, which keeps what it buys - was dropped wherever the
+        // packet said: out of the vendor's box and onto the ground at the seller's
+        // feet, with the price already paid.
+        if (item == null || (isDragTag && (item.ContainedIn != _character.Uid || item.IsEquipped)))
+        {
+            if (isDragTag)
+            {
+                _character.RemoveTag("DRAGGING");
+                _dragOrigin = null;
+            }
+            // The cancel makes the client put the item back where it lifted it from;
+            // the removal that follows takes that picture away again.
+            _netState.Send(new PacketDropReject());
+            _netState.Send(new PacketDeleteObject(serial));
+            return;
+        }
+
+        if (!isDragTag)
         {
             _netState.Send(new PacketDropReject());
             return;
@@ -1644,6 +1700,16 @@ public sealed class ClientInventoryHandler
                                 RestoreToOrigin(item);
                                 _netState.Send(new PacketDropReject());
                                 return;
+                            }
+                            // Put into a container carried by an NPC I own, the item
+                            // is no longer anyone's: ATTR_OWNED goes, and ATTR_NEWBIE
+                            // with it unless ALLOWNEWBTRANSFER (CClientEvent.cpp:351-357).
+                            // This branch is the only place upstream does that.
+                            if (!rootOwner.IsPlayer)
+                            {
+                                item.ClearAttr(ObjAttributes.Owned);
+                                if (!Item.AllowNewbTransfer)
+                                    item.ClearAttr(ObjAttributes.Newbie);
                             }
                         }
                         else if (rootOwner == null && !topContainer.ContainedIn.IsValid)
@@ -2021,24 +2087,36 @@ public sealed class ClientInventoryHandler
                     return;
                 }
 
-                // Handed to an NPC, an item is no longer anyone's: ATTR_OWNED goes, and
-                // ATTR_NEWBIE with it unless ALLOWNEWBTRANSFER (CClientEvent.cpp:350-357).
-                if (!charTarget.IsPlayer)
-                {
-                    item.ClearAttr(ObjAttributes.Owned);
-                    if (!Item.AllowNewbTransfer)
-                        item.ClearAttr(ObjAttributes.Newbie);
-                }
+                // No attribute is touched here. Dropping an item on a character's
+                // head is Cmd_SecureTrade -> NPC_OnItemGive (CClientEvent.cpp:320-328),
+                // and an NPC that refuses bounces it back unchanged; ATTR_OWNED /
+                // ATTR_NEWBIE are cleared only in the other branch, for an item put
+                // into a container on an NPC the giver owns (:351-357). Clearing them
+                // here cost a blessed item its blessing for being offered to a
+                // shopkeeper who did not even take it.
 
                 // Source-X NPC_OnItemGive: @ReceiveItem fires FIRST — a
                 // quest/reward script may fully consume the gift before ANY
-                // native handling, the train/hire gold pay included.
+                // native handling, the train/hire gold pay included. RETURN 1 is
+                // "not accepted" (CCharNPCAct.cpp:2073-2077), which makes the drop
+                // fail: an item still on the cursor goes back where it came from
+                // (Event_Item_Drop_Fail, CClientEvent.cpp:325-326). One the script
+                // deleted or put somewhere itself stays as the script left it.
                 if (!charTarget.IsPlayer && _triggerDispatcher != null &&
                     _triggerDispatcher.FireCharTrigger(charTarget, CharTrigger.ReceiveItem,
                         new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item })
                     == TriggerResult.True)
                 {
-                    _netState.Send(new PacketDropAck());
+                    if (!item.IsDeleted && item.ContainedIn == _character.Uid && !item.IsEquipped)
+                    {
+                        RestoreToOrigin(item);
+                        _netState.Send(new PacketDropReject());
+                    }
+                    else
+                    {
+                        _dragOrigin = null;
+                        _netState.Send(new PacketDropAck());
+                    }
                     return;
                 }
 
@@ -2412,6 +2490,31 @@ public sealed class ClientInventoryHandler
         }
     }
 
+    /// <summary>0xD7 0x1E EquipLastWeapon macro: wield the last weapon held again.
+    /// Source-X PacketEquipLastWeapon (receive.cpp:4121-4148) lifts it with ItemPickup -
+    /// ending there when the pickup is refused (:4142) - and only then calls ItemEquip.
+    ///
+    /// The lift used to be done by hand: the weapon was re-parented to the character
+    /// out of ANY container the character held directly (the bank box as well as the
+    /// pack), with no CanMoveItem, reach or @PickUp_* check, and before the equip was
+    /// asked whether it would happen. A ghost's equip is refused, so the weapon stayed
+    /// parented to the character with no layer. It now goes through the same pickup
+    /// and equip as the double-click and the equip macro do.</summary>
+    public void HandleEquipLastWeapon()
+    {
+        if (_character == null || _character.IsDead) return;
+
+        var lastUid = _character.LastWeaponUid;
+        if (!lastUid.IsValid) return;
+        if (_world.FindObject(lastUid) is not Item weapon || weapon.IsDeleted) return;
+        // Already wielding it: nothing to do (m_uidWeaponLast == m_uidWeapon, :4136).
+        if (ReferenceEquals(_character.GetEquippedItem(Layer.OneHanded), weapon) ||
+            ReferenceEquals(_character.GetEquippedItem(Layer.TwoHanded), weapon))
+            return;
+
+        TryDClickEquip(weapon, weapon.IsTwoHanded ? Layer.TwoHanded : Layer.OneHanded);
+    }
+
     /// <summary>0xED unequip-item macro (Source-X PacketUnEquipItemMacro):
     /// strip the named layers back into the pack.</summary>
     public void HandleUnequipMacro(IReadOnlyList<ushort> layers)
@@ -2494,20 +2597,44 @@ public sealed class ClientInventoryHandler
     private bool HandleItemEquipCore(uint serial, byte layer, uint charSerial, bool fromDoubleClick)
     {
         if (_character == null) return false;
-        if (_character.IsDead) return false;
 
         var item = _world.FindItem(new Serial(serial));
-        if (item == null) return false;
+        if (item == null)
+        {
+            // Nothing to wear, but the client may still be showing a cursor
+            // (PacketDragCancel::Other, the silent reason).
+            SendPickupFailed(5);
+            return false;
+        }
+
+        // The request must name the item this client is dragging: Source-X looks the
+        // item up on LAYER_DRAGGING, wants the client in drag mode and the serial to
+        // match, and answers anything else with PacketDragCancel (PacketItemEquipReq,
+        // receive.cpp:541-547). The test here was "parented to the character", which
+        // a worn item also passes: re-sending 0x13 for something already on a layer
+        // ran @EquipTest/@Equip again with no @Unequip between them, restarted the
+        // swing wait and broadcast the equip sound and 0x2E each time. An item on a
+        // layer is refused for staff as well - it is not on anybody's cursor.
+        bool isDragged = !item.IsEquipped && item.ContainedIn == _character.Uid &&
+            _character.TryGetTag("DRAGGING", out string? heldRaw) &&
+            ScriptNumber.TryParseUInt(heldRaw, out uint heldSerial) && heldSerial == item.Uid.Value;
+        if (item.IsEquipped || (!isDragged && _character.PrivLevel < PrivLevel.GM))
+        {
+            SendPickupFailed(5);    // PacketDragCancel::Other
+            return false;   // not the item on this cursor - nothing of ours to settle
+        }
+
+        // A ghost wears nothing (CanTouch refuses a dead character every item that is
+        // not death-immune), but the drag is still settled: returning here without it
+        // left the item parented to the character with no layer and no drag.
+        if (_character.IsDead)
+            return SettleEquipDrag(item, false);
 
         // Reject the internal-only dragging/sentinel layers (31+). Dragging is
         // not a client-equippable slot; this preserves the prior bound now that
         // Layer.Dragging sits between Special and Qty.
         if (layer == 0 || layer >= (byte)Layer.Dragging)
             return SettleEquipDrag(item, false);
-
-        if (_character.PrivLevel < PrivLevel.GM &&
-            item.ContainedIn != _character.Uid)
-            return false;   // not the item on this cursor - nothing of ours to settle
 
         var target = _world.FindChar(new Serial(charSerial));
         if (target == null) target = _character;

@@ -1,0 +1,124 @@
+# The planner: what a bot does next when a stay ends (docs/PLAYERBOTS.md, "A day's plan").
+# Every value here is also built in; a line here replaces the built-in one.
+#
+# Drives (each an urgency 0..1, read from the bot's state):
+#   money      gold carried and banked against what its class keeps (keep) and what it is about to spend
+#   supplies   short of what it fights or works with (shopping.txt; FirstNeed)
+#   safety     wounds, a caster's mana, a death in the last half hour, a fight just now
+#   load       goods worth a trip to a vendor, a heavy pack
+#   purse      more gold carried than the bank errand keeps on it (felt from 600, full at pursefull)
+#   growth     its main skill (fight or trade) short of the top
+#   social     time since it was among players or a crowd
+#   adventure  time in one town, the same activity again
+# Activities: hunt work sell shop bank rest social wander home
+#
+# weight <who> <drive> <factor>   how much a kind of bot cares (factors multiply)
+#   who: * | mage archer warrior crafter | tradesman | bold timid (its nerve) | trait.<kind|shy|chatty|stingy> | role.<thief>
+weight mage            supplies   1.2
+weight warrior         adventure  1.2
+weight archer          adventure  1.1
+weight crafter         adventure  0.5
+weight tradesman       growth     1.1
+weight bold            safety     0.6
+weight bold            adventure  1.3
+weight timid           safety     1.5
+weight timid           adventure  0.7
+weight trait.chatty    social     1.8
+weight trait.kind      social     1.2
+weight trait.shy       social     0.4
+weight trait.stingy    money      1.4
+weight trait.stingy    purse      1.3
+weight role.thief      social     1.6
+#
+# does <activity> <drive> <how well>   what an activity does for a drive; negative: it
+# makes the drive worse (a hunt fills the pack) or wants it met first (supplies)
+does hunt    adventure  1.0
+does hunt    growth     0.7
+does hunt    money      0.5
+does hunt    supplies  -1.2
+does hunt    safety    -1.0
+does hunt    load      -0.9
+does hunt    purse     -0.3
+does work    money      0.7
+does work    growth     0.8
+does work    adventure  0.15
+does work    load      -0.7
+does work    safety    -0.2
+does sell    load       1.0
+does sell    money      0.5
+does shop    supplies   1.0
+does bank    purse      1.0
+does bank    load       0.1
+does rest    safety     1.0
+does rest    social     0.3
+does social  social     1.0
+does social  adventure  0.2
+does wander  adventure  0.35
+does wander  social     0.2
+does home    safety     0.3
+does home    social     0.3
+#
+# base <activity> <utility>   worth before any drive
+base hunt    0.05
+base work    0.15
+base social  0.1
+base wander  0.12
+#
+# keep <class> <gold>   gold a class likes to have, carried and banked together
+keep mage     500
+keep warrior  400
+keep archer   400
+keep crafter  300
+#
+# price <need> <gold each>   rough price of a shopping.txt need, for the money it will cost
+price reagent  5
+price bandage  2
+price arrow    2
+price bolt     2
+price rune     15
+price food     6
+price heal     30
+price cure     30
+price refresh  20
+#
+# need <need> <weight> [<weight with another answer>]   how much a missing thing matters (supplies
+#   drive = weight x how short of it); the second figure when the bot has another answer:
+#   bandages: a heal spell or heal potions; arrows, bolts: the bow is not its main weapon;
+#   a heal potion: bandages and Healing, or a heal spell; a cure potion: bandages with Healing and
+#   Anatomy 60, or the Cure spell. A need with no line: a tool or material 0.8, a potion 0.3.
+#   Only bandages, reagents, arrows, bolts and potions hold a hunt back.
+need reagent  1.0
+need bandage  0.9  0.6
+need arrow    1.0  0.4
+need bolt     1.0  0.4
+need heal     0.7  0.3
+need cure     0.5  0.25
+need refresh  0.2
+need rune     0.3
+need food     0.4
+need ingot    0.6
+need cloth    0.6
+need board    0.6
+#
+# forbid <who> <activity>
+forbid role.thief  hunt
+forbid role.thief  work
+#
+# set <name> <value>
+set travel       0.06   # utility lost per 100 tiles of road
+set risk         0.6    # weight of a hunting ground's deaths
+set fit          0.4    # weight of a hunting ground's fit to the bot's strength
+set temperature  0.08   # softmax temperature of the pick among the best
+set top          3      # the pick is among this many of the best
+set margin       0.2    # options this far below the best are not picked
+set stick        0.15   # hysteresis: bonus to the plan's next step
+set urgent       0.75   # supplies, safety, load or purse this pressing, that the next step does nothing for and a clearly better option does: a new plan
+set minsteps     2
+set maxsteps     4
+set stale        90     # minutes a plan is kept
+set social       1200   # seconds without company before the social drive is full
+set boredom      2400   # seconds in one town before the adventure drive is full
+set homesick     0.35   # worth of going home for a bot away from it
+set wear         0.35   # how much a step makes worse the drives it wears on, when a plan is strung
+set pursefull    1500   # gold carried at which the purse drive is full
+set failrest     600    # seconds an activity that would not start is not offered again

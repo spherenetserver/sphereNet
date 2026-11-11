@@ -55,7 +55,7 @@ public class NpcBehaviorTriggerTests
 
         var item = world.CreateItem();
         item.BaseId = 0x1234;
-        giver.SetTag("DRAGGING", item.Uid.Value.ToString()); // HandleItemDrop precondition
+        TestHarness.HoldOnCursor(world, giver, item); // HandleItemDrop precondition
         return (client, giver, npc, item);
     }
 
@@ -112,7 +112,7 @@ public class NpcBehaviorTriggerTests
         // Second gift: @NPCAcceptItem RETURN 1 cancels the native accept.
         var item2 = world.CreateItem();
         item2.BaseId = 0x1234;
-        giver.SetTag("DRAGGING", item2.Uid.Value.ToString());
+        TestHarness.HoldOnCursor(world, giver, item2);
         dispatcher.RegisterCharEvent("EVENTSPET", "NPCAcceptItem", (_, _) => TriggerResult.True);
 
         client.HandleItemDrop(item2.Uid.Value, 0, 0, 0, npc.Uid.Value);

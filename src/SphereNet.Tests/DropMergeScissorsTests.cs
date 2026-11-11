@@ -59,7 +59,7 @@ public sealed class DropMergeScissorsTests
         var dropped = world.CreateItem();
         dropped.BaseId = 0x0EED; dropped.ItemType = ItemType.Gold; dropped.Amount = 5_000;
         world.PlaceItem(dropped, new Point3D(101, 100, 0, 0));
-        player.SetTag("DRAGGING", dropped.Uid.Value.ToString());
+        TestHarness.HoldOnCursor(world, player, dropped);
 
         client.HandleItemDrop(dropped.Uid.Value, target.X, target.Y, target.Z, target.Uid.Value);
 

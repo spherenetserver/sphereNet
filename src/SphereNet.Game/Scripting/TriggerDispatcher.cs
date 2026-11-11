@@ -1649,8 +1649,6 @@ public sealed class TriggerDispatcher
         CharTrigger.RegionEnter => "RegionEnter",
         CharTrigger.RegionLeave => "RegionLeave",
         CharTrigger.RegionStep => "RegionStep",
-        CharTrigger.RoomEnter => "RoomEnter",
-        CharTrigger.RoomLeave => "RoomLeave",
         CharTrigger.RoomStep => "RoomStep",
         CharTrigger.CombatStart => "CombatStart",
         CharTrigger.CombatEnd => "CombatEnd",

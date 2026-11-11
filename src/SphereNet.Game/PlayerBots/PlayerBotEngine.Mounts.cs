@@ -60,7 +60,7 @@ public sealed partial class PlayerBotEngine
         if (_mounts.Count == 0 || mind.Client == null || now < mind.NextMountCheckMs) return false;
         mind.NextMountCheckMs = now + 5000;
         var ch = mind.Char;
-        if (ch.IsDead || ch.IsMounted || mind.Mode is BotMode.Fight or BotMode.Flee or BotMode.Reclaim ||
+        if (ch.IsDead || ch.IsMounted || mind.Mode is BotMode.Fight or BotMode.Flee or BotMode.Reclaim or BotMode.Work ||
             mind.Scene != null || !IsRider(mind))
             return false;
 
@@ -101,12 +101,14 @@ public sealed partial class PlayerBotEngine
                 mind.NextActMs = now + StepDelay(mind, stepped, true, now);
                 return true;
             }
-            // Too far to go back for: it is left to its fate.
-            _world.DeleteObject(horse);
+            // Too far to go back for: it is left to its fate (gone once nobody looks).
+            LeaveMount(horse);
             ch.RemoveTag(MountTag);
         }
 
         if (_world.FindRegion(ch.Position)?.IsGuarded != true) return false;
+        // No creature out of nothing where a player looks: on foot until nobody does.
+        if (!MayConjureMount(mind)) return false;
         return GiveMount(mind, now);
     }
 
@@ -116,7 +118,7 @@ public sealed partial class PlayerBotEngine
     {
         WindowGiveUps++;
         mind.Note(now, $"leaves its mount at {horse.Position}: {why}");
-        _world.DeleteObject(horse);
+        LeaveMount(horse);
         mind.Char.RemoveTag(MountTag);
         mind.MountTries = 0;
         mind.NextMountCheckMs = now + 60_000;

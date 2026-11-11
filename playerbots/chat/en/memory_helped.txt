@@ -1,0 +1,6 @@
+# memory_helped.txt - a friend brings up a time the player healed or blessed it. {place} and {when} are filled.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+u patched me up near {place}, havent forgotten
+that heal near {place} {when}, still grateful
+remember helping me out near {place}? ty again

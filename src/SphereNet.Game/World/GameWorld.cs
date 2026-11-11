@@ -130,9 +130,19 @@ public sealed class GameWorld
     // Active sector tracking — shared by single-thread and multicore tick paths.
     // _activeSectors is the authoritative set for the current tick; NpcAI uses it
     // for O(1) "is this NPC near a player?" checks instead of iterating all players.
+    //
+    // Membership is a generation stamp on the sector (Sector.ActiveGeneration ==
+    // _activeGeneration), not a hash set: the refresh runs every tick over every
+    // player's 5x5 window, and with 300 players it spent its time hashing the same
+    // few hundred sector references into two sets (copy last tick's set, re-add
+    // 7,500 window cells, probe the previous set for each). The lists keep the order
+    // the sectors were added in, which is the order they tick in.
     private readonly List<Sector> _tickSectors = new(256);
-    private readonly HashSet<Sector> _activeSectors = new(256);
-    private readonly HashSet<Sector> _prevActiveSectors = new(256);
+    private List<Sector> _activeSectors = new(256);
+    private List<Sector> _prevActiveSectors = new(256);
+    // Starts at 1 so a sector that was never added (stamp 0) is not "active" before
+    // the first refresh has run.
+    private int _activeGeneration = 1;
     private readonly List<Sector> _newlyActiveSectors = new(64);
     // Sectors flagged SECF_NoSleep — always kept in the tick set regardless of
     // player proximity (Source-X CSector::_CanSleep NoSleep veto).
@@ -369,17 +379,50 @@ public sealed class GameWorld
     /// SECTOR_LIST active scan.</summary>
     private readonly HashSet<Objects.Characters.Character> _onlinePlayers = [];
 
-    /// <summary>Called by GameClient.EnterWorld / OnDisconnect.</summary>
-    public void AddOnlinePlayer(Objects.Characters.Character ch)
+    /// <summary>Called by GameClient.EnterWorld / OnDisconnect.
+    ///
+    /// A character coming into the world enters the area it stands in from NO area,
+    /// and one leaving it leaves that area for none (CChar::MoveToRegion with a null
+    /// m_pArea on login, CCharAct.cpp:5202-5221, and a null pNewArea on logout,
+    /// :5139-5159): the area's @Enter / @Exit and the character's @RegionEnter /
+    /// @RegionLeave fire, with nothing able to refuse. <paramref name="regionStep"/>
+    /// is false for the callers that only re-seat a character already in the world
+    /// (a reconnect inside the client linger) or that take the step themselves.
+    /// Runs once per arrival / departure, never per tick.</summary>
+    public void AddOnlinePlayer(Objects.Characters.Character ch, bool regionStep = true)
     {
-        _onlinePlayers.Add(ch);
+        bool arrived = _onlinePlayers.Add(ch);
         GetSector(ch.Position)?.AddOnlinePlayer(ch);
         WakeCarriedItems(ch);
+        if (regionStep && arrived)
+            EnterRegionFromNowhere(ch);
     }
-    public void RemoveOnlinePlayer(Objects.Characters.Character ch)
+    public void RemoveOnlinePlayer(Objects.Characters.Character ch, bool regionStep = true)
     {
-        _onlinePlayers.Remove(ch);
+        bool left = _onlinePlayers.Remove(ch);
         GetSector(ch.Position)?.RemoveOnlinePlayer(ch);
+        if (regionStep && left && !ch.IsDeleted)
+            LeaveRegionToNowhere(ch);
+    }
+
+    /// <summary>The login half of <see cref="AddOnlinePlayer"/>'s region step.</summary>
+    public void EnterRegionFromNowhere(Objects.Characters.Character ch)
+    {
+        if (OnRegionTransition == null)
+            return;
+        var region = FindRegion(ch.Position);
+        if (region != null)
+            OnRegionTransition(ch, null, region, false);
+    }
+
+    /// <summary>The logout half of <see cref="RemoveOnlinePlayer"/>'s region step.</summary>
+    public void LeaveRegionToNowhere(Objects.Characters.Character ch)
+    {
+        if (OnRegionTransition == null)
+            return;
+        var region = FindRegion(ch.Position);
+        if (region != null)
+            OnRegionTransition(ch, region, null, false);
     }
     /// <summary>Read-only view of currently online players. Backing set
     /// is modified only on login/logout paths, so enumeration here is
@@ -1871,10 +1914,26 @@ public sealed class GameWorld
         {
             for (int sy = minSy; sy <= maxSy; sy++)
             {
-                var sector = GetSector(center.Map, sx, sy);
+                var sector = grid[sx, sy];
                 if (sector == null) continue;
-                foreach (var obj in sector.GetObjectsInRange(center, range))
-                    yield return obj;
+                // The sector's own walk (Sector.GetObjectsInRange), inlined: one
+                // iterator instead of one per sector nested in this one.
+                var chars = sector.CharacterList;
+                for (int i = chars.Count - 1; i >= 0; i--)
+                {
+                    if (i >= chars.Count) continue;
+                    var ch = chars[i];
+                    if (!ch.IsDeleted && center.GetDistanceTo(ch.Position) <= range)
+                        yield return ch;
+                }
+                var items = sector.ItemList;
+                for (int i = items.Count - 1; i >= 0; i--)
+                {
+                    if (i >= items.Count) continue;
+                    var item = items[i];
+                    if (!item.IsDeleted && item.IsOnGround && center.GetDistanceTo(item.Position) <= range)
+                        yield return item;
+                }
             }
         }
     }
@@ -2025,19 +2084,97 @@ public sealed class GameWorld
             }
     }
 
+    /// <summary>The characters within <paramref name="range"/> of a point.
+    ///
+    /// Walks the sectors' character lists directly. It used to filter
+    /// <see cref="GetObjectsInRange"/>, which meant every character query also walked
+    /// - and distance-tested - every ground item of every sector it touched, through
+    /// two nested iterators and a type test per object. A creature's look-around in a
+    /// town sector holding a thousand decorations paid for all thousand to find a
+    /// dozen characters; in a sampled profile of a 5,000-creature world that chain was
+    /// the single largest frame of the tick. The selection and its order are unchanged:
+    /// sector by sector, each sector's list from the back, exactly the characters the
+    /// filtered walk produced.</summary>
     public IEnumerable<Character> GetCharsInRange(Point3D center, int range = 18)
     {
-        foreach (var obj in GetObjectsInRange(center, range))
+        if (range < 0 || !_sectors.TryGetValue(center.Map, out var grid)) yield break;
+        var (minSx, maxSx, minSy, maxSy) = GetSectorRange(center, range);
+        minSx = Math.Max(0, minSx);
+        minSy = Math.Max(0, minSy);
+        maxSx = Math.Min(grid.GetLength(0) - 1, maxSx);
+        maxSy = Math.Min(grid.GetLength(1) - 1, maxSy);
+
+        for (int sx = minSx; sx <= maxSx; sx++)
         {
-            if (obj is Character ch) yield return ch;
+            for (int sy = minSy; sy <= maxSy; sy++)
+            {
+                var sector = grid[sx, sy];
+                if (sector == null) continue;
+                var chars = sector.CharacterList;
+                // From the back and re-checking the bound, as the sector's own walk
+                // does: a caller's loop body may remove characters from this list.
+                for (int i = chars.Count - 1; i >= 0; i--)
+                {
+                    if (i >= chars.Count) continue;
+                    var ch = chars[i];
+                    if (!ch.IsDeleted && center.GetDistanceTo(ch.Position) <= range)
+                        yield return ch;
+                }
+            }
         }
     }
 
+    /// <summary>The ground items within <paramref name="range"/> of a point; the item
+    /// half of <see cref="GetObjectsInRange"/>, in the same order.
+    ///
+    /// A range of 0 - "what lies on this tile", asked by every step and once a second
+    /// for every standing character (CheckLocationEffects) - is answered from the
+    /// sector's per-tile index, the one the walk check already reads, instead of a
+    /// walk over the whole sector's item list. The index lists a tile's items in the
+    /// order the list walk meets them, and each candidate is still tested against the
+    /// live item (deleted, picked up, moved) when it is reached.</summary>
     public IEnumerable<Item> GetItemsInRange(Point3D center, int range = 18)
     {
-        foreach (var obj in GetObjectsInRange(center, range))
+        if (range < 0 || !_sectors.TryGetValue(center.Map, out var grid)) yield break;
+
+        if (range == 0)
         {
-            if (obj is Item item) yield return item;
+            if (center.X < 0 || center.Y < 0) yield break;
+            int tsx = center.X / Sector.SectorSize, tsy = center.Y / Sector.SectorSize;
+            if (tsx >= grid.GetLength(0) || tsy >= grid.GetLength(1)) yield break;
+            var tileSector = grid[tsx, tsy];
+            if (tileSector == null) yield break;
+            var onTile = tileSector.ItemsOnTile(center.X, center.Y);
+            for (int i = 0; i < onTile.Length; i++)
+            {
+                var item = onTile[i];
+                if (!item.IsDeleted && item.IsOnGround && center.GetDistanceTo(item.Position) <= 0)
+                    yield return item;
+            }
+            yield break;
+        }
+
+        var (minSx, maxSx, minSy, maxSy) = GetSectorRange(center, range);
+        minSx = Math.Max(0, minSx);
+        minSy = Math.Max(0, minSy);
+        maxSx = Math.Min(grid.GetLength(0) - 1, maxSx);
+        maxSy = Math.Min(grid.GetLength(1) - 1, maxSy);
+
+        for (int sx = minSx; sx <= maxSx; sx++)
+        {
+            for (int sy = minSy; sy <= maxSy; sy++)
+            {
+                var sector = grid[sx, sy];
+                if (sector == null) continue;
+                var items = sector.ItemList;
+                for (int i = items.Count - 1; i >= 0; i--)
+                {
+                    if (i >= items.Count) continue;
+                    var item = items[i];
+                    if (!item.IsDeleted && item.IsOnGround && center.GetDistanceTo(item.Position) <= range)
+                        yield return item;
+                }
+            }
         }
     }
 
@@ -2154,7 +2291,7 @@ public sealed class GameWorld
     private long _lastWorldTickDetailMs;
     private long _lastWorldCallbackDetailMs;
 
-    private void ReportSlowWorldCallback(ObjBase obj, string kind, long started, long allocated)
+    private void ReportSlowWorldCallback(ObjBase obj, string kind, long started, long allocated, long cpuStartUs)
     {
         double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         long bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
@@ -2162,8 +2299,11 @@ public sealed class GameWorld
         long now = Environment.TickCount64;
         if (_lastWorldCallbackDetailMs != 0 && now - _lastWorldCallbackDetailMs < 10000) return;
         _lastWorldCallbackDetailMs = now;
-        _logger.LogWarning("[world_callback_detail] kind={Kind} uid=0x{Uid:X8} baseid=0x{Base:X4} total={Ms:F1}ms alloc={KB}KB",
-            kind, obj.Uid.Value, obj.BaseId, ms, bytes / 1024);
+        // cpu beside total: a callback that "took" 250 ms on 3 ms of processor was
+        // not slow, the thread was waiting for a core while it ran (ThreadCpuClock).
+        _logger.LogWarning("[world_callback_detail] kind={Kind} uid=0x{Uid:X8} baseid=0x{Base:X4} total={Ms:F1}ms cpu={CpuMs}ms alloc={KB}KB",
+            kind, obj.Uid.Value, obj.BaseId, ms,
+            Diagnostics.ThreadCpuClock.FormatMs(Diagnostics.ThreadCpuClock.SinceUs(cpuStartUs)), bytes / 1024);
     }
 
     // Every ARMED item timer, in due order. Worn, contained and lying on the floor
@@ -2369,6 +2509,31 @@ public sealed class GameWorld
     /// is the front of the next tick.</summary>
     internal int MaxItemTimerInspectionsPerTick { get; set; } = 8192;
 
+    /// <summary>How long one tick may spend RUNNING item timers, in milliseconds.
+    /// 0 = no limit, which is what a bare world has: the server sets it
+    /// (<see cref="DefaultItemTimerBudgetMs"/>), a test ticking a world by hand gets
+    /// every due timer on the tick it asks for.
+    ///
+    /// <see cref="MaxItemTimersPerTick"/> bounds the count, and a count says nothing
+    /// about the cost: a spawn point's timer makes a creature - its definition's
+    /// @Create and @NPCRestock scripts, its gear, its place in the world - and a
+    /// player walking into a part of the map that has been asleep wakes every spawn
+    /// point of 25 sectors on one tick, each with a deadline long past. Measured on a
+    /// freshly generated world those ticks ran item timers for 320-430 ms; the first
+    /// tick after a restart did the same with the whole save's backlog. Whatever is
+    /// not reached stays due and is the front of the next tick, exactly like the
+    /// overflow past the count cap; at least one timer always runs.</summary>
+    public int ItemTimerBudgetMs { get; set; }
+
+    /// <summary>The budget a running server uses: a quarter of the 100 ms tick.</summary>
+    public const int DefaultItemTimerBudgetMs = 25;
+
+    private long _timerBudgetDeferred;
+
+    /// <summary>Selected item timers put back because the tick's time budget for
+    /// them ran out, cumulative. Each one ran on a later tick.</summary>
+    internal long TimerQueueBudgetDeferred => _timerBudgetDeferred;
+
     private void TickItemTimers(long nowMs)
     {
         // SELECT first, then run - the shape upstream uses (CWorldTicker::
@@ -2429,16 +2594,37 @@ public sealed class GameWorld
             _timerDueBuffer.Add(item);
         }
 
+        long budgetEnd = ItemTimerBudgetMs > 0
+            ? System.Diagnostics.Stopwatch.GetTimestamp() +
+              ItemTimerBudgetMs * System.Diagnostics.Stopwatch.Frequency / 1000
+            : long.MaxValue;
         for (int i = 0; i < _timerDueBuffer.Count; i++)
         {
             var item = _timerDueBuffer[i];
             // A callback may have deleted a sibling that is also in this buffer.
             if (item.IsDeleted)
                 continue;
+            // Out of time (never before the first one has run): what is left goes
+            // back under the deadline it still carries, so it is the front of the
+            // next tick's drain. A callback earlier in this pass may have re-armed or
+            // cleared one of them; Timeout is the truth either way.
+            if (i > 0 && System.Diagnostics.Stopwatch.GetTimestamp() > budgetEnd)
+            {
+                for (int j = i; j < _timerDueBuffer.Count; j++)
+                {
+                    var rest = _timerDueBuffer[j];
+                    if (rest.IsDeleted || rest.Timeout <= 0)
+                        continue;
+                    TrackItemTimer(rest, rest.Timeout);
+                    _timerBudgetDeferred++;
+                }
+                break;
+            }
             // A re-armed timer (@Timer body runs TIMER n again) re-registers through
             // SetTimeout, so nothing needs to be put back here.
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             long allocated = GC.GetAllocatedBytesForCurrentThread();
+            long cpuStartUs = Diagnostics.ThreadCpuClock.NowUs();
             bool keep;
             try { keep = item.OnTick(); }
             catch (Exception ex)
@@ -2448,7 +2634,7 @@ public sealed class GameWorld
                 SphereNet.Game.Diagnostics.TickFaults.Report(item, "item timer", ex);
                 keep = true;
             }
-            ReportSlowWorldCallback(item, "item_timer", started, allocated);
+            ReportSlowWorldCallback(item, "item_timer", started, allocated, cpuStartUs);
             if (!keep)
                 GetSector(item.Position)?.RemoveItem(item);
         }
@@ -2543,8 +2729,9 @@ public sealed class GameWorld
                 continue;
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             long allocated = GC.GetAllocatedBytesForCurrentThread();
+            long cpuStartUs = Diagnostics.ThreadCpuClock.NowUs();
             TimerFExpired?.Invoke(obj, entry);
-            ReportSlowWorldCallback(obj, "timerf", started, allocated);
+            ReportSlowWorldCallback(obj, "timerf", started, allocated, cpuStartUs);
         }
         _timerFDueBuffer.Clear();
 
@@ -2570,13 +2757,32 @@ public sealed class GameWorld
     /// the SECTORSLEEP grace period is applied on top of the 5x5 window.</summary>
     internal static bool SleepPolicyActive => true;
 
+    /// <summary>Is <paramref name="s"/> in the set built by the last refresh?</summary>
+    private bool IsActiveSector(Sector s) => s.ActiveGeneration == _activeGeneration;
+
+    /// <summary>Add a sector to this refresh's set unless it is already in it; a
+    /// sector that was not in the previous refresh's set is newly active.</summary>
+    private void ActivateSector(Sector s, int generation, bool reportNew)
+    {
+        if (s.ActiveGeneration == generation)
+            return;
+        bool wasActive = s.ActiveGeneration == generation - 1;
+        s.ActiveGeneration = generation;
+        _activeSectors.Add(s);
+        _tickSectors.Add(s);
+        if (reportNew && !wasActive)
+            _newlyActiveSectors.Add(s);
+    }
+
     private void RefreshActiveSectors()
     {
-        _prevActiveSectors.Clear();
-        foreach (var s in _activeSectors) _prevActiveSectors.Add(s);
+        // Last tick's set becomes "previous" by swapping the two lists; every sector
+        // in it still carries the previous generation's stamp.
+        (_prevActiveSectors, _activeSectors) = (_activeSectors, _prevActiveSectors);
         _activeSectors.Clear();
         _tickSectors.Clear();
         _newlyActiveSectors.Clear();
+        int generation = ++_activeGeneration;
 
         long nowMs = Environment.TickCount64;
         foreach (var player in _onlinePlayers)
@@ -2588,32 +2794,30 @@ public sealed class GameWorld
             // SECTORSLEEP grace is measured from here, so the trail a traveller
             // leaves behind is one sector wide (the sectors they were actually in)
             // and not the whole 5x5 window that moved over them.
-            GetSector(player.MapIndex, sx, sy)?.SetLastClientTime(nowMs);
+            var own = GetSector(player.MapIndex, sx, sy);
+            if (own != null)
+            {
+                own.SetLastClientTime(nowMs);
+                // A second player in the same sector has the same window: all 25 of
+                // its cells are in the set already.
+                if (own.WindowGeneration == generation)
+                    continue;
+                own.WindowGeneration = generation;
+            }
             for (int dx = -ActiveSectorRadius; dx <= ActiveSectorRadius; dx++)
             {
                 for (int dy = -ActiveSectorRadius; dy <= ActiveSectorRadius; dy++)
                 {
                     var s = GetSector(player.MapIndex, sx + dx, sy + dy);
-                    if (s != null && _activeSectors.Add(s))
-                    {
-                        _tickSectors.Add(s);
-                        if (!_prevActiveSectors.Contains(s))
-                            _newlyActiveSectors.Add(s);
-                    }
+                    if (s != null)
+                        ActivateSector(s, generation, reportNew: true);
                 }
             }
         }
 
         // SECF_NoSleep sectors always tick even with no player nearby.
         foreach (var s in _alwaysAwakeSectors)
-        {
-            if (_activeSectors.Add(s))
-            {
-                _tickSectors.Add(s);
-                if (!_prevActiveSectors.Contains(s))
-                    _newlyActiveSectors.Add(s);
-            }
-        }
+            ActivateSector(s, generation, reportNew: true);
 
         ApplySleepGrace(nowMs);
         MarkSleepState();
@@ -2645,14 +2849,15 @@ public sealed class GameWorld
         if (_prevActiveSectors.Count == 0)
             return;
 
+        int generation = _activeGeneration;
         foreach (var s in _prevActiveSectors)
         {
-            if (_activeSectors.Contains(s))
+            if (s.ActiveGeneration == generation)
                 continue;
             if (s.CanSleep(nowMs, checkAdjacents: false))
                 continue;       // quiet for longer than SECTORSLEEP — let it sleep
-            _activeSectors.Add(s);
-            _tickSectors.Add(s);
+            // Kept awake by the grace, not woken: it was active a tick ago.
+            ActivateSector(s, generation, reportNew: false);
         }
     }
 
@@ -2668,7 +2873,7 @@ public sealed class GameWorld
         }
         foreach (var s in _prevActiveSectors)
         {
-            if (!_activeSectors.Contains(s))
+            if (!IsActiveSector(s))
                 s.IsSleeping = true;
         }
     }
@@ -2746,7 +2951,7 @@ public sealed class GameWorld
                     _maintenanceCursorY++;
                     examined++;
                     if (sector == null) continue;
-                    if (_activeSectors.Contains(sector)) continue;
+                    if (IsActiveSector(sector)) continue;
                     if (sector.ItemCount == 0) continue;
                     sector.OnMaintenanceTick();
                     calls++;
@@ -2786,7 +2991,7 @@ public sealed class GameWorld
     public bool IsInActiveArea(int mapIdx, int x, int y)
     {
         var s = GetSector(mapIdx, x / Sector.SectorSize, y / Sector.SectorSize);
-        return s != null && _activeSectors.Contains(s);
+        return s != null && IsActiveSector(s);
     }
 
     /// <summary>
@@ -3331,6 +3536,21 @@ public sealed class GameWorld
         }
         MoveCharacter(ch, new Point3D((short)x, (short)y, z, pt.Map));
         return true;
+    }
+
+    /// <summary>The spawn-point half of Source-X RESTOCK for one item
+    /// (CSector::Restock, CSector.cpp:1190-1198): a spawn point gets one component
+    /// tick whether or not its sector is awake - the next check is set and, below its
+    /// amount, one child is generated. This is the upstream verb that moves the
+    /// spawn points of a sleeping world; RESPAWN only raises dead NPCs
+    /// (<see cref="RespawnDeadNpcs"/>). Main loop only. Returns whether a child was
+    /// made.</summary>
+    public bool RestockSpawner(Item item)
+    {
+        if (item.IsDeleted) return false;
+        if (item.SpawnChar is { } chars) return chars.RestockTick();
+        if (item.SpawnItem is { } items) return items.RestockTick();
+        return false;
     }
 
     /// <summary>Top every char/item spawner in the world up to its max at once,
@@ -3988,7 +4208,7 @@ public sealed class GameWorld
                     sectors++;
                     chars += sector.CharacterCount;
                     items += sector.ItemCount;
-                    if (_activeSectors.Contains(sector))
+                    if (IsActiveSector(sector))
                         activeSectors++;
                     onlinePlayers += sector.OnlinePlayers.Count;
                 }

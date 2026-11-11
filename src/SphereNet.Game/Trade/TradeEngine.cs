@@ -753,6 +753,22 @@ public static class VendorEngine
             if (!ReferenceEquals(found.GetTopLevelObj(), player))
                 continue;
 
+            // A line selling nothing is skipped. The amount is the client's
+            // (Event_VendorSell reads it as it came, CClientEvent.cpp:1496-1503) and
+            // zero fell through to the partial branch below (:1552-1558), which
+            // duplicates the pile for a player vendor and sets the copy's amount to
+            // it: an amount cannot be less than one here, so each such line left a
+            // free item in the vendor's extra box and took nothing from the seller.
+            if (entry.Amount <= 0)
+                continue;
+
+            // What sits in a secure trade window is on offer to the other party, not
+            // to a vendor. Its top-level object is still the seller, so the check
+            // above lets it through (upstream's does too): selling part of a pile out
+            // of one's own window shrank the offer after the partner had accepted it.
+            if (Objects.Items.ItemMoveRules.FindEnclosingTradeWindow(found) != null)
+                continue;
+
             // The sample is looked up for each line in turn, so an earlier line that
             // used up a sample under OF_VendorStockLimit leaves the later one without
             // a buyer.
@@ -1102,6 +1118,7 @@ public static class VendorEngine
     public static long GetVendorGold(Character vendor)
     {
         MigrateLegacyVendorGold(vendor);
+        MigrateLegacyHireBalance(vendor);
         var bank = vendor.GetEquippedItem(Core.Enums.Layer.BankBox);
         return bank == null || bank.IsDeleted ? 0 : bank.More1;
     }
@@ -1112,10 +1129,39 @@ public static class VendorEngine
     internal static void SetVendorGold(Character vendor, long amount)
     {
         MigrateLegacyVendorGold(vendor);
+        MigrateLegacyHireBalance(vendor);
         var bank = vendor.GetBankBoxSafe();
         if (bank == null)
             return;
         bank.More1 = amount > uint.MaxValue ? uint.MaxValue : unchecked((uint)amount);
+    }
+
+    /// <summary>The tag an earlier SphereNet kept a hireling's prepaid wages in,
+    /// before they moved to where Source-X keeps them: the bank box's MORE1
+    /// (m_Check_Amount, CCharNPCPet.cpp:666-670, :713-716).</summary>
+    public const string LegacyHireBalanceTag = "HIRE_BALANCE";
+
+    /// <summary>Fold a prepaid wage balance an earlier save carries in
+    /// TAG.HIRE_BALANCE into the purse, once, and drop the tag so it is never
+    /// counted again. The two were separate money - the tag is what the owner paid
+    /// in wages, MORE1 is whatever else the purse held (an owned vendor's takings) -
+    /// and upstream keeps both in the one purse, so they are added. Returns true
+    /// when a tag was folded in.</summary>
+    public static bool MigrateLegacyHireBalance(Character npc)
+    {
+        if (!npc.TryGetTag(LegacyHireBalanceTag, out string? raw))
+            return false;
+        npc.RemoveTag(LegacyHireBalanceTag);
+        if (npc.IsPlayer)
+            return true;
+        long tagged = ScriptNumber.TryParseLong(raw, out long t) ? Math.Max(0, t) : 0;
+        if (tagged == 0)
+            return true;
+        var bank = npc.GetBankBoxSafe();
+        if (bank == null)
+            return true;
+        bank.More1 = (uint)Math.Min(bank.More1 + tagged, uint.MaxValue);
+        return true;
     }
 
     /// <summary>Move a purse an earlier SphereNet kept in TAG.VENDOR_GOLD into the

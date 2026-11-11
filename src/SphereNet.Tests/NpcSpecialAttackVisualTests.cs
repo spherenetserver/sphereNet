@@ -424,37 +424,9 @@ public class NpcSpecialAttackVisualTests : IDisposable
     }
 
     // ---- spells -------------------------------------------------------------
-
-    [Fact]
-    public void SpellFx_BoltFliesFromTheCaster_TargPlaysOnTheTarget()
-    {
-        var world = TestHarness.CreateWorld();
-        var caster = world.CreateCharacter();
-        var target = world.CreateCharacter();
-        world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
-        world.PlaceCharacter(target, new Point3D(104, 100, 0, 0));
-
-        var bolt = new SpellDef { EffectId = 0x36D4, Flags = SpellFlag.FxBolt | SpellFlag.Harm };
-        var b = Bytes(Assert.Single(GameClient.BuildSpellCastFx(caster, target, bolt)));
-        Assert.Equal(0, b[1]);                                   // EFFECT_BOLT, not lightning (1)
-        Assert.Equal(caster.Uid.Value, (uint)((b[2] << 24) | (b[3] << 16) | (b[4] << 8) | b[5]));
-        Assert.Equal(target.Uid.Value, (uint)((b[6] << 24) | (b[7] << 16) | (b[8] << 8) | b[9]));
-        Assert.Equal(100, (b[12] << 8) | b[13]);                 // starts at the caster
-        Assert.Equal(5, b[22]);                                  // speed
-        Assert.Equal(0, b[26]);                                  // rotates along its path
-        Assert.Equal(1, b[27]);                                  // harmful bolt explodes
-
-        var targ = new SpellDef { EffectId = 0x376A, Flags = SpellFlag.FxTarg | SpellFlag.Good };
-        var t = Bytes(Assert.Single(GameClient.BuildSpellCastFx(caster, target, targ)));
-        Assert.Equal(3, t[1]);                                   // EFFECT_OBJ
-        Assert.Equal(0, t[22]);
-        Assert.Equal(15, t[23]);
-        Assert.Equal(1, t[26]);                                  // oneDirection
-        Assert.Equal(0, t[27]);                                  // GOOD spell: no explode
-
-        Assert.Empty(GameClient.BuildSpellCastFx(caster, target,
-            new SpellDef { EffectId = 0x376A }));
-    }
+    // The bolt / target effect of a landed spell is the tail of the engine's
+    // OnSpellEffect now (MagicParityGapTests): the completion-time helper this
+    // section tested is gone.
 
     // ---- breath / throw ---------------------------------------------------------
 

@@ -1,0 +1,9 @@
+# emote_smith.txt - a bot watching the forge or the anvil; emotes.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+*watches the sparks*
+*warms hands by the forge*
+*studies the anvil work*
+*nods at a good strike*
+*shields eyes from the heat*
+[warrior] *runs a thumb along the blade*

@@ -117,15 +117,13 @@ public static partial class Program
         // a guard call there at all.
         if (!SpeechWords.IsGuardCall(text)) return (false, text);
 
-        var region = _world.FindRegion(speaker.Position);
-        if (region == null || !region.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded))
-        {
-            _log.LogDebug("[guards] {Speaker} called guards but region={Region} guarded={Guarded} at {Pos}",
-                speaker.Name, region?.Name ?? "(none)",
-                region?.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded) ?? false,
-                speaker.Position);
+        // Where the SPEAKER stands does not matter for a player: the guarded-area
+        // gate of CChar::CallGuards() applies to NPC callers only (`!m_pPlayer &&
+        // ...`, CCharFight.cpp:181). What counts is the ground each criminal
+        // stands on (CallGuards(pCriminal), :222), so a player just outside the
+        // town line can still report a criminal standing inside it.
+        if (!PlayerMayCallGuards(speaker))
             return (false, text);
-        }
 
         // Calling the guards is silent in Source-X (CChar::CallGuards,
         // CCharFight.cpp:178): no line says the area is quiet or that the guards
@@ -134,6 +132,19 @@ public static partial class Program
             CallGuards(speaker, hostile);
 
         return (false, text);
+    }
+
+    /// <summary>The caller-side gate of CChar::CallGuards() for a player
+    /// (CCharFight.cpp:181-184): no guarded-area requirement - that one is for NPC
+    /// callers - only that the caller is neither dead nor turned to stone.</summary>
+    internal static bool PlayerMayCallGuards(Character speaker) =>
+        !speaker.IsDead && !speaker.IsStatFlag(StatFlag.Stone);
+
+    /// <summary>The sector a character's @RegPeriodic is counted under.</summary>
+    internal static uint RegPeriodicSectorKey(SphereNet.Core.Types.Point3D pos)
+    {
+        const int sectorSize = SphereNet.Game.World.Sectors.Sector.SectorSize;
+        return ((uint)pos.Map << 24) | ((uint)(pos.X / sectorSize) << 12) | (uint)(pos.Y / sectorSize);
     }
 
     /// <summary>Source-X CChar::CallGuards() (CCharFight.cpp:177): everyone around
@@ -399,6 +410,10 @@ public static partial class Program
         guard.SetTag("GUARD_SPAWNED_AT", Environment.TickCount64.ToString());
 
         _world.PlaceCharacter(guard, hostile.Position);
+        // pGuard->Spell_Teleport(pCriminal->GetTopPoint(), false, false)
+        // (CCharFight.cpp:282): the new guard arrives in the NPC teleport effect
+        // and sound (CCharSpell.cpp:178-197).
+        ShowTeleportEffect(guard, null);
 
         // GUARDLINGER is minutes, as upstream reads it (CServerConfig.cpp:1292).
         long lingerMs = Math.Max(1, _config.GuardLinger) * 60_000L;
@@ -517,17 +532,20 @@ public static partial class Program
             "[npc_hear] {Speaker} -> {Npc} brain={Brain} text='{Text}'",
             speaker.Name, npc.Name, npc.NpcBrain, text);
 
-        // Source-X NPC_OnHear: the NPC turns to face whoever addresses it
-        // (unless mid-fight). The little head-turn is what makes townsfolk
-        // feel alive when spoken to.
+        // "Pets always have a basic set of actions" (NPC_OnHear, CCharNPCAct.cpp:267):
+        // the line is tried as a pet command first, with no "all" and no name needed,
+        // and one that is understood ends it. Then an NPC with no SPEECH of its own
+        // or of its definition (NPC_CanSpeak, CCharNPCStatus.cpp:416) hears nothing
+        // further - no greeting, no speech blocks, no "unknown".
         //
-        // Assigning Direction marks DirtyFlag.Direction, and the dirty->view pipeline
-        // then delivers PacketMobileMoving (the exact packet, to the same nearby clients)
-        // on the next view refresh. A synchronous BroadcastFacingUpdate here as well was
-        // a redundant per-NPC client scan on every spoken line — the dominant cost of the
-        // speech fan-out in NPC-dense areas — so the facing is left to the pipeline.
-        if (!npc.FightTarget.IsValid && npc.Position != speaker.Position)
-            npc.Direction = npc.Position.GetDirectionTo(speaker.Position);
+        // The NPC does not turn to the speaker for merely being spoken to: Source-X
+        // turns it in NPC_ActStart_SpeakTo (:243-256), when a speech block took the
+        // line and the speaker became its talk partner.
+        if (!speaker.IsDead && FindGameClient(speaker) is { } speakerClient &&
+            speakerClient.HearBarePetCommand(npc, text))
+            return;
+        if (!SphereNet.Game.AI.NpcAI.NpcCanSpeak(npc))
+            return;
 
         // NPC talk state (NPC_OnHear, CCharNPCAct.cpp:279-298): a busy talker says
         // the "interrupt" line to a new speaker.

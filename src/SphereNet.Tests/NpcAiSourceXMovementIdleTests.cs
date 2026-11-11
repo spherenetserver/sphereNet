@@ -604,8 +604,11 @@ public sealed class NpcAiSourceXMovementIdleTests
 
         pet.SetNextFoodTick(1);
         pet.TickPetOwnershipTimers(1_000_000);
-        Assert.True(pet.TryGetTag("HIRE_BALANCE", out string? balance));
-        Assert.Equal("2", balance);
+        // The wages are the bank-box purse (m_Check_Amount, CCharNPCPet.cpp:666-670).
+        // The balance an earlier save kept in TAG.HIRE_BALANCE was folded into it on
+        // the first read - all of it, once - and the tag is gone.
+        Assert.False(pet.TryGetTag("HIRE_BALANCE", out _));
+        Assert.Equal(2, SphereNet.Game.Trade.VendorEngine.GetVendorGold(pet));
         Assert.Equal(29, pet.Food);
         Assert.True(pet.HasOwner(owner.Uid));
 

@@ -548,52 +548,9 @@ public static partial class Program
                 // region sets REGION_FLAG_ANNOUNCE (TAG.ANNOUNCEMENT overrides
                 // the text). The old unconditional send spammed the name on
                 // every boundary crossing, named or not.
-                if (newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Announce))
-                {
-                    string announce = newRegion.TryGetTag("ANNOUNCEMENT", out var custom) &&
-                        !string.IsNullOrEmpty(custom) ? custom! : newRegion.Name;
-                    gc.SysMessage(SphereNet.Game.Messages.ServerMessages.GetFormatted(
-                        SphereNet.Game.Messages.Msg.MsgRegionEnter, announce));
-                }
-                // Guarded callout only on the unguarded→guarded transition —
-                // crossing between two adjacent guarded sub-regions stays quiet
-                // (Source-X gates on pNewArea->IsGuarded() != m_pArea->IsGuarded()).
-                if (newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded) &&
-                    (oldRegion == null || !oldRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded)))
-                {
-                    // Source-X CChar::Region_Notify: SysMessagef(DEFMSG_REGION_GUARDS_1,
-                    // <GUARDOWNER tag value>). When the AREADEF omits TAG.GUARDOWNER
-                    // it falls back to DEFMSG_REGION_GUARD_ART ("the") so the literal
-                    // "%s" never reaches the player.
-                    string guardOwner;
-                    if (!newRegion.TryGetTag("GUARDOWNER", out var owner) || string.IsNullOrEmpty(owner))
-                        guardOwner = SphereNet.Game.Messages.ServerMessages.Get(
-                            SphereNet.Game.Messages.Msg.MsgRegionGuardArt);
-                    else
-                        guardOwner = owner!;
-                    gc.SysMessage(SphereNet.Game.Messages.ServerMessages.GetFormatted(
-                        SphereNet.Game.Messages.Msg.MsgRegionGuards1, guardOwner));
-                }
-                if (newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.NoPvP))
-                    gc.SysMessage(SphereNet.Game.Messages.ServerMessages.Get(
-                        SphereNet.Game.Messages.Msg.MsgRegionPvpsafe));
-
-                // Source-X also fires DEFMSG_REGION_GUARDS_2 when leaving a guarded
-                // zone for an unguarded one — keeps the "you have left the
-                // protection of the city guards" callout symmetric.
-                if (oldRegion != null &&
-                    oldRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded) &&
-                    !newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded))
-                {
-                    string guardOwner;
-                    if (!oldRegion.TryGetTag("GUARDOWNER", out var owner) || string.IsNullOrEmpty(owner))
-                        guardOwner = SphereNet.Game.Messages.ServerMessages.Get(
-                            SphereNet.Game.Messages.Msg.MsgRegionGuardArt);
-                    else
-                        guardOwner = owner!;
-                    gc.SysMessage(SphereNet.Game.Messages.ServerMessages.GetFormatted(
-                        SphereNet.Game.Messages.Msg.MsgRegionGuards2, guardOwner));
-                }
+                foreach (string line in SphereNet.Game.World.Regions.Region.CrossingBanners(
+                             oldRegion, newRegion, mover.IsDead))
+                    gc.SysMessage(line);
             };
 
             ConfigureNpcSpawnScripts(_world, _triggerDispatcher);
@@ -1444,16 +1401,17 @@ public static partial class Program
             _spellEngine.OnCasterFacingChanged = caster => BroadcastFacingUpdate(caster);
             // Styled hook: @SpellCast LOCAL.WOPColor / LOCAL.WOPFont override the
             // mantra's hue and font; 0 falls back to the caster defaults.
-            _spellEngine.OnSpellWordsEx = (caster, words, wopHue, wopFont) =>
+            _spellEngine.OnSpellWordsStyled = (caster, words, wopHue, wopFont, wopTalkMode) =>
             {
                 // Unset script values fall back to WOPCOLOR / WOPFONT / WOPTALKMODE
-                // (CCharSpell.cpp:3511-3526).
+                // (CCharSpell.cpp:3511-3526); LOCAL.WOPTalkMode is spoken as the
+                // script left it (:3639, :3662).
                 ushort hue = wopHue != 0 ? wopHue : SpellEngine.DefaultWopHue(caster);
                 byte font = wopFont != 0 ? wopFont : (byte)Math.Clamp(SpellEngine.WopFont, 0, byte.MaxValue);
                 var pkt = new PacketSpeechUnicodeOut(
                     caster.Uid.Value,
                     caster.BodyId,
-                    SpellEngine.EffectiveWopTalkMode,
+                    wopTalkMode != 0 ? wopTalkMode : SpellEngine.EffectiveWopTalkMode,
                     hue,
                     font,
                     PacketSpeechUnicodeOut.SystemLanguage,
@@ -1461,15 +1419,9 @@ public static partial class Program
                     words);
                 BroadcastNearby(caster.Position, 18, pkt, 0);
             };
-            // NPC cast completion FX — mirrors the player completion path's
-            // bolt/impact packet (ClientCombatHandler.TickSpellCast) so NPC
-            // spells are visible to observers.
-            _spellEngine.OnNpcCastFx = (caster, target, def) =>
-            {
-                var dst = target ?? caster;
-                foreach (var fx in GameClient.BuildSpellCastFx(caster, dst, def))
-                    BroadcastNearby(dst.Position, 18, fx, 0);
-            };
+            // A spell's bolt / impact effect is sent by the engine itself, per
+            // affected target (the tail of OnSpellEffect, CCharSpell.cpp:4226-4236),
+            // for players and NPCs alike - no completion hook draws it.
             _spellEngine.OnCastAnimation = (caster, animId) =>
             {
                 // Legacy 0x6E gets the body-translated group; the 0xE2 fields for
@@ -1480,17 +1432,20 @@ public static partial class Program
                 GameClient.BroadcastAnimation(caster, anim, 18,
                     BroadcastNearby, ForEachClientInRange);
             };
-            _spellEngine.OnSpellTeleport = (caster, dest, oldMap) =>
+            _spellEngine.OnSpellTeleport = (caster, from, effectId, soundId) =>
             {
                 if (TryGetClientFor(caster, out var c))
                 {
-                    if (oldMap != caster.MapIndex)
+                    if (from.Map != caster.MapIndex)
                         c.HandleMapChanged();
                     else
                         c.Resync();
                 }
 
-                ShowTeleportEffect(caster, from: null);
+                // Spell_Teleport shows its effect where the caster stood and where
+                // it arrived, then plays the sound (CCharSpell.cpp:236-245); Recall
+                // hands over the spell's own EFFECT_ID and SOUND (:419-421).
+                ShowTeleportEffect(caster, from, effectId, soundId);
             };
             // GM GO/GOCHAR/GOUID/.tele, JAIL and scripted GO* verbs: the same
             // Spell_Teleport display, at the spot left and the spot reached.
@@ -1819,10 +1774,17 @@ public static partial class Program
                 SphereNet.Game.Clients.GameClient.PlayAnimation(
                     npc, (ushort)AnimationType.CastArea, 18, BroadcastNearby, ForEachClientInRange);
             };
-            _npcAI.OnNpcTeleport = npc =>
+            // An NPC teleport is Spell_Teleport with fDisplayEffect left on (a guard
+            // onto its criminal, CCharNPCAct.cpp:742; a guard or a lost NPC back
+            // home, :1518, :1557): the NPC teleport effect where it left and where
+            // it arrived, and the NPC teleport sound (CCharSpell.cpp:178-197,
+            // :236-245).
+            _npcAI.OnNpcTeleport = (npc, from) =>
             {
                 BroadcastCharacterAppear(npc);
+                ShowTeleportEffect(npc, from);
             };
+            _npcAI.OnNpcSummonVanish = ShowSummonVanish;
             _npcAI.OnNpcFacingChanged = npc =>
             {
                 BroadcastFacingUpdate(npc);
@@ -3178,6 +3140,25 @@ public static partial class Program
                 ctx.Ignore = args.N2 != 0;
                 return res != TriggerResult.True;
             };
+
+            // @CombatStart for an NPC - the first row on its attacker list
+            // (Attacker_Add, CCharAttacker.cpp:23-27). SRC is the character being
+            // added; RETURN 1 refuses the add and with it the fight.
+            SphereNet.Game.Objects.Characters.Character.OnNpcCombatStart = (self, addedUid) =>
+            {
+                var added = _world?.FindChar(addedUid);
+                var res = _triggerDispatcher?.FireCharTrigger(self, CharTrigger.CombatStart,
+                    new TriggerArgs { CharSrc = added ?? self, O1 = added });
+                return res != TriggerResult.True;
+            };
+
+            // An NPC defending itself, and an NPC whose fight target left its
+            // attacker list, both go through the brain's Fight_Attack
+            // (CCharFight.cpp:316; CCharAttacker.cpp:339-346).
+            SphereNet.Game.Objects.Characters.Character.NpcFightAttackHook = (npc, target) =>
+                _npcAI != null && _npcAI.NpcFightAttack(npc, target) != null;
+            SphereNet.Game.Objects.Characters.Character.OnNpcFightRowRemoved = npc =>
+                _npcAI?.OnFightTargetRowRemoved(npc);
 
             // ATTACKER.ADD <uid> runs the reference's Fight_Attack, so the script
             // verb starts a real engagement instead of pushing a bare row.

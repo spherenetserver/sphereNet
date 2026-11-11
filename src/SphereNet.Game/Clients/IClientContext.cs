@@ -233,6 +233,8 @@ internal interface IClientContext : ITextConsole
     void OnResurrect();
     Character? DismountCharacter();
     bool TryMountCharacter(Character mount);
+    /// <summary>Mount, reporting the creature the rider got off to do it (a swap).</summary>
+    bool TryMountCharacter(Character mount, out Character? swappedOut);
     void ResetWalkValidator();
     void ToggleDoor(Item door);
 

@@ -1,0 +1,10 @@
+# emote_bank.txt - kasası açık, bankacının yanında duran bot; emote.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+*altın sayar*
+*banka kutusunu karıştırır*
+*reagentleri ayırır*
+*bir kese altını tartar*
+*listesine bakar*
+*kutudaki eşyaları düzenler*
+*altınları üst üste dizer*

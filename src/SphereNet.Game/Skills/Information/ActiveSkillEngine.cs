@@ -472,6 +472,8 @@ public static class ActiveSkillEngine
         // choice: REVEALF_STEALING_SUCCESS and REVEALF_STEALING_FAIL are separate
         // flags (CCharSkill.cpp:4333).
         ch.ClearHiddenState(success ? RevealFlags.StealingSuccess : RevealFlags.StealingFail);
+        if (owner != null)
+            OnTheftAttempt?.Invoke(ch, owner, target, success, false);
 
         // "Too easy to be bad" (CCharSkill.cpp:4338): a zero-difficulty theft is
         // never a crime.
@@ -673,6 +675,7 @@ public static class ActiveSkillEngine
             return true;   // not a crime really (:4123-4124)
 
         bool success = SkillEngine.UseStart(ch, SkillType.Snooping, diff);
+        OnTheftAttempt?.Invoke(ch, mark, container, success, true);
 
         CrimeWitnessService.CheckCrimeSeen(sink.World, ch, mark, SkillType.Snooping,
             sink.Random, isSnoop: true, item: container, action: ServerMessages.Get(Msg.SnoopingAttempting));
@@ -1143,6 +1146,8 @@ public static class ActiveSkillEngine
                     target == ch ? ServerMessages.Get(Msg.HealingYourself) : target.Name));
                 if (target != ch)
                     Character.SendOwnerMessage?.Invoke(target, ServerMessages.GetFormatted(Msg.HealingCure2, ch.Name));
+                if (target != ch)
+                    OnBandageHealed?.Invoke(ch, target, true);
             }
             else
             {
@@ -1166,8 +1171,20 @@ public static class ActiveSkillEngine
         short hitsBefore = target.Hits;
         target.Hits = (short)Math.Min(target.MaxHits, target.Hits + Math.Max(0, heal));
         target.NotifyStatValChange(Character.StatValHits, hitsBefore, ch);
+        if (target != ch)
+            OnBandageHealed?.Invoke(ch, target, false);
         return true;
     }
+
+    /// <summary>A bandage healed (or, with the flag set, cured) someone other than the
+    /// healer: the healer, the patient, whether it was a cure. Listeners only take note.</summary>
+    public static Action<Character, Character, bool>? OnBandageHealed { get; set; }
+
+    /// <summary>A theft or a snoop was tried on somebody: the thief, the mark, the item
+    /// (or the container looked into), whether it worked, whether it was a snoop. The
+    /// mark is never one of the witnesses <see cref="CrimeWitnessService"/> asks, so
+    /// this is the only word it gets. Listeners only take note.</summary>
+    public static Action<Character, Character, Item?, bool, bool>? OnTheftAttempt { get; set; }
 
     /// <summary>The corpse-side half of a bandage resurrection, mirroring Source-X
     /// CItemCorpse::IsCorpseResurrectable (CItemCorpse.cpp:28). These are checks ON TOP

@@ -80,6 +80,47 @@ public static class BotPacketBuilder
         return packet;
     }
 
+    /// <summary>Build 0x00 Create Character packet (104 bytes): what a client sends
+    /// from the creation screen when the account has no character to play. A play
+    /// request (0x5D) on an empty slot is refused, as Source-X Setup_Play refuses it
+    /// (CClientMsg.cpp:2924-2926), so a bot on a fresh account creates its character
+    /// the way a player does. Stats and skills stay inside the three-skill budget
+    /// (80 and 100, CChar::InitPlayer, CChar.cpp:1768-1796).</summary>
+    public static byte[] BuildCharCreate(string charName, int slotIndex = 0,
+        byte str = 30, byte dex = 25, byte intl = 25)
+    {
+        var packet = new byte[104];
+        packet[0] = 0x00;
+        WriteUInt32BE(packet, 1, 0xEDEDEDED); // pattern1
+        WriteUInt32BE(packet, 5, 0xFFFFFFFF); // pattern2
+        // pattern3 at 9
+        WriteAsciiFixed(packet, 10, charName, 30);
+        WriteUInt32BE(packet, 42, 0x1F);      // client flags (T2A+)
+        // profession at 54 (0 = custom), 15 unknown bytes at 55
+        packet[70] = 0;                       // human male
+        packet[71] = str;
+        packet[72] = dex;
+        packet[73] = intl;
+        packet[74] = 43; packet[75] = 50;     // Wrestling
+        packet[76] = 27; packet[77] = 30;     // Tactics
+        packet[78] = 1;  packet[79] = 20;     // Anatomy
+        // skin / hair / beard at 80-89 left zero: the server puts them in range
+        // shard index at 90, starting city at 91
+        WriteInt32BE(packet, 92, slotIndex);
+        // 4 bytes clientIP at 96, shirt / pants hue at 100-103
+        return packet;
+    }
+
+    /// <summary>Whether <paramref name="slotIndex"/> of a 0xA9 character list holds no
+    /// character: [0xA9][len:2][count:1] then 60 bytes per slot, the name first.</summary>
+    public static bool IsCharListSlotEmpty(ReadOnlySpan<byte> charList, int slotIndex)
+    {
+        if (charList.Length < 4 || charList[0] != 0xA9 || slotIndex < 0 || slotIndex >= charList[3])
+            return true;
+        int nameAt = 4 + slotIndex * 60;
+        return nameAt >= charList.Length || charList[nameAt] == 0;
+    }
+
     /// <summary>Build 0x02 Move Request packet (7 bytes).</summary>
     public static byte[] BuildMoveRequest(byte direction, byte sequence, uint fastWalkKey = 0)
     {

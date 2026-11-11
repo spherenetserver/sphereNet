@@ -1,0 +1,9 @@
+# emote_eat.txt - çantasından bir şey yiyen bot; emote.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+*bir ısırık alır*
+*yer*
+*atıştırır*
+*ağır ağır çiğner*
+*kırıntıları silkeler*
+*parmaklarını yalar*

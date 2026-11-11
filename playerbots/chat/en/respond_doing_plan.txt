@@ -1,0 +1,6 @@
+# respond_doing_plan.txt - see docs/PLAYERBOTS.md (Talking). On the way to a plan's step with a reason: {goal} where, {now} what, {why} why.
+
+going to {goal}, {why}
+{now} at {goal}. {why}
+{goal}. {why}
+{why}, heading to {goal}

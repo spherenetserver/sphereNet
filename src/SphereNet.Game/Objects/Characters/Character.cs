@@ -1537,7 +1537,11 @@ public partial class Character : ObjBase
                     // cancels only a Healing skill, and only from a connecting swing
                     // (Fight_Hit, CCharFight.cpp:2203-2208 - InterruptHealingOnHit);
                     // OnTakeDamage itself never touches the active skill.
-                    InterruptMeditation();
+                    // Meditation is no exception: OnTakeDamage disturbs only SKF_MAGIC
+                    // skills (CCharFight.cpp:881-915). It ends when the damage makes
+                    // the victim fight back - OnHarmedBy -> Fight_Attack
+                    // (CCharFight.cpp:291-316) - which the FightTarget setter covers;
+                    // poison, a script's HITS change or hunger leave it running.
                     OnDamageActionInterrupt?.Invoke(this);
                 }
             }
@@ -2437,6 +2441,23 @@ public partial class Character : ObjBase
         return true;
     }
 
+    /// <summary>Reveal(STATF_HIDDEN) (Source-X CChar::Reveal, CCharAct.cpp:3491-3551):
+    /// come out of hiding only. @Reveal may refuse it; an Invisibility spell stays on,
+    /// and while it does the character is still concealed - no stealth reset, and the
+    /// answer is false (:3544). Returns true when the character became visible.</summary>
+    public bool ClearHiddenOnly()
+    {
+        if (!IsStatFlag(StatFlag.Hidden))
+            return false;
+        if (OnRevealing != null && !OnRevealing(this))
+            return false;
+        ClearStatFlag(StatFlag.Hidden);
+        if (IsStatFlag(StatFlag.Invisible))
+            return false;
+        StepStealth = 0;
+        return true;
+    }
+
     /// <summary>REVEALFLAGS — which actions drop concealment. The default is what the
     /// reference ini ships.</summary>
     /// <summary>HITSHUNGERLOSS — flat damage a starving character takes each food tick
@@ -3278,7 +3299,16 @@ public partial class Character : ObjBase
         // (NPC_PetSetOwner, CCharNPCPet.cpp:614). Without it the old spawn point still
         // counted the pet against its quota AND still destroyed it on the next STOP.
         if (ownerUid.IsValid && _npcMaster != ownerUid)
+        {
             ReleaseFromSpawner?.Invoke(this);
+            // NPC_PetSetOwner gives the new pet no order (CCharNPCPet.cpp:600-636): it
+            // is idle, and an idle pet that sees its owner starts guarding it -
+            // NPCACT_GUARD_TARG on the owner (NPC_LookAtChar, CCharNPCAct.cpp:1030-
+            // 1039), which follows the owner and joins the fights it is in
+            // (NPC_Act_Guard, :1292-1311). The paths that do give an order - taming
+            // makes it follow (CCharSkill.cpp:2398) - set it after this.
+            SetPetIdleOrder();
+        }
 
         SetOwnerControllerRaw(ownerUid, controllerUid, mirrorLegacySummon: summoned);
         if (owner != null)
@@ -3719,11 +3749,41 @@ public partial class Character : ObjBase
         if ((CombatFlags & (int)SphereNet.Game.Combat.CombatFlags.NoPetDesert) == 0 && HasOwner(src.Uid))
             PetDesert();
 
-        FightTarget = src.Uid;
+        // "I will Auto-Defend myself": Fight_Attack(pCharSrc) (CCharFight.cpp:316) -
+        // @Attack and the attacker list like any other NPC fight, and the script may
+        // refuse it. The brain owns that routine; with none wired the engagement
+        // contract alone decides.
+        if (NpcFightAttackHook != null)
+        {
+            if (!NpcFightAttackHook(this, src))
+                return;
+        }
+        else
+        {
+            if (!CombatState.BeginFightWith(src, toldByMaster: false))
+                return;
+            FightTarget = src.Uid;
+        }
         NextNpcActionTime = 0;
         NextNpcReacquireTime = 0;
         WakeNpc?.Invoke(this);
     }
+
+    /// <summary>CChar::Fight_Attack for an NPC, owned by the NPC brain (it needs the
+    /// world to pick the best target off the attacker list). Args: the NPC, the
+    /// character to attack. False = the attack was refused. Wired in Program.</summary>
+    public static Func<Character, Character, bool>? NpcFightAttackHook { get; set; }
+
+    /// <summary>The row an NPC was fighting has left its attacker list
+    /// (Attacker_Delete, CCharAttacker.cpp:339-346): the brain turns it on the next
+    /// best target or ends the fight. Wired in Program.</summary>
+    public static Action<Character>? OnNpcFightRowRemoved { get; set; }
+
+    /// <summary>@CombatStart for an NPC: its attacker list is about to get its first
+    /// row (Attacker_Add, CCharAttacker.cpp:23-33). Args: the NPC, the character
+    /// being added. False = RETURN 1, the add is refused. A player's own
+    /// @CombatStart is fired by the client attack path.</summary>
+    public static Func<Character, Serial, bool>? OnNpcCombatStart { get; set; }
 
     /// <summary>CChar::Fight_Clear for a player (CCharFight.cpp:1361-1380): "I no
     /// longer want to attack this char". The target leaves my attacker list, a fight or
@@ -3961,7 +4021,9 @@ public partial class Character : ObjBase
             return;
         if (pet && !CheckHirelingStatus())
             return;
-        if (PrivLevel >= PrivLevel.GM)
+        // "if ( IsPriv(PRIV_GM) ) return;" (CCharAct.cpp:5780-5781) is GM MODE: a
+        // GM-level character who switched it off gets hungry like anyone else.
+        if (IsGmMode)
             return;
 
         _food = (ushort)Math.Max(0, _food - amount);
@@ -4009,12 +4071,30 @@ public partial class Character : ObjBase
                 new SphereNet.Network.Packets.Outgoing.PacketSound(snd, X, Y, Z), 0);
     }
 
+    /// <summary>The order of a pet nobody has told anything: guard the owner. Source-X
+    /// has no "no order" state for an owned NPC that can see its owner - the idle
+    /// look-around puts it on NPCACT_GUARD_TARG with the owner as the one guarded
+    /// (NPC_LookAtChar, CCharNPCAct.cpp:1030-1039; NPC_Act_Guard, :1292-1311). The
+    /// orders left over from before go with it.</summary>
+    public void SetPetIdleOrder()
+    {
+        RemoveTag("ATTACK_TARGET");
+        RemoveTag("FOLLOW_TARGET");
+        RemoveTag("GUARD_TARGET");
+        RemoveTag("GO_TARGET");
+        RemoveTag("PREV_PET_MODE");
+        PetAIMode = PetAIMode.Guard;
+    }
+
     /// <summary>Source-X NPC_CheckHirelingStatus (CCharNPCPet.cpp:641-689), run on the
     /// food tick. A creature hired for money (HIREDAYWAGE, or the legacy HIRE_WAGE
     /// tag) pays wage * REGEN3 seconds / (24 * 60 * GAMEMINUTELENGTH in ms) per tick -
-    /// at least 1, the reference's own units - out of what it was paid in advance
-    /// (HIRE_BALANCE, Source-X's bank m_Check_Amount). When that no longer covers a
-    /// tick it states its wage and that its time is up, and deserts. True = happy.</summary>
+    /// at least 1, the reference's own units - out of what it was paid in advance:
+    /// the purse in its bank box (m_itEqBankBox.m_Check_Amount, :666-670), the same
+    /// purse a vendor's takings go into. When that no longer covers a tick it states
+    /// its wage and that its time is up, remembers that the next gold from its
+    /// owner is hire money (NPC_MEM_ACT_SPEAK_HIRE, :682-684), and deserts.
+    /// True = happy.</summary>
     private bool CheckHirelingStatus()
     {
         uint wage = Definitions.DefinitionLoader.GetCharDef(CharDefIndex)?.HireDayWage ?? 0;
@@ -4029,10 +4109,12 @@ public partial class Character : ObjBase
         if (periodWage <= 0)
             periodWage = 1;
 
-        long balance = TryGetTag("HIRE_BALANCE", out string? bs) && ScriptNumber.TryParseLong(bs, out long b) ? b : 0;
+        // GetVendorGold folds a TAG.HIRE_BALANCE left by an earlier save into the
+        // purse before reading it, so nothing a player paid is lost.
+        long balance = Trade.VendorEngine.GetVendorGold(this);
         if (balance > periodWage)
         {
-            SetTag("HIRE_BALANCE", (balance - periodWage).ToString());
+            Trade.VendorEngine.SetVendorGold(this, balance - periodWage);
             return true;
         }
 
@@ -4041,6 +4123,8 @@ public partial class Character : ObjBase
         if (owner != null)
         {
             BroadcastSpeech(0, unicode: false, ServerMessages.Get(Msg.NpcPetHireTimeup));
+            var hireMemory = Memory_AddObjTypes(owner.Uid, MemoryType.Speak);
+            hireMemory.More1 = (hireMemory.More1 & 0xFFFF0000) | NpcMemActSpeakHire;
             PetDesert();
             return false;
         }
@@ -6949,7 +7033,7 @@ public partial class Character : ObjBase
     internal Item? GetBankBoxSafe() => GetBankSafe();
 
     /// <summary>GetPackSafe: my pack, made and worn when I have none.</summary>
-    private Item? GetPackSafe()
+    internal Item? GetPackSafe()
     {
         var pack = Backpack;
         if (pack != null) return pack;
@@ -10449,7 +10533,13 @@ public partial class Character : ObjBase
         // The limit is the ADJUSTED maximum (Stat_GetMaxAdjusted, :515), item and
         // spell bonuses included. Upstream's regen clock restarts every time it comes
         // due, full or not (:510).
-        if (hitRateMs >= 0 && now >= _nextHitRegen)
+        //
+        // A character turned to stone, or a statue by definition, does not regenerate
+        // at all - hits, mana, stamina or food: "if (!IsStatFlag(STATF_DEAD |
+        // STATF_STONE) && !Can(CAN_C_STATUE)) Stats_Regen();" (CCharAct.cpp:6122-6125).
+        bool regenerates = !IsStatFlag(StatFlag.Stone) &&
+            (Definitions.CharDefHelper.GetCanFlags(this) & CanFlags.C_Statue) == 0;
+        if (regenerates && hitRateMs >= 0 && now >= _nextHitRegen)
         {
             _nextHitRegen = now + hitRateMs;
             int limit = MaxHits;
@@ -10470,7 +10560,7 @@ public partial class Character : ObjBase
         // regen 8-9 mana every 3s, matching or exceeding its spend, so its pool
         // never ran dry and it cast forever. Meditation is the way to regen faster.
         long manaRateMs = ResolveRegenRateMs(_regenManaRateMs, RegenManaSeconds, 20000);
-        if (manaRateMs >= 0 && now >= _nextManaRegen)
+        if (regenerates && manaRateMs >= 0 && now >= _nextManaRegen)
         {
             _nextManaRegen = now + manaRateMs;
             int limit = MaxMana;
@@ -10491,7 +10581,7 @@ public partial class Character : ObjBase
         // dex/30 and maxStam/20 fallbacks were invented and made big creatures
         // recover stamina many times faster than reference.
         long stamRateMs = ResolveRegenRateMs(_regenStamRateMs, RegenStamSeconds, 10000);
-        if (stamRateMs >= 0 && now >= _nextStamRegen)
+        if (regenerates && stamRateMs >= 0 && now >= _nextStamRegen)
         {
             _nextStamRegen = now + stamRateMs;
             int limit = MaxStam;
@@ -10511,8 +10601,11 @@ public partial class Character : ObjBase
         long foodRateMs = ResolveRegenRateMs(_regenFoodRateMs, RegenFoodSeconds, 3_600_000);
         // A character in GM mode does not get hungry at all: OnTickFood returns for
         // PRIV_GM before the food is lowered (CCharAct.cpp:5780-5781).
-        if (_isPlayer && !IsGmMode && foodRateMs >= 0 && now >= _nextFoodDecay &&
-            (Definitions.CharDefHelper.GetCanFlags(this) & CanFlags.C_Statue) == 0)
+        if (!regenerates)
+        {
+            // The food clock is part of Stats_Regen, so it stands still as well.
+        }
+        else if (_isPlayer && !IsGmMode && foodRateMs >= 0 && now >= _nextFoodDecay)
         {
             _nextFoodDecay = now + foodRateMs;
             ApplyStatRegen(RegenStatFood, _regenValFood > 0 ? _regenValFood : 1, MaxFood, 0);
@@ -10521,7 +10614,12 @@ public partial class Character : ObjBase
         // clock for these, so without this a wild NPC never got hungry (Source-X runs
         // Stats_Regen for every character, CCharAct.cpp:6031). Exactly the complement of
         // that method's early return, so no NPC decays twice.
-        else if (!_isPlayer && !OwnerSerial.IsValid && !IsSummoned)
+        // The clock is asked first: TickNpcFoodClock does nothing until it is due (or
+        // has never been set), and whether the creature has an owner or was summoned
+        // is four tag lookups - made ten times a second for every creature awake,
+        // for a clock that comes due once an hour.
+        else if (!_isPlayer && (_nextFoodDecay == 0 || now >= _nextFoodDecay) &&
+                 !OwnerSerial.IsValid && !IsSummoned)
         {
             TickNpcFoodClock(now);
         }
@@ -10660,7 +10758,9 @@ public partial class Character : ObjBase
         int max = MaxFood;
         if (IsDead || IsStatFlag(StatFlag.Conjured) || IsStatFlag(StatFlag.Stone) || max == 0)
             return;
-        if (PrivLevel >= PrivLevel.GM)
+        // "if ( IsPriv(PRIV_GM) ) return;" (CCharAct.cpp:5780-5781) is GM MODE: a
+        // GM-level character who switched it off gets hungry like anyone else.
+        if (IsGmMode)
             return;
 
         _food = (ushort)Math.Max(0, _food - amount);
@@ -10855,11 +10955,46 @@ public partial class Character : ObjBase
         }
         else
         {
+            ClearOtherHandFor(world, item, layer);
             Equip(item, layer);
         }
 
         _lastCreatedItem = item;
         _lastItemMissed = false;
+    }
+
+    /// <summary>The hand rule of Source-X CChar::CanEquipLayer (CCharStatus.cpp:410-421),
+    /// which an ITEM= line reaches through CItem::CreateHeader -> CChar::ContentAdd ->
+    /// ItemEquip (CItem.cpp:531-535, CCharStatus.cpp:289-294, CCharAct.cpp:3298): a
+    /// weapon going into the second hand takes off what the first hand holds, and
+    /// anything going into the first hand takes a weapon out of the second; the piece
+    /// taken off is bounced to the pack (:470). Without it a kit that names a dagger
+    /// and then a two-handed axe left both in hand, and WEAPON - the first hand
+    /// first - went on answering with the dagger.</summary>
+    private void ClearOtherHandFor(World.GameWorld world, Item item, Core.Enums.Layer layer)
+    {
+        if (layer == Core.Enums.Layer.OneHanded && item.IsTwoHanded)
+            layer = Core.Enums.Layer.TwoHanded;     // where Equip will put it
+        Item? other = layer switch
+        {
+            Core.Enums.Layer.TwoHanded when IsTypeWeapon(item.ItemType) => GetEquippedItem(Core.Enums.Layer.OneHanded),
+            Core.Enums.Layer.OneHanded when GetEquippedItem(Core.Enums.Layer.TwoHanded) is { } held &&
+                                            IsTypeWeapon(held.ItemType) => held,
+            _ => null,
+        };
+        if (other == null || ReferenceEquals(other, item))
+            return;
+        Unequip(other.EquipLayer);
+        // ItemBounce puts it in the pack, which GetPackSafe makes when there is none.
+        var pack = Backpack;
+        if (pack == null)
+        {
+            pack = world.CreateItem();
+            pack.BaseId = 0x0E75;
+            Equip(pack, Core.Enums.Layer.Pack);
+        }
+        if (!pack.TryAddItem(other))
+            world.PlaceItemWithDecay(other, Position);
     }
 
     /// <summary>

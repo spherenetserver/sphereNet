@@ -1,0 +1,4 @@
+# bank_open.txt - botun banka kutusunu açmak için bankacıya söylediği söz: paketin kendi anahtar kelimesi, oyuncunun yazdığı gibi.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+bank

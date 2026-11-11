@@ -112,8 +112,12 @@ public sealed class MeditationContinuationTests
         });
     }
 
+    /// <summary>Losing hit points does not end a meditation: OnTakeDamage disturbs only
+    /// SKF_MAGIC skills (CCharFight.cpp:881-915). What ends it is fighting back - the
+    /// victim's auto-defence starts a fight (OnHarmedBy -> Fight_Attack,
+    /// CCharFight.cpp:291-316) - and once ended it does not restart by itself.</summary>
     [Fact]
-    public void DamageStopsMeditationAndDoesNotRestartOnNextTick()
+    public void FightingBackStopsMeditationAndBareDamageDoesNot()
     {
         WithClient((client, player) =>
         {
@@ -121,6 +125,10 @@ public sealed class MeditationContinuationTests
             player.ContinueSkillPending(0);
             client.TickPendingSkill();
             player.Hits--;
+            Assert.True(player.HasActiveSkillPending());
+            Assert.True(player.IsStatFlag(StatFlag.Meditation));
+
+            player.FightTarget = new Serial(0x1234);
             Assert.False(player.HasActiveSkillPending());
             Assert.False(player.IsStatFlag(StatFlag.Meditation));
             client.TickPendingSkill();

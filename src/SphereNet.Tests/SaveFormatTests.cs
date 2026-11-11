@@ -1161,6 +1161,10 @@ public class SaveFormatTests
             sword.BaseId = 0x0F5E;
             sword.ItemType = ItemType.WeaponSword;
             sword.SetTag("HITLEECHLIFE", "7");
+            // With EQUIPPEDCAST off every caster's hands are emptied when a cast starts
+            // (Spell_CastStart, CCharSpell.cpp:3609-3615) - staff included - unless the
+            // weapon channels.
+            sword.SetTag("SPELLCHANNELING", "1");
             Assert.True(ch.Equip(sword, Layer.OneHanded));
 
             var engine = new SpellEngine(src, registry);

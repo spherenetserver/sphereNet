@@ -1,0 +1,9 @@
+# fight_busy.txt - kavgadaki botun kendisiyle konuşan oyuncuya tek sözü. {name} oyuncu.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+meşgulüm!
+şimdi olmaz {name}
+biraz meşgulüm
+kavgadayım, bi sn
+sonra!
+1 sn

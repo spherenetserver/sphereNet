@@ -1,0 +1,8 @@
+# respond_plan.txt - bkz. docs/PLAYERBOTS.md (Talking). "Planin ne": {now} su anki isi, {next} sonraki, {goal} nerede, {why} nedeni.
+
+önce {now}, sonra {next}. {why}
+{why}, o yüzden {now}. sonra da {next}
+plan şu: {now}, ardından {next}
+{goal} tarafında {now}, sonra {next}
+{now}. {why}
+şimdilik {now}, {why}

@@ -85,6 +85,62 @@ public sealed class PerfMeasurementWindow
 
     public void RecordMulticoreFallback() => _multicoreFallbacks++;
 
+    private long _cpuTicks, _cpuSumUs, _offCpuSumUs, _offCpuMaxUs, _starvedTicks;
+
+    /// <summary>One tick's wall time beside the processor time the main thread was
+    /// given during it (negative = the host could not say; the tick is then left out).
+    /// The difference is time the thread spent NOT running - waiting for a core, for
+    /// worker threads, or for a collection - which no change to the tick's own code
+    /// can win back.</summary>
+    public void RecordTickCpu(long elapsedUs, long cpuUs)
+    {
+        if (cpuUs < 0) return;
+        _cpuTicks++;
+        _cpuSumUs += cpuUs;
+        long off = Math.Max(0, elapsedUs - cpuUs);
+        _offCpuSumUs += off;
+        if (off > _offCpuMaxUs) _offCpuMaxUs = off;
+        // "Starved": the tick took at least 20 ms and the thread ran for under half of it.
+        if (elapsedUs >= 20_000 && cpuUs * 2 < elapsedUs) _starvedTicks++;
+    }
+
+    /// <summary>The leaf phases of a tick, in the order the tick runs them. The
+    /// [slow_tick] line names them for one slow tick; a window needs them for the
+    /// AVERAGE tick, or "the tick got 20 ms slower" cannot be placed without a
+    /// profiler attached.</summary>
+    public static readonly string[] PhaseNames =
+        ["world_tick", "npc_build", "npc_commit", "bots", "dirty", "view_build", "apply", "post_apply", "flush"];
+
+    private readonly long[] _phaseSumUs = new long[PhaseNames.Length];
+    private readonly long[] _phaseMaxUs = new long[PhaseNames.Length];
+    private long _phaseTicks;
+
+    /// <summary>One tick's phase times, microseconds, in <see cref="PhaseNames"/> order.</summary>
+    public void RecordPhases(ReadOnlySpan<long> phaseUs)
+    {
+        _phaseTicks++;
+        int n = Math.Min(phaseUs.Length, _phaseSumUs.Length);
+        for (int i = 0; i < n; i++)
+        {
+            long us = Math.Max(0, phaseUs[i]);
+            _phaseSumUs[i] += us;
+            if (us > _phaseMaxUs[i]) _phaseMaxUs[i] = us;
+        }
+    }
+
+    private PerfWindowPhase[] BuildPhases()
+    {
+        var phases = new PerfWindowPhase[PhaseNames.Length];
+        for (int i = 0; i < phases.Length; i++)
+            phases[i] = new PerfWindowPhase
+            {
+                Name = PhaseNames[i],
+                AvgMs = _phaseTicks > 0 ? Math.Round(_phaseSumUs[i] / 1000.0 / _phaseTicks, 3) : 0,
+                MaxMs = Math.Round(_phaseMaxUs[i] / 1000.0, 3),
+            };
+        return phases;
+    }
+
     /// <summary>Nearest-rank percentile over microsecond samples, in ms.</summary>
     public static double PercentileMs(long[] sortedUs, double p)
     {
@@ -122,6 +178,11 @@ public sealed class PerfMeasurementWindow
                 P95Ms = PercentileMs(sorted, 0.95),
                 P99Ms = PercentileMs(sorted, 0.99),
                 MaxMs = sorted.Length > 0 ? sorted[^1] / 1000.0 : 0,
+                CpuSamples = _cpuTicks,
+                AvgCpuMs = _cpuTicks > 0 ? Math.Round(_cpuSumUs / 1000.0 / _cpuTicks, 3) : 0,
+                AvgOffCpuMs = _cpuTicks > 0 ? Math.Round(_offCpuSumUs / 1000.0 / _cpuTicks, 3) : 0,
+                MaxOffCpuMs = Math.Round(_offCpuMaxUs / 1000.0, 3),
+                StarvedTicks = _starvedTicks,
             },
             Loop = new PerfWindowLoop
             {
@@ -161,6 +222,7 @@ public sealed class PerfMeasurementWindow
                 MaxCaptureMs = Math.Round(_saveMaxCaptureMs, 3),
                 MaxMainThreadMs = Math.Round(_saveMaxMainThreadMs, 3),
             },
+            Phases = BuildPhases(),
         };
     }
 }
@@ -180,6 +242,8 @@ public sealed class PerfWindowReport
     public PerfWindowGc Gc { get; init; } = new();
     public PerfWindowNpcBudget NpcBudget { get; init; } = new();
     public PerfWindowSave Save { get; init; } = new();
+    /// <summary>Where an average tick of the window went, phase by phase.</summary>
+    public PerfWindowPhase[] Phases { get; init; } = [];
 }
 
 public sealed class PerfWindowTick
@@ -191,6 +255,16 @@ public sealed class PerfWindowTick
     public double P95Ms { get; init; }
     public double P99Ms { get; init; }
     public double MaxMs { get; init; }
+    /// <summary>Ticks whose main-thread processor time could be read (0 = the host
+    /// cannot say, and the four fields below mean nothing).</summary>
+    public long CpuSamples { get; init; }
+    /// <summary>Processor time the main thread used per tick.</summary>
+    public double AvgCpuMs { get; init; }
+    /// <summary>Tick time the main thread was not running, per tick and at worst.</summary>
+    public double AvgOffCpuMs { get; init; }
+    public double MaxOffCpuMs { get; init; }
+    /// <summary>Ticks of 20 ms or more in which the thread ran for under half the time.</summary>
+    public long StarvedTicks { get; init; }
 }
 
 public sealed class PerfWindowLoop
@@ -233,4 +307,13 @@ public sealed class PerfWindowSave
     public int Count { get; init; }
     public double MaxCaptureMs { get; init; }
     public double MaxMainThreadMs { get; init; }
+}
+
+/// <summary>One tick phase over the window: its share of an average tick and its
+/// worst single tick.</summary>
+public sealed class PerfWindowPhase
+{
+    public string Name { get; init; } = "";
+    public double AvgMs { get; init; }
+    public double MaxMs { get; init; }
 }

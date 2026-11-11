@@ -271,7 +271,10 @@ public sealed class PetParity06Tests
 
         Assert.Same(pet, claimed);
         Assert.False(pet.TryGetTag("ATTACK_TARGET", out _));
-        Assert.Equal(PetAIMode.Follow, pet.PetAIMode);
+        // Idle - and an idle pet that sees its owner guards it (NPC_LookAtChar,
+        // CCharNPCAct.cpp:1030-1039), which is not the attack order it went in with.
+        Assert.Equal(PetAIMode.Guard, pet.PetAIMode);
+        Assert.False(pet.TryGetTag("GUARD_TARGET", out _));
         Assert.False(pet.FightTarget.IsValid);
     }
 

@@ -177,15 +177,47 @@ public sealed partial class PlayerBotEngine
     /// <summary>Whether a search with the bot as walker finds no way between two points
     /// within its budget. One that runs out of time proves nothing, and nothing is
     /// learned from it. Runs on the main thread: rescues are a few a minute.</summary>
-    private bool ProvedShut(Point3D from, Point3D to, Character walker)
+    private bool ProvedShut(Point3D from, Point3D to, Character walker) => ProvedShut(from, to, walker, out _);
+
+    /// <summary><see cref="ProvedShut(Point3D, Point3D, Character)"/>, with the way the
+    /// search found (from <paramref name="from"/> on), when it found one.</summary>
+    private bool ProvedShut(Point3D from, Point3D to, Character walker, out List<Point3D>? way)
     {
+        way = null;
         if (from.Map != to.Map) return true;
         int dist = from.GetDistanceTo(to);
         if (dist <= 1) return false;
         long deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency / 50; // 20 ms
         var path = _pathfinder.FindPath(from, to, from.Map, CanFlags.None, walker, maxNodes: 4000,
             maxRadius: dist + 20, deadline: deadline, options: PathOptions.OpenDoors | PathOptions.Hasty);
+        if (path is { Count: > 0 })
+        {
+            way = new List<Point3D>(path.Count + 1) { from };
+            way.AddRange(path);
+        }
         return path == null && !Pathfinder.LastSearchTimedOut;
+    }
+
+    /// <summary>Ways into a stopping spot found at a rescue, kept for every bot.</summary>
+    public long WindowArrivalWays { get; private set; }
+
+    /// <summary>A bot lifted onto a stopping spot it could not walk to from the last
+    /// road node: when nobody has found the way in yet, a search of its own (the bot as
+    /// walker, 4000 nodes, 20 ms - more than a bot's search in the tick has) looks for
+    /// it, and a way found is kept for the last leg into that spot, which every bot then
+    /// follows instead of searching (a bot's own search of 5 ms runs out of time in a
+    /// town of doors and counters, and a spot that is reachable was never learned bad:
+    /// the stall came back with every visitor). True when a way was found now.</summary>
+    internal bool LearnArrivalWay(BotDestination goal, int spot, List<int> route, Point3D target, Character walker)
+    {
+        if (route.Count == 0 || ArrivalKey(goal, spot, route[^1]) is not { } key || _corridors.ContainsKey(key))
+            return false;
+        ProvedShut(Nav.Waypoints[route[^1]].Pos, target, walker, out var way);
+        if (way == null || Chebyshev(way[^1], target) > 1) return false;
+        StoreCorridor(key, way);
+        goal.SpotFailures.Remove(spot);
+        WindowArrivalWays++;
+        return true;
     }
     /// <summary>Road links learned to be impassable.</summary>
     public int BadLinks { get; private set; }
@@ -257,6 +289,10 @@ public sealed partial class PlayerBotEngine
         WindowMarksTaken = WindowMarksFailed = 0;
         ResetDiagnosticsWindow();
         ResetBrainWindow();
+        ResetCombatWindow();
+        ResetMannersWindow();
+        ResetWorkWindow();
+        ResetPlanWindow();
         WindowPurchases = WindowMeditations = WindowPkAttacks = WindowThefts = 0;
         WindowPartyTends = WindowPartyOrders = WindowTrades = WindowLiftWaits = 0;
         WindowFavors = WindowFavorFails = WindowGates = WindowGifts = WindowOffers = WindowNewFriends = WindowBondPoints = 0;
@@ -317,6 +353,7 @@ public sealed partial class PlayerBotEngine
             BringOnline(ch);
             if (ch.TryGetTag(GoalTag, out string? goal) && Nav.FindDestination(goal ?? "") is { } dest)
                 _minds[ch.Uid.Value].Goal = dest;
+            ResumePlan(_minds[ch.Uid.Value]);
             RepairKitBook(ch);
             adopted++;
         }
@@ -471,15 +508,47 @@ public sealed partial class PlayerBotEngine
         _world.AddOnlinePlayer(ch);
         _world.PlaceCharacter(ch, ch.Position);
         var mind = new BotMind(ch, _rng) { Client = CreateClient?.Invoke(ch) };
+        KeepNerve(mind);
         // What it is told ("you have no reagents", "that is too far away") goes in its trace.
         if (mind.Client != null)
-            mind.Client.ServerDrivenSysMessage = text => mind.Note(NowMs(), "told: " + text);
+            mind.Client.ServerDrivenSysMessage = text =>
+            {
+                mind.Note(NowMs(), "told: " + text);
+                // A job in hand reads its outcome from what the bot is told (the Work part).
+                mind.Work?.Hear(text);
+            };
         if (_minds.Remove(ch.Uid.Value, out var previous)) _order.Remove(previous);
         mind.Note(NowMs(), $"online at {ch.Position}");
         _minds[ch.Uid.Value] = mind;
         _order.Add(mind);
         ResolveCompanion(mind);
         OnAppeared?.Invoke(ch);
+    }
+
+    /// <summary>Its nerve and the hit points it runs at, rolled once (the mind rolls
+    /// them) and kept: a bot is as bold after a restart as before.</summary>
+    public const string NerveTag = "PLAYERBOT.NERVE";
+
+    /// <summary>The bot's nerve and flight mark from <see cref="NerveTag"/>
+    /// (<c>nerve|fleeAt</c>); a bot from an older save without it keeps what the mind
+    /// just rolled, and that is written down.</summary>
+    private static void KeepNerve(BotMind mind)
+    {
+        var ch = mind.Char;
+        if (ch.TryGetTag(NerveTag, out string? raw) && raw != null)
+        {
+            var p = raw.Split('|');
+            if (p.Length == 2 &&
+                double.TryParse(p[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double nerve) &&
+                int.TryParse(p[1], out int fleeAt) && nerve is >= 0.5 and <= 3.0 && fleeAt is >= 5 and <= 80)
+            {
+                mind.Nerve = nerve;
+                mind.FleeAt = fleeAt;
+                return;
+            }
+        }
+        mind.Nerve = Math.Round(mind.Nerve, 3);
+        ch.SetTag(NerveTag, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{mind.Nerve:0.###}|{mind.FleeAt}"));
     }
 
     /// <summary>Take a bot offline: it stays in the world save as a logged-out
@@ -613,6 +682,7 @@ public sealed partial class PlayerBotEngine
                         mind.BeginLinger(NearestPlace(ch.Position, 8), now, _rng, short_: true);
                         mind.Note(now, "recalled home");
                     }
+                    else InterruptPlan(mind, now, "carried");
                     mind.ResetLeg(now);
                 }
                 long a0 = Stopwatch.GetTimestamp();
@@ -695,6 +765,8 @@ public sealed partial class PlayerBotEngine
         mind.Guiding = null;
         mind.GiveBackTo = null;
         mind.CatchGate = null;
+        DropWork(mind);
+        InterruptPlan(mind, now, "plans reset");
         if (!mind.Char.IsDead)
             mind.BeginLinger(null, now, _rng, short_: true);
         mind.ResetLeg(now);
@@ -732,7 +804,9 @@ public sealed partial class PlayerBotEngine
             return;
         }
         // Alive again without being carried off to a healer: someone raised it.
-        if (mind.DeadSinceMs != 0) OnRaisedByOther(mind, now);
+        if (mind.DeadSinceMs != 0 && !OnRaisedOnGhostWalk(mind, now)) OnRaisedByOther(mind, now);
+        // A favour, a companion or a player led stands in for its own plan.
+        NotePlanBusy(mind, now);
         if (now >= mind.NextInviteScanMs)
         {
             mind.NextInviteScanMs = now + 1500;
@@ -750,6 +824,12 @@ public sealed partial class PlayerBotEngine
         if (mind.Mode is BotMode.Linger or BotMode.Travel)
         {
             if (ch.IsPoisoned && now >= mind.NextCureMs && TryCure(mind, now))
+            {
+                mind.NextActMs = now + 600;
+                return;
+            }
+            // Hurt and out of a fight: it sees to its wounds before it moves on.
+            if (PatchUp(mind, now))
             {
                 mind.NextActMs = now + 600;
                 return;
@@ -801,6 +881,12 @@ public sealed partial class PlayerBotEngine
             case BotMode.Shop:
                 ActShop(mind, now);
                 break;
+            case BotMode.Work:
+                ActWork(mind, now);
+                break;
+            case BotMode.Sell:
+                ActSell(mind, now);
+                break;
         }
     }
 
@@ -819,6 +905,8 @@ public sealed partial class PlayerBotEngine
         var ch = mind.Char;
         if (mind.DeadSinceMs == 0)
         {
+            // A ghost taken back from the save goes on from where its death had got to.
+            if (ResumeDeath(mind, now)) return;
             mind.DeadSinceMs = now;
             WindowDeaths++;
             mind.EndFightState();
@@ -837,6 +925,8 @@ public sealed partial class PlayerBotEngine
             // killer is back at its haunt within seconds.
             mind.GhostUntilMs = now + (HauntOf(mind) != null ? _rng.Next(5_000, 12_000) : _rng.Next(30_000, 60_000));
             mind.LingerAnchor = ch.Position;
+            NoteDeath(mind, now);
+            InterruptPlan(mind, now, "died");
             mind.NextActMs = now + _rng.Next(1_000, 2_000);
             return;
         }
@@ -849,52 +939,81 @@ public sealed partial class PlayerBotEngine
             mind.NextActMs = now + _rng.Next(1_200, 3_000);
             return;
         }
+        // A criminal (not a murderer) does not go among the guards while the flag lasts:
+        // a healer turns it away, and raised in a guarded town it is struck down again
+        // at once. It stays a ghost about its body - unseen, out of war mode - until the
+        // criminal timer has run out (CRIMINALTIMER), as a player would wait it out.
+        if (HauntOf(mind) == null && WaitsOutCriminalFlag(mind, now)) return;
+        // With a road to a healer within reach it walks there, as a ghost, and is
+        // raised by the healer or the ankh (see the GhostWalk part).
+        if (HauntOf(mind) == null && ActGhostWalk(mind, now)) return;
         if (ch.IsInWarMode) mind.Client?.HandleWarMode(false);
         if (RaiseAtHaunt(mind, now)) return;
 
         // Carried off like a stuck bot: a murderer to its own town, anyone else to
-        // the nearest town's healer, and raised there.
+        // the nearest town's healer, and raised there - where no player looks on.
         var (spot, at) = RespawnSpot(ch);
+        if (LiftSeen(mind, spot ?? ch.Position, now)) return;
         if (spot is { } where)
             Teleport(ch, where);
         if (mind.Client != null) mind.Client.OnResurrect();
         else ch.Resurrect();
         _logger.LogInformation("[playerbots] {Name} raised at {Pos} ({Where}): {Result}", ch.Name, ch.Position,
-            ch.IsMurderer ? RedRespawnRegion : at?.City ?? "where it stood", ch.IsDead ? "still dead" : "alive");
+            ch.IsMurderer || ch.IsFlaggedAsCriminal ? RedRespawnRegion : at?.City ?? "where it stood", ch.IsDead ? "still dead" : "alive");
         if (ch.IsDead)
         {
             mind.NextActMs = now + 10_000;
             return;
         }
         mind.DeadSinceMs = 0;
+        ForgetDeath(ch);
         if (_rng.Next(100) < 40) Speak(mind, "death_res");
         mind.BeginLinger(at, now, _rng, short_: true);
 
-        // The body: walked back to when it is near, else what is left on it is
+        // The body: walked back to when it is near or a road (through the portals
+        // of a dungeon too) leads back to it in time, else what is left on it is
         // handed back. Until then anyone may loot it.
         var corpse = mind.CorpseUid.IsValid ? _world.FindItem(mind.CorpseUid) : null;
         if (IsOwnCorpse(corpse, ch) && corpse!.MapIndex == ch.MapIndex &&
             corpse.Position.GetDistanceTo(ch.Position) <= ReclaimRange)
             StartCorpseTrip(mind, now);
-        else
+        else if (!StartCorpseRun(mind, corpse, now))
             HandBack(mind, corpse);
     }
 
-    /// <summary>Where a dead bot is raised: a murderer at the anchor of
-    /// <see cref="RedRespawnRegion"/>, anyone else at a stopping spot of the nearest
-    /// healer (by distance; a ghost is carried there). Null leaves it where it is.</summary>
+    /// <summary>The longest a criminal ghost waits for its flag to run out before it is
+    /// carried off to <see cref="RedRespawnRegion"/> instead (a flag set with no timer).</summary>
+    private const long CriminalGhostWaitMs = 600_000;
+
+    /// <summary>A criminal ghost (not a murderer) waits its flag out about its body,
+    /// out of war mode, before it goes to be raised. True while it waits.</summary>
+    private bool WaitsOutCriminalFlag(BotMind mind, long now)
+    {
+        var ch = mind.Char;
+        if (ch.IsMurderer || !ch.IsFlaggedAsCriminal || now - mind.DeadSinceMs > CriminalGhostWaitMs) return false;
+        if (ch.IsInWarMode) mind.Client?.HandleWarMode(false);
+        if (mind.CriminalWaitSinceMs < mind.DeadSinceMs)
+        {
+            mind.CriminalWaitSinceMs = now;
+            mind.Note(now, "a criminal ghost: waits for the flag to run out before it goes to a healer");
+        }
+        WanderNear(mind, mind.LingerAnchor, 5, run: false);
+        mind.NextActMs = now + _rng.Next(4_000, 8_000);
+        return true;
+    }
+
+    /// <summary>Where a dead bot is raised: a murderer (and a criminal whose flag did not
+    /// run out, see <see cref="WaitsOutCriminalFlag"/>) at the anchor of
+    /// <see cref="RedRespawnRegion"/>, anyone else at a stopping spot of the healer
+    /// nearest by road to the open ground it belongs to (a dungeon's mouth for one
+    /// that died below; see <see cref="HealerFor"/>). Null leaves it where it is.</summary>
     private (Point3D? Spot, BotDestination? At) RespawnSpot(Character ch)
     {
-        if (ch.IsMurderer && _world.TryGetRegionPoint(RedRespawnRegion, out var red))
+        // A murderer, and a criminal whose flag outlasted the wait (a stat flag with no
+        // timer), are raised where the guards do not reach: the murderers' town.
+        if ((ch.IsMurderer || ch.IsFlaggedAsCriminal) && _world.TryGetRegionPoint(RedRespawnRegion, out var red))
             return (BotNavGraph.TrySeatNear(_world.MapData, red, out var seated) ? seated : red, null);
-        BotDestination? best = null;
-        int bestDist = int.MaxValue;
-        foreach (var d in Nav.Destinations)
-        {
-            if (!d.Type.Equals("Healer", StringComparison.OrdinalIgnoreCase) || d.City.Length == 0) continue;
-            int dist = d.Pos.Map == ch.MapIndex ? d.Pos.GetDistanceTo(ch.Position) : int.MaxValue - 1;
-            if (dist < bestDist) { bestDist = dist; best = d; }
-        }
+        var best = HealerFor(ch);
         if (best == null) return (null, null);
         int spot = best.PickArrival(_rng);
         return (spot >= 0 ? best.Arrivals[spot] : best.Pos, best);
@@ -921,6 +1040,8 @@ public sealed partial class PlayerBotEngine
         if (listener == null && !force && !party) return false;
         lang ??= listener?.Language ?? Chat.Language;
         var tokens = Tokens(mind, lang);
+        // Goods it really carries are what its selling talk names (the Sell part).
+        NameCarriedGoods(mind, category, tokens);
         if (to != null) tokens["name"] = FirstName(to);
         if (extra != null)
             foreach (var (k, v) in extra) tokens[k] = v;
@@ -933,7 +1054,10 @@ public sealed partial class PlayerBotEngine
                 BotBondLevel.Acquaintance => "acquaintance",
                 _ => "stranger",
             });
-        Func<string, bool> stale = mind.SaidLately;
+        // Not one of its own last lines, nor one a player in earshot has just heard
+        // from another bot.
+        long saidAt = NowMs();
+        Func<string, bool> stale = l => mind.SaidLately(l) || HeardLately(ch.Position, l, saidAt);
         string? line = Chat.Pick(category, _rng, tokens, lang, tags.Contains, stale) ??
                        (fallback != null ? Chat.Pick(fallback, _rng, tokens, lang, tags.Contains, stale) : null);
         if (line == null) return false;
@@ -942,6 +1066,7 @@ public sealed partial class PlayerBotEngine
         string? before = prefix != null && Chat.Pick(prefix, _rng, tokens, lang, tags.Contains, l => l.Contains('?')) is { } first &&
                          !first.Contains('?') ? first : null;
         Utter(mind, category, line, party, before, mode);
+        if (to != null) OnSpoke(mind, category, to, saidAt);
         return true;
     }
 
@@ -951,7 +1076,10 @@ public sealed partial class PlayerBotEngine
     {
         var ch = mind.Char;
         mind.NoteSaid(line);
+        if (!party) NoteHeard(ch.Position, line, NowMs());
         OnLine?.Invoke(ch, category, line);
+        // A gesture written out (*waves*) goes out as an emote.
+        if (mode == 0 && before == null && IsEmoteLine(line)) mode = EmoteMode;
         if (before != null) line = before.TrimEnd('.', '!', ' ') + ", " + line;
         WindowLines++;
         if (party && mind.Client != null)

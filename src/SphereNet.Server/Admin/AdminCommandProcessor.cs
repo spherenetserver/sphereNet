@@ -109,7 +109,7 @@ public sealed class AdminCommandProcessor
                 output("  LOG <msg>                  - Write to server log");
                 output("  RESPAWN                    - Bring dead NPCs back to their home");
                 output("  RESPAWN FULL               - Delete ALL spawner children, then respawn fresh");
-                output("  RESTOCK                    - Restock all vendors");
+                output("  RESTOCK                    - Restock all vendors; one spawn tick for every spawn point");
                 output("  VENDORPACKS [CLEAR [min]]  - Report / empty vendor backpacks inflated by old restocks");
                 output("  GARBAGE                    - Force garbage collection");
                 output("  SHRINKMEM                  - Trim the process working set");
@@ -118,6 +118,7 @@ public sealed class AdminCommandProcessor
                 output("  SCENARIO [name [bots [min]]] - Bot scenarios (no name = list/status); SCENARIO STOP");
                 output("  PLAYERBOTS STALLS [n]      - Player bots stalled longest right now");
                 output("  PLAYERBOTS TRACE <uid|name> - One player bot's last decisions");
+                output("  PLAYERBOTS PLAN <uid|name> - One player bot's drives, options and day plan");
                 output("  PLAYERBOTS NAVCHECK [LINKS [LEARN]] - Bot road data against the running world");
                 output("  E                          - Clear the script profiler");
                 output("  CALCCRYPT <ver>[,type][,enc] - Login keys for a client version");

@@ -1,0 +1,9 @@
+# theft_steal.txt - botun kendisinden bir şey çalarken yakaladığı kişiye söylenir. {name} hırsız.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+HIRSIZ!
+hey! {name} benden bir şey çaldı!
+geri ver onu {name}!
+hırsız! {name} hırsız!
+seni küçük hırsız {name}
+[warrior] bunu ödeyeceksin {name}

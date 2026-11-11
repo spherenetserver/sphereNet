@@ -1,0 +1,8 @@
+# emote_drink.txt - çantasından bir şey içen bot; emote.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+*bir yudum alır*
+*içer*
+*kana kana içer*
+*ağzını siler*
+*bardağı bitirir*

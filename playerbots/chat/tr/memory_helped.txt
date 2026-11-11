@@ -1,0 +1,6 @@
+# memory_helped.txt - arkadaş bot, oyuncunun onu iyileştirdiği ya da güçlendirdiği bir anı hatırlatır. {place} ve {when} doldurulur.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+{place} civarında beni toparlamıştın, unutmadım
+{when} {place} civarındaki heal için hala minnettarım
+{place} civarında bana yardım etmiştin hatırladın mı? tekrar sağol

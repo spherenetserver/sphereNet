@@ -1,0 +1,11 @@
+# bye_leaving.txt - botla konuşmanın ortasında çekip giden oyuncunun arkasından söylenir. {name} oyuncu.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+peki görüşürüz
+görüşürüz {name}
+bb
+sonra görüşürüz {name}
+kendine iyi bak
+aa, tamam. hoşçakal
+[friend] görüşürüz {name}
+[chatty] aa, hoşçakal {name}!

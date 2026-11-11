@@ -603,8 +603,39 @@ public sealed class SpawnComponent
         _spawnItem.SetTimeout(Environment.TickCount64);
     }
 
-    /// <summary>World-level RESPAWN: top this spawner straight up to its max now,
-    /// independent of sector sleep (admin/console/IPC RESPAWN command).</summary>
+    /// <summary>One component tick as Source-X RESTOCK gives every spawn point in the
+    /// world, asleep or not: CSector::Restock calls <c>pSpawn->OnTickComponent()</c>
+    /// on each (CSector.cpp:1190-1198), and that sets the next check and, below the
+    /// amount, generates ONE child (CCSpawn.cpp:672-710). It is called on the
+    /// component, not through the item's timer, so @Timer does not run. Returns
+    /// whether a child was made.
+    ///
+    /// Two things are left as this engine has them. A full spawn point is parked
+    /// rather than re-armed (upstream arms it and returns; the park is what its own
+    /// tick does here). And one that was STOPped stays stopped: upstream has no
+    /// stopped state beyond the missing timer, so its RESTOCK would start it again,
+    /// but here the stop is saved with the item (SPAWNSTOPPED) and START is the way
+    /// out of it. A champion altar is driven by its own component.</summary>
+    public bool RestockTick()
+    {
+        if (_stopped || IsChampion) return false;
+        CleanupDead();
+        if (_spawnedUids.Count >= _maxCount)
+        {
+            PauseTimer();
+            return false;
+        }
+        SetNextSpawnTime();
+        if (_charDefId == 0 && _spawnGroup == null) return false;
+        int before = _spawnedUids.Count;
+        SpawnOne();
+        return _spawnedUids.Count > before;
+    }
+
+    /// <summary>Top this spawner straight up to its max now, independent of sector
+    /// sleep. Not a Source-X verb: the console's RESPAWN FULL and the tools use it
+    /// (RESPAWN itself resurrects dead NPCs, RESTOCK gives each spawn point one
+    /// tick - see <see cref="RestockTick"/>).</summary>
     public void RespawnNow()
     {
         if (_stopped) return;
@@ -676,18 +707,20 @@ public sealed class SpawnComponent
             return;
         }
 
-        foreach (var res in resources.GetAllResources())
+        // Only the [SPAWN] resources can match, and they are asked for as a slice:
+        // walking the whole table for them cost a millisecond or more per call, and a
+        // worldgen spawner's @Timer writes MORE1 (and so comes here) on every tick of
+        // every spawn point. Same order and the same test as the full walk.
+        var groups = resources.GetResourcesOfType(ResType.Spawn);
+        for (int i = 0; i < groups.Count; i++)
         {
-            if (res.Id.Type == ResType.Spawn && res is SpawnGroupDef sgd)
+            if (groups[i] is SpawnGroupDef sgd && !string.IsNullOrEmpty(sgd.DefName))
             {
-                if (!string.IsNullOrEmpty(sgd.DefName))
+                var spawnRid = resources.ResolveDefName(sgd.DefName);
+                if (spawnRid.IsValid && (uint)spawnRid.Index == more1)
                 {
-                    var spawnRid = resources.ResolveDefName(sgd.DefName);
-                    if (spawnRid.IsValid && (uint)spawnRid.Index == more1)
-                    {
-                        _spawnGroup = sgd;
-                        return;
-                    }
+                    _spawnGroup = sgd;
+                    return;
                 }
             }
         }
@@ -1091,8 +1124,22 @@ public sealed class ItemSpawnComponent
         SpawnOneItem();
     }
 
-    /// <summary>World-level RESPAWN: top this item spawner up to its max now,
-    /// independent of sector sleep (admin/console/IPC RESPAWN command).</summary>
+    /// <summary>The item spawn point's share of Source-X RESTOCK - one component tick
+    /// (<see cref="SpawnComponent.RestockTick"/>): the next check is set and, below
+    /// the amount, one item is generated. Returns whether one was made.</summary>
+    public bool RestockTick()
+    {
+        if (_stopped) return false;
+        CleanupDeleted();
+        if (_spawnedUids.Count >= _maxCount || _itemDefId == 0) return false;
+        SetNextSpawnTime();
+        int before = _spawnedUids.Count;
+        SpawnOneItem();
+        return _spawnedUids.Count > before;
+    }
+
+    /// <summary>Top this item spawner up to its max now, independent of sector sleep
+    /// (console RESPAWN FULL and tools; not a Source-X verb).</summary>
     public void RespawnNow()
     {
         if (_stopped) return;

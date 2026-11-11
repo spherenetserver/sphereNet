@@ -1,0 +1,8 @@
+# respond_plan.txt - see docs/PLAYERBOTS.md (Talking). "What is your plan": {now} its step, {next} the one after, {goal} where, {why} the reason.
+
+{now} first, then {next}. {why}
+{why}, so {now}. after that {next}
+plan is {now} then {next}
+{now} at {goal}, then {next}
+{now}. {why}
+just {now} for now, {why}

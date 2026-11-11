@@ -475,7 +475,12 @@ public static partial class Program
                 _ipcCts = new CancellationTokenSource();
                 _ipcServer = new SphereNet.Server.Ipc.IpcServer(_pipeName);
                 _ipcServer.SetContext(panelCtx);
-                _ipcTask = _ipcServer.RunAsync(_ipcCts.Token);
+                // Off the main thread: the Host is usually already connecting, so the
+                // accept completes synchronously and the first stats snapshot would run
+                // right here - where it queues itself for a main loop that has not
+                // started and then waits 8 s for its own thread.
+                var ipcToken = _ipcCts.Token;
+                _ipcTask = Task.Run(() => _ipcServer.RunAsync(ipcToken));
                 _ = _ipcTask.ContinueWith(task =>
                         _log.LogError(task.Exception?.GetBaseException(), "IPC server stopped unexpectedly"),
                     CancellationToken.None,
@@ -542,6 +547,15 @@ public static partial class Program
     /// <summary>
     /// Write a line to the console form (GUI) or stdout (headless).
     /// </summary>
+    private static readonly List<string> _pendingBootReport = [];
+
+    private static void FlushBootReport()
+    {
+        foreach (string line in _pendingBootReport)
+            _log.LogWarning("{BootReport}", line);
+        _pendingBootReport.Clear();
+    }
+
     private static void ConsoleAppend(string text)
     {
         // The answer to a command typed at this console belongs on this console.
@@ -551,7 +565,14 @@ public static partial class Program
         // old "only before the logger exists" test meant a running headless server
         // answered STATUS, BOT, HELP... with nothing at all.
         if (_managed)
+        {
+            // Before the logger exists the only thing written here is the boot
+            // report (config warnings, unread ini keys). Under the Host it used to
+            // vanish; it is kept and written to the log once there is one.
+            if (_log == null)
+                _pendingBootReport.Add(text);
             return;
+        }
         try { Console.Out.WriteLine(text); }
         catch (IOException) { /* stdout closed: nothing to show it on */ }
     }

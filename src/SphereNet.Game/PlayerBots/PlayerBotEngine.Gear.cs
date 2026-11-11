@@ -38,8 +38,12 @@ public sealed partial class PlayerBotEngine
         var ch = mind.Char;
         if (ch.IsDead || mind.Mode is BotMode.Fight or BotMode.Flee) return false;
         if (ShedResRobe(ch)) return true;
+        // The best weapon it carries in hand, its shield on its arm.
+        if (CheckArms(mind, now)) return true;
         if (mind.Mode != BotMode.Linger || mind.Scene != null || !IsBare(ch)) return false;
         if (_world.FindRegion(ch.Position)?.IsGuarded != true) return false;
+        // No kit out of nothing where a player looks: unseen, or out of its bank box.
+        if (!MayConjureKit(mind, now)) return false;
         if (!ArmFromKit(ch)) return false;
         Speak(mind, "gear_up", fallback: null);
         return true;

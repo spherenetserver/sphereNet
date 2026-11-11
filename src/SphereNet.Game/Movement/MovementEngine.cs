@@ -1048,20 +1048,25 @@ public sealed class MovementEngine
                 var oldRoom = _world.FindRoomByUid(oldRoomId);
                 if (oldRoom != null && _triggerDispatcher != null)
                 {
-                    _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RoomLeave,
-                        new TriggerArgs { S1 = oldRoom.Name });
+                    // CChar::MoveToRoom (CCharAct.cpp:5246-5268): the room's own
+                    // @Exit, then the character's @RegionLeave with the room as
+                    // ARGO. There is no @RoomLeave / @RoomEnter in Source-X - a room
+                    // is a region to the character's triggers.
                     _triggerDispatcher.FireRoomEvents(oldRoom, "Exit", ch,
                         new TriggerArgs { CharSrc = ch, S1 = oldRoom.Name });
+                    _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionLeave,
+                        new TriggerArgs { CharSrc = ch, S1 = oldRoom.Name, O1 = oldRoom });
                 }
             }
 
-            // Enter new room
+            // Enter new room: the room's @Enter, then @RegionEnter with the room
+            // as ARGO (CCharAct.cpp:5270-5291).
             if (newRoom != null && _triggerDispatcher != null)
             {
-                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RoomEnter,
-                    new TriggerArgs { S1 = newRoom.Name });
                 _triggerDispatcher.FireRoomEvents(newRoom, "Enter", ch,
                     new TriggerArgs { CharSrc = ch, S1 = newRoom.Name });
+                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionEnter,
+                    new TriggerArgs { CharSrc = ch, S1 = newRoom.Name, O1 = newRoom });
             }
 
             ch.SetTag("CURRENT_ROOM", newRoomUid);

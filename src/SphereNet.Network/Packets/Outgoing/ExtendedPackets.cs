@@ -683,6 +683,27 @@ public sealed class PacketGlobalLight : PacketWriter
     }
 }
 
+/// <summary>0xC8 — the view range the server holds this client to, sent in answer
+/// to the client's own 0xC8 (Source-X PacketVisualRange, send.cpp:4568). The client
+/// takes its range from this packet, not from what it asked for (ClassicUO
+/// PacketHandlers.cs:2517-2519).</summary>
+public sealed class PacketVisualRange : PacketWriter
+{
+    private readonly byte _range;
+
+    public PacketVisualRange(byte range) : base(0xC8)
+    {
+        _range = range;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(2);
+        buf.WriteByte(_range);
+        return buf;
+    }
+}
+
 /// <summary>0x65 — Weather effect.</summary>
 public sealed class PacketWeather : PacketWriter
 {

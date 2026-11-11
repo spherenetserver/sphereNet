@@ -1,0 +1,10 @@
+# crowded.txt - bir süredir botun karesinde duran oyuncuya söylenir. {name} oyuncu.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+şey, üstümde duruyorsun
+biraz yer açar mısın
+kişisel alan {name}
+pardon ama?
+yapmasan
+[shy] şey.. pardon
+[chatty] haha ayağıma basıyorsun

@@ -37,6 +37,10 @@ public sealed class BotDestination
     /// full of other bots), a second makes it a fact.</summary>
     public Dictionary<int, int> SpotFailures { get; } = [];
 
+    /// <summary>Where the place stands in the graph's list (-1 for a stand-in made at
+    /// runtime, such as the end of a road toward a place drawn as an outline).</summary>
+    public int Index { get; set; } = -1;
+
     /// <summary>A stopping spot not known to be bad, or -1 when there is none.</summary>
     public int PickArrival(Random rng)
     {
@@ -220,6 +224,7 @@ public sealed class BotNavGraph
                             if (_byName.TryGetValue(n.GetString() ?? "", out int wi)) links.Add(wi);
                     dest.ArrivalLinks.Add(links);
                 }
+            dest.Index = _destinations.Count;
             _destinations.Add(dest);
         }
     }

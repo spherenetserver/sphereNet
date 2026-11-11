@@ -36,6 +36,10 @@ public sealed class NpcSpeechServiceOrderTests : IDisposable
             ON=*bank*
             TAG.HEARD=1
 
+            [SPEECH spk_other]
+            ON=*xyzzy*
+            TAG.OTHER=1
+
             [EVENTS e_probe]
             ON=@NPCHearUnknown
             TAG.UNKNOWN=1
@@ -69,6 +73,10 @@ public sealed class NpcSpeechServiceOrderTests : IDisposable
         npc.Name = name;
         _world.PlaceCharacter(npc, new Point3D(100, 100, 0, 0));
         npc.Events.Add(_stack.Resources.ResolveDefName("e_probe"));
+        // An NPC with no SPEECH at all hears nothing (NPC_OnHear returns on
+        // !NPC_CanSpeak, CCharNPCAct.cpp:267), so these have a block of their own -
+        // one that answers none of the lines the tests say.
+        Assert.True(npc.TryExecuteCommand("DSPEECH", "+spk_other", null!));
         var speaker = _world.CreateCharacter();
         speaker.IsPlayer = true;
         speaker.MaxHits = 100;

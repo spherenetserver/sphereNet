@@ -25,10 +25,26 @@ public sealed class MountEngine
     /// Attempt to mount an NPC. Returns true on success.
     /// The NPC is removed from the visible world but kept in the object table.
     /// </summary>
-    public bool TryMount(Character rider, Character npc, ushort mountItemOverride = 0)
+    /// <param name="dismountCurrent">How a rider already in the saddle gets off the
+    /// mount they are on; the engine's own <see cref="Dismount"/> when null. A client
+    /// passes its own so @Dismount runs.</param>
+    public bool TryMount(Character rider, Character npc, ushort mountItemOverride = 0,
+        Action? dismountCurrent = null)
     {
-        if (rider.IsDead || rider.IsMounted || npc.IsDead)
+        // A rider already mounted is not refused: Horse_Mount unmounts them once
+        // every test has passed (CCharAct.cpp:4011), below.
+        if (rider.IsDead || npc.IsDead)
             return false;
+        // "if ( !CanTouch(pHorse) ) ... DEFMSG_MSG_MOUNT_DIST" (CCharAct.cpp:3957-3964):
+        // the first test, ahead of capability and ownership - within two tiles in 3D
+        // and in line of sight, GM mode excepted (CCharStatus.cpp:1293-1430). It was a
+        // flat one-tile test with no line of sight, so a mount two tiles away could
+        // not be mounted and one behind a wall could.
+        if (!ScriptTouchAccess.CanTouch(rider, npc, _world))
+        {
+            Character.SendOwnerMessage?.Invoke(rider, Messages.ServerMessages.Get(Messages.Msg.MsgMountDist));
+            return false;
+        }
         if (!Definitions.CharDefHelper.IsMountCapable(rider))
         {
             Character.SendOwnerMessage?.Invoke(rider, Messages.ServerMessages.Get(Messages.Msg.MsgMountUnable));
@@ -46,8 +62,6 @@ public sealed class MountEngine
         // No refusal for a rider in a fight or frozen: Horse_Mount (CCharAct.cpp:
         // 3951-3990) and Event_DoubleClick (CClientEvent.cpp:2395-2398) gate only
         // touch, mount item, capability, ownership and ceiling.
-        if (rider.MapIndex != npc.MapIndex || rider.Position.GetDistanceTo(npc.Position) > 1)
-            return false;
         // Source-X Horse_Mount requires NPC_IsOwnedBy (CCharAct.cpp:3976), which is
         // the owner memory alone - a pet FRIEND is not an owner
         // (CCharNPCStatus.cpp:449-469). Friends were let on, and the dismount's
@@ -74,8 +88,19 @@ public sealed class MountEngine
         // the creature as SRC and the rider as ARGO, may refuse the ride.
         if (Triggers?.FireCharTrigger(npc, CharTrigger.NPCMount,
                 new TriggerArgs { CharSrc = npc, O1 = rider }) == TriggerResult.True ||
-            npc.IsDeleted || rider.IsDeleted || rider.IsMounted)
+            npc.IsDeleted || rider.IsDeleted)
             return false;
+
+        // "Horse_UnMount(); // unmount if already mounted" (CCharAct.cpp:4011): only
+        // now, with nothing left that could refuse the new mount. A rider who cannot
+        // be got off the old one (@Dismount RETURN 1, a ship's wheel) stays on it.
+        if (rider.IsMounted)
+        {
+            if (dismountCurrent != null) dismountCurrent();
+            else Dismount(rider);
+            if (rider.IsMounted || npc.IsDeleted || rider.IsDeleted)
+                return false;
+        }
 
         // Store NPC identity so we can find the same NPC on dismount
         rider.Tags.Set("MOUNT_NPC_SERIAL", npc.Uid.Value.ToString());

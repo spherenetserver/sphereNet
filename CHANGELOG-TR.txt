@@ -4,6 +4,144 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-11] - Paket istismar korumalari, buyu efektleri, karakter kurallari, NPC dovusu, script sembolleri, performans, oyuncu botlari: is, dovus, gorgu ve plan
+------------------------------------------------------------------------
+DUZELTME - Bir istemci resync istegini (0x22) yagdirarak cevresindeki herkesi dusurebiliyordu:
+       her istek tum izleyicilere tam 0x78 yayiyor ve cikis kotalari asiliyordu. Istemcinin
+       istedigi resync yalnizca isteyeni yeniler, saniyede en fazla bir kez
+       (receive.cpp:590-606).
+DUZELTME - 0x13 giyme paketi karaktere bagli her esyayi kabul ediyordu; giyili esya icin
+       yeniden yollaninca @EquipTest/@Equip @Unequip olmadan tekrar calisiyordu. Yalnizca
+       suruklenen esya giyilebilir (receive.cpp:541-547).
+DUZELTME - Vendor satisinda 0 adetlik satir esyayi sahipli vendor'un kutusuna kopyaliyordu;
+       imlecteyken tamamen satilan esya geri birakilabiliyordu; ticaret penceresindeki
+       esya satilabiliyor, kismi satis onaylari sifirlamiyordu.
+DUZELTME - Bos slota "oyna" paketi (0x5D) olusturma paketi olmadan 50/50/50 karakter
+       yaratiyordu. Karakter listesine doner (CClientMsg.cpp:2924-2926).
+DUZELTME - Oluyken "son silahi kusan" silahi kaybettiriyordu; artik alma ve giyme yolundan
+       gecer.
+DUZELTME - Sohbet kanali adlari dogrulanir (CChat.cpp:29-33, 437-442); zanaat gump'i dugmeyi
+       gosterilen sayfayla sinirlar; kendi ticaret kabi kaldirilamaz; 0xC8 gorus mesafesi
+       yanitlanir (receive.cpp:3498-3509); hata raporu paketleri ve parti metni sinirlanir.
+DUZELTME - Her buyu etkisi kendi hedefinde efekt ve sesiyle biter (LOCAL.Sound /
+       CreateObject1 / EffectExplode / EffectColor / EffectRender geri okunur): alan buyuleri
+       her kurbanda gorunur, iksirlerin icme sesi var, yansiyan buyu buyucude cizilir,
+       reddedilen etki hicbir sey gostermez (CCharSpell.cpp:3702-3709, 4226-4236).
+DUZELTME - Isinlanma yasakli bolgeye Recall yapilabiliyordu; reddedilir. Hedefteki NOMAGIC /
+       RECALL_IN artik reddetmez. Gate yalnizca hedef ANTIMAGIC_ALL / GATE ile reddedilir
+       (CCharSpell.cpp:119-144, 285-292, 421).
+DUZELTME - Cast sirasinda yeni buyu dusuyordu; suren buyuyu basarisizlik fiyatiyla bozar ve
+       yenisini baslatir (CCharSkill.cpp:4407-4409).
+DUZELTME - Esyaya atilan buyu esyanin kendi buyu etkisini calistirir: asa sarji, zararli
+       buyuden 1 buyu hasari (patlama iksirini tutusturur), esya uzerinde efekt
+       (CItem.cpp:5594-5768).
+DUZELTME - Dispel Field kalici alanlari reddeder; cast edilen alanlar ATTR_MOVE_NEVER yerine
+       ATTR_MAGIC tasir (CCharSpell.cpp:2354, 3192-3202).
+DUZELTME - Hedef bayragi olmayan alan buyuleri (Arch Cure, Arch Protection, Mass Curse,
+       Reveal, Mass Dispel, Earthquake) imlec sormadan buyucunun yerine atilir
+       (CClientUse.cpp:1053-1087).
+DUZELTME - Summon Familiar menusunu acar; Teleport hedefi buyu odenmeden denetlenir; cast gizli
+       buyucuyu her zaman acar; konusamayan NPC sessiz buyu yapar; Recall kendi efektini iki
+       uca cizer; uydurma "You cast" satiri kalkti; hedef istemi gonderilir; LOCAL.WOP
+       sayisal, WOPTalkMode ve ARGO ayarli; Evil Omen direnci yarilar; hedefsiz summon
+       cast bitiminde buyucunun yerinde belirir; EQUIPPEDCAST=0 her buyucunun elini bosaltir
+       (CCharSpell.cpp:3040-3041, 3538-3540, 3573-3639, 3728-3733, 2837-2862).
+DUZELTME - Durum penceresi stat sinirini 225 gosteriyordu; gercek STATSUM gonderilir.
+DUZELTME - Esya kullanimi icin tek dokunma kurali: 3 boyutta 2 kare ve gorus hatti; hayalet
+       yalnizca turbe, teleskop, tabela ve gemi iskelesi kullanabilir (aksi halde
+       reach_ghost); hayalet icin @DClick calismaz (CCharStatus.cpp:1293-1430,
+       CClientUse.cpp:92-104).
+DUZELTME - Hayalet konusmasi "oOoO" duyan her dinleyiciye hayalet sesi calar ve rengini korur;
+       Spirit Speak'li ya da GM modundaki hayalet net konusur (CWorldComm.cpp:63-76,
+       163-178).
+DUZELTME - Binege gorus hattiyla 2 kareden binilir; binekliyken baska binege cift tiklamak
+       binek degistirir (CCharAct.cpp:3957, 4011).
+DUZELTME - Uydurma olum/dirilis satirlari yok; dirilis efekti bir kez oynar; SPELL_RES_REJOIN
+       yalnizca ceset kaldirilinca (CCharSpell.cpp:493-525).
+DUZELTME - Paperdoll her istekte acilir, giydirme bayragi CanDress'i izler; konusmak
+       REVEALFLAGS'tan bagimsiz olarak gizliligi bozmaz; skill dugmesi SkillWait kurallarini
+       kullanir; savas modunda olen karakter gorunur kalir; meditation yalnizca saldiriyla
+       biter; figurin peti figurinin yerinde belirir; aclik ve yenilenme muafiyetleri GM
+       modunu ve tas durumunu izler (CCharSkill.cpp:3977-4050, CCharAct.cpp:4490-4514, 5780,
+       6122).
+DUZELTME - AI'nin baslattigi NPC dovusleri Fight_Attack sozlesmesinden gecer: @Attack veto
+       edebilir, saldirgan listesi dolar, NPC savas durusuna gecer ve dovus bitince cikar
+       (CCharFight.cpp:1399-1487).
+DUZELTME - Dovusen NPC hedefini saldirgan listesinden yeniden secer; silinen saldirgan kaydi
+       dovusu bitirir ya da yonlendirir (CCharFight.cpp:1614-1619, CCharAttacker.cpp:339-346).
+DUZELTME - GUARDED + SAFE bolge korumali sayilmaz (hapishaneler); oyuncunun guard cagrisi
+       yalnizca suclunun bolgesine bakar; dovusteki guard kacan sucluya yeniden isinlanir
+       (CRegion.cpp:713-718, CCharFight.cpp:181, 222, CCharNPCAct_Fight.cpp:211-218).
+DUZELTME - Bolge gecis mesajlari yalnizca degisimde cikar; giris ve cikis bolge giris/cikis
+       adimini ve giris guard mesajini calistirir (CCharAct.cpp:5139-5221,
+       CClientMsg.cpp:2854-2860).
+DUZELTME - Bostaki sahipli pet ya da summon sahibini korur; ciplak pet komutu anlasilir; pet
+       komutlari NPCDISTANCEHEAR mesafesinde gorus hattiyla duyulur; NPC'ye esya birakmak
+       NEWBIE/OWNED ozelligini silmez; @ReceiveItem RETURN 1 esyayi geri verir; kiralik maasi
+       banka kesesinden odenir (eski HIRE_BALANCE etiketi bir kez kesesine katilir)
+       (CCharNPCAct.cpp:267, 1030-1039, 2073-2211, CCharNPCPet.cpp:666-723).
+DUZELTME - SPEECH'i olmayan NPC hicbir sey duymaz ve donmez; kapilar yalnizca bos yuruyuste
+       acilir; NPC isinlanmalari efekt ve sesini gosterir; @NPCActFollow dovus hareketinden
+       atesler; @RegPeriodic dolu sektor basina atesler; menzilli NPC en kisa mesafesinde de
+       atar; odalar @RegionEnter / @RegionLeave'i oda ARGO olarak atesler.
+DUZELTME - D ile baslayan ciplak sembol (Dog, DeepSeaSerpent) 0 cikiyordu ve
+       <RESOURCETYPE <dARGS>> tipi kaybediyordu: 186 worldgen spawner'i bos kaliyordu
+       (CExpression.cpp:1221-1237, CScriptObj.cpp:607-612).
+DUZELTME - CHARDEF ITEM= ile verilen iki elli silah tek elli silahi elden alir; bicakla
+       kesilen balik tanim olarak balik bifteki olur; 999'dan buyuk buyu numarali iksirler
+       (Refresh, Mana...) etki etmiyordu (CCharStatus.cpp:410-421, CClientTarg.cpp:1951,
+       CCharUse.cpp:1083).
+DUZELTME - Host altinda ilk istatistik istegi acilisi 8 sn durduruyordu ve acilis raporu
+       (ayar uyarilari, okunmayan ini anahtarlari) kayboluyordu; panel eski bir Serilog'a
+       sabitliydi ve Host son derlenince sunucu cokuyordu.
+EKLENDI - Oyuncu botlari calisir: zanaatkarlar (madenci-demirci, oduncu-marangoz,
+       balikci-asci, terzi) aletleriyle toplar, eritir, paketin skill menulerindeki seyleri
+       uretir ve istemcileri uzerinden vendor'lara satar; ticaret konusmalari tasidiklari
+       mallari soyler.
+EKLENDI - Oyuncu botlari akilli dovusur: yeniden tarama ve hedef degistirme, dovusun gidisatina
+       gore geri cekilme, buyucu repertuvari (koruma, acilis, zehir, kombo, summon, Teleport /
+       Wall of Stone, meditation), iksirler, en iyi skill'e gore silah, okcu mesafe korumasi,
+       yaratigi tartarak av secimi, onu olduren seyi hatirlama, baskalarina yardim, Recall,
+       Invisibility, saklanma ya da guard ile kacis.
+EKLENDI - Oyuncu botlarinin gorgusu var: konusana doner, reverans ya da selam verir, emote
+       yapar, yemek yer, yere gore amacli bekler (banka, sandalye, dukkan, ocak, egitim
+       kuklasi, pano), iyilestirme ve destek icin tesekkur eder, hirsizliga ve yakin dovuse
+       tepki verir, hayaletken sifaciya yurur, uzak cesede geri kosar, binek ve ekipmani
+       yalnizca gorulmezken var eder, yurume ve kosmayi degistirir, birbirinin cumlelerini
+       tekrar etmez.
+DUZELTME - Karakter menzil sorgulari sektordeki her yer esyasini dolasiyordu; spawner
+       zamanlayicilari MORE1 icin tum kaynak tablosunu ariyordu; NPC'ler istemedikleri her
+       esyaya gorus hatti cekiyordu; sektor etkinligi her tik iki hash kumesi kullaniyordu.
+       300 botlu 5.200 karakterlik dunyada ana is parcaciginin tik basina suresi yaklasik
+       yariya indi.
+DUZELTME - Ayni tikte vadesi gelen esya zamanlayicilari 25 ms'lik butceyi paylasir; kalan,
+       vadesi korunarak bir sonraki tikte calisir; acilis ya da uzun uyku artik donguyu
+       300-400 ms durdurmaz.
+DUZELTME - RESTOCK uyanik ya da uyuyan her spawn noktasini 25 ms'lik dilimlerle de isletir
+       (CSector::Restock, CSector.cpp:1190-1198); RESPAWN eskisi gibi evi olan olu NPC'leri
+       diriltir.
+DUZELTME - Yol bulucu gercek yurumenin reddettigi adimlara izin veriyordu: komsu hedef yurume
+       kuralini atliyor, caprazlar kose kesiyordu. Aramalar artik gercek adimin sorusunu
+       sorar.
+EKLENDI - [slow_tick], [world_tick_detail] ve PERF REPORT ana is parcaciginin CPU suresini
+       tasir; mesgul makinedeki yavas tik gercek isten ayirt edilebilir.
+EKLENDI - Oyuncu botlari gunlerini ihtiyaca gore planlar: para, malzeme, guvenlik, yuk, kese,
+       skill gelisimi, arkadaslik ve macera; sinif, cesaret, karakter ve role gore
+       agirliklanir (playerbots/plans.txt). 2-4 etkinlik dizerler (av, is, satis, alisveris,
+       banka, dinlenme, sosyallesme, gezinti, eve donus), guclerine uyan av yerini secerler,
+       acil ihtiyac ve kesintide yeniden planlar, plani yeniden baslatmada korur
+       (PLAYERBOT.PLAN) ve sorulunca anlatirlar; konsol PLAYERBOTS PLAN puanlari gosterir.
+DUZELTME - Kusanmasi reddedilen cift tiklama artik esyanin hedef imlecini acmaz; kazma, gulle ve
+       pano istemleri ITEMDEF ile adlanan esyanin adini soyler (CClientUse.cpp:122-131, 431,
+       468).
+DUZELTME - Oyuncu botlari: toplama aleti, meslegin skill script'inin kullanabilecegi alet
+       olmalidir (elde, sarjli; paketin [SKILL] bolumunden okunur) ve kullanmadan once ele
+       alinir; baslamayan meslek 30 dakika dinlenir; suclu hayalet guard'larin arasinda
+       dirilmek yerine bayraginin bitmesini bekler; ihtiyaclar onemine gore tartilir ve
+       erisilebilir hicbir dukkan satmiyorsa dusurulur; altin 600'den itibaren bankaya
+       yatirilir; botun cesareti korunur (PLAYERBOT.NERVE); zor bir dukkan girisine bulunan
+       yol sonraki bot icin saklanir.
+
 [2026-11-10] - Yetkili komut yetki kapisi, vurus ve hasar kurallari, savas akisi, tamir ve skill menuleri, kap sinirlari, ev yerlestirme, ic ice rastgele
 ------------------------------------------------------------------------
 DUZELTME - Bir yetkili kendi yetkisini yukseltebiliyordu: .xplevel ve .xprivset konusana hicbir

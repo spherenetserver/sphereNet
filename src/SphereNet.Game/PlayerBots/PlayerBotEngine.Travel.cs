@@ -20,6 +20,8 @@ public sealed partial class PlayerBotEngine
 
     private void ActLinger(BotMind mind, long now)
     {
+        // On its way back to its body through a dungeon's portals: on, not a stay.
+        if (ResumeCorpseRun(mind, now)) return;
         // Acting in a scene: stay put until it is played out.
         if (mind.Scene != null)
         {
@@ -51,7 +53,13 @@ public sealed partial class PlayerBotEngine
             // Far from home with no road back: a caster recalls on its rune.
             if (KnowsTravel(mind) && !HomeOnThisRoad(mind) && TryRecallHome(mind, now, "no road home"))
                 return;
-            mind.Goal = PickShopping(mind, now) ?? PickDestination(mind, spawnable: false);
+            // A job the save left unfinished is taken up again (the Work part).
+            if (ResumeWorkingLife(mind, now)) return;
+            // What next is weighed against what the bot needs (the Planner part).
+            var next = PlanNext(mind, now, out bool started);
+            // Begun where it stands, or set off by the part that does it (a job's trip).
+            if (started) return;
+            mind.Goal = next;
             if (mind.Goal == null)
             {
                 // Nowhere to go from this piece of road (a dungeon mouth or a stretch of
@@ -72,17 +80,27 @@ public sealed partial class PlayerBotEngine
             mind.Char.SetTag(GoalTag, mind.Goal.Name);
             mind.Mode = BotMode.Travel;
             mind.Route = null;
-            mind.NextActMs = now + 200;
+            mind.NextActMs = now + DepartDelay(mind, now);
             mind.Note(now, $"off to {mind.Goal.Name}{(mind.Haunting ? " (to wait about it)" : "")}");
             MaybeTakeCompany(mind, mind.Goal, now);
             return;
         }
 
-        // Idle life: a step or two about, livelier where a player is watching. What is
-        // said is up to the scenes played for the players around (see Direct).
-        if (!StepOffDoorway(mind) && _rng.Next(100) < (watched ? 60 : 25))
-            WanderNear(mind, mind.LingerAnchor, 3, run: false);
-        mind.NextActMs = now + (watched ? _rng.Next(3000, 8000) : _rng.Next(4000, 12_000));
+        // Idle life. Where a player is watching the bot does what people do at such a
+        // place (see the Idle part); unseen, a step about now and then. What is said is
+        // up to the scenes played for the players around (see Direct).
+        if (StepOffDoorway(mind))
+            mind.NextActMs = now + _rng.Next(3000, 8000);
+        else if (watched)
+        {
+            mind.Plan.LastSocialMs = now;
+            ActIdle(mind, now);
+        }
+        else
+        {
+            if (_rng.Next(100) < 25) WanderNear(mind, mind.LingerAnchor, 3, run: false);
+            mind.NextActMs = now + _rng.Next(4000, 12_000);
+        }
     }
 
     /// <summary>Whether a place in the bot's home town hangs off the road it is on.</summary>
@@ -325,23 +343,27 @@ public sealed partial class PlayerBotEngine
             mind.LegProgressMs = now;
             return;
         }
-        bool run = mind.Running && ch.Stam > ch.MaxStam / 3;
+        bool run = PaceRun(mind, finalLeg, now);
         long st0 = Stopwatch.GetTimestamp();
         _stepCorridor = !finalLeg && mind.Leg > 0 ? (route[mind.Leg - 1], route[mind.Leg]) : null;
         mind.LegLink = _stepCorridor;
+        // The last leg into a stopping spot has a kept way of its own once one is
+        // known (found by a bot's search or at a rescue): taken up from the road node.
+        if (finalLeg && !mind.PortalTrip && route.Count > 0)
+            _stepCorridor = ArrivalKey(goal, mind.GoalSpot, route[^1]);
         bool steppedLeg;
-        try { steppedLeg = StepToward(mind, target, run); }
+        try
+        {
+            if (finalLeg && _stepCorridor != null && mind.TilePath == null) TryCorridor(mind, target, now);
+            steppedLeg = StepToward(mind, target, run);
+        }
         finally { _stepCorridor = null; }
         long stepUs = (Stopwatch.GetTimestamp() - st0) * 1_000_000 / Stopwatch.Frequency;
         if (stepUs > WindowMaxStepUs) WindowMaxStepUs = stepUs;
         mind.NextActMs = now + StepDelay(mind, steppedLeg, run, now);
-        // Where a player sees it, a walker now and then stops a moment to look about.
-        if (steppedLeg && !run && !finalLeg && mind.Leader == null && _rng.Next(1000) < PausePerMille &&
-            IsWatched(ch.Position))
-        {
-            mind.NextActMs += _rng.Next(1000, 3000);
-            WindowPauses++;
-        }
+        // Where a player sees it, a walker takes a breath at a junction and now and
+        // then stops a moment to look about.
+        PauseOnTheWay(mind, steppedLeg, run, finalLeg, now);
     }
 
     /// <summary>No ground made on a leg for a minute (or the leg ran far over its
@@ -362,8 +384,13 @@ public sealed partial class PlayerBotEngine
         bool farOff = dist > 3 || mind.LastBlock == BotBlock.Static;
         if (mind.Leg == 0 && mind.At != null && mind.At.ArrivalAt(ch.Position) is int outOf and >= 0)
             LearnBadSpot(mind.At, outOf, ch);
-        else if (mind.Leg >= route.Count && mind.GoalSpot >= 0 && farOff && !mind.PortalTrip)
-            LearnBadSpot(goal, mind.GoalSpot, ch);
+        else if (mind.Leg >= route.Count && farOff && !mind.PortalTrip)
+        {
+            // The way in, when a search of its own finds it, is kept for every bot;
+            // a spot no way leads to is learned bad.
+            if (!LearnArrivalWay(goal, mind.GoalSpot, route, target, ch) && mind.GoalSpot >= 0)
+                LearnBadSpot(goal, mind.GoalSpot, ch);
+        }
         else if (mind.Leg > 0 && mind.Leg < route.Count && farOff)
             LearnBadLink(route[mind.Leg - 1], route[mind.Leg], ch);
         if (WindowRescues <= 15)
@@ -436,6 +463,8 @@ public sealed partial class PlayerBotEngine
             return;
         }
         mind.GateTries = 0;
+        // Come to work or to sell: the job starts here (the Work and Sell parts).
+        if (ArriveAtWork(mind, goal, now)) return;
         // Come to buy: find the vendor that sells what it needs.
         if (mind.ShoppingFor != null)
         {
@@ -752,14 +781,7 @@ public sealed partial class PlayerBotEngine
                 if (gates.Count > 0) return gates[_rng.Next(gates.Count)];
                 if (away && !string.IsNullOrEmpty(mind.Home)) return null;
             }
-            // A fighter goes hunting now and then; less often while players are about
-            // to see it in town.
-            int huntPct = IsWatched(mind.Char.Position, 40) ? 8 : 25;
-            if (!IsUnderground(mind.Char.Position) && mind.IsFighter && _rng.Next(100) < huntPct)
-            {
-                var mouths = list0.Where(d => d.Type.Equals("DungeonEntrance", StringComparison.OrdinalIgnoreCase)).ToList();
-                if (mouths.Count > 0) return mouths[_rng.Next(mouths.Count)];
-            }
+            // Going hunting is the planner's choice, not a roll here (the Planner part).
             // Town life: toward the players, else most trips stay in the home town.
             pool = list0.Where(d => d.City.Length > 0);
             if (!IsPk(mind) && PickNearPlayers(mind, pool) is { } pulled) return pulled;

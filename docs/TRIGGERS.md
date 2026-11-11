@@ -95,11 +95,9 @@ Every character and item trigger has a real fire site; `TriggerCoverageGuardrail
 | `@UserQuestButton` | 0xBF 0x0032 quest button | player | player | – | N1=0x0032 | – | ignored |
 | `@UserVirtueInvoke` | Virtue hotkey: 0x12 text command, ext-type 0xF4 (EXTCMD_INVOKE_VIRTUE) | player | player | – | N1=virtue id (1=Honor, 2=Sacrifice, 3=Valor) | – | ignored |
 | `@Rename` | GM rename request | target char | renamer | – | – | S1=new name | cancels the rename |
-| `@RegionEnter` | Entering a new region | the char | (not set) | – | – | S1=region name | ignored |
-| `@RegionLeave` | Leaving a region | the char | (not set) | – | – | S1=old region name | ignored |
+| `@RegionEnter` | Entering a new region, or a new room (the room is then ARGO) | the char | the char | the region / room | – | S1=region or room name | refuses a region crossing when there is an area to stay in |
+| `@RegionLeave` | Leaving a region, or a room (the room is then ARGO) | the char | the char | the region / room | – | S1=old region or room name | refuses a region crossing when there is an area to go to |
 | `@RegionStep` | Step within the same region | the char | (not set) | – | – | S1=region name | ignored |
-| `@RoomEnter` | Entering a new room | the char | (not set) | – | – | S1=room name | ignored |
-| `@RoomLeave` | Leaving a room | the char | (not set) | – | – | S1=old room name | ignored |
 | `@RoomStep` | Step within the same room | the char | (not set) | – | – | S1=room name | ignored |
 | `@Hunger` | Hunger decay tick | char | char | – | – | – | ignored |
 | `@Criminal` | Before a crime flag is set | char | char | – | – | – | cancels the criminal flag |

@@ -281,7 +281,14 @@ public sealed class ClientWorldFeaturesHandler
                 OpenCraftingGump(craftSkill, capturedPage - 1);
             else if (pressedButton >= CraftButtonRecipeBase)
             {
-                int index = capturedSkip + ((int)pressedButton - CraftButtonRecipeBase);
+                // The button id is the client's. Only the rows of the page that was
+                // sent are buttons of this gump: an id past them used to reach any
+                // recipe of the skill, and one above int.MaxValue (0xFFFFFFFF) wrapped
+                // to a negative index and threw out of the gump callback.
+                long row = (long)pressedButton - CraftButtonRecipeBase;
+                if (row >= CraftRecipesPerPage)
+                    return;
+                int index = capturedSkip + (int)row;
                 if (index < recipes.Count)
                 {
                     // No material picker: Source-X spends any colour of a resource
@@ -530,6 +537,8 @@ public sealed class ClientWorldFeaturesHandler
     }
 
     internal void CancelPendingCraftOnInterrupt() => CancelPendingCraft();
+    /// <summary>A craft is under way: its strokes are still to come.</summary>
+    internal bool HasPendingCraft => _pendingCraftRecipe != null;
     internal void CancelPendingCraftOnDisconnect() => CancelPendingCraft(notify: false);
 
     private void FaceCraftWorkSite(SkillType craftSkill)
@@ -1049,6 +1058,10 @@ public sealed class ClientWorldFeaturesHandler
                 break;
             }
             if (!ReferenceEquals(item.GetTopLevelObj(), _character))
+                continue;
+            // A line that sells nothing, or something offered in a secure trade, is
+            // skipped before its @Sell runs; VendorEngine.ProcessSell says why.
+            if (si.Amount == 0 || ItemMoveRules.FindEnclosingTradeWindow(item) != null)
                 continue;
 
             var (quote, sample) = VendorEngine.GetSellQuote(vendor, item);
@@ -1739,6 +1752,13 @@ public sealed class ClientWorldFeaturesHandler
         if (range < 4) range = 4;
         if (range > 24) range = 24;
         _netState.ViewRange = range;
+        // The answer is what makes the change real on the other side: upstream's
+        // PacketViewRange calls SetVisualRange, which sends PacketVisualRange back
+        // (receive.cpp:3498-3509, CClientMsg.cpp:2725), and the client sets its view
+        // range only from that packet (ClassicUO PacketHandlers.cs:2517-2519). With no
+        // answer the server filtered by the new range while the client kept drawing
+        // by the old one.
+        _netState.Send(new PacketVisualRange(range));
     }
 
     /// <summary>Whether the character already belongs to a guild (Guild_Find(MEMORY_GUILD)).</summary>
@@ -3076,7 +3096,10 @@ public sealed class ClientWorldFeaturesHandler
 
     private SpellType ResolveDrinkSpell(Item potion)
     {
-        if (potion.More1 is > 0 and < 1000)
+        // Any spell number up to SPELL_QTY (uofiles_enums.h:909): the Sphere spells a
+        // pack's refresh, mana, restore and shrink potions name are 1000 and up, and
+        // Use_Drink conveys ResGetIndex(m_itPotion.m_Type) unbounded (CCharUse.cpp:1083).
+        if (potion.More1 is > 0 and <= (uint)SpellType.Liquor)
             return (SpellType)potion.More1;
 
         string? name = null;
@@ -3104,10 +3127,23 @@ public sealed class ClientWorldFeaturesHandler
         return 0;
     }
 
+    /// <summary>The skill a cast in progress is an action of (the spell's primary
+    /// skill; Magery when the spell cannot be resolved).</summary>
+    private int CastingSkillId()
+    {
+        if (_character != null && _character.TryGetCastingSpell(out SpellType spell) &&
+            (_client.Spells?.GetSpellDef(spell) ?? Character.ResolveSpellDef?.Invoke(spell)) is { } def)
+            return (int)def.GetPrimarySkill();
+        return (int)SkillType.Magery;
+    }
+
     /// <summary>Handle UseSkill request (from packet 0x12 or extended command).</summary>
     public void HandleUseSkill(int skillId)
     {
-        if (_character == null || _character.IsDead) return;
+        // The dead are not turned away here: Event_Skill_Use (CClientEvent.cpp:611-630)
+        // goes to Skill_Wait, which runs @SkillWait and then answers a ghost with
+        // DEFMSG_SKILLWAIT_1 (CCharSkill.cpp:4014-4018).
+        if (_character == null) return;
         if (skillId < 0 || skillId >= SkillEngine.BaseSkillCount) return;
 
         var skill = (SkillType)skillId;
@@ -3118,13 +3154,11 @@ public sealed class ClientWorldFeaturesHandler
             return;
         }
 
-        if (_character.IsStatFlag(StatFlag.Sleeping | StatFlag.Freeze | StatFlag.Stone) ||
-            _character.IsCasting)
-        {
-            SysMessage("You must wait to perform another action.");
-            return;
-        }
-        if (!SkillHandlers.CanUse(_character, skill))
+        // Nothing else is tested ahead of Skill_Wait: the dead, the sleeping, the
+        // frozen and the petrified are ITS business (DEFMSG_SKILLWAIT_1), and a cast in
+        // progress is an active skill it weighs. A silent refusal used to stand here
+        // for all of them, so none of those answers was ever given.
+        if (!SkillEngine.IsValidBaseSkill(skill) || _character.IsDeleted)
             return;
 
         // Sphere 56T custom-version compatibility: @SkillUse on the character for a
@@ -3138,61 +3172,52 @@ public sealed class ClientWorldFeaturesHandler
 
         int menuSkill =_character.TryGetTag("SKILL_MENU_PENDING", out string? menuSkillText) &&
             ScriptNumber.TryParseInt(menuSkillText, out int parsedMenuSkill) ? parsedMenuSkill : -1;
-        int currentSkill = _character.HasActiveSkillPending()
-            ? _character.SkillPendingId
+        // CChar::Skill_Wait (CCharSkill.cpp:3977-4050), the one port of it. What it
+        // weighs is Skill_GetActive - the skill actually running: a pending skill, a
+        // craft being stroked, a spell being cast, a meditation. A target cursor or a
+        // skill menu left open by an earlier request is NOT an active skill; it used
+        // to count as one here, so a second skill button answered "you must wait"
+        // until the first cursor was dismissed by hand.
+        //
+        // The order and the answers are Skill_Wait's: @SkillWait first (RETURN 1
+        // refuses, RETURN 0 fails the running skill and goes on); dead, asleep,
+        // frozen or stone -> DEFMSG_SKILLWAIT_1; idle -> revealed (not for Stealth,
+        // nor Snooping / Stealing under their REVEALFLAGS) and on; busy in war mode ->
+        // DEFMSG_SKILLWAIT_2, meditation, hiding and stealth included; busy in peace
+        // -> those three give way to a different skill, anything else is
+        // DEFMSG_SKILLWAIT_3.
+        int currentSkill = _character.HasActiveSkillPending() ? _character.SkillPendingId
             : _pendingCraftRecipe != null ? (int)_pendingCraftSkill
-            : Targets.SkillCancelId >= 0 ? Targets.SkillCancelId
-            : menuSkill;
-        // Skill_Wait runs on every skill request, idle or not: ARGN2 is the active skill
-        // or SKILL_NONE (-1) (CClientEvent.cpp:612, CCharSkill.cpp:3984-3986).
-        TriggerResult waitResult = TriggerResult.Default;
+            : _character.IsCasting ? CastingSkillId()
+            : _character.IsStatFlag(StatFlag.Meditation) ? (int)SkillType.Meditation
+            : -1;
+        if (_client.ItemUse.SkillWait(skill, currentSkill, () =>
+            {
+                // Skill_Fail(true) for the forms of "active" the pending slot does
+                // not hold.
+                CancelPendingCraft(notify: false);
+                _client.Spells?.CancelCast(_character);
+                _character.InterruptMeditation();
+            }))
+            return;
+
+        // "SetTargMode();" (CClientEvent.cpp:648): the request clears the client's
+        // target mode, and a skill cursor still up is cancelled with its
+        // @SkillTargetCancel (CClientMsg.cpp:1727-1741).
+        if (Targets.SkillCancelId >= 0)
         {
-            var waitArgs = new TriggerArgs { CharSrc = _character, N1 = skillId, N2 = currentSkill };
-            waitResult = _triggerDispatcher?.FireCharTrigger(
-                _character, CharTrigger.SkillWait, waitArgs) ?? TriggerResult.Default;
-            if (waitResult == TriggerResult.True)
-                return;
+            int cancelledTargetSkill = Targets.SkillCancelId;
+            _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
+            Targets.Clear();
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
+                new TriggerArgs { CharSrc = _character, N1 = cancelledTargetSkill });
         }
-
-        if (currentSkill >= 0)
+        if (menuSkill >= 0)
         {
-            bool cancelCurrent = waitResult == TriggerResult.False ||
-                (currentSkill != skillId && (SkillType)currentSkill is
-                    SkillType.Meditation or SkillType.Hiding or SkillType.Stealth);
-            if (!cancelCurrent)
-            {
-                SysMessage("You must wait to perform another action.");
-                return;
-            }
-
-            if (_character.HasActiveSkillPending())
-            {
-                int aborted = _character.ClearActiveSkillPending();
-                if (aborted >= 0)
-                    Character.ActiveSkillAborted?.Invoke(_character, aborted);
-            }
-            CancelPendingCraft(notify: false);
-            if (Targets.SkillCancelId >= 0)
-            {
-                int cancelledTargetSkill = Targets.SkillCancelId;
-                _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
-                Targets.Clear();
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
-                    new TriggerArgs { CharSrc = _character, N1 = cancelledTargetSkill });
-            }
-            if (menuSkill >= 0)
-            {
-                _character.RemoveTag("SKILL_MENU_PENDING");
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
-                    new TriggerArgs { CharSrc = _character, N1 = menuSkill });
-            }
+            _character.RemoveTag("SKILL_MENU_PENDING");
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
+                new TriggerArgs { CharSrc = _character, N1 = menuSkill });
         }
-
-        if (_character.IsStatFlag(StatFlag.Meditation) && skill != SkillType.Meditation)
-            _character.InterruptMeditation();
-
-        if (skill is not (SkillType.Stealth or SkillType.Snooping or SkillType.Stealing))
-            _character.ClearHiddenState();
 
         var selectResult = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillSelect,
             new TriggerArgs { CharSrc = _character, N1 = skillId }) ?? TriggerResult.Default;
@@ -3498,6 +3523,19 @@ public sealed class ClientWorldFeaturesHandler
             _client.HandleDoubleClick(uid);
     }
 
+    /// <summary>Party text is read into a MAX_TALK_BUFFER (256) buffer upstream
+    /// (PARTYMSG_MsgMember / PARTYMSG_Msg, receive.cpp:2683-2696), the bound spoken
+    /// text has here too. It was passed on at whatever length the packet carried, to
+    /// every member of the party. The text also ends at its first terminator.</summary>
+    private const int MaxPartyTextLength = 256;
+
+    private static string CapPartyText(string text)
+    {
+        int end = text.IndexOf('\0');
+        if (end >= 0) text = text[..end];
+        return text.Length > MaxPartyTextLength ? text[..MaxPartyTextLength] : text;
+    }
+
     /// <summary>0xF4 crash report → @UserBugReport.</summary>
     public void HandleCrashReport() =>
         FireExtendedButtonTrigger(CharTrigger.UserBugReport, 0x00F4);
@@ -3721,6 +3759,7 @@ public sealed class ClientWorldFeaturesHandler
                     string pmMsg = data.Length > 5
                         ? System.Text.Encoding.BigEndianUnicode.GetString(data, 5, data.Length - 5).TrimEnd('\0')
                         : "";
+                    pmMsg = CapPartyText(pmMsg);
                     if (!string.IsNullOrEmpty(pmMsg))
                     {
                         // A tell outside a party, or to someone who is not in it, is
@@ -3744,7 +3783,8 @@ public sealed class ClientWorldFeaturesHandler
             case 4: // Public party message
                 if (data.Length >= 2)
                 {
-                    string msg = System.Text.Encoding.BigEndianUnicode.GetString(data, 1, data.Length - 1).TrimEnd('\0');
+                    string msg = CapPartyText(
+                        System.Text.Encoding.BigEndianUnicode.GetString(data, 1, data.Length - 1).TrimEnd('\0'));
                     if (string.IsNullOrWhiteSpace(msg)) break;
                     var party = _partyManager.FindParty(_character.Uid);
                     if (party != null && !PartySpeechFiltered(party, 0, msg))
@@ -4091,7 +4131,11 @@ public sealed class ClientWorldFeaturesHandler
             if (entryTag >= PopupTrainSkill && entryTag < PopupTrainSkill + (int)SkillType.Qty)
             {
                 var skill = (SkillType)(entryTag - PopupTrainSkill);
-                _client.SpeechEng?.DeliverNpcHear(_character, target, $"train {skill}");
+                // "train %s" with g_Cfg.GetSkillKey (CClientEvent.cpp:2887): the skill's
+                // script KEY, which is what the trainer's ears match on - not this
+                // engine's enum name ("EvalInt" where the key is "EvaluatingIntel").
+                _client.SpeechEng?.DeliverNpcHear(_character, target,
+                    $"train {Trade.VendorTrainingEngine.SkillKey(skill)}");
                 return;
             }
         }

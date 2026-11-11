@@ -12,10 +12,16 @@ public sealed class SortedResourceHash<T> where T : class
 
     public int Count => _entries.Count;
 
+    /// <summary>Changes whenever an entry is added, replaced or removed, so a caller
+    /// that derived something from the table (a per-type list, say) can tell whether
+    /// it is still looking at the same contents.</summary>
+    public int Version { get; private set; }
+
     public void Add(ResourceId rid, T entry)
     {
         ulong key = Pack(rid);
         _entries[key] = entry;
+        Version++;
     }
 
     public T? Get(ResourceId rid)
@@ -32,6 +38,7 @@ public sealed class SortedResourceHash<T> where T : class
 
     public bool Remove(ResourceId rid)
     {
+        Version++;
         return _entries.Remove(Pack(rid));
     }
 
@@ -43,11 +50,16 @@ public sealed class SortedResourceHash<T> where T : class
     public void Replace(ResourceId rid, T newEntry)
     {
         _entries[Pack(rid)] = newEntry;
+        Version++;
     }
 
     public IEnumerable<T> GetAll() => _entries.Values;
 
-    public void Clear() => _entries.Clear();
+    public void Clear()
+    {
+        _entries.Clear();
+        Version++;
+    }
 
     // The page is part of the key, below type and index so the order stays theirs: a
     // [REGIONTYPE name terrain] block is its own resource beside [REGIONTYPE name]

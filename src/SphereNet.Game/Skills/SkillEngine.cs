@@ -633,7 +633,10 @@ public static class SkillEngine
             return false;
 
         int minStat = -1;
-        int minVal = gainStatIdx switch { 0 => ResolveStrCap(ch), 1 => ResolveDexCap(ch), _ => ResolveIntCap(ch) };
+        // "if (skill != SKILL_NONE) uiMinval = Stat_GetMax(stat)" (CCharStat.cpp:745-746):
+        // the floor the DOWN-locked stats are measured against is the gaining stat's
+        // own pool maximum, not its class ceiling.
+        int minVal = StatPoolMax(ch, gainStatIdx);
         for (int i = 0; i < 3; i++)
         {
             if (i == gainStatIdx || GetStatLock(ch, i) != 1)
@@ -678,6 +681,28 @@ public static class SkillEngine
             return overrideMax;
         return 1000;
     }
+
+    /// <summary>Stat_GetMax (CCharStat.cpp:272-299) for this engine's stat index
+    /// (0 Str, 1 Dex, 2 Int): the stat's own pool maximum - MaxHits / MaxStam /
+    /// MaxMana as set, without the MODMAX term - and, where none is set, the
+    /// adjusted stat (base + mod).</summary>
+    private static int StatPoolMax(Character ch, int statIdx)
+    {
+        int max = statIdx switch { 0 => ch.BaseMaxHits, 1 => ch.BaseMaxStam, _ => ch.BaseMaxMana };
+        if (max >= 1)
+            return max;
+        return statIdx switch
+        {
+            0 => SphereNet.Game.Combat.CombatEngine.EffectiveStr(ch),
+            1 => SphereNet.Game.Combat.CombatEngine.EffectiveDex(ch),
+            _ => SphereNet.Game.Combat.CombatEngine.EffectiveInt(ch),
+        };
+    }
+
+    /// <summary>The total of STR + DEX + INT this character may reach - what the
+    /// status window shows as its stat cap (Stat_GetSumLimit, CCharStat.cpp:476-491;
+    /// written by PacketObjectStatus, send.cpp:285-288).</summary>
+    public static int StatSumLimit(Character ch) => ResolveStatSumCap(ch);
 
     /// <summary>Stat_GetSumLimit (CCharStat.cpp:477-491): TAG.OVERRIDE.STATSUM, else
     /// the player's class STATSUM, else 300.</summary>

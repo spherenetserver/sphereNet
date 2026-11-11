@@ -35,7 +35,10 @@ public sealed partial class NpcAI
                 GuardEngage(npc, assigned);
                 return;
             }
-            npc.FightTarget = Serial.Invalid;
+            // Nobody left to fight: out of war mode as well (Fight_HitTry,
+            // CCharFight.cpp:1508-1515), which is also what makes the guard
+            // "free" for the next call for guards (CCharFight.cpp:234).
+            NpcFightEnd(npc);
         }
 
         if (LookAroundTown(npc))
@@ -74,8 +77,9 @@ public sealed partial class NpcAI
         {
             if (npc.MapIndex != home.Map || npc.Position != home)
             {
+                var from = npc.Position;
                 _world.MoveCharacter(npc, home);
-                OnNpcTeleport?.Invoke(npc);
+                OnNpcTeleport?.Invoke(npc, from);
             }
             return true;
         }
@@ -135,8 +139,9 @@ public sealed partial class NpcAI
         {
             if (_config.GuardsInstantKill || target.GetSkill(SkillType.Magery) > 0 /* the criminal's Magery, CCharNPCAct.cpp:741 */)
             {
+                var from = guard.Position;
                 _world.MoveCharacter(guard, target.Position);
-                OnNpcTeleport?.Invoke(guard);
+                OnNpcTeleport?.Invoke(guard, from);
             }
 
             // Stat_SetVal(STAT_STR, 1) + Fight_Hit (CCharNPCAct.cpp:745-749): the
@@ -161,14 +166,15 @@ public sealed partial class NpcAI
         return true;
     }
 
-    /// <summary>Fight_Attack for a guard: the target, the fight memory and war.</summary>
+    /// <summary>Fight_Attack(pChar, true) for a guard (CCharNPCAct.cpp:754): the
+    /// criminal is attacked as a told-by-master target - top of the threat list,
+    /// no re-pick - through @Attack / @CombatAdd like every other NPC fight.</summary>
     private void GuardStartFight(Character guard, Character target)
     {
         if (guard.FightTarget == target.Uid && guard.IsStatFlag(StatFlag.War))
             return;
-        guard.FightTarget = target.Uid;
-        guard.Memory_Fight_Start(target);
-        guard.SetStatFlag(StatFlag.War);
+        if (NpcFightAttack(guard, target, toldByMaster: true) == null)
+            return;
         guard.NextNpcActionTime = 0;
         OnWakeNpc?.Invoke(guard);
     }
@@ -199,11 +205,29 @@ public sealed partial class NpcAI
         }
 
         if (guard.MapIndex != target.MapIndex) return;
+        EnsureFightWar(guard);
         int dist = guard.Position.GetDistanceTo(target.Position);
         if (dist <= GetAttackRange(guard))
+        {
             TrySwingAttack(guard, target);
-        else
-            MoveToward(guard, target.Position, run: true);
+            return;
+        }
+
+        // Source-X NPC_Act_Fight (CCharNPCAct_Fight.cpp:211-218): a guard whose
+        // swing is ready but could not be taken - the criminal got away from it -
+        // looks at him again one time in three, and NPC_LookAtCharGuard
+        // (CCharNPCAct.cpp:739-750) teleports it back next to him and, with
+        // GUARDSINSTANTKILL, strikes at once. Without this an engaged guard could
+        // simply be outrun.
+        if (Environment.TickCount64 >= guard.NextAttackTime && _rand.Next(3) == 0 &&
+            _world.CanSeeLOSFor(guard, target, LosFlags.NbWindows))
+        {
+            GuardLookAtChar(guard, target, fromTrigger: false);
+            if (guard.IsDeleted || target.IsDeleted || target.IsDead ||
+                guard.Position.GetDistanceTo(target.Position) <= GetAttackRange(guard))
+                return;
+        }
+        MoveToward(guard, target.Position, run: true);
     }
 
     /// <summary>Next Detect Hidden sweep per NPC uid. Runtime AI state, so it lives
@@ -430,8 +454,9 @@ public sealed partial class NpcAI
 
         if (npc.MapIndex != home.Map)
         {
+            var from = npc.Position;
             _world.MoveCharacter(npc, home);
-            OnNpcTeleport?.Invoke(npc);
+            OnNpcTeleport?.Invoke(npc, from);
             return;
         }
 
@@ -1019,13 +1044,22 @@ public sealed partial class NpcAI
         foreach (var item in _world.GetItemsInRange(npc.Position, lookRange))
         {
             if (item.IsDeleted || item.ContainedIn.IsValid) continue;
+            // What the creature makes of the item is settled before it is looked at
+            // properly. An item it does not want, that no script is asked about and
+            // that is not a corpse to a looter, leads nowhere below whether it is in
+            // view or not - and the line of sight is by far the dearest question
+            // here: a townsperson standing among a few hundred fixed decorations ran
+            // a sight ray to every one of them, each scan, to learn it wanted none.
+            int want = GetWantScore(npc, item);
+            bool scripted = OnNpcLookAtItem != null && !IsLookAtItemExcluded(item);
+            if (want <= 0 && !scripted && !(looter && item.ItemType == ItemType.Corpse))
+                continue;
             // No coveting through walls (Source-X CanSee in NPC_LookAtItem).
             if (!_world.CanSeeLOSFor(npc, item)) continue;
             int dist = npc.Position.GetDistanceTo(item.Position);
-            int want = GetWantScore(npc, item);
-            if (OnNpcLookAtItem != null && !IsLookAtItemExcluded(item))
+            if (scripted)
             {
-                var decision = OnNpcLookAtItem(npc, item, dist, want);
+                var decision = OnNpcLookAtItem!(npc, item, dist, want);
                 if (decision.Handled)
                     return true;
                 if (decision.Ignore)
@@ -1119,8 +1153,10 @@ public sealed partial class NpcAI
     private bool IsProtectedGround(Point3D pos)
     {
         var region = _world.FindRegion(pos);
+        // The raw flags, as the reference reads them here
+        // (IsFlag(REGION_FLAG_SAFE|REGION_FLAG_GUARDED), CCharNPCAct.cpp:1603).
         return region != null &&
-               (region.IsGuarded || region.IsFlag(RegionFlag.Safe));
+               (region.IsFlag(RegionFlag.Guarded) || region.IsFlag(RegionFlag.Safe));
     }
 
     /// <summary>Source-X NPC_WantThisItem (CCharNPCStatus.cpp:628): nothing the

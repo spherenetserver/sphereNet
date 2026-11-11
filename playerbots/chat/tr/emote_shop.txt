@@ -1,0 +1,10 @@
+# emote_shop.txt - satıcının mallarına bakan bot; emote.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+*mallara göz gezdirir*
+*bir şeyi alıp yerine koyar*
+*fiyata bakar*
+*fiyatı görüp başını sallar*
+*iki parçayı karşılaştırır*
+*avucundaki altınları sayar*
+*raftaki bir şeyi gösterir*

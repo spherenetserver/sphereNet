@@ -14,7 +14,9 @@ This runbook covers first-response actions for a live SphereNet shard.
 
 1. Check `[tick_stats]` for p95/p99 and player/item counts.
 2. Check `[slow_tick]` phase fields: `npc_apply`, `view_build`, `flush`,
-   `compute`, and `snapshot`.
+   `compute`, and `snapshot`. Compare `cpu=` with `total=` first: when the tick used
+   a fraction of its time on the processor, the host is not running the main thread
+   (other processes on the cores, an overcommitted VM) and no phase is at fault.
 3. If `view_build` dominates, inspect item density and stacked tiles.
 4. If `npc_apply` dominates, reduce active NPC stress or capture a profiler run.
 5. Avoid changing data-locality structures without a before/after baseline.

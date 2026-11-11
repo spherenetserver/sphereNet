@@ -1,0 +1,26 @@
+# token_need.txt - why a plan was made: a drive (Money, Supplies, Safety, Load, Purse, Growth, Social, Adventure), or Supplies.<need> for a need of shopping.txt
+
+Money=need some gold
+Supplies=running low on supplies
+Supplies.reagent=out of reagents
+Supplies.bandage=out of bandages
+Supplies.arrow=out of arrows
+Supplies.bolt=out of bolts
+Supplies.heal=no heal pots left
+Supplies.cure=no cure pots left
+Supplies.refresh=no refresh pots left
+Supplies.rune=need blank runes
+Supplies.food=getting hungry
+Supplies.pickaxe=lost my pickaxe
+Supplies.axe=lost my hatchet
+Supplies.pole=need a fishing pole
+Supplies.hammer=need a smith hammer
+Supplies.ingot=out of ingots
+Supplies.cloth=out of cloth
+Supplies.board=out of boards
+Safety=beat up, need a breather
+Load=my pack is full
+Purse=carrying too much gold
+Growth=gotta train up
+Social=been alone too long
+Adventure=bored of this town

@@ -35,15 +35,13 @@ public sealed partial class NpcAI
             // to a fresh look-around instead let an NPC that had just killed one of
             // three attackers stand idle among the other two.
             var replacement = FightFindBestTarget(npc, exclude: target);
-            if (replacement != null && replacement != target)
+            var next = replacement != null && replacement != target ? NpcFightAttack(npc, replacement) : null;
+            if (next != null)
             {
-                npc.FightTarget = replacement.Uid;
-                NpcAttackCrimeCheck(npc, replacement);
-                npc.Memory_Fight_Start(replacement);
-                ActFight(npc, replacement, Math.Max(1, GetAttackMotivation(npc, replacement)));
+                ActFight(npc, next, Math.Max(1, GetAttackMotivation(npc, next)));
                 return true;
             }
-            npc.FightTarget = Serial.Invalid;
+            NpcFightEnd(npc);
             return false;
         }
         int motivation = GetAttackMotivation(npc, target);
@@ -94,10 +92,12 @@ public sealed partial class NpcAI
                 // 259-278); a neutral score does not end an engaged fight.
                 if (curMotivation >= 0)
                 {
-                    // Mid-fight better-target rescan (NPCAIEXTRAS FightRescan).
-                    // Source-X keeps this DISABLED ("probably unnecessary… breaks
-                    // the @NPCActFight trigger", CCharNPCAct_Fight.cpp:178-194);
-                    // with the extra it runs only under multi-attacker pressure.
+                    // Mid-fight better-target rescan (NPCAIEXTRAS FightRescan): an
+                    // extra roll on top of the reference's own switch. What Source-X
+                    // disabled in NPC_Act_Fight is the periodic LOOK-AROUND
+                    // (CCharNPCAct_Fight.cpp:178-194); the switch off the attacker
+                    // list is alive in the swing routine and runs in ActFight
+                    // whenever a due swing cannot be taken (CCharFight.cpp:1614-1619).
                     if (HasExtra(npc, NpcAiExtraFlags.FightRescan) &&
                         npc.Attackers.Count > 1 && _rand.Next(4) == 0)
                     {
@@ -106,13 +106,12 @@ public sealed partial class NpcAI
                         // distance and hostility, which is exactly what a script
                         // raising an attacker's threat is trying to override.
                         var betterTarget = FightFindBestTarget(npc);
-                        if (betterTarget != null && !betterTarget.IsDeleted && betterTarget != current)
+                        var switched = betterTarget != null && !betterTarget.IsDeleted && betterTarget != current
+                            ? NpcFightAttack(npc, betterTarget) : null;
+                        if (switched != null)
                         {
-                            npc.FightTarget = betterTarget.Uid;
-                            NpcAttackCrimeCheck(npc, betterTarget);
-                            npc.Memory_Fight_Start(betterTarget);
-                            current = betterTarget;
-                            curMotivation = Math.Max(1, GetAttackMotivation(npc, betterTarget));
+                            current = switched;
+                            curMotivation = Math.Max(1, GetAttackMotivation(npc, switched));
                         }
                     }
 
@@ -137,21 +136,19 @@ public sealed partial class NpcAI
             // Before sweeping the whole sight range, take the next opponent off
             // the attacker list the way the reference does (NPC_FightFindBestTarget).
             var fromList = FightFindBestTarget(npc, exclude: current);
-            if (fromList != null && fromList != current)
+            var listFoe = fromList != null && fromList != current ? NpcFightAttack(npc, fromList) : null;
+            if (listFoe != null)
             {
-                npc.FightTarget = fromList.Uid;
                 if (hiddenPursuit)
                 {
                     npc.RemoveTag("HIDE_PURSUIT");
                     npc.RemoveTag("LAST_TGT_LOC");
                 }
-                NpcAttackCrimeCheck(npc, fromList);
-                npc.Memory_Fight_Start(fromList);
-                ActFight(npc, fromList, Math.Max(1, GetAttackMotivation(npc, fromList)));
+                ActFight(npc, listFoe, Math.Max(1, GetAttackMotivation(npc, listFoe)));
                 return;
             }
 
-            npc.FightTarget = Serial.Invalid;
+            NpcFightEnd(npc);
             if (hiddenPursuit)
             {
                 npc.RemoveTag("HIDE_PURSUIT");
@@ -168,16 +165,16 @@ public sealed partial class NpcAI
         if (!reacquireThrottle || nowReac >= npc.NextNpcReacquireTime)
         {
             var (bestTarget, bestMotivation) = FindBestTarget(npc, sightRange);
-            if (bestTarget != null && bestMotivation > 0)
+            // NPC_LookAtCharMonster -> Fight_Attack (CCharNPCAct.cpp:788): @Attack may
+            // refuse the engagement, in which case the look-around found nothing.
+            var seen = bestTarget != null && bestMotivation > 0 ? NpcFightAttack(npc, bestTarget) : null;
+            if (seen != null)
             {
                 npc.NextNpcReacquireTime = 0;
-                npc.FightTarget = bestTarget.Uid;
-                NpcAttackCrimeCheck(npc, bestTarget);
-                npc.Memory_Fight_Start(bestTarget);
                 EmitSound(npc, CreatureSoundType.Notice);
                 if (HasExtra(npc, NpcAiExtraFlags.AllyRally))
-                    NotifyNearbyAllies(npc, bestTarget);
-                ActFight(npc, bestTarget, bestMotivation);
+                    NotifyNearbyAllies(npc, seen);
+                ActFight(npc, seen, seen == bestTarget ? bestMotivation : Math.Max(1, GetAttackMotivation(npc, seen)));
                 return;
             }
             // Nothing found — back off the next scan.
@@ -226,7 +223,7 @@ public sealed partial class NpcAI
                 ActFight(npc, current, 100);
                 return;
             }
-            npc.FightTarget = Serial.Invalid;
+            NpcFightEnd(npc);
         }
 
         Character? nearest = null;
@@ -246,12 +243,11 @@ public sealed partial class NpcAI
             }
         }
 
-        if (nearest != null)
+        // NPC_LookAtChar's berserk branch -> Fight_Attack (CCharNPCAct.cpp:1089).
+        var berserkFoe = nearest != null ? NpcFightAttack(npc, nearest) : null;
+        if (berserkFoe != null)
         {
-            npc.FightTarget = nearest.Uid;
-            NpcAttackCrimeCheck(npc, nearest);
-            npc.Memory_Fight_Start(nearest);
-            ActFight(npc, nearest, 100);
+            ActFight(npc, berserkFoe, 100);
             return;
         }
 
@@ -285,13 +281,19 @@ public sealed partial class NpcAI
     /// <summary>
     /// Shared fight action. Source-X: NPC_Act_Fight — flee / special / spell / archery / melee.
     /// </summary>
-    private void ActFight(Character npc, Character target, int motivation)
+    private void ActFight(Character npc, Character target, int motivation) =>
+        ActFightCore(npc, target, motivation, mayRetarget: true);
+
+    /// <summary>The fight action. <paramref name="mayRetarget"/> is false for the
+    /// call that follows a target switch, so one tick switches at most once.</summary>
+    private void ActFightCore(Character npc, Character target, int motivation, bool mayRetarget)
     {
         if (npc.MapIndex != target.MapIndex)
         {
-            npc.FightTarget = Serial.Invalid;
+            NpcFightEnd(npc);
             return;
         }
+        EnsureFightWar(npc);
 
         // A committed swing is the NPC's action while its animation plays: a
         // winding-up NPC must not cast, breathe, throw, move or sidestep before
@@ -385,11 +387,34 @@ public sealed partial class NpcAI
         int dist = npc.Position.GetDistanceTo(target.Position);
         bool hasLOS = _world.CanSeeLOSFor(npc, target);
 
+        // Source-X Fight_HitTry, WAR_SWING_READY (CCharFight.cpp:1614-1619): the
+        // swing is due and cannot be taken - the target is out of reach or out of
+        // sight - so the NPC runs Fight_Attack(NPC_FightFindBestTarget()), "keep
+        // attacking the same char or change the targ". The pick is the highest
+        // threat under NPC_AI_THREAT, else the nearest in sight, off the attacker
+        // list (CCharNPCAct_Fight.cpp:60-153). The look-around NPC_Act_Fight has
+        // commented out (:178-194) is a different thing: that one searched the
+        // world; this one only re-reads the list, and is what the comment there
+        // says the switching was left to.
+        if (mayRetarget && !npc.HasPendingHit && Environment.TickCount64 >= npc.NextAttackTime &&
+            HasOtherAttacker(npc, target) && !CanSwingAtNow(npc, target, dist, hasLOS))
+        {
+            var better = FightFindBestTarget(npc);
+            var foe = better != null && better != target ? NpcFightAttack(npc, better) : null;
+            if (foe != null && foe != target)
+            {
+                ActFightCore(npc, foe, Math.Max(1, GetAttackMotivation(npc, foe)), mayRetarget: false);
+                return;
+            }
+        }
+
         // No line of sight: walk round to the target (NPC_Act_Follow's path search).
         if (!hasLOS && dist > 1)
         {
             if (!CanContinueCombatPursuit(npc, target)) return;
             if (HasExtra(npc, NpcAiExtraFlags.LosRecovery) && TryLosRecovery(npc, target))
+                return;
+            if (FightFollow(npc, target, dist, GetAttackRange(npc), moveAway: false) != FightFollowStep.Native)
                 return;
             MoveToward(npc, target.Position, run: true);
             return;
@@ -444,13 +469,33 @@ public sealed partial class NpcAI
             int kiteMin = range.Min > 0 ? range.Min : Character.ArcheryMinDist;
             if (dist <= kiteMin)
             {
+                // The back-off is NPC_Act_Follow(false, iMaxDist, true) (:52), so
+                // @NPCActFollow sees it like any other fight movement.
                 if (_rand.Next(2) == 0)
-                    MoveAway(npc, target.Position);
-                return;
+                {
+                    if (FightFollow(npc, target, dist, range.Max, moveAway: true) == FightFollowStep.Native)
+                        MoveAway(npc, target.Position);
+                    return;
+                }
+                // Standing AT the minimum distance is not too close: the shot is
+                // refused only for `dist < iMinDist` (Fight_Hit, CCharFight.cpp:1889),
+                // and NPC_FightArchery holding its ground (:46-57) does not stop the
+                // swing timer. Inside the minimum the NPC really cannot fire.
+                if (dist < kiteMin)
+                    return;
             }
         }
 
         bool surround = HasExtra(npc, NpcAiExtraFlags.SurroundFlank);
+
+        // The tail of NPC_Act_Fight is NPC_Act_Follow(false, iRange, false)
+        // (CCharNPCAct_Fight.cpp:354-361), which fires @NPCActFollow on every fight
+        // tick (CCharNPCAct.cpp:1357-1381): RETURN 1 / RETURN 0 leave the NPC where
+        // it is, and a script that rewrote flee / distance / move-away gets the
+        // step it asked for. The swing is the swing timer's business either way.
+        var followStep = FightFollow(npc, target, dist, range.Max, moveAway: false);
+        if (followStep == FightFollowStep.Stepped)
+            return;
 
         // COMBAT_SWING_NORANGE: a swing may start even when out of range.
         if (dist <= range.Max || CombatHelper.SwingIgnoresStartRange())
@@ -463,7 +508,7 @@ public sealed partial class NpcAI
             if (surround && !swung && dist <= 1 && _rand.Next(3) == 0)
                 TrySurroundStep(npc, target);
         }
-        else
+        else if (followStep == FightFollowStep.Native)
         {
             if (!CanContinueCombatPursuit(npc, target)) return;
             // NPCAIEXTRAS SurroundFlank: approach from an open flank.
@@ -472,6 +517,218 @@ public sealed partial class NpcAI
             else
                 MoveToward(npc, target.Position, run: true);
         }
+    }
+
+    /// <summary>What <see cref="FightFollow"/> left for the caller.</summary>
+    private enum FightFollowStep
+    {
+        /// <summary>No script took part: the caller's own movement applies.</summary>
+        Native,
+        /// <summary>The script answered RETURN 1 / RETURN 0, or the rewritten
+        /// arguments are content with where the NPC stands: no movement.</summary>
+        Hold,
+        /// <summary>A step was taken on the script's rewritten arguments.</summary>
+        Stepped,
+    }
+
+    /// <summary>NPC_Act_Follow as the fight calls it (CCharNPCAct.cpp:1312-1444):
+    /// fire @NPCActFollow with ARGN1 = flee, ARGN2 = the distance to keep, ARGN3 =
+    /// move away and SRC = the fight target. With no script hooked, or one that
+    /// left the arguments alone, the caller moves as it always did.</summary>
+    private FightFollowStep FightFollow(Character npc, Character target, int dist, int maxDistance, bool moveAway)
+    {
+        if (OnNpcActFollow == null)
+            return FightFollowStep.Native;
+
+        var args = new FollowTriggerArgs { Flee = false, MaxDistance = maxDistance, MoveAway = moveAway };
+        var answer = OnNpcActFollow(npc, target, args);
+        if (answer != FollowTriggerResult.Continue)
+            return FightFollowStep.Hold;
+        if (!args.Flee && args.MoveAway == moveAway && args.MaxDistance == maxDistance)
+            return FightFollowStep.Native;
+
+        // The distance decision of NPC_Act_Follow (:1406-1426).
+        bool flee = args.Flee;
+        int keep = args.MaxDistance;
+        if (args.MoveAway)
+        {
+            if (dist < keep)
+                flee = true;
+        }
+        else if (flee)
+        {
+            if (dist >= keep)
+                return FightFollowStep.Hold;
+        }
+        else if (dist <= keep)
+        {
+            return FightFollowStep.Hold;
+        }
+
+        if (flee)
+            StepAwayFrom(npc, target.Position, dist);
+        else if (CanContinueCombatPursuit(npc, target))
+            MoveToward(npc, target.Position, run: true);
+        return FightFollowStep.Stepped;
+    }
+
+    /// <summary>Whether anybody but <paramref name="target"/> is on the attacker
+    /// list - the only case a re-pick off the list can change anything.</summary>
+    private static bool HasOtherAttacker(Character npc, Character target)
+    {
+        var attackers = npc.Attackers;
+        for (int i = 0; i < attackers.Count; i++)
+            if (attackers[i].Uid != target.Uid)
+                return true;
+        return false;
+    }
+
+    /// <summary>Whether a swing that is due could be taken at this distance: Fight_Hit
+    /// holds it (WAR_SWING_READY) out of sight, past the weapon's reach, or - for a
+    /// ranged weapon - inside its minimum distance (CCharFight.cpp:1878-1900).
+    /// COMBAT_SWING_NORANGE starts the swing regardless.</summary>
+    private bool CanSwingAtNow(Character npc, Character target, int dist, bool hasLOS)
+    {
+        if (CombatHelper.SwingIgnoresStartRange())
+            return true;
+        if (!hasLOS)
+            return false;
+        var weapon = npc.FightWeapon();
+        var range = GetFightRange(npc, weapon);
+        if (dist > range.Max)
+            return false;
+        if (CombatHelper.IsRangedWeapon(weapon))
+        {
+            int min = range.Min > 0 ? range.Min : Character.ArcheryMinDist;
+            if (dist < min)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>NPCs whose current fight went through <see cref="NpcFightAttack"/>,
+    /// so the war flag it raised can be dropped when that fight is over. Runtime
+    /// only; a flag a script set on an idle NPC is never in here and is left alone.</summary>
+    private readonly HashSet<uint> _fightWar = [];
+
+    /// <summary>Source-X CChar::Fight_Attack as an NPC reaches it (CCharFight.cpp:
+    /// 1399-1487) - the ONE way an NPC takes a fight target, whoever decided it: the
+    /// look-around (CCharNPCAct.cpp:788, :1089), a guard (:754), a guarding pet
+    /// (:1302), self-defence (CCharFight.cpp:316) or a switch off the attacker list.
+    ///
+    /// A dead / invulnerable / stone target is refused (:1403). @Attack fires when the
+    /// target CHANGES and RETURN 1 cancels (:1430-1436); the target goes on my own
+    /// attacker list through @CombatStart / @CombatAdd, either of which may cancel
+    /// too, and a target that ends up flagged ignored is not attacked (:1442-1449).
+    /// Then war mode goes up - the mode flag reaches the clients with the next view
+    /// refresh, which is UpdateModeFlag (:1452-1455) - the fight is remembered, the
+    /// target is irritated by me (:1472) and the crime check runs (:1474-1477).
+    ///
+    /// Who is fought in the end is NOT necessarily the character asked for: unless
+    /// the owner (or a guard's duty, CCharNPCAct.cpp:754) named the target, the NPC
+    /// takes the best one off its attacker list, which now holds the new one too
+    /// (:1479-1484).
+    ///
+    /// Returns the character now being fought; null = no fight, and the caller must
+    /// not go on to ActFight.</summary>
+    public Character? NpcFightAttack(Character npc, Character target, bool toldByMaster = false)
+    {
+        if (target == npc || target.IsDeleted || target.IsDead || npc.IsDead ||
+            target.IsStatFlag(StatFlag.Invul) || target.IsStatFlag(StatFlag.Stone))
+            return null;
+
+        bool changed = npc.FightTarget != target.Uid;
+        if (!npc.CombatState.BeginFightWith(target, toldByMaster))
+            return null;
+
+        EnsureFightWar(npc);
+
+        // Attacker_Add records the start of the fight (CCharAttacker.cpp:58).
+        npc.Memory_Fight_Start(target);
+        if (!changed)
+            return target; // already attacking this same target (:1460-1463)
+
+        target.Memory_AddObjTypes(npc.Uid, MemoryType.IrritatedBy);
+        NpcAttackCrimeCheck(npc, target);
+
+        Character foe = target;
+        if (!toldByMaster)
+            foe = FightFindBestTarget(npc) ?? target;
+        if (foe != target)
+            npc.Memory_Fight_Start(foe);
+        npc.FightTarget = foe.Uid;
+        return foe;
+    }
+
+    /// <summary>An NPC that fights is at war (Fight_Attack, CCharFight.cpp:1452-
+    /// 1455), whichever path gave it the target - an order, a script verb, a bard.
+    /// Remembered, so the flag goes down with the fight.</summary>
+    private void EnsureFightWar(Character npc)
+    {
+        if (!npc.IsStatFlag(StatFlag.War))
+            npc.SetStatFlag(StatFlag.War);
+        _fightWar.Add(npc.Uid.Value);
+    }
+
+    /// <summary>The fight is over with nobody to turn to: no target, and war mode
+    /// off (Fight_HitTry, CCharFight.cpp:1508-1515: Skill_Start(SKILL_NONE),
+    /// m_Fight_Targ_UID.InitUID(), StatFlag_Clear(STATF_WAR); NPC_Act_Fight does the
+    /// same when it gives a fight up, CCharNPCAct_Fight.cpp:201-207, :272-276).</summary>
+    internal void NpcFightEnd(Character npc)
+    {
+        npc.FightTarget = Serial.Invalid;
+        if (_fightWar.Remove(npc.Uid.Value))
+            npc.ClearStatFlag(StatFlag.War);
+    }
+
+    /// <summary>The same end of fight for one that was ended from OUTSIDE the brain -
+    /// the target died under another hand, an order called a pet off, a script
+    /// cleared the target: the tick that finds no target left drops war mode.</summary>
+    private void DropWarAfterFight(Character npc)
+    {
+        if (_fightWar.Count != 0 && !npc.FightTarget.IsValid && !npc.HasPendingHit &&
+            _fightWar.Remove(npc.Uid.Value))
+            npc.ClearStatFlag(StatFlag.War);
+    }
+
+    /// <summary>Forget the fighters that are gone. One that died in its fight no
+    /// longer ticks, so its war flag is taken down here - a bonded pet's ghost
+    /// would otherwise come back to life still at war.</summary>
+    private void SweepFightWar()
+    {
+        if (_fightWar.Count == 0)
+            return;
+        List<uint>? gone = null;
+        foreach (uint uid in _fightWar)
+        {
+            var ch = _world.FindObject(new Serial(uid)) as Character;
+            if (ch != null && !ch.IsDeleted && !ch.IsDead)
+                continue;
+            if (ch != null && !ch.IsDeleted)
+            {
+                ch.FightTarget = Serial.Invalid;
+                ch.ClearStatFlag(StatFlag.War);
+            }
+            (gone ??= []).Add(uid);
+        }
+        if (gone != null)
+            foreach (uint uid in gone)
+                _fightWar.Remove(uid);
+    }
+
+    /// <summary>Source-X Attacker_Delete for an NPC (CCharAttacker.cpp:339-346): the
+    /// row that left the list was the one being fought, so the target is dropped and
+    /// Fight_Attack(NPC_FightFindBestTarget()) picks the next one off what is left
+    /// of the list. With nobody left the fight is over. Wired to
+    /// <see cref="Character.OnNpcFightRowRemoved"/>.</summary>
+    public void OnFightTargetRowRemoved(Character npc)
+    {
+        if (npc.IsPlayer || npc.IsDeleted || npc.IsDead)
+            return;
+        npc.FightTarget = Serial.Invalid;
+        var next = FightFindBestTarget(npc);
+        if (next == null || NpcFightAttack(npc, next) == null)
+            NpcFightEnd(npc);
     }
 
     /// <summary>Source-X Fight_Attack's crime check (CCharFight.cpp:1474-1477), run
@@ -501,14 +758,13 @@ public sealed partial class NpcAI
     private bool TryLosRecovery(Character npc, Character target)
     {
         var visible = FightFindBestTarget(npc, exclude: target);
-        if (visible != null && visible != target && !visible.IsDead &&
-            visible.MapIndex == npc.MapIndex && _world.CanSeeLOSFor(npc, visible))
+        var inSight = visible != null && visible != target && !visible.IsDead &&
+            visible.MapIndex == npc.MapIndex && _world.CanSeeLOSFor(npc, visible)
+            ? NpcFightAttack(npc, visible) : null;
+        if (inSight != null && inSight != target)
         {
             ClearLosFailCount(npc);
-            npc.FightTarget = visible.Uid;
-            NpcAttackCrimeCheck(npc, visible);
-            npc.Memory_Fight_Start(visible);
-            ActFight(npc, visible, Math.Max(1, GetAttackMotivation(npc, visible)));
+            ActFightCore(npc, inSight, Math.Max(1, GetAttackMotivation(npc, inSight)), mayRetarget: false);
             return true;
         }
 
@@ -981,8 +1237,25 @@ public sealed partial class NpcAI
 
         int dist = npc.Position.GetDistanceTo(target.Position);
         int radar = _config.MapViewRadar > 0 ? _config.MapViewRadar : Character.MapViewRadarTiles;
+        int fleeDistance = npc.FleeStepsMax;
+
+        // The flee step is NPC_Act_Follow(true, m_iStepsMax) (CCharNPCAct.cpp:1658),
+        // so @NPCActFollow fires for it with ARGN1 = 1 (:1357-1381): RETURN 1 ends
+        // the flee, RETURN 0 means the script moved the NPC, and the distance at
+        // which the NPC has run far enough is read back from ARGN2.
+        if (OnNpcActFollow != null && target.MapIndex == npc.MapIndex)
+        {
+            var args = new FollowTriggerArgs { Flee = true, MaxDistance = fleeDistance, MoveAway = false };
+            var answer = OnNpcActFollow(npc, target, args);
+            if (answer == FollowTriggerResult.GiveUp)
+                return false;
+            if (answer == FollowTriggerResult.Handled)
+                return true;
+            fleeDistance = args.MaxDistance;
+        }
+
         if (target.MapIndex != npc.MapIndex || !IsAttackable(target) ||
-            dist >= npc.FleeStepsMax || dist > radar)
+            dist >= fleeDistance || dist > radar)
             return false;
 
         if (HasExtra(npc, NpcAiExtraFlags.FleeTactics) && TryFleeTactics(npc, target, dist))

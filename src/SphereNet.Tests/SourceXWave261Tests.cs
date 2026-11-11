@@ -16,7 +16,7 @@ namespace SphereNet.Tests;
 public sealed class SourceXWave261Tests
 {
     [Fact]
-    public void SummonFamiliar_SummonsDefaultFamiliar_OwnedByCaster()
+    public void SummonFamiliar_SummonsTheMenuPick_OwnedByCaster()
     {
         var world = TestHarness.CreateWorld();
         var registry = new SpellRegistry();
@@ -37,15 +37,23 @@ public sealed class SourceXWave261Tests
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 
         var spawnAt = new Point3D(101, 100, 0, 0);
+
+        // No creature of its own: Spell_Summon_Try has no case for the spell
+        // (CCharSpell.cpp:2602-2681), so a cast with no menu pick summons nothing.
+        Assert.True(engine.CastStart(caster, SpellType.SummonFamiliar, Serial.Invalid, spawnAt) >= 0);
+        Assert.False(engine.CastDone(caster));
+        Assert.DoesNotContain(world.GetCharsInRange(caster.Position, 4), c => c != caster);
+
+        // The sm_summon_familiar menu's pick is what gets summoned.
+        caster.SetTag("SUMMON_SELECT", "c_familiar_pick");
         Assert.True(engine.CastStart(caster, SpellType.SummonFamiliar, Serial.Invalid, spawnAt) >= 0);
         Assert.True(engine.CastDone(caster));
 
         var familiar = world.GetCharsInRange(caster.Position, 4)
-            .FirstOrDefault(c => c != caster && c.BodyId == 0x013D);
+            .FirstOrDefault(c => c != caster);
 
         Assert.NotNull(familiar);
         Assert.Equal(caster.Uid, familiar!.OwnerSerial);
         Assert.True(familiar.IsSummoned);
-        Assert.True(familiar.IsStatFlag(StatFlag.Conjured));
     }
 }

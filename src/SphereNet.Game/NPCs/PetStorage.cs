@@ -106,12 +106,9 @@ public static class PetStorage
     /// follower-slot override are the pet's own and must survive the stable.</summary>
     private static void ClearStandingOrders(Character pet)
     {
-        pet.RemoveTag("ATTACK_TARGET");
-        pet.RemoveTag("FOLLOW_TARGET");
-        pet.RemoveTag("GUARD_TARGET");
-        pet.RemoveTag("GO_TARGET");
-        pet.RemoveTag("PREV_PET_MODE");
-        pet.PetAIMode = PetAIMode.Follow;
+        // Idle, and an idle pet that sees its owner guards it (NPC_LookAtChar,
+        // CCharNPCAct.cpp:1030-1039; NPC_Act_Guard, :1292-1311).
+        pet.SetPetIdleOrder();
     }
 
     /// <summary>True when a parked pet is still present and usable.</summary>

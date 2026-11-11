@@ -1,0 +1,10 @@
+# theft_snoop.txt - botun çantasını karıştırırken yakaladığı kişiye söylenir. {name} karıştıran.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+hop! çantamdan elini çek
+hey {name}, çık çantamdan
+çantamda ne arıyorsun?
+ellerine hakim ol {name}
+gördüm onu {name}
+[shy] şey.. o benim çantam
+[warrior] çantama bir daha dokun da gör

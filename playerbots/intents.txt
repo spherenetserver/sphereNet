@@ -3,7 +3,8 @@
 #                             doing here whoareyou news heal follow bot far yes no
 #                             stay leaveparty status (orders to a party's bots) selling
 #                             favours: gate mark buff guide appraise protect carry giveback
-#                             gift can cancel; friendship: friend companion dismiss remember
+#                             gift can cancel; friendship: friend companion dismiss remember;
+#                             plan (what is your plan, what next, why)
 #   not: / more: words        "not" turns party/follow/heal into a no; "more" ("what about")
 #                             makes a place named alone ask the way there
 #   place.<Type>: keywords    a destination type (destinations.json "Type") a "where" asks about
@@ -45,6 +46,7 @@ stay: stay stay+here wait+here wait+for+me hold+here hold+up hold+position bekle
 leaveparty: leave+party leave+the+party leave+group disband partiden+çık partiden+cik partyden+çık partyden+cik gruptan+çık gruptan+cik dağılın dagilin
 status: status your+hp ur+hp how+much+hp hp+mana hp+and+mana how+much+mana durum durumun ne+durumdasın ne+durumdasin canın+ne canin+ne can+mana
 follow: come+here follow+me sen+de+gel sende+gel you+too come+too come+along come+with+me come+with+us join+me takip+et beni+takip benimle+gel bizimle+gel peşimden+gel pesimden+gel buraya+gel yanıma+gel yanima+gel gel+buraya takip+edin
+plan: what+is+your+plan whats+your+plan what+s+your+plan your+plan ur+plan any+plans plans+for+today what+next whats+next what+s+next what+will+you+do+next what+do+you+do+next why+are+you+going why+r+u+going planın+ne planin+ne planın+var+mı planin+var+mi ne+planlıyorsun ne+planliyorsun bugün+ne+yapacaksın bugun+ne+yapacaksin sonra+ne+yapacaksın sonra+ne+yapacaksin sonra+ne+yapıcan sonra+ne+yapican neden+gidiyorsun niye+gidiyorsun niye+gidiyon neden+oraya niye+oraya
 doing: what+are+you+doing what+r+u+doing what+you+doing what+u+doing wyd where+are+you+going where+r+u+going where+you+going where+u+going where+are+you+headed where+u+headed ne+yapıyorsun ne+yapıyon ne+yapıyosun napıyorsun napıyosun napıyon napiyon napiyorsun nereye+gidiyorsun nereye+gidiyon nereye+gidiyosun nereye+böyle
 here: where+are+we where+am+i where+is+this what+is+this+place what+place+is+this what+town which+town what+city neredeyiz nerdeyiz burası+neresi burasi+neresi neresi+burası neresi+burasi hangi+şehir hangi+sehir hangi+kasaba
 whoareyou: who+are+you who+r+u what+are+you what+class whats+your+class what+is+your+class your+skills ur+skills what+skills kimsin nesin classın+ne class+ne skillerin skill+ne

@@ -1,0 +1,9 @@
+# fight_busy.txt - the word a bot in a fight has for a player who speaks to it. {name} is the player.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+busy!
+not now {name}
+kinda busy here
+in a fight, sec
+later!
+1 sec

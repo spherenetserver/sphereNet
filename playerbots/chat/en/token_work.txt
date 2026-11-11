@@ -1,0 +1,12 @@
+# token_work.txt - a job (a gathering or crafting skill, Smelt, Sell, Work) = what the bot says it is doing
+
+Mining=mining
+Lumberjacking=chopping wood
+Fishing=fishing
+Smelt=smelting my ore
+Blacksmithing=smithing
+Carpentry=doing carpentry
+Tailoring=sewing
+Cooking=cooking
+Sell=selling my goods
+Work=working

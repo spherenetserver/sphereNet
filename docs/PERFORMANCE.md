@@ -9,6 +9,17 @@ before/after numbers.
 - `[tick_stats]`: periodic average/max/p50/p95/p99 tick, entity counts, and bot packet rates.
 - `[slow_tick]`: phase breakdown when a tick exceeds the slow threshold. Useful
   fields include NPC apply, view build, output flush, and world maintenance.
+  `cpu=` beside `total=` is the processor time the main thread was given during that
+  tick. A total far above it was not spent in the phase the line names: the thread was
+  waiting - for a core on a busy or overcommitted host, for worker threads, or for the
+  collector (`gc=`). `[world_tick_detail]` and `[world_callback_detail]` carry the same
+  field for the world tick and for one item-timer / TIMERF callback.
+- `PERF MARK` / `PERF REPORT` (console): one measurement window as a `[perf_window]`
+  JSON line. `Tick` has the wall-clock distribution and, where the host can say,
+  `AvgCpuMs` / `AvgOffCpuMs` / `MaxOffCpuMs` / `StarvedTicks` (ticks of 20 ms or more
+  that ran for under half their time); `Phases` has the average and worst time of each
+  tick phase over the window (`world_tick`, `npc_build`, `npc_commit`, `bots`, `dirty`,
+  `view_build`, `apply`, `post_apply`, `flush`).
 - `/status`: exposes the same rolling tick percentiles and last phase telemetry
   under the `runtime` object for automation and panels.
 - `runtime.maps`: per-map read-only counts for chars, items, sectors, active

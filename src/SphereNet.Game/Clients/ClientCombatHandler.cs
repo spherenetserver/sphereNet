@@ -737,19 +737,24 @@ public sealed class ClientCombatHandler
         if (TryHandleCommandSpeech(text))
             return;
 
-        bool isGhost = _character.IsDead;
+        // CChar::IsSpeakAsGhost (CCharStatus.cpp:82-87): dead, and neither under
+        // Spirit Speak nor in GM mode - a ghost with either is understood by all.
+        bool isGhost = GhostSpeech.SpeaksAsGhost(_character);
         // A ghost's words are garbled to the living who can't hear the dead. Keep the
         // clear text for the speaker, other ghosts and staff; route a garbled copy
         // through ProcessSpeech so NPCs/guild chat see scrambled text as before.
+        // The hue is the one the client asked for: Source-X passes wHue through
+        // untouched for a ghost (CWorldComm.cpp:25-110), it does not grey it.
         string clearText = text;
         string routeText = text;
         if (isGhost)
-        {
-            hue = 0x0481; // ghost speech hue
             routeText = GhostSpeech.Garble(clearText);
-        }
 
-        _character.ClearHiddenState();
+        // No reveal here. Speaking reveals inside CChar::Speak, after @Speech has
+        // run, and only under REVEALF_SPEAK, never for TALKMODE_SPELL and not with
+        // OVERRIDE.NOREVEALSPEAK=1 (Speak_RevealCheck, CCharAct.cpp:3553-3564) -
+        // SpeechEngine.ProcessSpeech makes exactly that test. An unconditional reveal
+        // ahead of it gave every hidden speaker away whatever the shard had set.
 
         // ProcessSpeech returns true when the utterance must NOT be broadcast —
         // either the speaker's @Speech self-trigger cancelled it (Source-X
@@ -806,19 +811,28 @@ public sealed class ClientCombatHandler
 
         if (isGhost && ForEachClientInRange != null)
         {
-            // Per-recipient ghost speech: the speaker (a ghost) and any other ghost /
-            // staff observer reads the clear words; every other living listener gets
-            // an independently-scrambled garble (Source-X MutateSpeech per listener).
+            // Per-recipient ghost speech (CWorldComm.cpp:63-76, 163-178): the speaker
+            // (a ghost) and any listener who understands ghosts reads the clear words;
+            // every other listener gets the "oOoO" form - garbled once per utterance,
+            // the same for all of them - and one of the five ghost moans, played from
+            // the ghost.
             // ForEachClientInRange walks sectors by range, so the GM-broadcast
             // sentinel range must not reach it — a ghost yell stays at earshot.
             Send(MakeSpeechPacket(type, hue, font, clearText));
+            string? garbled = null;
+            short gx = _character.X, gy = _character.Y;
+            sbyte gz = _character.Z;
             ForEachClientInRange.Invoke(_character.Position, Math.Min(range, 48), _character.Uid.Value,
                 (recipient, recipientClient) =>
                 {
-                    string heard = GhostSpeech.HearsGhostClearly(recipient)
-                        ? clearText
-                        : GhostSpeech.Garble(clearText);
-                    recipientClient.Send(MakeSpeechPacket(type, hue, font, heard));
+                    if (GhostSpeech.HearsGhostClearly(recipient))
+                    {
+                        recipientClient.Send(MakeSpeechPacket(type, hue, font, clearText));
+                        return;
+                    }
+                    garbled ??= GhostSpeech.Garble(clearText);
+                    recipientClient.Send(MakeSpeechPacket(type, hue, font, garbled));
+                    recipientClient.Send(new PacketSound(GhostSpeech.RandomGhostSound(), gx, gy, gz));
                 });
             return;
         }
@@ -1918,15 +1932,24 @@ public sealed class ClientCombatHandler
         // can leave ClassicUO's animation atlas pointing at the
         // alive body even after the follow-up 0x1D + 0x78. So we
         // suppress the broadcast and rely on per-observer dispatch.
-        if (_character.IsInWarMode)
-            SetWarMode(false, syncClients: false, preserveTarget: false);
-        // Source-X CChar::Death: the fresh ghost starts insubstantial
-        // (invisible to the living) until it manifests via the war toggle.
-        _character.SetStatFlag(Core.Enums.StatFlag.Insubstantial);
+        //
+        // Source-X CChar::Death leaves STATF_WAR alone: "if ( !IsStatFlag(STATF_WAR) )
+        // StatFlag_Set(STATF_INSUBSTANTIAL); // manifest war mode for ghosts"
+        // (CCharAct.cpp:4490-4491), and addPlayerWarMode() echoes whatever the mode
+        // still is (:4514). Someone who dies fighting is a manifest ghost in war
+        // mode; only a peaceful death starts insubstantial. The fight itself is over
+        // either way - Death drops the fight memories and Skill_Cleanup the swing
+        // (:4368, :4396) - so the target and any pending hit go.
+        bool diedInWarMode = _character.IsInWarMode;
+        _character.FightTarget = Serial.Invalid;
+        _character.NextAttackTime = 0;
+        _character.ClearPendingHit();
+        if (!diedInWarMode)
+            _character.SetStatFlag(Core.Enums.StatFlag.Insubstantial);
         // The 0x72 echo is mandatory regardless — ClassicUO's input
         // handler latches on it to release the war-mode toggle and
         // unblock the death menu.
-        _netState.Send(new PacketWarModeResponse(false));
+        _netState.Send(new PacketWarModeResponse(diedInWarMode));
 
         // pClient->addTargCancel. CRITICAL: PacketTarget(0,0) with
         // flags=0 (Neutral) does NOT cancel in ClassicUO — it OPENS
@@ -2123,7 +2146,8 @@ public sealed class ClientCombatHandler
         }
 
         SendCharacterStatus(_character);
-        SysMessage(ServerMessages.Get("combat_dead"));
+        // No line of text: CChar::Death (CCharAct.cpp:4326-4544) tells the victim
+        // nothing - the death screen and the ghost say it.
         // sphere.ini PACKETDEATHANIMATION (Source-X m_iPacketDeathAnimation):
         // 0x2C makes ClassicUO suspend world rendering for 1.5s (its death
         // screen). When disabled, the ghost redraw above already carries the
@@ -2349,28 +2373,25 @@ public sealed class ClientCombatHandler
                         _netState.IsClientPost6017));
                 }
             }
+
+            // RaiseCorpse ends with the body getting up (CItemCorpse.cpp:270): the
+            // death animation played backwards, forward or back as the corpse fell.
+            GameClient.PlayAnimation(_character,
+                (ushort)(_deathEngine!.LastRejoinFellForward ? AnimationType.DieForward : AnimationType.DieBackward),
+                UpdateRange, BroadcastNearby, ForEachClientInRange, forward: false);
         }
 
-        // Resurrection visual + sound — anchored fixed effect (0x376A
-        // heal particle) and chime (0x0214). BroadcastNearby with
-        // excludeUid=0 reaches the resurrected player too, so no extra
-        // _netState.Send needed.
-        var resEffect = new PacketEffect(
-            0x03,
-            uid, 0,
-            0x376A,
-            cx, cy, (short)cz,
-            0, 0, 0,
-            10, 30, true, false);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, resEffect, 0);
-
-        var resSound = new PacketSound(0x0214, cx, cy, cz);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, resSound, 0);
+        // The resurrection's effect and sound are the Resurrection SPELLDEF's, shown
+        // once (Spell_Resurrection, CCharSpell.cpp:519-525) - Character.Resurrect
+        // above already broadcast them. A second, fixed 0x376A / 0x0214 pair used to
+        // play on top of it here.
 
         SendCharacterStatus(_character);
-        SysMessage(ServerMessages.Get(corpseRestored
-            ? "combat_resurrected_with_corpse"
-            : "combat_resurrected"));
+        // The one line Spell_Resurrection says, and only when the corpse was raised:
+        // DEFMSG_SPELL_RES_REJOIN (CCharSpell.cpp:493-501). Coming back without the
+        // corpse says nothing.
+        if (corpseRestored)
+            SysMessage(ServerMessages.Get(Msg.SpellResRejoin));
     }
 
     public void HandleWarMode(bool warMode)
@@ -2471,13 +2492,15 @@ public sealed class ClientCombatHandler
         // script selection menu when one exists (@SkillMenu with the menu
         // name fires first and can veto). The menu entries do the work
         // (POLY/SUMMON verbs); without a script menu the normal cast flow
-        // continues below.
+        // continues below. Summon Familiar opens sm_summon_familiar the same way
+        // (CClientUse.cpp:1037-1047) - it had no menu, so no familiar could be chosen.
         if (targetUid == 0)
         {
             string? skillMenuName = spell switch
             {
                 SpellType.Polymorph => "sm_polymorph",
                 SpellType.SummonCreature => "sm_summon",
+                SpellType.SummonFamiliar => "sm_summon_familiar",
                 _ => null,
             };
             if (skillMenuName != null)
@@ -2614,15 +2637,16 @@ public sealed class ClientCombatHandler
         LogCastRefused(spell);
     }
 
-    /// <summary>Whether a cast asks for a target: TARG_OBJ or TARG_XYZ
-    /// (Cmd_Skill_Magery, CClientUse.cpp:1059); area and field spells as before. A
-    /// TARG_XYZ-only spell - Teleport in the reference packs - got no cursor at all and
-    /// started on the caster's own spot.</summary>
-    private static bool SpellNeedsTarget(Magic.SpellDef? spellDef) =>
+    /// <summary>Whether a cast asks for a target: "if (pSpellDef->IsSpellType(
+    /// SPELLFLAG_TARG_OBJ|SPELLFLAG_TARG_XYZ))" and nothing else (Cmd_Skill_Magery,
+    /// CClientUse.cpp:1053-1066). Everything without one of those flags is a
+    /// "non-targeted spell" and starts at once on the caster's own spot (:1068-1087) -
+    /// an AREA or FIELD flag does not put up a cursor. Counting those two as well made
+    /// Arch Cure, Arch Protection, Mass Curse, Reveal, Mass Dispel and Earthquake wait
+    /// for a click they never use.</summary>
+    internal static bool SpellNeedsTarget(Magic.SpellDef? spellDef) =>
         spellDef != null &&
-        (spellDef.IsFlag(SpellFlag.TargChar) || spellDef.IsFlag(SpellFlag.TargObj) ||
-         spellDef.IsFlag(SpellFlag.TargXYZ) ||
-         spellDef.IsFlag(SpellFlag.Area) || spellDef.IsFlag(SpellFlag.Field));
+        (spellDef.Flags & (SpellFlag.TargObj | SpellFlag.TargXYZ)) != 0;
 
     /// <summary>A spell's target cursor as CClient::addTarget sends it
     /// (CClientMsg.cpp:1810, from Cmd_Skill_Magery :1066): a ground cursor only for a
@@ -2635,6 +2659,15 @@ public sealed class ClientCombatHandler
     {
         byte cursorType = spellDef != null && spellDef.IsFlag(SpellFlag.TargXYZ) ? (byte)1 : (byte)0;
         byte flags = spellDef != null && spellDef.IsFlag(SpellFlag.Harm) ? (byte)1 : (byte)0;
+        // The cursor comes with its prompt: the spell's PROMPT_MSG, else
+        // DEFMSG_SELECT_MAGIC_TARGET (CClientUse.cpp:1056-1064 -> addTarget ->
+        // SetTargMode, CClientMsg.cpp:1777-1778). The normal path sent no text at
+        // all and the precast path a line of its own.
+        string prompt = spellDef != null && spellDef.TargetPrompt.Length > 0
+            ? spellDef.TargetPrompt
+            : ServerMessages.Get(Msg.SelectMagicTarget);
+        if (prompt.Length > 0)
+            SysMessage(prompt);
         // Arming the cursor abandons whatever spell cursor was up before it, and that
         // releases the OLD cast's wand or scroll. The source bound to THIS cast is set
         // already, so it is put back once the old cursor is gone.
@@ -2656,10 +2689,6 @@ public sealed class ClientCombatHandler
             FinishPrecastCast(spell, _character.Uid.Value, _character.Position);
             return;
         }
-
-        SysMessage(spellDef!.TargetPrompt.Length > 0
-            ? spellDef.TargetPrompt
-            : "Choose your target.");
 
         SetSpellTarget(spellDef, (serial, x, y, z, graphic) =>
         {
@@ -2731,15 +2760,10 @@ public sealed class ClientCombatHandler
 
         _character.UpdateCastTarget(new Serial(targetUid), targetPos);
 
-        var spellDef = _spellEngine.GetSpellDef(spell);
-        var targetChar = _world.FindChar(new Serial(targetUid));
-
-        bool castOk = _spellEngine.CastDone(_character);
-        if (castOk)
-        {
-            string spellName = spellDef?.Name ?? spell.ToString();
-            SysMessage(ServerMessages.GetFormatted("spell_cast_ok", spellName));
-        }
+        // Spell_CastDone says nothing on success (CCharSpell.cpp:2911-3372): there is
+        // no "You cast <spell>." line upstream. Its visuals are each OnSpellEffect's
+        // own tail (:4226-4236), drawn by the engine.
+        _spellEngine.CastDone(_character);
         // @SpellFail on a failed completion is now fired by the engine
         // (SpellEngine.CastDone → OnCastResolved), shared with the NPC path.
     }
@@ -2763,40 +2787,16 @@ public sealed class ClientCombatHandler
                 return;
             }
 
-            // Retrieve spell ID before CastDone clears state
-            int spellId = 0;
-            if (_character.TryGetCastingSpell(out SpellType castingSpell))
-                spellId = (int)castingSpell;
-
-            // Get spell def + target BEFORE CastDone clears state
-            var spellDef = _spellEngine.GetSpellDef((SpellType)spellId);
-            uint targetUidRaw = _character.CastTargetUid.Value;
-            var targetChar = targetUidRaw != 0 ? _world.FindChar(new Serial(targetUidRaw)) : null;
-
-            bool castOk = _spellEngine.CastDone(_character);
-
-            if (castOk)
-            {
-                // --- Spell name message ---
-                string spellName = spellDef?.Name ?? $"Spell #{spellId}";
-                SysMessage(ServerMessages.GetFormatted("spell_cast_ok", spellName));
-
-                // --- Spell visuals on the target (FX_BOLT / FX_TARG) ---
-                var effectTarget = targetChar ?? _character;
-                if (spellDef != null)
-                {
-                    foreach (var effectPacket in GameClient.BuildSpellCastFx(_character, effectTarget, spellDef))
-                    {
-                        _netState.Send(effectPacket);
-                        BroadcastNearby?.Invoke(effectTarget.Position, UpdateRange, effectPacket, _character.Uid.Value);
-                    }
-                }
-
-                // @SpellEffect / @SpellSuccess and the wand-charge / scroll
-                // consumption are now fired by the engine in SpellEngine.CastDone
-                // (OnCastResolved), so NPC and precast casts reach them too — the
-                // client only renders the spell's visuals above.
-            }
+            // Nothing is said and nothing is drawn here. Spell_CastDone has no
+            // "You cast <spell>." line (CCharSpell.cpp:2911-3372), and the bolt /
+            // target effect belongs to each OnSpellEffect the cast makes
+            // (:4226-4236) - the engine sends it per affected target, so an area
+            // spell shows on every victim, a reflected one on the caster, and a
+            // refused one nowhere. One FX here on "the target, else the caster"
+            // was a second copy of the single-target case and wrong for the rest.
+            // @SpellEffect / @SpellSuccess and the wand-charge / scroll consumption
+            // are fired by the engine too (OnCastResolved).
+            _spellEngine.CastDone(_character);
         }
     }
 

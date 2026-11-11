@@ -1,0 +1,12 @@
+# thanks_heal.txt - botu iyileştirene (büyü ya da bandaj) söylenir. {name} iyileştiren.
+# Bkz. docs/PLAYERBOTS.md (Presence and manners). Satır başındaki [etiket] satırı o botlara ayırır.
+
+heal için sağol!
+heal için sağol {name}
+sağol, lazımdı
+eyvallah {name}
+heal için teşekkürler
+çok sağol {name}
+[hurt] oh be, sağol
+[friend] sağol {name}, her zamanki gibi
+[shy] şey, sağol

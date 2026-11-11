@@ -1,0 +1,10 @@
+# crowded.txt - said to a player who has stood on the bot's own tile for a while. {name} is the player.
+# See docs/PLAYERBOTS.md (Presence and manners). [tags] at a line start limit it to bots with them.
+
+uh, ur standing on me
+a little room pls
+personal space, {name}
+do u mind?
+could u not
+[shy] um.. excuse me
+[chatty] haha ur stepping on my toes

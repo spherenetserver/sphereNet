@@ -539,6 +539,8 @@ public sealed partial class PlayerBotEngine
         }
         var threat = ThreatNow(mind, foe, now);
         if (!IsOn(foe, ch) || threat.Ranged || threat.Casts || IsHeld(foe)) return false;
+        // The client combat timer uses TickCount64 too; the bot planning clock
+        // can be simulated independently and must not be compared to this deadline.
         bool ready = Environment.TickCount64 >= ch.NextAttackTime;
         bool breath = ch.MaxStam <= 0 || ch.Stam * 100 / ch.MaxStam >= 15;
         // Nearer than the bow shoots at all, or near with the bow not ready yet: back

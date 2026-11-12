@@ -170,6 +170,9 @@ public sealed class ClientCombatHandler
     /// field initializer.</summary>
     private ClientMovementThrottle Throttle => _throttle ??= new ClientMovementThrottle(WalkBufferMax);
     private ClientMovementThrottle? _throttle;
+    private long _lastWalkRequestMs;
+    internal bool HasRecentWalk => _throttle?.Queue?.Count > 0 ||
+        (_lastWalkRequestMs > 0 && MoveClock() - _lastWalkRequestMs < 1000);
 
     private long _moveRejectResyncUntil;
 
@@ -267,6 +270,7 @@ public sealed class ClientCombatHandler
         }
 
         Throttle.Queue ??= new Movement.MovementQueueProcessor(MovementQueueCapacity);
+        _lastWalkRequestMs = now;
         if (!Throttle.Queue.Enqueue(dir, seq, fastWalkKey, now))
         {
             RejectMove(seq, now, reason: "queue_overflow");
@@ -291,6 +295,7 @@ public sealed class ClientCombatHandler
         bool running = (dir & 0x80) != 0;
 
         long now = MoveClock();
+        _lastWalkRequestMs = now;
         _netState.LastActivityTick = now;
 
         if (_moveRejectResyncUntil > 0 && now < _moveRejectResyncUntil)
@@ -2465,12 +2470,15 @@ public sealed class ClientCombatHandler
     public void ContinueMenuCast(SpellType spell, uint targetUid)
         => HandleCastSpellCore(spell, targetUid, null);
 
+    internal long SpellRequestId { get; private set; }
+
     private void HandleCastSpellCore(SpellType spell, uint targetUid,
         SpellEngine.CastPreparation? preparation, bool selectTested = false)
     {
         if (_character == null || _spellEngine == null) return;
         if (preparation == null && !selectTested)
         {
+            SpellRequestId++;
             // Cmd_Skill_Magery (CClientUse.cpp:1004): the start-phase Spell_CanCast -
             // [SPELL] @Select, @SpellSelect and the resource checks, nothing paid -
             // runs before the target cursor and may rewrite the spell (ARGN1).
@@ -2674,6 +2682,7 @@ public sealed class ClientCombatHandler
         _character!.TryGetTag("WAND_UID", out string? wand);
         _character.TryGetTag("SCROLL_UID", out string? scroll);
         _client.Targeting.SetPendingTarget(callback, cursorType, flags);
+        Targets.Spell = spellDef?.Id ?? SpellType.None;
         if (wand != null) _character.SetTag("WAND_UID", wand);
         else if (scroll != null) _character.SetTag("SCROLL_UID", scroll);
     }

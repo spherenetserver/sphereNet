@@ -772,6 +772,7 @@ public sealed class ClientItemUseHandler
     {
         if (_character == null ||
             (GameClient.ServerOptionFlags & OptionFlags.NoDClickTurn) != 0 ||
+            _client.HasRecentWalk ||
             point.Map != _character.MapIndex ||
             (point.X == _character.X && point.Y == _character.Y))
             return;
@@ -779,26 +780,9 @@ public sealed class ClientItemUseHandler
         Direction direction = _character.Position.GetDirectionTo(point);
         if (direction == _character.Direction) return;
 
-        // Field diagnostic for the "dclick in a dungeon bumps me up" report:
-        // this redraw re-imposes the stored server Z, so a bump here means the
-        // stored Z had ALREADY drifted from the true standing Z at this tile —
-        // log the pair to locate the drift source. The comparison runs through
-        // the shared standing resolver: the old GetEffectiveZ check could not
-        // see multis/dynamics and produced false alarms on ship decks and
-        // house floors. Log-only — the audit do-not list forbids correcting
-        // Z here (it would mask the real drift source).
-        if (_world.MapData != null)
-        {
-            var driftStand = _world.Standing.ResolveStandingSurface(_character,
-                _character.MapIndex, _character.X, _character.Y, _character.Z,
-                SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
-            if (driftStand.Found && driftStand.Z != _character.Z)
-                _logger.LogInformation(
-                    "[z_drift] dclick-facing at {X},{Y} map {Map}: stored Z={Stored}, standing Z={Stand}",
-                    _character.X, _character.Y, _character.MapIndex, _character.Z, driftStand.Z);
-        }
-
         _character.Direction = direction;
+        // Source-X addPlayerView sends 0x20 even for a turn. ClassicUO ignores
+        // own-player direction in 0x77, so keep the redraw only while stationary.
         SendSelfRedraw();
 
         byte flags = BuildMobileFlags(_character);
@@ -1180,6 +1164,7 @@ public sealed class ClientItemUseHandler
                     break;
                 ushort scrollOffset = (ushort)(item.SpellbookOffset + 1);
                 ulong spellBits = ((ulong)item.More2 << 32) | item.More1;
+                using var transaction = _netState.BeginPacketTransaction();
                 // Source-X addSpellbookOpen: announce the item before opening,
                 // then send contents. 0xFFFF selects the client's spellbook UI;
                 // 0x003E is a barrel container gump.
@@ -6296,6 +6281,7 @@ public sealed class ClientItemUseHandler
     /// <summary>Send the vendor's buy list (items available for purchase) to the client.</summary>
     private void SendVendorBuyList(Character vendor)
     {
+        using var transaction = _netState.BeginPacketTransaction(PacketPriority.High);
         if (_character == null) return;
 
         // Auto-restock if needed (TAG.VENDORINV path — used by GM-set
@@ -6395,7 +6381,7 @@ public sealed class ClientItemUseHandler
         //     and silently bails out for any other layer (including
         //     Backpack = 0x15).
         _netState.Send(new PacketWornItem(
-            buyPack.Uid.Value, buyPack.BaseId, (byte)Layer.VendorStock,
+            buyPack.Uid.Value, buyPack.DispIdFull, (byte)Layer.VendorStock,
             vendor.Uid.Value, buyPack.Hue.Value));
 
         // (0b) ALSO equip a container at LAYER_VENDOR_EXTRA (27 ==
@@ -6421,7 +6407,7 @@ public sealed class ClientItemUseHandler
             vendor.Equip(extraContainer, Layer.VendorExtra);
         }
         _netState.Send(new PacketWornItem(
-            extraContainer.Uid.Value, extraContainer.BaseId, (byte)Layer.VendorExtra,
+            extraContainer.Uid.Value, extraContainer.DispIdFull, (byte)Layer.VendorExtra,
             vendor.Uid.Value, extraContainer.Hue.Value));
 
         var contentEntries = new List<PacketContainerContents.Entry>(vendorItems.Count);
@@ -6467,6 +6453,7 @@ public sealed class ClientItemUseHandler
     /// <summary>Send the sell list (items player can sell to this vendor) to the client.</summary>
     private void SendVendorSellList(Character vendor)
     {
+        using var transaction = _netState.BeginPacketTransaction(PacketPriority.Low);
         if (_character == null) return;
 
         // Cmd_VendorSell also runs the timed restock (CClientMsg.cpp:2456); the

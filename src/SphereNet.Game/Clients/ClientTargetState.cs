@@ -92,6 +92,9 @@ public sealed class ClientTargetState
     /// CLIMODE_TARG_SKILL_MAGERY. Dropping the cursor fires @SpellTargetCancel and
     /// releases the wand/scroll the cast was bound to (-1 = not a spell cursor).</summary>
     public int SpellCancelId = -1;
+    // Provenance for server-driven clients, including precast cursors whose
+    // cancellation semantics differ from SpellCancelId.
+    public SphereNet.Core.Enums.SpellType Spell;
 
     /// <summary>Hard-reset every pending target flow, including callbacks and
     /// the skill id associated with the cursor.</summary>
@@ -129,6 +132,7 @@ public sealed class ClientTargetState
         Callback = null;
         SkillCancelId = -1;
         SpellCancelId = -1;
+        Spell = SphereNet.Core.Enums.SpellType.None;
         CursorActive = false;
         TimeoutAtMs = 0;
     }

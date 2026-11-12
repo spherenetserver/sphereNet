@@ -4,6 +4,49 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-13] - Sirali istemci guncellemeleri ve oyuncu botu eylem guvenligi
+------------------------------------------------------------------------
+DUZELTME - Container, vendor, spellbook, ceset gorunumu ve login/resync paketleri
+           ayni islem onceliginde siralanir; dolu kuyruk ve ic ice gonderimler
+           sirayi bozmaz. Kutu ekipman paketleri gorunen esya grafigini kullanir.
+DUZELTME - Esya kullanimi ve otomatik savas yonelmesi, kuyrukta veya yakin zamanda
+           yuruyus varken oyuncunun yonunu korur; zorunlu 0x20 yuruyus sifirlamasi
+           yapmaz. Duran oyuncuda ClassicUO'nun gerektirdigi gorunum korunur.
+DUZELTME - Cesede sonradan yaklasanlar, oyuncu govdelerinin icerigini ve tekil
+           kiyafet katmanlarini alir. Icerik istemci surumune gore boyutlanir.
+DUZELTME - Giriste tek oz gorunum ve durum/cevre ozeti gonderilir; resync tek
+           ekipmanli gorunum kullanir. Anlik gorus taramasi bekleyen bayragi siler.
+DUZELTME - Botun kendine veya arkadasina yardimi aktif bandaji yeniden baslatmaz.
+           Bekleyen zemin buyusu, imleci cevaplamadan buyu ve istek kimligini
+           dogrular. Hirsizlar saklanmadan once aktif becerinin bitmesini bekler.
+DUZELTME - Hirsiz rolu, kayittan donuste de, karakterin skill-class ve override
+           degerlerindeki tekil/toplam beceri sinirlarina uyar.
+EKLENDI - Botlar cantadaki zirhi giydikleriyle motorun savunma hesabina gore
+          karsilastirir; daha iyisini normal istemci equip makrosuyla giyer.
+          Yerine daha iyisi giyilen zayif zirh mevcut satis akisina katilabilir.
+PERFORMANS - Pasif/kapanan baglantilarda PacketWriter.Build ve cikis logu atlanir.
+             LLM satir sonu kontrolu her tokenda biriken metni kopyalamaz.
+DUZELTME - Bot beyni kapanisi yayini ayirir, arka plan yuklemesini bekler ve native
+           kaynaklari birakmadan uretimi durdurur. Bekleyen yanitlar tamamlanir;
+           bot bildirim abonelikleri diger dinleyicileri ezmeden eklenip silinir.
+
+[2026-11-13] - Pet cinayet sorumlulugu ve suc taniklari
+------------------------------------------------------------------------
+DUZELTME - Hasar veren pet veya summon, masumun olumunde oyuncu sahibine de
+           sorumluluk yukler. Sahibi de hasar vermis olsa bile her sahip bir kez
+           degerlendirilir. Sahibin notoriety, @Kill ve @MurderMark kontrolleri
+           uygulanir; pet hasar odulleri ve mevcut paylasim hesabi korunur.
+DUZELTME - Snooping ve stealing kurbani, kurbana ozel algi bonusu ve mesajla
+           girisimi fark edebilir. Fark edilen snoop rahatsizlik hafizasi ekler;
+           NPC kurban itiraz edebilir ve kacabilir. @SeeSnoop ve SNOOPCRIMINAL
+           kurallari uygulanmaya devam eder.
+DUZELTME - Sahip, saldiri istegi olmadan petine verilen zarara da mesafe ve
+           gorus hatti kosullariyla tanik olabilir. Tepkiyi kisisel suc hafizasi
+           ve @SeeCrime belirlemeye devam eder.
+NOT - Source-X'in sahip sorumlulugu ve kurbani dislama davranislarindan bilincli
+      ayrilarak secili 56b korumalari geri getirildi. Her saldirida otomatik global
+      criminal, pet notoriety mirasi veya party icin guard muafiyeti acilmadi.
+
 [2026-11-12] - Kayit kurtarma, eski dunya verileri, evler ve oyun kurallari
 ------------------------------------------------------------------------
 DUZELTME - Healing Stone, script paketindeki tasi buyucunun cantasinda olusturur

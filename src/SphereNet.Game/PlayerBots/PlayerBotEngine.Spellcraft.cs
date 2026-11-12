@@ -91,13 +91,14 @@ public sealed partial class PlayerBotEngine
         var ch = mind.Char;
         var client = mind.Client;
         var tac = mind.Tac;
-        if (client == null || ch.IsCasting) return false;
+        if (client == null || ch.IsCasting || client.HasPendingTarget) return false;
         client.HandleCastSpell(spell, 0);
-        if (client.HasPendingTarget)
+        if (client.HasPendingTarget && client.Targets.Spell == spell)
             client.HandleTargetResponse(1, client.ActiveTargetCursorId, 0, at.X, at.Y, at.Z, 0);
         else if (ch.IsCasting)
         {
             tac.GroundSpell = spell;
+            tac.GroundRequestId = client.Combat.SpellRequestId;
             tac.GroundAt = at;
             tac.GroundUntilMs = now + 8000;
         }
@@ -130,7 +131,7 @@ public sealed partial class PlayerBotEngine
         var tac = mind.Tac;
         if (tac.GroundSpell == SpellType.None) return;
         var client = mind.Client;
-        if (client == null || now > tac.GroundUntilMs)
+        if (client == null || now > tac.GroundUntilMs || client.Combat.SpellRequestId != tac.GroundRequestId)
         {
             tac.GroundSpell = SpellType.None;
             return;
@@ -138,6 +139,11 @@ public sealed partial class PlayerBotEngine
         if (!client.HasPendingTarget)
         {
             if (!mind.Char.IsCasting) tac.GroundSpell = SpellType.None;
+            return;
+        }
+        if (client.Targets.Spell != tac.GroundSpell)
+        {
+            tac.GroundSpell = SpellType.None;
             return;
         }
         var at = tac.GroundAt;

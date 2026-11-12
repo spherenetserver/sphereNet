@@ -4,6 +4,49 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-13] - Ordered client updates and player bot action safety
+------------------------------------------------------------------------
+FIX - Container, vendor, spellbook, corpse-view and login/resync sequences share
+      a packet transaction priority, including queue demotion and nested sends.
+      Container/vendor worn-item updates use the displayed graphic.
+FIX - Item use and automatic combat facing keep the walking player's direction
+      during queued/recent movement, avoiding a forced 0x20 walk-sequence reset.
+      Stationary players retain the own-client redraw required by ClassicUO.
+FIX - Late corpse observers receive contents and deduplicated clothing layers
+      for playable bodies, with version-sized contents and corpse direction.
+FIX - Login sends one self appearance and status/environment snapshot; resync
+      keeps one equipment-bearing appearance and immediate view updates clear
+      the pending refresh flag.
+FIX - Bots do not restart an active bandage to heal themselves or a companion.
+      Deferred ground-spell targets verify the spell and cast request before
+      answering a cursor. Thieves wait for the active skill before hiding.
+FIX - Thief roles fit individual and total skill limits from the character's
+      skill class and overrides, including when adopting a saved thief.
+ADD - Bots compare carried armor with worn pieces using the engine's defense
+      calculation and equip improvements through the normal client macro.
+      Inferior replaced armor can enter the existing vendor-sale workflow.
+PERF - Inactive/closing connections skip PacketWriter.Build and outgoing logs.
+       LLM newline detection no longer copies the accumulated reply per token.
+FIX - Bot brain shutdown detaches publication, waits for background loading and
+      stops decoding before disposing native resources. Pending thoughts finish;
+      bot notification hooks subscribe/unsubscribe without replacing other users.
+
+[2026-11-13] - Pet murder responsibility and crime witnesses
+------------------------------------------------------------------------
+FIX - A damaging pet or summon also makes its player owner responsible for an
+      innocent's death. Each owner is considered once, including when the owner
+      also dealt damage. Owner notoriety, @Kill and @MurderMark are honored;
+      pet damage rewards and their existing split are unchanged.
+FIX - Snooping and stealing victims can notice the attempt, with the victim
+      perception bonus and a personal notice. A noticed snoop records irritation;
+      NPC victims can protest and flee. @SeeSnoop and SNOOPCRIMINAL still apply.
+FIX - Owners can witness harm to their pets even without an attack request,
+      subject to range and line of sight. Personal crime memory and @SeeCrime
+      continue to determine the response.
+NOTE - These deliberately correct Source-X's owner-credit and victim-exclusion
+       behavior, restoring selected 56b protections. They do not enable unconditional
+       criminal flags on attacks, pet notoriety inheritance or party guard immunity.
+
 [2026-11-12] - Save recovery, legacy world metadata, housing and gameplay
 ------------------------------------------------------------------------
 FIX - Healing Stone conjures the script pack's item into the caster's backpack

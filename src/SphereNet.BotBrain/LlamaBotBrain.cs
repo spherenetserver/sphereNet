@@ -31,6 +31,8 @@ public sealed class LlamaBotBrain : IBotBrain, IDisposable
     private readonly BlockingCollection<BotThought> _queue;
     private readonly Thread _worker;
     private readonly CancellationTokenSource _stop = new();
+    private readonly object _lifetimeGate = new();
+    private bool _disposed;
 
     public long Thoughts;
     public long Refused;
@@ -94,12 +96,15 @@ public sealed class LlamaBotBrain : IBotBrain, IDisposable
 
     public bool TryThink(BotThought thought)
     {
-        if (_queue.IsAddingCompleted || !_queue.TryAdd(thought))
+        lock (_lifetimeGate)
         {
-            Interlocked.Increment(ref Refused);
-            return false;
+            if (_disposed || _queue.IsAddingCompleted || !_queue.TryAdd(thought))
+            {
+                Interlocked.Increment(ref Refused);
+                return false;
+            }
+            return true;
         }
-        return true;
     }
 
     private void Run()
@@ -137,6 +142,12 @@ public sealed class LlamaBotBrain : IBotBrain, IDisposable
         }
         catch (OperationCanceledException) { }
         catch (InvalidOperationException) { } // the queue was closed
+        finally
+        {
+            foreach (var thought in work)
+                if (!thought.Done) thought.Finish(null);
+            while (_queue.TryTake(out var thought)) thought.Finish(null);
+        }
     }
 
     private int Parallel => Math.Max(1, _settings.Parallel);
@@ -259,8 +270,9 @@ public sealed class LlamaBotBrain : IBotBrain, IDisposable
                 if (!end)
                 {
                     slot.Decoder!.Add(token);
-                    slot.Text.Append(slot.Decoder.Read());
-                    end = slot.Text.ToString().Contains('\n') || n == _settings.Tokens - 1;
+                    var piece = slot.Decoder.Read();
+                    slot.Text.Append(piece);
+                    end = piece.Contains('\n') || n == _settings.Tokens - 1;
                 }
                 if (end) Finish(slot, slot.Thought!, slot.Thought!.Abandoned ? null : slot.Text.ToString());
                 else next.Add((slot, token));
@@ -310,12 +322,19 @@ public sealed class LlamaBotBrain : IBotBrain, IDisposable
 
     public void Dispose()
     {
-        _queue.CompleteAdding();
-        _stop.Cancel();
-        _worker.Join(2000);
+        lock (_lifetimeGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _queue.CompleteAdding();
+            _stop.Cancel();
+        }
+        // Native decode must have stopped before freeing its context/weights.
+        _worker.Join();
         foreach (var slot in _slots) slot.Sampler?.Dispose();
         _context?.Dispose();
         _weights.Dispose();
         _stop.Dispose();
+        _queue.Dispose();
     }
 }

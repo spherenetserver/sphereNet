@@ -106,6 +106,31 @@ public sealed class NetState : IDisposable
     /// being polled by the input pass.</summary>
     internal bool ReceivesAsync => _receiver != null;
     private readonly object _sendLock = new();
+    private int _transactionDepth;
+    private PacketPriority _transactionPriority;
+
+    /// <summary>Keep a synchronous sequence in one queue, including when the queue
+    /// is full. Source-X OpenPacketTransaction chooses/demotes the whole transaction.
+    /// Nested sequences inherit the outer priority; dispose on the calling thread.</summary>
+    public IDisposable BeginPacketTransaction(PacketPriority priority = PacketPriority.Normal)
+    {
+        Monitor.Enter(_sendLock);
+        if (_transactionDepth++ == 0)
+            _transactionPriority = DemoteWhenFullLocked(PacketPriorityClassifier.Effective(priority));
+        return new PacketTransaction(this);
+    }
+
+    private sealed class PacketTransaction(NetState owner) : IDisposable
+    {
+        private NetState? _owner = owner;
+        public void Dispose()
+        {
+            if (_owner is not { } state) return;
+            _owner = null;
+            state._transactionDepth--;
+            Monitor.Exit(state._sendLock);
+        }
+    }
     // Outbound queues indexed by PacketPriority. FlushOutput drains them
     // Highest → Idle each flush. With USEPACKETPRIORITY off nearly everything
     // goes to Normal and leaves in send order (PacketPriorityClassifier).
@@ -695,6 +720,7 @@ public sealed class NetState : IDisposable
     /// <summary>Send a pre-built PacketWriter (priority classified by opcode).</summary>
     public void Send(PacketWriter writer)
     {
+        if (!IsInUse || IsClosing) return;
         Send(writer.Build());
     }
 
@@ -703,6 +729,7 @@ public sealed class NetState : IDisposable
     /// applies only while USEPACKETPRIORITY is on.</summary>
     public void Send(PacketWriter writer, PacketPriority priority)
     {
+        if (!IsInUse || IsClosing) return;
         var built = writer.Build();
         LogSend(built);
         EnqueueAt(built, PacketPriorityClassifier.Effective(priority));
@@ -713,6 +740,7 @@ public sealed class NetState : IDisposable
     /// wrapper; equivalent to <c>Send(writer, PacketPriority.Highest)</c>.</summary>
     public void SendPriority(PacketWriter writer)
     {
+        if (!IsInUse || IsClosing) return;
         var built = writer.Build();
         LogSend(built);
         EnqueueAt(built, PacketPriorityClassifier.Effective(PacketPriority.Highest));
@@ -823,7 +851,7 @@ public sealed class NetState : IDisposable
         {
             // A burst stays queued and drains as the socket accepts it (see
             // DroppableSoftCap); a dead peer is caught at flush.
-            _queues[(int)DemoteWhenFullLocked(priority)].Enqueue(packet);
+            _queues[(int)(_transactionDepth > 0 ? _transactionPriority : DemoteWhenFullLocked(priority))].Enqueue(packet);
             RecordOutgoing(packet);
         }
     }
@@ -859,7 +887,8 @@ public sealed class NetState : IDisposable
                 return;
             }
 
-            var priority = DemoteWhenFullLocked(PacketPriorityClassifier.Resolve(packet.Span));
+            var priority = _transactionDepth > 0 ? _transactionPriority
+                : DemoteWhenFullLocked(PacketPriorityClassifier.Resolve(packet.Span));
             _queues[(int)priority].Enqueue(packet);
             RecordOutgoing(packet);
         }

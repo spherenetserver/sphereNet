@@ -20,6 +20,7 @@ namespace SphereNet.Tests;
 /// about the SHAPE: a filtered-out packet must do no formatting work, and a disabled log
 /// must do none at all.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class PacketDebugCostTests(ITestOutputHelper outp)
 {
     private sealed class CountingSink(Func<LogLevel, bool> enabled) : ILogger
@@ -46,6 +47,8 @@ public sealed class PacketDebugCostTests(ITestOutputHelper outp)
             DebugPacketOpcodeFilter = filter,
             DebugPacketCategoryFilter = categories
         };
+        typeof(NetState).GetField("<IsInUse>k__BackingField",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(state, true);
         return (state, sink);
     }
 
@@ -100,6 +103,7 @@ public sealed class PacketDebugCostTests(ITestOutputHelper outp)
                  })
         {
             var (state, _) = Wired(debug, filter);
+            using var owned = state;
             var sw = Stopwatch.StartNew();
             for (int i = 0; i < N; i++)
                 state.SendPriority(new PacketMoveAck((byte)i, 0));

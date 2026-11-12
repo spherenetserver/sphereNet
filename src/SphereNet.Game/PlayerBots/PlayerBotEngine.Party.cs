@@ -92,7 +92,8 @@ public sealed partial class PlayerBotEngine
         var party = Parties?.FindParty(ch.Uid);
         // Its party, and the player it goes about with.
         var mate = mind.Companion is { HasClient: true } p ? p : null;
-        if ((party == null && mate == null) || ch.TryGetCastingSpell(out _)) return false;
+        if ((party == null && mate == null) || ch.TryGetCastingSpell(out _) || ch.HasActiveSkillPending() ||
+            mind.Client.HasPendingTarget) return false;
         Character? ghost = null, poisoned = null, worst = null;
         int worstPct = 70;
         IEnumerable<Serial> members = party?.Members ?? [];
@@ -131,11 +132,8 @@ public sealed partial class PlayerBotEngine
             return true;
         }
         if (ch.GetSkill(SkillType.Healing) >= 500 && worst.Position.GetDistanceTo(ch.Position) <= 2 &&
-            FindInPack(ch, i => i.ItemType == ItemType.Bandage) is { } bandage)
+            TryBandage(mind, worst))
         {
-            client.HandleDoubleClick(bandage.Uid.Value);
-            if (client.HasPendingTarget)
-                client.HandleTargetResponse(0, client.ActiveTargetCursorId, worst.Uid.Value, worst.X, worst.Y, worst.Z, 0);
             mind.NextTendMs = now + 6000;
             WindowPartyTends++;
             return true;

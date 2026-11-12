@@ -144,8 +144,23 @@ public sealed class DeathEngine
         // count, ARGO = the victim, SRC = itself); RETURN 1 skips it, otherwise its
         // Noto_Kill runs right there, before the next entry's @Kill. Both take
         // GetAttackersCount() - the size of the WHOLE list, so a row that never dealt
-        // damage earns nothing yet still dilutes everyone else's share. A pet is
-        // credited as itself, never as its owner.
+        // damage earns nothing yet still dilutes everyone else's share. A pet keeps
+        // its reward; its player owner additionally bears murder responsibility.
+        // This deliberately restores 56b's owner attribution (CCharact.cpp, Death)
+        // without changing Source-X's damage-credit reward split.
+        // Capture ownership before @Kill scripts can release/transfer a pet, and
+        // exclude direct attackers even if their own @Kill later vetoes credit.
+        var directAttackers = new HashSet<Serial>();
+        var petOwners = new Dictionary<Serial, Character>();
+        foreach (var rec in victim.Attackers)
+        {
+            if (rec.TotalDamage <= 0 || _world.FindChar(rec.Uid) is not { IsDeleted: false } attacker)
+                continue;
+            directAttackers.Add(attacker.Uid);
+            var owner = attacker.PetGetOwnerRecursive(_world);
+            if (owner is { IsPlayer: true, IsDeleted: false } && owner != victim)
+                petOwners.TryAdd(owner.Uid, owner);
+        }
         var creditedOffenders = new List<Character>();
         for (int i = 0; i < victim.Attackers.Count; i++)
         {
@@ -167,6 +182,19 @@ public sealed class DeathEngine
 
             NotoKill(offender, victim, Math.Max(1, victim.Attackers.Count));
             creditedOffenders.Add(offender);
+        }
+
+        foreach (var owner in petOwners.Values)
+        {
+            if (owner.IsDeleted || directAttackers.Contains(owner.Uid))
+                continue;
+            if (TriggerDispatcher?.FireCharTrigger(owner, CharTrigger.Kill,
+                    new TriggerArgs { CharSrc = owner, O1 = victim, N1 = victim.Attackers.Count })
+                == TriggerResult.True)
+                continue;
+
+            NotoKill(owner, victim, Math.Max(1, victim.Attackers.Count), awardRewards: false);
+            creditedOffenders.Add(owner);
         }
 
         // Source-X kill record (CCharAct.cpp:4380-4389): "'<victim>' was
@@ -414,7 +442,7 @@ public sealed class DeathEngine
     /// victim is CONJURED (:611-646).</item>
     /// </list>
     /// </summary>
-    private void NotoKill(Character killer, Character victim, int totalKillers)
+    private void NotoKill(Character killer, Character victim, int totalKillers, bool awardRewards = true)
     {
         if (killer == victim)
             return;
@@ -434,7 +462,7 @@ public sealed class DeathEngine
             MarkMurder(killer, victim);
         }
 
-        if (notoThem == 2 || victim.IsStatFlag(StatFlag.Conjured))
+        if (!awardRewards || notoThem == 2 || victim.IsStatFlag(StatFlag.Conjured))
             return;
 
         ApplyKarmaFameChange(killer, victim, totalKillers, notoThem);

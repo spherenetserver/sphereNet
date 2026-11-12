@@ -239,7 +239,7 @@ public sealed class KillCreditSourceXTests
         Assert.Equal(30, killer.Fame); // 6000/200
     }
 
-    // ---- C7: the attacker on the list is credited, not its owner ----
+    // ---- C7: pets keep damage rewards; owners additionally bear murder responsibility ----
 
     [Fact]
     public void PetKill_RunsKillOnThePetAndPaysThePet()
@@ -264,13 +264,13 @@ public sealed class KillCreditSourceXTests
         new DeathEngine(world) { TriggerDispatcher = dispatcher }.ProcessDeath(victim, pet);
 
         Assert.Contains(killTargets, k => k.Ch == pet && k.Src == pet);
-        Assert.DoesNotContain(killTargets, k => k.Ch == owner);
+        Assert.Contains(killTargets, k => k.Ch == owner && k.Src == owner);
         Assert.Equal(30, pet.Fame);
         Assert.Equal(0, owner.Fame);
     }
 
     [Fact]
-    public void PetKillingAnInnocent_IsNoMurderForPetOrOwner()
+    public void PetKillingAnInnocent_IsMurderForOwnerOnly()
     {
         var world = CreateWorld();
         var owner = MakePlayer(world, 99);
@@ -281,9 +281,9 @@ public sealed class KillCreditSourceXTests
 
         new DeathEngine(world).ProcessDeath(victim, pet);
 
-        Assert.Equal(0, owner.Kills);
+        Assert.Equal(1, owner.Kills);
         Assert.Equal(0, pet.Kills);
-        Assert.Equal(0, owner.MurderDecayRemainingSeconds);
+        Assert.InRange(owner.MurderDecayRemainingSeconds, DecaySeconds - 5, DecaySeconds);
     }
 
     [Fact]

@@ -14,9 +14,9 @@ namespace SphereNet.Tests;
 ///
 /// A diagnostic that cannot see the stream it exists to explain is worse than none: it
 /// sends the reader looking for the bug somewhere else. These cover the two priority
-/// paths, which are the ones that were silent; the buffer path bails on a state with no
-/// socket, so it cannot be driven from here without one.
+/// paths on an active test connection; inactive bot connections must not log sends.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class PacketDebugLogCoverageTests
 {
     private sealed class Sink(List<string> lines) : ILogger
@@ -34,6 +34,8 @@ public sealed class PacketDebugLogCoverageTests
         {
             DebugPackets = true
         };
+        typeof(SphereNet.Network.State.NetState).GetField("<IsInUse>k__BackingField",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(state, true);
         return (state, lines);
     }
 

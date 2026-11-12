@@ -47,6 +47,7 @@ public sealed class BotTactics
     /// <summary>A ground-target spell waiting for its cursor (a precast spell asks for
     /// the spot once the words are said).</summary>
     public SpellType GroundSpell;
+    public long GroundRequestId;
     public Point3D GroundAt;
     public long GroundUntilMs;
     /// <summary>Wards cast for this fight, and whether the time for them is over.</summary>

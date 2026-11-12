@@ -27,7 +27,7 @@ namespace SphereNet.Tests;
 /// NPC and world behaviours checked against Source-X:
 /// the player-vendor BOUGHT / SAMPLES / STOCK boxes (CCharNPCPet.cpp:328-354), the
 /// body-guessed default brain (GetNPCBrainAuto, CCharStatus.cpp:563), the snoop
-/// witness loop that never reaches the mark (CheckCrimeSeen, CCharFight.cpp:117),
+/// witnesses (including the victim, deliberately restored from 56b),
 /// NPC loot memory (NPC_LootMemory, CCharNPCAct.cpp:1574), the guard and townsfolk
 /// DEFMSG lines (CCharNPCAct.cpp:753/824) and the whole-word guard call
 /// (FindStrWord, sstring.cpp:751).
@@ -281,10 +281,10 @@ public sealed class NpcWorldParityTests
     // ================================================================ 3. snoop
 
     [Fact]
-    public void TheSnoopedMarkIsNeverAWitness()
+    public void TheSnoopedMarkAndBystandersAreWitnesses()
     {
-        // CheckCrimeSeen skips the mark (CCharFight.cpp:117), so NPC_OnNoticeSnoop -
-        // which acts only when the witness IS the mark - never speaks in Source-X.
+        // Deliberately restore the mark's perception; Source-X's mark exclusion
+        // made NPC_OnNoticeSnoop unreachable for the snooped NPC.
         var world = CreateWorld();
         var thief = world.CreateCharacter();
         thief.IsPlayer = true;
@@ -301,7 +301,7 @@ public sealed class NpcWorldParityTests
         CrimeWitnessService.CheckCrimeSeen(world, thief, mark, null, new Random(1), isSnoop: true);
 
         Assert.Contains(bystander, witnesses);
-        Assert.DoesNotContain(mark, witnesses);
+        Assert.Contains(mark, witnesses);
     }
 
     // ================================================================ 4. loot memory

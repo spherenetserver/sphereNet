@@ -3680,8 +3680,12 @@ public partial class Character : ObjBase
                     // (IsStatFlag(STATF_PET) ? NPC_PetGetOwner() : this).
                     var mark = OwnerSerial.IsValid ? world.FindChar(OwnerSerial) : this;
                     SkillType active = Action; // Skill_GetActive()
+                    // Unlike Source-X's unconditional mark exclusion, let a pet's
+                    // owner witness harm that did not go through Fight_Attack
+                    // (e.g. a harmful spell). Keep normal LOS/range and script gates.
                     CrimeWitnessService.CheckCrimeSeen(world, src, mark,
-                        active is SkillType.None ? null : active, Random.Shared);
+                        active is SkillType.None ? null : active, Random.Shared,
+                        includeMark: mark is { IsDisconnectedPlayer: false } && mark != this);
                 }
             }
         }

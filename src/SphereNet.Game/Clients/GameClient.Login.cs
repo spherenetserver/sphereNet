@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Interfaces;
@@ -948,6 +948,8 @@ public sealed partial class GameClient
             return;
         }
 
+        using var transaction = _netState.BeginPacketTransaction(PacketPriority.High);
+
         if (_account != null)
         {
             _character.SetTag("ACCOUNT", _account.Name);
@@ -1104,34 +1106,8 @@ public sealed partial class GameClient
         _netState.Send(new PacketMapChange(_world.GetClientMapId(_character.MapIndex)));
         _netState.Send(new PacketMapPatches()); // no map diffs — all zeros
 
-        SendCharacterStatus(_character);
         SendSkillList();
 
-        _netState.Send(new PacketGlobalLight(_world.GetLightLevelFor(_character)));
-        _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
-        // addSeason(pSector->GetSeason()) (CClientMsg.cpp:1506); the dead see
-        // Desolation (addSeason, CClientMsg.cpp:505).
-        SendSeason(_character.IsDead
-            ? (byte)SeasonType.Desolation
-            : _world.SeasonAt(_character.Position), playSound: true);
-        SendCurrentWeather();
-
-        // Send player's own character with equipment — client needs this to render worn items
-        SendDrawObject(_character);
-
-        // Send equipped items individually (0x2E) so client tracks them in inventory
-        for (int i = 1; i <= (int)Layer.Horse; i++)
-        {
-            var equip = _character.GetEquippedItem((Layer)i);
-            if (equip != null)
-            {
-                _netState.Send(new PacketWornItem(
-                    equip.Uid.Value, equip.DispIdFull, (byte)i,
-                    _character.Uid.Value, equip.Hue));
-            }
-        }
-
-        _netState.Send(new PacketLoginComplete());
         // addTime(true) (CClientMsg.cpp:1505, PacketGameTime send.cpp:1625): 0x5B with
         // the hour, minute and second of the game clock.
         {
@@ -1251,6 +1227,7 @@ public sealed partial class GameClient
         // Some clients can show partially black map/chunk artifacts if they only
         // receive the minimal login packet set without a full nearby object refresh.
         Resync();
+        _netState.Send(new PacketLoginComplete());
         _mountEngine?.EnsureMountedState(_character);
 
         // Immediate view update so this client sees all nearby characters/items
@@ -1349,6 +1326,7 @@ public sealed partial class GameClient
 
     private void Resync(bool announceToViewers)
     {
+        using var transaction = _netState.BeginPacketTransaction();
         ResyncPending = false;
         if (_character == null || !IsPlaying) return;
         _mountEngine?.EnsureMountedState(_character);
@@ -1401,13 +1379,6 @@ public sealed partial class GameClient
         // 5. Reset walk sequence (0 = resync sentinel, client must send seq 0 next)
         _netState.WalkSequence = 0;
         ResetWalkValidator();
-
-        // 6. Final authoritative DrawObject — ensures mount at Layer.Horse renders.
-        // Some clients skip mount rendering from the first 0x78 if it arrives
-        // interleaved with status/light packets. This final 0x78 is sent after
-        // all other visual updates, guaranteeing the equipment list (including
-        // mount) is processed last.
-        SendDrawObject(_character);
 
         // 7. Force full scan on next tick to re-populate all nearby objects
         ViewNeedsRefresh = true;

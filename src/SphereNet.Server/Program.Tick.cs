@@ -350,6 +350,7 @@ public static partial class Program
                 _log.LogWarning("Auto-save on shutdown is disabled (SaveOnShutdown=0). Use 'save' before quitting to persist world state.");
             }
 
+            StopPlayerBotBrain();
             _stateRecorder?.Dispose();
             _ipcCts?.Cancel();
             try { _ipcTask?.Wait(TimeSpan.FromSeconds(2)); }

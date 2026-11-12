@@ -158,17 +158,26 @@ public sealed partial class PlayerBotEngine
     private bool TryBandageSelf(BotMind mind, long now)
     {
         var ch = mind.Char;
-        var client = mind.Client;
-        if (client == null || now < mind.NextHealMs || ch.IsCasting) return false;
+        if (now < mind.NextHealMs) return false;
         if (ch.GetSkill(SkillType.Healing) < MinHealingSkill) return false;
+        if (!TryBandage(mind, ch)) return false;
+        mind.NextHealMs = now + 9000;
+        WindowBandages++;
+        return true;
+    }
+
+    private bool TryBandage(BotMind mind, Character patient)
+    {
+        var ch = mind.Char;
+        var client = mind.Client;
+        // Healing shares the character's active skill slot with Veterinary and
+        // every other delayed skill. Skill_Start cancels that slot (Source-X).
+        if (client == null || ch.IsCasting || ch.HasActiveSkillPending() || client.HasPendingTarget) return false;
         var bandage = FindInPack(ch, i => i.ItemType == ItemType.Bandage);
         if (bandage == null) return false;
         client.HandleDoubleClick(bandage.Uid.Value);
-        if (client.HasPendingTarget)
-            client.HandleTargetResponse(0, client.ActiveTargetCursorId, ch.Uid.Value, ch.X, ch.Y, ch.Z, 0);
-        // The bandage takes its time; another on top of it would only be wasted.
-        mind.NextHealMs = now + 9000;
-        WindowBandages++;
+        if (!client.HasPendingTarget || client.Targets.ItemUid != bandage.Uid) return false;
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, patient.Uid.Value, patient.X, patient.Y, patient.Z, 0);
         return true;
     }
 

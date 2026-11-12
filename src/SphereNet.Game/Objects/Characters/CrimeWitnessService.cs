@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using SphereNet.Core.Enums;
+using SphereNet.Game.Messages;
 using SphereNet.Game.World;
 
 namespace SphereNet.Game.Objects.Characters;
@@ -53,19 +54,17 @@ public static class CrimeWitnessService
     /// contested for a covert crime (Stealing / Snooping); pass null for an overt
     /// crime (SKILL_NONE) that every witness in line of sight notices. Returns true
     /// if at least one witness noticed.
+    /// <paramref name="includeMark"/> also lets the owner of a harmed pet witness
+    /// that harm, subject to the same range, privilege and sight checks.
     /// </summary>
     public static bool CheckCrimeSeen(GameWorld world, Character criminal, Character? mark,
-        SkillType? skillToSee, Random rng, bool isSnoop = false, Items.Item? item = null, string? action = null)
+        SkillType? skillToSee, Random rng, bool isSnoop = false, Items.Item? item = null, string? action = null,
+        bool includeMark = false)
     {
-        // What a witness is told (CCharFight.cpp:128-136): "You notice <criminal>
-        // <action> <mark>'s <item>", or without a mark "... <action> <item>." The mark
-        // itself is never a witness, so the "your" form never comes up here.
-        string? notice = null;
-        if (item != null && !string.IsNullOrEmpty(action))
-            notice = mark != null
-                ? Messages.ServerMessages.GetFormatted(Messages.Msg.MsgYounotice2, criminal.Name, action,
-                    mark.Name, Messages.ServerMessages.Get(Messages.Msg.MsgYounoticeS), item.Name)
-                : Messages.ServerMessages.GetFormatted(Messages.Msg.MsgYounotice1, criminal.Name, action, item.Name);
+        // Restore the theft victim's perception from 56b. Source-X's unconditional
+        // mark exclusion makes its fYour bonus, message and NPC snoop reaction
+        // unreachable. Other callers retain the mark exclusion.
+        bool includeVictim = includeMark || isSnoop || skillToSee is SkillType.Snooping or SkillType.Stealing;
 
         // Guards fight for justice — they can't themselves commit a crime.
         if (!criminal.IsPlayer && criminal.NpcBrain == NpcBrainType.Guard) return false;
@@ -76,13 +75,14 @@ public static class CrimeWitnessService
         var witnesses = new List<Character>(world.GetCharsInRange(criminal.Position, WitnessRange));
         foreach (var witness in witnesses)
         {
-            if (witness == criminal || witness == mark || witness.IsDeleted)
+            bool isVictim = witness == mark;
+            if (witness == criminal || (isVictim && !includeVictim) || witness.IsDeleted)
                 continue;
             if (witness.PrivLevel >= PrivLevel.GM)
                 continue;
             if (!world.CanSeeLOSFor(witness, criminal, Core.Enums.LosFlags.NbWindows))
                 continue;
-            if (!CalcCrimeSeen(criminal, witness, skillToSee, rng))
+            if (!CalcCrimeSeen(criminal, witness, skillToSee, rng, isVictim))
                 continue;
 
             if (isSnoop)
@@ -94,17 +94,55 @@ public static class CrimeWitnessService
                 // Off chance of being a criminal (CCharFight.cpp:156).
                 if (rng.Next(100) < SnoopCriminalChance)
                     OnNoticeCrime(world, witness, criminal, mark);
+                if (isVictim)
+                {
+                    witness.Memory_AddObjTypes(criminal.Uid, MemoryType.IrritatedBy);
+                    if (!witness.IsPlayer)
+                        NoticeNpcSnoop(witness, criminal, rng);
+                }
             }
             else
             {
                 seen = true;
                 OnNoticeCrime(world, witness, criminal, mark);
             }
-            if (notice != null)
+            if (item != null && !string.IsNullOrEmpty(action))
+            {
+                string notice = mark != null
+                    ? ServerMessages.GetFormatted(Msg.MsgYounotice2, criminal.Name, action,
+                        isVictim ? ServerMessages.Get(Msg.MsgYounoticeYour) : mark.Name,
+                        isVictim ? "" : ServerMessages.Get(Msg.MsgYounoticeS), item.Name)
+                    : ServerMessages.GetFormatted(Msg.MsgYounotice1, criminal.Name, action, item.Name);
                 OnWitnessNotice?.Invoke(witness, criminal, notice);
+            }
         }
 
         return seen;
+    }
+
+    // CCharNPCAct.cpp NPC_OnNoticeSnoop: only the snooped NPC speaks and has a
+    // one-in-four chance to flee from the thief for twenty steps. This reaction
+    // does not depend on the separate SNOOPCRIMINAL roll.
+    private static void NoticeNpcSnoop(Character victim, Character thief, Random rng)
+    {
+        if (AI.NpcAI.NpcCanSpeak(victim))
+        {
+            string message = rng.Next(4) switch
+            {
+                0 => Msg.NpcGenericSnooped1,
+                1 => Msg.NpcGenericSnooped2,
+                2 => Msg.NpcGenericSnooped3,
+                _ => Msg.NpcGenericSnooped4
+            };
+            victim.SayAloud(ServerMessages.Get(message));
+        }
+        if (rng.Next(4) == 0)
+        {
+            victim.Act = thief.Uid;
+            victim.FleeStepsMax = 20;
+            victim.FleeStepsCurrent = 0;
+            victim.Action = (SkillType)NpcAction.Flee;
+        }
     }
 
     /// <summary>Source-X CChar::OnNoticeCrime (CCharFight.cpp:24-92):
@@ -158,10 +196,10 @@ public static class CrimeWitnessService
             OnNpcCallGuards?.Invoke(witness, criminal);
     }
 
-    /// <summary>Source-X Calc_CrimeSeen (CResourceCalc.cpp:449-495). The 30%
-    /// "it's my own stuff" bonus there never applies: CheckCrimeSeen skips the mark
-    /// before rolling, so fYour is always false.</summary>
-    private static bool CalcCrimeSeen(Character thief, Character viewer, SkillType? skill, Random rng)
+    /// <summary>Source-X Calc_CrimeSeen (CResourceCalc.cpp:456): the victim gets
+    /// chance + chance/3 with a 50/1000 floor; a bystander has a 10/1000 floor.</summary>
+    private static bool CalcCrimeSeen(Character thief, Character viewer, SkillType? skill, Random rng,
+        bool isVictim)
     {
         if (!skill.HasValue || skill.Value == SkillType.None)
             return true;
@@ -175,7 +213,8 @@ public static class CrimeWitnessService
         int chance = skill.Value is SkillType.Snooping or SkillType.Stealing
             ? 1000 + (viewer.GetSkill(skill.Value) - thief.GetSkill(skill.Value))
             : 400 + (viewer.Dex + viewer.Int) * 50;
-        if (chance < 10) chance = 10; // always at least 1%
+        if (isVictim) chance += chance / 3;
+        chance = Math.Max(isVictim ? 50 : 10, chance);
         return rng.Next(1000) <= chance; // fails only when GetVal(1000) > chance
     }
 }

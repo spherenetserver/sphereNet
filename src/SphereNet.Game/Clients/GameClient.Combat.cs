@@ -44,6 +44,7 @@ public sealed partial class GameClient
     /// <see cref="ClientCombatHandler"/>.</summary>
     internal ClientCombatHandler Combat => _combat ??= new ClientCombatHandler(this);
     private ClientCombatHandler? _combat;
+    internal bool HasRecentWalk => _combat?.HasRecentWalk == true;
 
     public void HandleMovementBatch(IReadOnlyList<SphereNet.Network.State.MovementStep> steps) =>
         Combat.HandleMovementBatch(steps);

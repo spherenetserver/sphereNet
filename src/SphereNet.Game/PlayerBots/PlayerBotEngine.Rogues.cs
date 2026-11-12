@@ -63,7 +63,11 @@ public sealed partial class PlayerBotEngine
     {
         if (mind.Role != null) return mind.Role;
         var ch = mind.Char;
-        if (ch.TryGetTag(RoleTag, out string? role) && role != null) return mind.Role = role;
+        if (ch.TryGetTag(RoleTag, out string? role) && role != null)
+        {
+            if (role == "thief") FitThiefSkills(ch);
+            return mind.Role = role;
+        }
         role = mind.IsFighter && _rng.Next(100) < PkPercent ? "pk"
             : _rng.Next(100) < ThiefPercent ? "thief"
             : "-";
@@ -73,9 +77,30 @@ public sealed partial class PlayerBotEngine
             ch.SetSkill(SkillType.Stealing, (ushort)_rng.Next(700, 1001));
             ch.SetSkill(SkillType.Snooping, (ushort)_rng.Next(700, 1001));
             ch.SetSkill(SkillType.Hiding, (ushort)_rng.Next(600, 1001));
+            FitThiefSkills(ch);
         }
         ch.SetTag(RoleTag, role);
         return mind.Role = role;
+    }
+
+    // A role is a redistribution, not a skill-cap exemption. Keep its trade skills
+    // first and proportionally fit the old archetype into the remaining allowance.
+    private static void FitThiefSkills(Character ch)
+    {
+        var trade = new[] { SkillType.Stealing, SkillType.Snooping, SkillType.Hiding };
+        var other = Enumerable.Range(0, (int)SkillType.Qty).Select(i => (SkillType)i).Except(trade).ToArray();
+        foreach (var skill in trade.Concat(other))
+            ch.SetSkill(skill, (ushort)Math.Min(ch.GetSkill(skill), Skills.SkillEngine.GetSkillMax(ch, skill)));
+        int budget = Math.Max(0, Skills.SkillEngine.GetSkillSumMax(ch));
+        Fit(trade, budget);
+        Fit(other, Math.Max(0, budget - trade.Sum(s => (int)ch.GetSkill(s))));
+        void Fit(SkillType[] skills, int allowance)
+        {
+            int total = skills.Sum(s => (int)ch.GetSkill(s));
+            if (total <= allowance) return;
+            foreach (var skill in skills)
+                ch.SetSkill(skill, (ushort)((long)ch.GetSkill(skill) * allowance / total));
+        }
     }
 
     private bool IsPk(BotMind mind) => RoleOf(mind) == "pk";
@@ -363,6 +388,13 @@ public sealed partial class PlayerBotEngine
             return true;
         }
         var pack = mark.Backpack;
+        // Scripts-X's Stealing DELAY is 2.5 seconds; the next thought may be much
+        // earlier. Let the real skill finish before snooping, stealing or hiding.
+        if (ch.HasActiveSkillPending() || ch.IsCasting)
+        {
+            mind.NextActMs = now + 200;
+            return true;
+        }
         switch (mind.RogueStage)
         {
             case 0:

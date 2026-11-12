@@ -11,12 +11,16 @@ namespace SphereNet.Tests;
 public sealed class SpellbookOpenPacketTests
 {
     [Theory]
-    [InlineData(ItemType.Spellbook, 0x0EFA, 1)]
-    [InlineData(ItemType.SpellbookNecro, 0x2253, 101)]
-    [InlineData(ItemType.SpellbookPala, 0x2252, 201)]
+    [InlineData(ItemType.Spellbook, 0x0EFA, 1, false)]
+    [InlineData(ItemType.Spellbook, 0x0EFA, 1, true)]
+    [InlineData(ItemType.SpellbookNecro, 0x2253, 101, false)]
+    [InlineData(ItemType.SpellbookNecro, 0x2253, 101, true)]
+    [InlineData(ItemType.SpellbookPala, 0x2252, 201, false)]
+    [InlineData(ItemType.SpellbookPala, 0x2252, 201, true)]
     public void DoubleClickAnnouncesBookThenOpensSpellbookThenSendsContents(
-        ItemType type, ushort graphic, ushort offset)
+        ItemType type, ushort graphic, ushort offset, bool priority)
     {
+        SphereNet.Network.Packets.PacketPriorityClassifier.Configure(priority, 1, null);
         using var logs = TestHarness.CreateLoggerFactory();
         var world = TestHarness.CreateWorld();
         var client = TestHarness.CreateClient(logs, world, new AccountManager(logs), 8980);

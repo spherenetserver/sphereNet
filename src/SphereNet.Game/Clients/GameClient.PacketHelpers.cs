@@ -1111,8 +1111,37 @@ public sealed partial class GameClient
     /// resend of the very same state. The drain runs on the next tick (100 ms).</summary>
     private const long ContainerAddEchoWindowMs = 1000;
 
+    // CClient::addItem_OnGround: old world-item format preserves corpse direction;
+    // a playable body's contents and clothing must arrive for late observers too.
+    private bool SendCorpseView(Item corpse, ushort hue)
+    {
+        if (corpse.ItemType != ItemType.Corpse) return false;
+        using var transaction = _netState.BeginPacketTransaction();
+        _netState.Send(new PacketWorldItem(corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
+            corpse.X, corpse.Y, corpse.Z, hue, corpse.Direction));
+        if (!AI.NpcAI.IsPlayableBody(corpse.Amount)) return true;
+        var contents = new List<PacketContainerContents.Entry>();
+        var equipment = new List<(byte Layer, uint ItemSerial)>();
+        var layers = new HashSet<Layer>();
+        foreach (var child in corpse.Contents)
+        {
+            if (child.IsDeleted || (child.IsAttr(ObjAttributes.Invis) && _character?.CanSee(child) != true)) continue;
+            var layer = child.EquipLayer;
+            if (layer > Layer.None && layer < Layer.Horse &&
+                (layer == Layer.Pack || !layers.Add(layer))) continue;
+            contents.Add(new PacketContainerContents.Entry(child.Uid.Value, child.DispIdFull, 0,
+                child.Amount, child.X, child.Y, corpse.Uid.Value, child.Hue, (byte)contents.Count));
+            if (layer > Layer.None && layer < Layer.Horse && layer != Layer.Face)
+                equipment.Add(((byte)layer, child.Uid.Value));
+        }
+        _netState.Send(new PacketContainerContents(contents, _netState.IsClientPost6017));
+        _netState.Send(new PacketCorpseEquipment(corpse.Uid.Value, equipment));
+        return true;
+    }
+
     internal void SendWorldItem(Item item)
     {
+        if (SendCorpseView(item, AdjustItemHueForViewer(item))) return;
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, AdjustItemHueForViewer(item), item.Direction,
@@ -1123,6 +1152,7 @@ public sealed partial class GameClient
 
     private void SendWorldItemWithHue(Item item, ushort hue)
     {
+        if (SendCorpseView(item, hue)) return;
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, hue, item.Direction,
@@ -1133,6 +1163,7 @@ public sealed partial class GameClient
 
     internal void SendWorldItemAllShow(Item item)
     {
+        if (SendCorpseView(item, AdjustItemHueForViewer(item))) return;
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, AdjustItemHueForViewer(item), item.Direction,
@@ -1366,6 +1397,7 @@ public sealed partial class GameClient
 
     internal void SendOpenContainer(Item container)
     {
+        using var transaction = _netState.BeginPacketTransaction();
         // A bank or vendor box records the point its opener was standing on, and is
         // reachable afterwards only from there (m_itEqBankBox.m_pntOpen,
         // CItemContainer.cpp:1119 - "these are special. they can only be opened near
@@ -1397,7 +1429,7 @@ public sealed partial class GameClient
         {
             byte layer = (byte)container.EquipLayer;
             _netState.Send(new PacketWornItem(
-                container.Uid.Value, container.BaseId, layer,
+                container.Uid.Value, container.DispIdFull, layer,
                 parentChar.Uid.Value, container.Hue.Value));
         }
 

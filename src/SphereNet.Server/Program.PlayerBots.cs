@@ -72,10 +72,10 @@ public static partial class Program
         // Deaths become the news bots tell.
         _deathEngine.OnDeath += engine.OnDeath;
         // What is done to a bot - a heal, a cure, a blessing, a hand in its pack - it reacts to.
-        SphereNet.Game.Magic.SpellEngine.OnHelpfulEffect = engine.OnHelpfulSpell;
-        SphereNet.Game.Skills.Information.ActiveSkillEngine.OnBandageHealed = engine.OnBandaged;
-        SphereNet.Game.Skills.Information.ActiveSkillEngine.OnTheftAttempt = engine.OnTheft;
-        SphereNet.Game.Party.PartyManager.OnPartyMessage = engine.OnPartyChat;
+        SphereNet.Game.Magic.SpellEngine.OnHelpfulEffect += engine.OnHelpfulSpell;
+        SphereNet.Game.Skills.Information.ActiveSkillEngine.OnBandageHealed += engine.OnBandaged;
+        SphereNet.Game.Skills.Information.ActiveSkillEngine.OnTheftAttempt += engine.OnTheft;
+        SphereNet.Game.Party.PartyManager.OnPartyMessage += engine.OnPartyChat;
         engine.BadSpotFile = Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "playerbots_badspots.txt");
         int badSpots = engine.LoadBadSpots();
         engine.CorridorFile = Path.Combine(ResolvePath(basePath, _config.WorldSaveDir), "playerbots_corridors.txt");
@@ -96,6 +96,21 @@ public static partial class Program
 
     private static long _nextPlayerBotReportMs;
     private static SphereNet.BotBrain.LlamaBotBrain? _botBrain;
+    private static SphereNet.BotBrain.BotBrainHost? _botBrainHost;
+
+    private static void StopPlayerBotBrain()
+    {
+        if (_playerBots is { } engine)
+        {
+            _deathEngine.OnDeath -= engine.OnDeath;
+            SphereNet.Game.Magic.SpellEngine.OnHelpfulEffect -= engine.OnHelpfulSpell;
+            SphereNet.Game.Skills.Information.ActiveSkillEngine.OnBandageHealed -= engine.OnBandaged;
+            SphereNet.Game.Skills.Information.ActiveSkillEngine.OnTheftAttempt -= engine.OnTheft;
+            SphereNet.Game.Party.PartyManager.OnPartyMessage -= engine.OnPartyChat;
+        }
+        _botBrainHost?.Dispose();
+        _botBrainHost = null;
+    }
 
     /// <summary>The bots' brain, when playerbots/ai.txt names a model: loaded off the
     /// main thread (a model takes seconds to load); bots answer from their own lines
@@ -107,13 +122,12 @@ public static partial class Program
         engine.BrainWaitMs = settings.WaitMs;
         engine.BrainHistory = settings.History;
         var logger = _loggerFactory.CreateLogger("BotBrain");
-        Task.Run(() =>
+        _botBrainHost = new SphereNet.BotBrain.BotBrainHost(
+            () => SphereNet.BotBrain.LlamaBotBrain.Load(settings, logger), brain =>
         {
-            var brain = SphereNet.BotBrain.LlamaBotBrain.Load(settings, logger);
-            if (brain == null) return;
-            _botBrain = brain;
+            _botBrain = brain as SphereNet.BotBrain.LlamaBotBrain;
             engine.Brain = brain;
-        });
+        }, ex => logger.LogError(ex, "Bot brain startup failed"));
     }
 
     private static void TickPlayerBots()

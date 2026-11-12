@@ -18,6 +18,7 @@ public sealed partial class GameClient
     {
         PrepareViewUpdate();
         ViewUpdater.UpdateClientView();
+        if (IsPlaying) ViewNeedsRefresh = false;
     }
 
     /// <summary>Main-thread work that must run before ANY view delta is built for

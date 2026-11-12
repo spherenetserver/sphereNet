@@ -1,6 +1,7 @@
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Skills.Information;
 
 namespace SphereNet.Game.PlayerBots;
 
@@ -40,6 +41,7 @@ public sealed partial class PlayerBotEngine
         if (ShedResRobe(ch)) return true;
         // The best weapon it carries in hand, its shield on its arm.
         if (CheckArms(mind, now)) return true;
+        if (CheckArmor(mind, now)) return true;
         if (mind.Mode != BotMode.Linger || mind.Scene != null || !IsBare(ch)) return false;
         if (_world.FindRegion(ch.Position)?.IsGuarded != true) return false;
         // No kit out of nothing where a player looks: unseen, or out of its bank box.
@@ -47,6 +49,46 @@ public sealed partial class PlayerBotEngine
         if (!ArmFromKit(ch)) return false;
         Speak(mind, "gear_up", fallback: null);
         return true;
+    }
+
+    private bool CheckArmor(BotMind mind, long now)
+    {
+        var ch = mind.Char;
+        if (mind.Client == null || ch.Backpack == null || ch.IsCasting || ch.HasActiveSkillPending() ||
+            mind.Client.HasPendingTarget || mind.Trade != null ||
+            mind.Mode is not (BotMode.Linger or BotMode.Travel)) return false;
+        Item? best = null;
+        int bestGain = 0;
+        foreach (var item in ch.Backpack.Contents)
+        {
+            if (item.IsDeleted || HeldFor(ch, item) != 0) continue;
+            var layer = ArmorLayer(mind, item);
+            if (layer == Layer.None || !ch.CanEquip(item, layer, out _)) continue;
+            var worn = ch.GetEquippedItem(layer);
+            int gain = item.GetArmorDefense() - (worn?.GetArmorDefense() ?? 0);
+            if (gain <= bestGain) continue;
+            best = item;
+            bestGain = gain;
+        }
+        if (best == null) return false;
+        // The client macro applies pickup/equip triggers, requirements and container
+        // capacity rules; never remove the old piece speculatively here.
+        var old = ch.GetEquippedItem(ArmorLayer(mind, best));
+        mind.Client.HandleEquipMacro([best.Uid.Value]);
+        if (!best.IsEquipped) return false;
+        old?.RemoveTag("EQUIPLAYER");
+        mind.Tac.Power = null;
+        mind.Note(now, $"puts on {best.GetName()} for better protection");
+        OnAppeared?.Invoke(ch);
+        return true;
+    }
+
+    private static Layer ArmorLayer(BotMind mind, Item item)
+    {
+        if (mind.Client == null || !InfoSkillExtensions.IsArmorPiece(item.ItemType)) return Layer.None;
+        var layer = mind.Client.ItemUse.ResolveWearableLayer(item);
+        return layer > Layer.TwoHanded && layer < Layer.Horse &&
+            layer is not (Layer.Hair or Layer.FacialHair or Layer.Pack) ? layer : Layer.None;
     }
 
     /// <summary>The kit of the bot's archetype on whatever it does not wear: its

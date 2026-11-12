@@ -256,6 +256,7 @@ public sealed partial class GameClient
     public void FaceTarget(Character target)
     {
         if (_character == null || target == null) return;
+        if (HasRecentWalk) return;
         if (target.Position.Equals(_character.Position)) return;
 
         var newDir = _character.Position.GetDirectionTo(target.Position);

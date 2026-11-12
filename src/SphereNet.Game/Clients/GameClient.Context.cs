@@ -42,6 +42,7 @@ public sealed partial class GameClient : IClientContext
     GameWorld IClientContext.World => World;
     NetState IClientContext.NetState => NetState;
     bool IClientContext.IsPlaying => IsPlaying;
+    bool IClientContext.HasRecentWalk => HasRecentWalk;
     ILogger IClientContext.Log => Log;
 
     TriggerDispatcher? IClientContext.Triggers => Triggers;

@@ -44,6 +44,7 @@ internal interface IClientContext : ITextConsole
     GameWorld World { get; }
     NetState NetState { get; }
     bool IsPlaying { get; }
+    bool HasRecentWalk { get; }
     ILogger Log { get; }
 
     // --- engines ---

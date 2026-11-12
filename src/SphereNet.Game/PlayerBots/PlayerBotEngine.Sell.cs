@@ -49,6 +49,10 @@ public sealed partial class PlayerBotEngine
     private bool KeepsForItself(BotMind mind, Item item)
     {
         var ch = mind.Char;
+        var armorLayer = ArmorLayer(mind, item);
+        if (armorLayer != Layer.None && ch.GetEquippedItem(armorLayer) is { } worn)
+            return Skills.Information.InfoSkillExtensions.GetArmorDefense(item) >
+                   Skills.Information.InfoSkillExtensions.GetArmorDefense(worn);
         if (item.TryGetTag("EQUIPLAYER", out _) || item.ItemType == ItemType.Scroll) return true;
         bool ownMake = item.Crafter == ch.Uid;
         foreach (var g in _gatherTrades)

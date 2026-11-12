@@ -111,15 +111,19 @@ public sealed class GroundItemFacingByteTests
         Assert.Equal(0, GraphicIncLegacy(client.NetState, katana.Uid.Value));
     }
 
-    [Fact]
-    public void ACorpseStillSendsItsFacing()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ACorpseStillSendsItsFacing(bool stygian)
     {
-        // The one case upstream fills it for: m_itCorpse.m_facing_dir.
-        var (world, client) = Setup(stygian: true);
+        // Source-X sends corpses with 0x1A even to modern clients: its optional
+        // facing byte carries m_itCorpse.m_facing_dir rather than a graphic increment.
+        var (world, client) = Setup(stygian);
         var corpse = Drop(world, 0x2006, facing: 3, type: ItemType.Corpse);
 
         client.SendWorldItem(corpse);
 
-        Assert.Equal(3, GraphicIncSA(client.NetState, corpse.Uid.Value));
+        Assert.Equal(3, GraphicIncLegacy(client.NetState, corpse.Uid.Value));
+        Assert.DoesNotContain(TestHarness.GetQueuedPackets(client.NetState), p => p.Span[0] == 0xF3);
     }
 }

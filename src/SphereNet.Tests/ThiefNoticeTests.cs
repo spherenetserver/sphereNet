@@ -15,7 +15,7 @@ namespace SphereNet.Tests;
 /// What snooping and stealing say, and to whom, against Source-X. CheckCrimeSeen
 /// (CCharFight.cpp:128-172) shows each witness who noticed "You notice X attempting
 /// to peek into Y's backpack" (or "stealing" / "attempting to steal" for a theft) over
-/// the thief; the mark is never a witness. SphereNet sent SNOOPING_ATTEMPTING to the
+/// the thief; the victim now also gets the restored "your" form. SphereNet sent SNOOPING_ATTEMPTING to the
 /// snooper as a bare fragment, never told a witness anything, and greeted every theft
 /// from a person with STEALING_PICKPOCKET - the training-dummy line ("Just dclick this
 /// to practice stealing"). A stolen item also has to leave every screen it was on
@@ -66,7 +66,7 @@ public sealed class ThiefNoticeTests
     }
 
     [Fact]
-    public void AWitnessIsToldWhatItSawAndTheMarkIsNot()
+    public void AWitnessAndTheMarkAreToldWhatTheySaw()
     {
         var world = CreateWorld();
         var thief = Player(world, "Thief", 100);
@@ -79,10 +79,14 @@ public sealed class ThiefNoticeTests
         CrimeWitnessService.CheckCrimeSeen(world, thief, mark, SkillType.Snooping, new Random(1), isSnoop: true,
             item: mark.Backpack, action: ServerMessages.Get(Msg.SnoopingAttempting));
 
-        var line = Assert.Single(told);
+        Assert.Equal(2, told.Count);
+        var line = Assert.Single(told, t => t.Witness == witness);
         Assert.Same(witness, line.Witness);
         Assert.Same(thief, line.Over);
         Assert.Equal("You notice Thief attempting to peek into Mark's backpack", line.Text);
+        var victimLine = Assert.Single(told, t => t.Witness == mark);
+        Assert.Same(thief, victimLine.Over);
+        Assert.Equal("You notice Thief attempting to peek into your backpack", victimLine.Text);
     }
 
     [Fact]

@@ -6,6 +6,10 @@
 
 [2026-11-12] - Kayit kurtarma, eski dunya verileri, evler ve oyun kurallari
 ------------------------------------------------------------------------
+DUZELTME - Healing Stone, script paketindeki tasi buyucunun cantasinda olusturur
+           ve basarili atista eski taslari degistirir. Stok Scripts-X tasinin
+           baslangic enerjisi ve yeniden kullanim suresi calisir.
+           MYSTICISM 10.0 gibi buyu beceri kosullari Sphere'in ondalik birimiyle okunur.
 DUZELTME - Damgali dunya kaydinin spheredata dosyasi bos veya damgasizsa saglam
            yedek yuklenir. Klasik kayitlardan dunya saati, sektor ayarlari ve
            GM cagrilarinin hesabi ile yasi okunur.

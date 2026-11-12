@@ -6,6 +6,10 @@
 
 [2026-11-12] - Save recovery, legacy world metadata, housing and gameplay
 ------------------------------------------------------------------------
+FIX - Healing Stone conjures the script pack's item into the caster's backpack
+      and replaces previous stones after a successful cast. The stock stone's
+      charge initialization and reuse delay work with the existing Scripts-X item.
+      Spell skill requirements such as MYSTICISM 10.0 use Sphere's fixed-point units.
 FIX - A stamped world generation with an empty or unstamped spheredata falls back
       to a complete backup. Classic saves restore the world clock, sector overrides
       and GM page accounts and ages.

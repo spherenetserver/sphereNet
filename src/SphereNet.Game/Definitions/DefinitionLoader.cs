@@ -1193,7 +1193,15 @@ public sealed class DefinitionLoader
 
             // Format: "SKILL value" (e.g. "MAGERY 500")
             string skillName = tokens[0];
-            if (!int.TryParse(tokens[1], out int minVal)) continue;
+            if (!int.TryParse(tokens[1], out int minVal))
+            {
+                // CSpellDef::r_LoadVal uses the resource quantity grammar.
+                // In Scripts-X, MYSTICISM 10.0 means 100 tenths of a skill point.
+                var requirement = ResourceQtyList.ParseEntry(part);
+                if (!requirement.HasExplicitQuantity || requirement.Quantity is < int.MinValue or > int.MaxValue)
+                    continue;
+                minVal = (int)requirement.Quantity;
+            }
 
             // Try resolve as defname first, then as enum
             var rid = _resourcesStatic?.ResolveDefName(skillName) ?? ResourceId.Invalid;

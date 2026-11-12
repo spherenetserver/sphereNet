@@ -61,16 +61,16 @@ public static partial class Program
     /// CItemContainer::ContentAdd for every client with that container open; the
     /// engines here add the item and send nothing, which is invisible until the
     /// container is reopened.</summary>
-    private static void DeliverDeedToOpenPack(Character recipient, Item deed)
+    private static void DeliverItemToOpenPack(Character recipient, Item item)
     {
         if (!TryGetClientFor(recipient, out var client))
             return;
-        var container = deed.ContainedIn.IsValid ? deed.ContainedIn.Value : 0u;
+        var container = item.ContainedIn.IsValid ? item.ContainedIn.Value : 0u;
         if (container == 0u)
             return;
         client.SendContainerItem(new PacketContainerItem(
-            deed.Uid.Value, deed.DispIdFull, 0, deed.Amount,
-            deed.X, deed.Y, container, deed.Hue,
+            item.Uid.Value, item.DispIdFull, 0, item.Amount,
+            item.X, item.Y, container, item.Hue,
             client.NetState.IsClientPost6017));
     }
 
@@ -1239,6 +1239,7 @@ public static partial class Program
                 BroadcastNearby(item.Position, MaxViewRange, new PacketDeleteObject(item.Uid.Value), 0);
                 _world.DeleteObject(item);
             };
+            _spellEngine.OnHealingStoneDelivered = DeliverItemToOpenPack;
             // Telekinesis: Use_Obj(pObj, fTestTouch=false) through the caster's client,
             // after the corpse looting-crime check (CCharSpell.cpp:3126-3135).
             _spellEngine.OnUseObject = (caster, item) =>
@@ -2621,8 +2622,8 @@ public static partial class Program
             // their screen right now. Upstream announces it (CItemContainer::
             // ContentAdd); this engine only wrote it server-side, so the deed
             // showed up only after the bag was closed and reopened.
-            _shipEngine.OnDeedDelivered = DeliverDeedToOpenPack;
-            _housingEngine.OnDeedDelivered = DeliverDeedToOpenPack;
+            _shipEngine.OnDeedDelivered = DeliverItemToOpenPack;
+            _housingEngine.OnDeedDelivered = DeliverItemToOpenPack;
             _shipEngine.OnShipTurned = (item, newDir, oldDir) =>
                 _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.ShipTurn,
                     new TriggerArgs { ItemSrc = item, N1 = newDir, N2 = oldDir });

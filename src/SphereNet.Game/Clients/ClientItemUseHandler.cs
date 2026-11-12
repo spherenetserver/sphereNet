@@ -531,6 +531,11 @@ public sealed class ClientItemUseHandler
                 }
             }
 
+            // The stock healing-stone script sets and clears MOREZ but checks MOREY.
+            // Honor its cooldown for stones initialized by the compatibility path.
+            if (item.MoreP.Z != 0 && item.Tags.Has(SpellEngine.HealingStoneLegacyChargesTag))
+                return;
+
             // Fire @DClick on item — if script returns true, block default action
             if (_triggerDispatcher != null)
             {

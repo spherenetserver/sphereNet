@@ -61,6 +61,8 @@ public sealed partial class SpellEngine
     /// poison resisted, etc.) reach only the caster, matching upstream.</summary>
     public Action<Character, string>? OnSysMessage { get; set; }
 
+    public Action<Character, Item>? OnHealingStoneDelivered { get; set; }
+
     /// <summary>Notify viewers after a cast bounces a held item to its final
     /// location. Runs for each hand even if freeing the other hand later fails.</summary>
     public Action<Character, Item>? OnCastItemUnequipped { get; set; }
@@ -1592,6 +1594,14 @@ public sealed partial class SpellEngine
                 return FailCastAtCompletion(caster, null);
         }
 
+        Item? healingStone = null;
+        if (spell == SpellType.HealingStone && !def.IsFlag(SpellFlag.Scripted))
+        {
+            healingStone = PrepareHealingStone(caster);
+            if (healingStone == null)
+                return false;
+        }
+
         // "Consume the reagents/mana/scroll/charge" (Spell_CastDone, CCharSpell.cpp:3010):
         // the completion re-enters Spell_CanCast with fTest = false, so the player
         // state, a definition disabled mid-cast, [SPELL] @Select / @SpellSelect (with
@@ -1603,6 +1613,8 @@ public sealed partial class SpellEngine
         if (!SpellCanCast(caster, ref consumeSpell, test: false, failMsg: true, sourceKind, castSource))
         {
             DiscardSummon(summoned);
+            if (healingStone is { IsDeleted: false })
+                _world.TryDeleteObject(healingStone, force: true);
             return false;
         }
         PlaceSummonEffect(caster, summoned, def);
@@ -1610,6 +1622,9 @@ public sealed partial class SpellEngine
 
         // Clear cast state
         ClearCastState(caster);
+
+        if (healingStone != null)
+            FinishHealingStone(caster, healingStone);
 
         // Mark targets an item (rune), not a character
         if (spell == SpellType.Mark)
@@ -3916,13 +3931,12 @@ public sealed partial class SpellEngine
         // A spell LAYER equips a timed memory through the generic fallback.
         def.Layer >= SpellLayers.Stats;
 
-    /// <summary>School spells with a native SphereNet handler (dispatched in
-    /// ApplySpecificSpell / the travel route) — always castable.</summary>
+    /// <summary>School spells with a native SphereNet handler.</summary>
     private static bool HasNativeSchoolHandler(SpellType id) => id is
         SpellType.CleanseByFire or SpellType.CloseWounds or SpellType.DispelEvil or
         SpellType.DivineFury or SpellType.HolyLight or SpellType.NobleSacrifice or
         SpellType.RemoveCurse or SpellType.SacredJourney or SpellType.GiftOfRenewal or
-        SpellType.ReaperForm or SpellType.StoneForm;
+        SpellType.ReaperForm or SpellType.StoneForm or SpellType.HealingStone;
 
     /// <summary>Sphere custom spells (1000+) whose char effect dispatches by
     /// id in ApplySpecificSpell — their pack defs carry marker flags only
@@ -4454,6 +4468,69 @@ public sealed partial class SpellEngine
                     CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
         }
+    }
+
+    internal const string HealingStoneLegacyChargesTag = "HEALINGSTONE_LEGACY_CHARGES";
+
+    private Item? PrepareHealingStone(Character caster)
+    {
+        var pack = caster.Backpack;
+        if (pack is not { IsDeleted: false })
+        {
+            OnSysMessage?.Invoke(caster, "You need a backpack to conjure a Healing Stone.");
+            return null;
+        }
+
+        int definition = Definitions.DefinitionLoader.ResolveItemDefIndexByName("i_healing_stone");
+        if (definition == 0 || Definitions.DefinitionLoader.GetItemDef(definition) == null)
+        {
+            OnSysMessage?.Invoke(caster, "The Healing Stone item definition is unavailable.");
+            return null;
+        }
+
+        // Scripts-X supplies the stone's charges and use behavior. Its @Create
+        // reads the caster's skills through SRC.
+        var stone = _world.CreateItem();
+        Definitions.ItemDefHelper.ApplyInstanceMetadata(stone, definition, fireCreate: false);
+        stone.FireCreateTrigger(caster);
+        if (stone.IsDeleted)
+            return null;
+
+        // The stock t_spell @Create closes EVAL before its Focus/Imbuing terms,
+        // so all three charge fields can remain zero. Seed the script's fields
+        // when they were left empty so @DClick and @Timer can still use them.
+        if (stone.ItemType == ItemType.Spell && stone.MoreP.X == 0 && stone.More1 == 0 && stone.More2 == 0)
+        {
+            int energy = caster.GetSkill(SkillType.Mysticism) / 12 +
+                caster.GetSkill(SkillType.Focus) / 50 + caster.GetSkill(SkillType.Imbuing) / 50;
+            stone.MoreP = new Point3D((short)energy, stone.MoreP.Y, stone.MoreP.Z, stone.MoreP.Map);
+            stone.More1 = (uint)energy;
+            stone.More2 = (uint)(energy / 3);
+            stone.SetTag(HealingStoneLegacyChargesTag, "1");
+        }
+
+        if (caster.Backpack == pack && pack.TryAddItem(stone))
+            return stone;
+
+        _world.TryDeleteObject(stone, force: true);
+        OnSysMessage?.Invoke(caster, "There is no room in your backpack for a Healing Stone.");
+        return null;
+    }
+
+    private void FinishHealingStone(Character caster, Item stone)
+    {
+        if (stone.IsDeleted || caster.Backpack is not { } pack || stone.ContainedIn != pack.Uid)
+            return;
+
+        // As in ServUO, a successful cast replaces stones in the caster's pack.
+        // Keep the old ones until the new stone has been placed and paid for.
+        int definition = Definitions.ItemDefHelper.ResolveInstanceDefIndex(stone);
+        foreach (var previous in _world.GetContainerContentsRecursive(pack.Uid)
+                     .Where(item => item != stone && Definitions.ItemDefHelper.ResolveInstanceDefIndex(item) == definition)
+                     .ToArray())
+            _world.DeleteObject(previous);
+        OnHealingStoneDelivered?.Invoke(caster, stone);
+        OnSysMessage?.Invoke(caster, "A Healing Stone appears in your backpack.");
     }
 
     /// <summary>SPELL_Create_Food (CCharSpell.cpp:3099-3115): CreateScript of the

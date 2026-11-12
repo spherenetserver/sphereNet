@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Characters;
@@ -1898,7 +1899,7 @@ public sealed class WorldSaver
             {
                 if (sector.Weather == SphereNet.Game.World.Sectors.Sector.WeatherDry && sector.Season == 0 &&
                     !sector.IsLightOverridden &&
-                    sector.RainChance == 15 && sector.ColdChance == 5)
+                    sector.RainChance == 15 && sector.ColdChance == 5 && sector.Flags == SectorFlag.None)
                     continue;
                 if (!wroteSectorHeader)
                 {
@@ -1910,11 +1911,12 @@ public sealed class WorldSaver
                 // that took the new numbers for the old ones would turn every dry sector
                 // into rain, so the new meaning gets its own key and the old key keeps
                 // its old meaning forever.
+                string flags = sector.Flags == SectorFlag.None ? "" : $",{(uint)sector.Flags}";
                 w.WriteProperty("ENV2",
                     $"{mapId},{sector.SectorX},{sector.SectorY}," +
                     $"{sector.Weather},{sector.Season},{sector.Light}," +
                     $"{(sector.IsLightOverridden ? 1 : 0)}," +
-                    $"{sector.RainChance},{sector.ColdChance}");
+                    $"{sector.RainChance},{sector.ColdChance}{flags}");
             }
             // TextSaveWriter closes the file with its own [EOF] marker.
         }

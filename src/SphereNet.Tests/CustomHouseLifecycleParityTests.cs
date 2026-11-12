@@ -437,6 +437,69 @@ public sealed class CustomHouseLifecycleParityTests
 
     // ---- H04: @HouseDesignBegin read-back ---------------------------------
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    public void HouseDesignBeginRedeedsOnlyTheAddonsInTheHouse(bool redeed, bool allowDeletion)
+    {
+        var stack = ScriptTestBootstrap.CreateRuntimeStack();
+        string path = WriteScript($"""
+            [EVENTS e_hdbegin_addons]
+            ON=@HouseDesignBegin
+            ARGN1={(redeed ? 1 : 0)}
+            ARGN3=0
+            """);
+        try
+        {
+            stack.Resources.LoadResourceFile(path);
+            stack.Dispatcher.BuildUsedTriggerCache();
+            var env = NewEnv();
+            var owner = NewChar(env.World, 50, 50);
+            owner.Events.Add(stack.Resources.ResolveDefName("e_hdbegin_addons"));
+            var pack = env.World.CreateItem();
+            pack.ItemType = ItemType.Container;
+            owner.Equip(pack, Layer.Pack);
+            var (multi, _) = NewHouse(env, owner);
+
+            const ushort addonId = 0x0710;
+            var def = new MultiDef { Id = addonId, Name = "fountain", MultiTypeName = "t_multi_addon" };
+            def.Components.Add(new MultiComponent { TileId = WallTile });
+            def.RecalcBounds();
+            env.Registry.Register(def);
+            var hue = new Color(35);
+            var addon = env.Housing.PlaceAddon(owner, addonId, new Point3D(101, 101, 0, 0),
+                out var failure, magic: true, hue);
+            Assert.Equal(PlacementFailure.None, failure);
+            Assert.NotNull(addon);
+            var component = Assert.Single(env.World.GetItemsInRange(addon!.Position, 1), it => it.Link == addon.Uid);
+            var outside = env.Housing.PlaceAddon(owner, addonId, new Point3D(150, 150, 0, 0),
+                out _, magic: true, hue);
+            Assert.NotNull(outside);
+            Assert.Null(env.Housing.GetHouse(addon.Uid));
+            env.World.ItemDeleteAllowed = item => allowDeletion || item != addon;
+
+            NewClient(env, owner, stack.Dispatcher, 7023).BeginHouseCustomization(multi);
+
+            bool redeeded = redeed && allowDeletion;
+            Assert.Equal(redeeded, addon.IsDeleted);
+            Assert.Equal(redeeded, component.IsDeleted);
+            Assert.False(outside!.IsDeleted);
+            if (!redeeded)
+            {
+                Assert.Empty(pack.Contents);
+                return;
+            }
+
+            var deed = Assert.Single(pack.Contents);
+            Assert.Equal(ItemType.Deed, deed.ItemType);
+            Assert.Equal((uint)addonId, deed.More1);
+            Assert.Equal(hue, deed.Hue);
+            Assert.True(deed.IsAttr(ObjAttributes.Magic));
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public void HouseDesignBeginArgumentsAreReadBackAndActedOn()
     {

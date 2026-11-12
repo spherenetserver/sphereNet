@@ -1737,7 +1737,8 @@ public sealed class ClientItemUseHandler
                     // A customizable foundation is either flagged on the deed
                     // (TAG.CUSTOMHOUSE) or determined from the resolved MULTIDEF type
                     // (t_multi_custom) — the standard first foundation deed has no tag (B13).
-                    bool customFoundation = !isShip &&
+                    bool isAddon = !isShip && _housingEngine.IsHouseAddon(multiId);
+                    bool customFoundation = !isShip && !isAddon &&
                         ((deedItem.TryGetTag("CUSTOMHOUSE", out string? customTag) && customTag != "0")
                          || _housingEngine.IsCustomFoundation(multiId));
                     // Source-X deed placement asks for a target tile rather than
@@ -1788,6 +1789,9 @@ public sealed class ClientItemUseHandler
                             placedMulti = shipEngine!.PlaceShip(_character, multiId, pos,
                                 (Direction)((multiId & 0x3) * 2), out failure,
                                 magic: deedItem.IsAttr(ObjAttributes.Magic))?.MultiItem;
+                        else if (isAddon)
+                            placedMulti = _housingEngine.PlaceAddon(_character, multiId, pos, out failure,
+                                deedItem.IsAttr(ObjAttributes.Magic), deedItem.Hue);
                         else
                             placedMulti = _housingEngine.PlaceHouse(_character, multiId, pos, out failure, customFoundation,
                                 magic: deedItem.IsAttr(ObjAttributes.Magic))?.MultiItem;
@@ -1800,7 +1804,7 @@ public sealed class ClientItemUseHandler
                                 isShip ? "SHIP_MULTI_UUID" : "HOUSE_MULTI_UUID");
                             // MORE1 = who created this house or ship (Source-X
                             // m_itShip.m_UIDCreator, set by Multi_Setup).
-                            if (placedMulti.More1 == 0)
+                            if (!isAddon && placedMulti.More1 == 0)
                                 placedMulti.More1 = _character.Uid.Value;
                             // Sphere 56T custom-version compatibility: f_onmulti_create
                             // may take the placement back (it removes the multi and

@@ -202,6 +202,20 @@ public sealed class SaveGenerationDurabilityTests : IDisposable
     }
 
     [Theory]
+    [InlineData("")]
+    [InlineData("[SPHERE]\nSAVECOUNT=damaged\n[EOF]\n")]
+    public void NativeGenerationWithoutAServerDataStampLoadsTheBackup(string damagedData)
+    {
+        var saver = Saver(SaveFormat.Text, 0, backups: 1);
+        Assert.True(saver.Save(Populated(3, 1, "A"), _dir));
+        Assert.True(saver.Save(Populated(5, 2, "B"), _dir));
+
+        File.WriteAllText(Path.Combine(_dir, "spheredata.scp"), damagedData);
+
+        Assert.Equal(new Loaded(3, 1, "A"), Load());
+    }
+
+    [Theory]
     [InlineData(SaveFormat.Text)]
     [InlineData(SaveFormat.TextGz)]
     [InlineData(SaveFormat.Binary)]

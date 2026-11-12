@@ -1457,7 +1457,7 @@ public partial class Character : ObjBase
             var item = _equipment[i];
             if (item == null || item.IsDeleted || !Item.IsVisibleLayer((Layer)i))
                 continue;
-            int req = item.ReqStr;
+            long req = GetEquipStrengthRequirement(item);
             if (req <= 0)
                 continue;
             if (str < 0)
@@ -1470,7 +1470,18 @@ public partial class Character : ObjBase
             SendOwnerMessage?.Invoke(this,
                 $"{ServerMessages.Get(Msg.EquipNotStrongEnough)} {item.GetName()}.");
             BounceItemToPack(item, world);
+            str = -1;
         }
+    }
+
+    private static long GetEquipStrengthRequirement(Item item)
+    {
+        int required = item.ReqStr;
+        if (required <= 0)
+            return 0;
+        item.TryGetProperty("LOWERREQ", out var raw);
+        ScriptNumber.TryParseInt(raw, out int lowerRequirements);
+        return (long)required * (100L - lowerRequirements) / 100;
     }
 
     public short Dex
@@ -4659,7 +4670,10 @@ public partial class Character : ObjBase
     /// script/engine <see cref="Equip"/> callers would otherwise bypass. Maps to
     /// Source-X CCharStatus.cpp CanEquipLayer / CanEquipStr. GM bypasses.
     /// </summary>
-    public bool CanEquip(Item item, Layer layer, out EquipDenial denial)
+    public bool CanEquip(Item item, Layer layer, out EquipDenial denial) =>
+        CanEquip(item, layer, checkStrength: true, out denial);
+
+    internal bool CanEquip(Item item, Layer layer, bool checkStrength, out EquipDenial denial)
     {
         denial = EquipDenial.None;
         if (PrivLevel >= Core.Enums.PrivLevel.GM) return true;
@@ -4685,7 +4699,7 @@ public partial class Character : ObjBase
             return false;
         }
 
-        int reqStr = item.ReqStr;
+        long reqStr = checkStrength ? GetEquipStrengthRequirement(item) : 0;
         if (reqStr > 0 && CombatEngine.EffectiveStr(this) < reqStr)
         {
             denial = EquipDenial.TooWeak;

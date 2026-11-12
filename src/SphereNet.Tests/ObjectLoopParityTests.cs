@@ -85,6 +85,43 @@ public sealed class ObjectLoopParityTests
         Assert.Contains(other, console.QueryScriptObjects(query, item, "05+5", null));
     }
 
+    [Fact]
+    public void OnlyForPlayersVisitsDisconnectedPlayerBodies()
+    {
+        var world = TestHarness.CreateWorld();
+        var subject = world.CreateItem();
+        world.PlaceItem(subject, new Point3D(100, 100));
+        var offline = world.CreateCharacter();
+        offline.IsPlayer = true;
+        world.PlaceCharacter(offline, new Point3D(101, 100));
+        var lingering = world.CreateCharacter();
+        lingering.IsPlayer = true;
+        lingering.SetTag("CLIENT_LINGER_UNTIL", "123456");
+        world.PlaceCharacter(lingering, new Point3D(101, 101));
+        var online = world.CreateCharacter();
+        online.IsPlayer = true;
+        online.IsOnline = true;
+        world.PlaceCharacter(online, new Point3D(100, 101));
+        var npc = world.CreateCharacter();
+        world.PlaceCharacter(npc, new Point3D(99, 100));
+
+        foreach (var query in new[] { "FORCHARS", "FOROBJS" })
+        {
+            var matches = ScriptObjectQueries.Query(world, subject, query, "1", null);
+            Assert.DoesNotContain(offline, matches);
+            Assert.Contains(lingering, matches);
+            Assert.Contains(online, matches);
+            Assert.Contains(npc, matches);
+        }
+
+        var players = ScriptObjectQueries.Query(world, subject, "FORPLAYERS", "1", null);
+        Assert.Contains(offline, players);
+        Assert.Contains(lingering, players);
+        Assert.Contains(online, players);
+        Assert.DoesNotContain(npc, players);
+        Assert.Same(online, Assert.Single(ScriptObjectQueries.Query(world, subject, "FORCLIENTS", "1", null)));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

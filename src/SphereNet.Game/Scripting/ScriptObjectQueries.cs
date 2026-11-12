@@ -54,9 +54,15 @@ public static class ScriptObjectQueries
         if (rawChars != null)
             foreach (var ch in rawChars)
             {
-                if (query is "FORCHARS" or "FOROBJS" ||
-                    query == "FORPLAYERS" && ch.IsPlayer ||
-                    query == "FORCLIENTS" && ch.IsPlayer && ch.HasClient)
+                // Only FORPLAYERS sets CWorldSearch::SetAllShow. Bodies still
+                // lingering after logout are active until SetDisconnected.
+                bool include = query switch
+                {
+                    "FORPLAYERS" => ch.IsPlayer,
+                    "FORCLIENTS" => ch.IsPlayer && ch.HasClient,
+                    _ => !ch.IsLoggedOut && !ch.IsStatFlag(StatFlag.Ridden),
+                };
+                if (include)
                     result.Add(ch);
             }
         return result;

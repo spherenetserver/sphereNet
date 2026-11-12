@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-12] - Save recovery, legacy world metadata, housing and gameplay
+------------------------------------------------------------------------
+FIX - A stamped world generation with an empty or unstamped spheredata falls back
+      to a complete backup. Classic saves restore the world clock, sector overrides
+      and GM page accounts and ages.
+FIX - Sphere Animate Dead transfers equipment and loot before removing the corpse.
+FIX - Moving crate replacement preserves contents even when the new crate is full.
+      House customization can redeed placed addons and remove their components.
+FIX - Housing markers resolve to the script pack's resource types, so secure and
+      lockdown events run and survive a reload.
+FIX - Equipment checks apply LOWERREQ when equipping and when strength drops.
+      FORCHARS and FOROBJS skip disconnected characters.
+
 [2026-11-11] - Player bot talk: gold, places in a named town, unread questions; sector item warning
 ------------------------------------------------------------------------
 ADD - "How much gold do you have" ("kac paran var") is understood: a stranger gets a shrug,

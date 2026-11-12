@@ -1659,7 +1659,12 @@ public sealed partial class SpellEngine
                 var undead = SummonCreature(caster, corpse.Position, def, skillLevel, bodyId: body);
                 PlaceSummonEffect(caster, undead, def);
                 if (undead != null)
-                    OnItemRemoved?.Invoke(corpse); // the corpse is consumed
+                {
+                    if (spell == SpellType.AnimateDead)
+                        RaiseAnimatedCorpse(undead, corpse);
+                    else
+                        OnItemRemoved?.Invoke(corpse);
+                }
             }
             else
             {
@@ -3482,6 +3487,69 @@ public sealed partial class SpellEngine
         !corpse.ContainedIn.IsValid &&
         corpse.Position.Map == caster.MapIndex &&
         caster.Position.GetDistanceTo(corpse.Position) <= 12;
+
+    /// <summary>Source-X RaiseCorpse equips former gear first, puts the rest in
+    /// the raised creature's pack, then deletes the corpse.</summary>
+    private void RaiseAnimatedCorpse(Character undead, Item corpse)
+    {
+        if (undead.IsDeleted || undead.IsDead || corpse.IsDeleted)
+            return;
+
+        if (corpse.ContentCount > 0)
+        {
+            var items = corpse.Contents.ToArray();
+            var pack = undead.GetPackSafe();
+            for (int i = items.Length - 1; i >= 0; i--)
+            {
+                var item = items[i];
+                if (!IsAnimatedCorpseLoot(corpse, item) ||
+                    !item.TryGetTag("EQUIPLAYER", out var savedLayer) ||
+                    !ScriptNumber.TryParseByte(savedLayer, out byte layerNumber) ||
+                    !Item.IsVisibleLayer((Layer)layerNumber))
+                    continue;
+
+                var layer = item.ResolveEquipLayer();
+                if (layer == Layer.None)
+                    layer = (Layer)layerNumber;
+                if (layer == Layer.OneHanded && item.IsTwoHanded)
+                    layer = Layer.TwoHanded;
+                if (!undead.CanEquip(item, layer, checkStrength: false, out _))
+                    continue;
+
+                var args = new TriggerArgs { CharSrc = undead, ItemSrc = item };
+                if (TriggerDispatcher?.FireItemTrigger(item, ItemTrigger.EquipTest, args) == TriggerResult.True ||
+                    undead.IsDeleted || undead.IsDead || !IsAnimatedCorpseLoot(corpse, item))
+                    continue;
+                if (undead.Equip(item, layer))
+                {
+                    item.RemoveTag("EQUIPLAYER");
+                    TriggerDispatcher?.FireItemTrigger(item, ItemTrigger.Equip, args);
+                }
+            }
+
+            for (int i = items.Length - 1; i >= 0; i--)
+            {
+                var item = items[i];
+                if (!IsAnimatedCorpseLoot(corpse, item))
+                    continue;
+                if (pack?.TryAddItem(item) != true && !_world.PlaceItemWithDecay(item, corpse.Position))
+                    return;
+                item.RemoveTag("EQUIPLAYER");
+            }
+        }
+
+        if (corpse.IsDeleted)
+            return;
+        if (OnItemRemoved is { } removeItem)
+            removeItem(corpse);
+        else
+            _world.DeleteObject(corpse);
+    }
+
+    private static bool IsAnimatedCorpseLoot(Item corpse, Item item) =>
+        !item.IsDeleted && item.ContainedIn == corpse.Uid &&
+        item.ItemType is not (ItemType.Hair or ItemType.Beard) &&
+        !item.TryGetTag("CORPSE_HAIR", out _);
 
     private bool CanSpellReachItem(Character caster, Item item)
     {

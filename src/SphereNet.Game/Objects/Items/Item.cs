@@ -1326,6 +1326,9 @@ public class Item : ObjBase
     /// script delivery) therefore loads intact. Only a containment cycle refuses.</summary>
     public bool AddItemOnLoad(Item item) => TryAddItemCore(item, enforceCapacity: false);
 
+    // Source-X ContentsTransfer uses ContentAdd, including for a full moving crate.
+    internal bool AddTransferredItem(Item item) => TryAddItemCore(item, enforceCapacity: false);
+
     /// <summary>The engine-side ceiling for one container: the client limit, raised
     /// by the container's own TAG.OVERRIDE.MAXITEMS when that asks for more (the tag
     /// is what CanContainerHold reads, CItemContainer.cpp:899-900), so a drop the

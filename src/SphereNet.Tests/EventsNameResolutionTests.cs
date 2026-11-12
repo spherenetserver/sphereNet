@@ -2,6 +2,7 @@
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
+using SphereNet.Game.Housing;
 using SphereNet.Game.Magic;
 using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Characters;
@@ -79,6 +80,10 @@ public sealed class EventsNameResolutionTests : IDisposable
             "TEVENTS=ei_probe_equipitem" + Nl);
 
         var item = new Item { BaseId = 0x13BB };
+        Assert.True(item.TryGetProperty("ISTEVENT.ei_probe_equipitem", out string hasTemplateEvent));
+        Assert.Equal("1", hasTemplateEvent);
+        Assert.True(item.TryGetProperty("ISEVENT.ei_probe_equipitem", out string hasInstanceEvent));
+        Assert.Equal("0", hasInstanceEvent);
         var result = dispatcher.FireItemTrigger(item, ItemTrigger.DClick,
             new SphereNet.Game.Scripting.TriggerArgs());
 
@@ -121,6 +126,10 @@ public sealed class EventsNameResolutionTests : IDisposable
         var item = world.CreateItem();
         item.BaseId = 0x13BB;
         Assert.True(item.TrySetProperty("EVENTS", "ei_probe_equipitem"));
+        Assert.True(item.TryGetProperty("ISEVENT.ei_probe_equipitem", out string hasInstanceEvent));
+        Assert.Equal("1", hasInstanceEvent);
+        Assert.True(item.TryGetProperty("ISTEVENT.ei_probe_equipitem", out string hasTemplateEvent));
+        Assert.Equal("0", hasTemplateEvent);
 
         var result = dispatcher.FireItemTrigger(item, ItemTrigger.DClick,
             new SphereNet.Game.Scripting.TriggerArgs());
@@ -128,6 +137,65 @@ public sealed class EventsNameResolutionTests : IDisposable
         Assert.Equal(TriggerResult.True, result);
         string v = item.TagValue("PROBE");
         Assert.Equal("1", v);
+    }
+
+    [Theory]
+    [InlineData(House.LockdownEvent, false)]
+    [InlineData(House.SecureEvent, true)]
+    public void HousingAttachesAndRestoresTypedStorageEvents(string marker, bool secure)
+    {
+        var (dispatcher, resources) = Load($"[TYPEDEF {marker}]" + Nl +
+            "ON=@ClientTooltip" + Nl + "TAG.PROBE=1" + Nl);
+        var world = TestHarness.CreateWorld();
+        var engine = new HousingEngine(world, new MultiRegistry());
+        var multi = world.CreateItem();
+        multi.ItemType = ItemType.Multi;
+        multi.BaseId = 0x4064;
+        var point = new Point3D(100, 100, 0, 0);
+        Assert.True(world.PlaceItem(multi, point));
+        var house = engine.RegisterExistingMulti(multi)!;
+        Assert.NotNull(house);
+        house.Owner = world.CreateCharacter().Uid;
+
+        var item = world.CreateItem();
+        item.ItemType = secure ? ItemType.Container : ItemType.Normal;
+        Assert.True(world.PlaceItem(item, point));
+        Assert.True(secure ? house.SecureContainer(item.Uid, house.Owner) : house.Lockdown(item.Uid, house.Owner));
+        var typedEvent = resources.ResolveDefName(marker);
+        Assert.Equal(ResType.TypeDef, typedEvent.Type);
+        Assert.Equal(typedEvent, Assert.Single(item.Events));
+        Assert.True(item.TryGetProperty($"ISEVENT.{marker}", out string hasMarker));
+        Assert.Equal("1", hasMarker);
+
+        dispatcher.FireItemTrigger(item, ItemTrigger.ClientTooltip,
+            new SphereNet.Game.Scripting.TriggerArgs());
+        Assert.Equal("1", item.TagValue("PROBE"));
+
+        // Older saves can retain the storage record without the event on the item.
+        engine.SerializeAllToTags();
+        item.Events.Clear();
+        engine.DeserializeFromWorld();
+        Assert.Equal(typedEvent, Assert.Single(item.Events));
+        house = engine.GetHouse(multi.Uid)!;
+        Assert.True(secure ? house.ReleaseSecure(item.Uid, house.Owner) : house.ReleaseLockdown(item.Uid, house.Owner));
+        Assert.Empty(item.Events);
+    }
+
+    [Fact]
+    public void AHouseDoorAttachesItsTypedefEvent()
+    {
+        var (dispatcher, resources) = Load($"[TYPEDEF {CustomHousingEngine.DoorEvent}]" + Nl +
+            "ON=@ClientTooltip" + Nl + "TAG.PROBE=1" + Nl);
+        var door = new Item { ItemType = ItemType.Door };
+        door.Events.Add(ResourceId.FromEventName(CustomHousingEngine.DoorEvent));
+
+        CustomHousingEngine.ApplyComponentCreate(new Item(), door);
+
+        Assert.Contains(resources.ResolveDefName(CustomHousingEngine.DoorEvent), door.Events);
+        Assert.DoesNotContain(ResourceId.FromEventName(CustomHousingEngine.DoorEvent), door.Events);
+        dispatcher.FireItemTrigger(door, ItemTrigger.ClientTooltip,
+            new SphereNet.Game.Scripting.TriggerArgs());
+        Assert.Equal("1", door.TagValue("PROBE"));
     }
 
     /// <summary>A name that really is an [EVENTS] block keeps working - that is the

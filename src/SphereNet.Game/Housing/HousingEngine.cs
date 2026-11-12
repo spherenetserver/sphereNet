@@ -1,5 +1,6 @@
 ﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
+using SphereNet.Game.Movement;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
@@ -313,20 +314,28 @@ public sealed class House
             _movingCrate = Serial.Invalid;
             return;
         }
+        if (!crate.IsContainerType)
+            return;
 
         var current = ResolveMovingCrate();
         if (current != null && current != crate && current.Contents.Count > 0)
         {
+            if (crate.WouldFormCycle(current))
+                return;
+
             foreach (var item in new List<Item>(current.Contents))
             {
-                current.RemoveItem(item);
-                crate.TryAddItem(item);
+                if (!crate.AddTransferredItem(item))
+                    return;
             }
+            if (current.Contents.Count > 0)
+                return;
             current.Delete();
         }
 
         _movingCrate = crate.Uid;
         crate.Link = _multiItem.Uid;
+        AddMarkerEvent(crate, "ei_moving_crate");
     }
     public IReadOnlyCollection<Serial> CoOwners => _coOwners;
     public IReadOnlyCollection<Serial> Friends => _friends;
@@ -438,23 +447,29 @@ public sealed class House
     /// <summary>The marker events Source-X puts ON a locked-down or secured item
     /// ("EVENTS +ei_house_lockdown" / "+ei_house_secure", CItemMulti.cpp:1779/1856).
     ///
-    /// They are not scripts the pack defines — they are how it RECOGNISES such an
-    /// item: the housing pack clears a house by asking each item
-    /// <c>&lt;isevent.ei_house_lockdown&gt;</c> and then calling unlockitem/release on it
-    /// (Scripts-X house_functions.scp:297/881/885/927/930). Without the marker
-    /// nothing in that pack can tell a locked item from a loose one.</summary>
+    /// Scripts-X defines these as TYPEDEF sections with access checks, tooltips,
+    /// and context menu actions, and checks them with ISEVENT when clearing a house.</summary>
     public const string LockdownEvent = "ei_house_lockdown";
     public const string SecureEvent = "ei_house_secure";
 
-    private static void AddMarkerEvent(Item item, string name)
+    internal static void AddMarkerEvent(Item item, string name)
     {
-        var rid = Core.Types.ResourceId.FromString(name, Core.Enums.ResType.Events);
+        var rid = Definitions.DefinitionLoader.ResolveEventName(name);
+        var legacy = ResourceId.FromEventName(name);
+        if (legacy != rid)
+            item.Events.Remove(legacy);
         if (!item.Events.Contains(rid))
             item.Events.Add(rid);
     }
 
-    private static void RemoveMarkerEvent(Item item, string name) =>
-        item.Events.Remove(Core.Types.ResourceId.FromString(name, Core.Enums.ResType.Events));
+    internal static void RemoveMarkerEvent(Item item, string name)
+    {
+        var rid = Definitions.DefinitionLoader.ResolveEventName(name);
+        var legacy = ResourceId.FromEventName(name);
+        item.Events.Remove(rid);
+        if (legacy != rid)
+            item.Events.Remove(legacy);
+    }
 
     /// <summary>Inside-the-house-region test for lockdown/secure targets.
     /// A house with no realized region (bare tests) accepts everything.</summary>
@@ -625,6 +640,7 @@ public sealed class House
     {
         if (_redeeded) return null;   // GetKeyNum("REMOVED")
 
+        bool isAddon = _multiItem.ItemType == ItemType.MultiAddon;
         var deed = world.CreateItem();
         deed.BaseId = 0x14F0; // ITEMID_DEED1
         deed.ItemType = ItemType.Deed;
@@ -653,8 +669,11 @@ public sealed class House
         }
 
         RemoveAllComponents(world);
-        if (transferAll)
+        if (transferAll && !isAddon)
+        {
+            Engine?.RedeedAddons(this);
             TransferAllItemsToMovingCrate(world);
+        }
 
         var owner = _owner.IsValid ? world.FindChar(_owner) : null;
         if ((source == null || !source.IsPlayer) && (owner == null || !owner.IsPlayer))
@@ -665,7 +684,16 @@ public sealed class House
             return null;
         }
 
-        if (moveToBank)
+        // Addons are discovered from the live world. If @Destroy vetoes removal,
+        // keep the addon and discard the staged deed before anything is delivered.
+        if (isAddon && !_multiItem.IsDeleted && !world.TryDeleteObject(_multiItem))
+        {
+            if (!deed.IsDeleted)
+                world.TryDeleteObject(deed, force: true);
+            return null;
+        }
+
+        if (moveToBank && !isAddon)
             TransferMovingCrateToBank(world);
 
         if (result == TriggerResult.True || deed.IsDeleted)
@@ -698,7 +726,8 @@ public sealed class House
         // (CItemMulti.cpp:88-128). The engine's deletion handler does the rest.
         ReleaseAllHoldings();
         _movingCrate = Serial.Invalid;
-        world.RemoveItem(_multiItem);
+        if (!isAddon)
+            world.RemoveItem(_multiItem);
         return deed;
     }
 
@@ -1035,7 +1064,7 @@ public sealed class MultiRegistry
             if (multiItem.IsAttr(ObjAttributes.Magic)) item.SetAttr(ObjAttributes.Magic);
             if (multiItem.IsAttr(ObjAttributes.Invis)) item.SetAttr(ObjAttributes.Invis);
             item.Link = multiItem.Uid;
-            CustomHousingEngine.AddEvent(item, CustomHousingEngine.CreatedComponentEvent);
+            House.AddMarkerEvent(item, CustomHousingEngine.CreatedComponentEvent);
             world.PlaceItem(item, new Point3D(
                 (short)(origin.X + dx), (short)(origin.Y + dy), (sbyte)(origin.Z + dz), origin.Map));
             // OnComponentCreate (:359): a door starts locked to the house key, a
@@ -1134,6 +1163,17 @@ public sealed class HousingEngine
     private void OnWorldObjectDeleting(SphereNet.Game.Objects.ObjBase obj)
     {
         if (obj is not Item it) return;
+
+        if (it.ItemType == ItemType.MultiAddon)
+        {
+            ParseSerialList(it, "ADDCOMP", uid =>
+            {
+                if (uid != it.Uid && _world.FindItem(uid) is { IsDeleted: false } component &&
+                    component.Link == it.Uid)
+                    _world.RemoveItem(component);
+            });
+            return;
+        }
 
         // A stone that dies takes its structure storage with it, and that storage
         // runs SetGuild(0) on every multi it lists (CMultiStorage destructor,
@@ -1254,6 +1294,45 @@ public sealed class HousingEngine
     public bool IsCustomFoundation(ushort multiId) =>
         _multiDefs.Get(multiId)?.MultiTypeName.Equals("t_multi_custom", StringComparison.OrdinalIgnoreCase) == true;
 
+    internal bool IsHouseAddon(ushort multiId) =>
+        _multiDefs.Get(multiId)?.MultiTypeName.Equals("t_multi_addon", StringComparison.OrdinalIgnoreCase) == true;
+
+    internal Item? PlaceAddon(Character placer, ushort multiId, Point3D position, out PlacementFailure failure,
+        bool magic, Color hue)
+    {
+        var def = _multiDefs.Get(multiId);
+        failure = CheckPlacement(placer, multiId, position, def, magic, addon: true);
+        if (failure != PlacementFailure.None || def == null)
+            return null;
+
+        // Multi_Setup makes components, but an addon has no region, keys or housing slot.
+        var addon = _world.CreateItem();
+        addon.BaseId = multiId;
+        addon.Name = def.Name;
+        addon.ItemType = ItemType.MultiAddon;
+        addon.FireCreateTrigger(placer);
+        if (addon.IsDeleted)
+        {
+            failure = PlacementFailure.ScriptVeto;
+            return null;
+        }
+        addon.Hue = hue;
+        addon.SetAttr(ObjAttributes.Move_Never);
+        if (magic)
+            addon.SetAttr(ObjAttributes.Magic);
+        if (!_world.PlaceItem(addon, position))
+        {
+            _world.RemoveItem(addon);
+            failure = PlacementFailure.OutOfMap;
+            return null;
+        }
+
+        var components = PlaceMultiComponents(addon, def, position).Select(item => $"0{item.Uid.Value:x}").ToArray();
+        if (components.Length > 0)
+            addon.SetTag("ADDCOMP", string.Join(',', components));
+        return addon;
+    }
+
     /// <summary>Place a house, reporting the specific failure reason (B4).</summary>
     public House? PlaceHouse(Character owner, ushort multiId, Point3D position,
         out PlacementFailure failure, bool customFoundation = false, bool magic = false)
@@ -1267,33 +1346,9 @@ public sealed class HousingEngine
         { failure = PlacementFailure.AccountLimitReached; return null; }
 
         var def = _multiDefs.Get(multiId);
-        if (def == null) { failure = PlacementFailure.MultiDefinitionMissing; return null; }
-        var (mapWidth, mapHeight) = _world.MapData?.GetMapSize(position.Map) ?? (7168, 4096);
-        if (position.X + def.MinX < 0 || position.Y + def.MinY < 0 ||
-            position.X + def.MaxX >= mapWidth || position.Y + def.MaxY >= mapHeight)
-        { failure = PlacementFailure.OutOfMap; return null; }
-
-        // f_multi_onplacement_check comes before every geometric check (Multi_Create,
-        // CItemMulti.cpp:3258-3270). The point it sees is the one the player clicked,
-        // so the anchor correction (pt.m_y -= rect.bottom - 1) is undone for it.
-        var placement = OnPlacementCheck?.Invoke(owner, multiId,
-            def.MaxY > 0 ? new Point3D(position.X, (short)(position.Y + def.MaxY - 1), position.Z, position.Map)
-                         : position) ?? default;
-        if (placement.Veto)
-        { failure = PlacementFailure.ScriptVeto; return null; }
-
-        // Staff and magic deeds skip the placement geometry, as does a pack function
-        // that answers HALFBAKED (CItemMulti.cpp:3291, :3296).
-        if (!magic && owner.PrivLevel < PrivLevel.GM && !placement.SkipGeometry &&
-            !CanPlaceHouse(position, def,
-                ParseRadius(placement.BlockRadius, DefaultBlockRadius),
-                ParseRadius(placement.MultiRadius, DefaultMultiRadius)))
-        { failure = PlacementFailure.LocationBlocked; return null; }
-
-        // @HouseCheck (Source-X) — a script may veto placement after the engine's
-        // built-in checks pass (e.g. custom land claims / faction rules).
-        if (OnHouseCheck != null && OnHouseCheck(owner, position))
-        { failure = PlacementFailure.ScriptVeto; return null; }
+        failure = CheckPlacement(owner, multiId, position, def, magic, addon: false);
+        if (failure != PlacementFailure.None || def == null)
+            return null;
 
         // Create multi item
         var multiItem = _world.CreateItem();
@@ -1324,47 +1379,8 @@ public sealed class HousingEngine
         }
         else
         {
-            // Materialize ONLY the invisible placeholder components
-            // (flags == 0): doors, the house sign — the working server items.
-            // The client draws every visible (flags != 0) wall/roof part
-            // itself from its multi.mul, because the multi item is sent with
-            // the multi data type (Source-X CItemMulti: components are
-            // dynamic items, the walls are never materialized server-side).
-            foreach (var comp in def.Components)
-            {
-                if (comp.Visible) continue;
-
-                var compItem = _world.CreateItem();
-                compItem.BaseId = comp.TileId;
-                var compPos = new Point3D(
-                    (short)(position.X + comp.DeltaX),
-                    (short)(position.Y + comp.DeltaY),
-                    (sbyte)(position.Z + comp.DeltaZ),
-                    position.Map
-                );
-                // Source-X links every component back to the multi (m_uidLink);
-                // the door lock code IS the house link, so the house key opens it.
-                compItem.Link = multiItem.Uid;
-                compItem.SetAttr(ObjAttributes.Move_Never);
-                compItem.SetTag("HOUSE_UID", multiItem.Uid.Value.ToString());
-                if (compItem.ItemType == ItemType.SignGump)
-                    multiItem.Link = compItem.Uid;
-                CustomHousingEngine.AddEvent(compItem, CustomHousingEngine.CreatedComponentEvent);
-                CustomHousingEngine.ApplyComponentCreate(multiItem, compItem);
-                _world.PlaceItem(compItem, compPos);
+            foreach (var compItem in PlaceMultiComponents(multiItem, def, position))
                 house.AddComponent(compItem.Uid);
-            }
-
-            // The script's COMPONENT items (GenerateBaseComponents), beside the
-            // multi.mul placeholders above: a line whose spot a placeholder already
-            // fills is that placeholder's script twin and is not made twice.
-            foreach (var compItem in MultiRegistry.MaterializeScriptComponents(_world, def, multiItem, position))
-            {
-                compItem.SetTag("HOUSE_UID", multiItem.Uid.Value.ToString());
-                if (compItem.ItemType == ItemType.SignGump)
-                    multiItem.Link = compItem.Uid;
-                house.AddComponent(compItem.Uid);
-            }
         }
 
         _houses[multiItem.Uid] = house;
@@ -1379,6 +1395,59 @@ public sealed class HousingEngine
         CreateHouseKey(owner, multiItem, toBank: false);
         CreateHouseKey(owner, multiItem, toBank: true);
         return house;
+    }
+
+    private PlacementFailure CheckPlacement(Character owner, ushort multiId, Point3D position, MultiDef? def,
+        bool magic, bool addon)
+    {
+        if (def == null)
+            return PlacementFailure.MultiDefinitionMissing;
+        var (mapWidth, mapHeight) = _world.MapData?.GetMapSize(position.Map) ?? (7168, 4096);
+        if (position.X + def.MinX < 0 || position.Y + def.MinY < 0 ||
+            position.X + def.MaxX >= mapWidth || position.Y + def.MaxY >= mapHeight)
+            return PlacementFailure.OutOfMap;
+
+        // The script sees the point the client clicked, before the anchor correction.
+        var placement = OnPlacementCheck?.Invoke(owner, multiId,
+            def.MaxY > 0 ? new Point3D(position.X, (short)(position.Y + def.MaxY - 1), position.Z, position.Map)
+                         : position) ?? default;
+        if (placement.Veto)
+            return PlacementFailure.ScriptVeto;
+        if (!magic && owner.PrivLevel < PrivLevel.GM && !placement.SkipGeometry &&
+            !CanPlaceMulti(position, def, ParseRadius(placement.BlockRadius, DefaultBlockRadius),
+                ParseRadius(placement.MultiRadius, DefaultMultiRadius), addon ? owner : null))
+            return PlacementFailure.LocationBlocked;
+        return OnHouseCheck?.Invoke(owner, position) == true ? PlacementFailure.ScriptVeto : PlacementFailure.None;
+    }
+
+    private IEnumerable<Item> PlaceMultiComponents(Item multi, MultiDef def, Point3D position)
+    {
+        // Visible multi.mul tiles are client-rendered. Only the invisible placeholders
+        // and the script's COMPONENT lines become items.
+        foreach (var comp in def.Components)
+        {
+            if (comp.Visible) continue;
+            var item = _world.CreateItem();
+            item.BaseId = comp.TileId;
+            item.Link = multi.Uid;
+            item.SetAttr(ObjAttributes.Move_Never);
+            item.SetTag("HOUSE_UID", multi.Uid.Value.ToString());
+            if (item.ItemType == ItemType.SignGump && multi.ItemType != ItemType.MultiAddon)
+                multi.Link = item.Uid;
+            House.AddMarkerEvent(item, CustomHousingEngine.CreatedComponentEvent);
+            CustomHousingEngine.ApplyComponentCreate(multi, item);
+            _world.PlaceItem(item, new Point3D((short)(position.X + comp.DeltaX), (short)(position.Y + comp.DeltaY),
+                (sbyte)(position.Z + comp.DeltaZ), position.Map));
+            yield return item;
+        }
+
+        foreach (var item in MultiRegistry.MaterializeScriptComponents(_world, def, multi, position))
+        {
+            item.SetTag("HOUSE_UID", multi.Uid.Value.ToString());
+            if (item.ItemType == ItemType.SignGump && multi.ItemType != ItemType.MultiAddon)
+                multi.Link = item.Uid;
+            yield return item;
+        }
     }
 
     /// <summary>Create one house key linked to the multi (TAG.LINK is the code
@@ -1561,8 +1630,14 @@ public sealed class HousingEngine
     /// region scan (default 5 tiles north and south), west / north / east / south.</summary>
     public bool CanPlaceHouse(Point3D position, MultiDef def,
         (int W, int N, int E, int S) blockRadius, (int W, int N, int E, int S) multiRadius)
+        => CanPlaceMulti(position, def, blockRadius, multiRadius, addonPlacer: null);
+
+    private bool CanPlaceMulti(Point3D position, MultiDef def,
+        (int W, int N, int E, int S) blockRadius, (int W, int N, int E, int S) multiRadius,
+        Character? addonPlacer)
     {
         var md = _world.MapData;
+        var parentHouse = addonPlacer == null ? null : FindHouseAt(position);
 
         // Source-X re-checks REGION_FLAG_NOBUILDING over the footprint widened by
         // check_multiradius (CItemMulti.cpp:3404-3429) — not just the anchor.
@@ -1596,7 +1671,8 @@ public sealed class HousingEngine
                 );
                 bool inFootprint = dx >= def.MinX && dx <= def.MaxX && dy >= def.MinY && dy <= def.MaxY;
 
-                if (inFootprint && FindHouseAt(checkPos) != null)
+                var houseAtCell = inFootprint || addonPlacer != null ? FindHouseAt(checkPos) : null;
+                if (inFootprint && houseAtCell != null && houseAtCell != parentHouse)
                     return false;
                 // A docked ship hull blocks the footprint too.
                 if (inFootprint && IsShipAt != null && IsShipAt(checkPos))
@@ -1604,15 +1680,26 @@ public sealed class HousingEngine
 
                 // Reject blocked terrain (water, mountains, impassable statics)
                 // in the footprint — a house can't sit on un-walkable ground.
-                if (md != null && !md.IsPassable(checkPos.Map, checkPos.X, checkPos.Y, checkPos.Z))
-                    return false;
-
                 // Source-X CItemMulti::Multi_Create — every footprint cell's surface
                 // must be flat relative to the placement Z (abs(cellZ - z) > 4 rejects).
                 // A house cannot straddle a slope/cliff.
                 if (md != null)
                 {
-                    md.GetAverageZ(checkPos.Map, checkPos.X, checkPos.Y, out _, out int cellZ, out _);
+                    int cellZ;
+                    if (addonPlacer != null && houseAtCell != null)
+                    {
+                        var floor = _world.Standing.ResolveStandingSurface(addonPlacer, checkPos.Map,
+                            checkPos.X, checkPos.Y, checkPos.Z, WalkCheck.StandingPolicy.Settle);
+                        if (!floor.Found || !floor.HasHeadroom)
+                            return false;
+                        cellZ = floor.Z;
+                    }
+                    else
+                    {
+                        if (!md.IsPassable(checkPos.Map, checkPos.X, checkPos.Y, checkPos.Z))
+                            return false;
+                        md.GetAverageZ(checkPos.Map, checkPos.X, checkPos.Y, out _, out cellZ, out _);
+                    }
                     if (Math.Abs(cellZ - position.Z) > 4)
                         return false;
                 }
@@ -1687,6 +1774,37 @@ public sealed class HousingEngine
         if (recipient?.Backpack != null && deed.ContainedIn == recipient.Backpack.Uid)
             OnDeedDelivered?.Invoke(recipient, deed);
         return deed;
+    }
+
+    private readonly HashSet<Serial> _redeedingAddons = [];
+
+    internal void RedeedAddons(House house)
+    {
+        var region = FindMultiRegion(house.MultiItem.Uid);
+        if (region == null)
+            return;
+
+        // Addons use the enclosing region (CItemMulti::MoveTo). The ground multi
+        // index already reflects placements, moves and imported saves.
+        foreach (var addon in _world.GroundMultis.Where(item =>
+                     item.ItemType == ItemType.MultiAddon && !item.IsDeleted && region.Contains(item.Position)).ToArray())
+        {
+            if (addon.IsDeleted || !_redeedingAddons.Add(addon.Uid))
+                continue;
+
+            try
+            {
+                var owner = addon.TryGetTag("OWNER", out string? rawOwner) &&
+                    _world.FindChar(new Serial(ParseHexSerial(rawOwner))) is { IsPlayer: true } addonOwner
+                    ? addonOwner : _world.FindChar(house.Owner);
+                if (owner is { IsPlayer: true })
+                    RedeedCore(new House(addon) { Owner = owner.Uid }, source: null, moveToBank: false);
+            }
+            finally
+            {
+                _redeedingAddons.Remove(addon.Uid);
+            }
+        }
     }
     /// <summary>Find the house that contains the given position.</summary>
     public House? FindHouseAt(Point3D pos)
@@ -2161,6 +2279,7 @@ public sealed class HousingEngine
                 locked.ClearAttr(ObjAttributes.Insured);
             locked.SetAttr(ObjAttributes.LockedDown);
             locked.Link = item.Uid;
+            House.AddMarkerEvent(locked, House.LockdownEvent);
         }
         void RestoreSecure(Serial uid, bool classic)
         {
@@ -2174,6 +2293,7 @@ public sealed class HousingEngine
                 secure.ClearAttr(ObjAttributes.Imbued);
             secure.SetAttr(ObjAttributes.Secure);
             secure.Link = item.Uid;
+            House.AddMarkerEvent(secure, House.SecureEvent);
         }
         ParseSerialList(item, "HOUSE.LOCKDOWNS", uid => RestoreLockdown(uid, classic: false));
         ParseSerialList(item, "LOCKITEM", uid => RestoreLockdown(uid, classic: true));

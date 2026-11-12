@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-12] - Kayit kurtarma, eski dunya verileri, evler ve oyun kurallari
+------------------------------------------------------------------------
+DUZELTME - Damgali dunya kaydinin spheredata dosyasi bos veya damgasizsa saglam
+           yedek yuklenir. Klasik kayitlardan dunya saati, sektor ayarlari ve
+           GM cagrilarinin hesabi ile yasi okunur.
+DUZELTME - Sphere Animate Dead, cesedi kaldirmadan once ekipmani ve ganimeti tasir.
+DUZELTME - Tasinma kasasi degistiginde yeni kasa dolu olsa da esyalar korunur.
+           Ev tasariminda eklentiler senede donusturulur ve parcalari kaldirilir.
+DUZELTME - Ev esyasi olaylari script paketindeki kaynak turuyle baglanir. Guvenli
+           ve sabitlenmis esyalarin olaylari kayit yuklenince de calisir.
+DUZELTME - Esya kusanirken ve guc dustugunde LOWERREQ hesaba katilir. FORCHARS ve
+           FOROBJS baglantisi tamamen kesilmis karakterleri atlar.
+
 [2026-11-11] - Oyuncu botu sohbeti: altin, adi verilen kasabadaki yer, okunmayan sorular; sektor esya uyarisi
 ------------------------------------------------------------------------
 EKLEME - "Kac paran var" ("how much gold do you have") anlasiliyor: tanimadigina bot

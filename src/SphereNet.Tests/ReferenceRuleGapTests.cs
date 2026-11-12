@@ -117,6 +117,50 @@ public sealed class ReferenceRuleGapTests
         Assert.Same(plate, ch.GetEquippedItem(Layer.Chest));
     }
 
+    [Fact]
+    public void LowerRequirementsPercentAppliesToEquipAndStrengthLoss()
+    {
+        var world = TestHarness.CreateWorld();
+        var ch = Player(world, 100);
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        Assert.True(ch.Equip(pack, Layer.Pack));
+        var plate = world.CreateItem();
+        plate.ItemType = ItemType.Armor;
+        plate.SetTag("OVERRIDE.REQSTR", "81");
+        plate.SetTag("LOWERREQ", "25");
+
+        ch.Str = 59;
+        Assert.False(ch.CanEquip(plate, Layer.Chest, out var denial));
+        Assert.Equal(Character.EquipDenial.TooWeak, denial);
+        ch.Str = 70;
+        Assert.True(ch.CanEquip(plate, Layer.Chest, out _));
+        Assert.True(ch.Equip(plate, Layer.Chest));
+
+        ch.Str = 60; // 81 * 75 / 100 truncates to 60.
+        Assert.Same(plate, ch.GetEquippedItem(Layer.Chest));
+        ch.Str = 59;
+        Assert.Null(ch.GetEquippedItem(Layer.Chest));
+        Assert.Same(plate, Assert.Single(pack.Contents));
+    }
+
+    [Fact]
+    public void ItemLowerRequirementsOverridesTheDefinition()
+    {
+        var world = TestHarness.CreateWorld();
+        var ch = Player(world, 100);
+        var plate = world.CreateItem();
+        plate.BaseId = 0x1415;
+        var def = new SphereNet.Scripting.Definitions.ItemDef(ResourceId.Invalid) { ReqStr = 100 };
+        def.TagDefs.SetInt("LOWERREQ", 50);
+        SphereNet.Game.Definitions.DefinitionLoader.SetItemDef(plate.BaseId, def);
+
+        Assert.True(ch.CanEquip(plate, Layer.Chest, out _));
+        plate.SetTag("LOWERREQ", "0");
+        Assert.False(ch.CanEquip(plate, Layer.Chest, out var denial));
+        Assert.Equal(Character.EquipDenial.TooWeak, denial);
+    }
+
     // ---- decay ----
 
     [Fact]

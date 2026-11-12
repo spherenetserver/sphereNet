@@ -78,6 +78,26 @@ public sealed class MultiDefTriggerTests : IDisposable
         Assert.Equal("1", val);
     }
 
+    [Fact]
+    public void AnAddonUsesItsMultidefForCreateAndRedeed()
+    {
+        var (dispatcher, addon) = Build(
+            "[MULTIDEF 064]" + Nl +
+            "NAME=probe addon" + Nl +
+            "TYPE=t_multi_addon" + Nl +
+            "ON=@Create" + Nl +
+            "TAG.CREATED=1" + Nl +
+            "ON=@Redeed" + Nl +
+            "TAG.REDEEDED=1" + Nl);
+        addon.ItemType = ItemType.MultiAddon;
+
+        dispatcher.FireItemTrigger(addon, ItemTrigger.Create, new SphereNet.Game.Scripting.TriggerArgs());
+        dispatcher.FireItemTrigger(addon, ItemTrigger.Redeed, new SphereNet.Game.Scripting.TriggerArgs());
+
+        Assert.Equal("1", addon.TagValue("CREATED"));
+        Assert.Equal("1", addon.TagValue("REDEEDED"));
+    }
+
     /// <summary>And a TEVENTS line on the MULTIDEF reaches the block it names.
     /// TEVENTS resolves against [EVENTS] (CBase.cpp:386, RES_EVENTS), which is worth
     /// stating because the reference pack's own four MULTIDEF TEVENTS lines name a

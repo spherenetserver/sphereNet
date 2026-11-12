@@ -389,7 +389,7 @@ public sealed class WorldLoader
             // generation from one that matches the accounts on disk (D01).
             LoadedGeneration = stampToken;
             GenerationSelected?.Invoke(stampToken);
-            return Materialize(world, gen, accounts);
+            return Materialize(world, gen, accounts, stamped);
         }
 
         // Reached only when no generation could be loaded. If nothing existed at any
@@ -461,7 +461,9 @@ public sealed class WorldLoader
                     bool serverSection = section.Equals(SaveIO.ServerDataSection, StringComparison.OrdinalIgnoreCase);
                     while (reader.NextProperty(out string key, out _))
                     {
-                        if (serverSection && key.Equals(SaveIO.SaveGenerationProperty, StringComparison.OrdinalIgnoreCase))
+                        if (serverSection &&
+                            (key.Equals(SaveIO.SaveGenerationProperty, StringComparison.OrdinalIgnoreCase) ||
+                             (anyShardStamped && key.Equals(SaveIO.SaveCountProperty, StringComparison.OrdinalIgnoreCase))))
                             stamped = true;
                     }
                 }
@@ -512,32 +514,14 @@ public sealed class WorldLoader
     }
 
     /// <summary>Verify that every logical file of a generation was written by the
-    /// SAME save. Item/char shards carry a [SAVEID] record and spheredata records
-    /// SAVECOUNT; a torn multi-file commit (a crash between the back-to-back
-    /// renames) leaves files from different saves whose stamps disagree. Enforced
-    /// only when every present base is stamped — a legacy or partially-stamped
-    /// generation can't be verified and is accepted rather than wrongly rejected.</summary>
-    /// <summary>
-    /// Does every file in this generation come from the SAME save?
-    ///
-    /// EVERY file, not one per base. The check used to read ItemPaths[0], CharPaths[0]
-    /// and DataPaths[0], which is all there is in a single-file layout - but a sharded
-    /// save has several of each, and the shards past the first were compared with
-    /// nothing at all. An older copy of a second shard could be dropped in and the
-    /// loader would build a world out of two different points in time: items whose
-    /// container, owner and equip links name objects the rest of the generation never
-    /// had (review finding B2).
-    ///
-    /// An UNSTAMPED file is skipped rather than trusted. Classic Sphere saves carry no
-    /// stamp, so their absence cannot be an error - but the old loop returned "accept"
-    /// at the first one it met, which switched verification off for every other file in
-    /// the generation, including stamped ones that did disagree.
-    /// </summary>
+    /// same save. Every native object shard and its server data must carry matching
+    /// stamps. Classic Sphere saves may have no stamps on the object shards.</summary>
     private bool IsGenerationConsistent(GenerationPaths gen, out string detail, out long? token)
     {
         long? reference = null;
         string? referenceFile = null;
         string? conflictFile = null;
+        string? unstampedDataFile = null;
         long? conflictId = null;
         int stamped = 0, unstamped = 0;
         // Counted separately for the world/char shards: those either all carry a
@@ -567,6 +551,7 @@ public sealed class WorldLoader
                 {
                     unstamped++;
                     if (isShardFamily) shardsUnstamped++;
+                    else unstampedDataFile ??= Path.GetFileName(path);
                     continue;
                 }
                 stamped++;
@@ -584,19 +569,10 @@ public sealed class WorldLoader
             }
         }
 
-        // A MIXTURE among the world/char shards is a torn generation too, and a
-        // quieter one than a stamp that disagrees. Either this engine wrote them, in
-        // which case every one carries a [SAVEID], or a classic save did and none of
-        // them does; "some stamped, some not" is not a shape a save has. The one that
-        // matters in practice is a shard replaced by something unreadable - it parses
-        // as zero records and carries no stamp, and its stamped siblings made the
-        // generation look consistent, so the world loaded EMPTY while a good backup sat
-        // beside it.
-        //
-        // Deliberately NOT applied to spheredata: its stamp is SAVECOUNT, which classic
-        // saves write as well, so a legacy generation is legitimately data-stamped with
-        // unstamped shards and must keep loading (review work item D01).
+        // A stamped object shard identifies a SphereNet generation. An empty or
+        // damaged spheredata can still open as text, but cannot belong to that save.
         bool mixed = shardsStamped > 0 && shardsUnstamped > 0;
+        bool missingDataStamp = shardsStamped > 0 && unstampedDataFile != null;
 
         detail = conflictFile != null
             ? $"{referenceFile}={reference} but {conflictFile}={conflictId} " +
@@ -604,14 +580,16 @@ public sealed class WorldLoader
             : mixed
                 ? $"{shardsStamped} world/char shard(s) carry a save stamp and " +
                   $"{shardsUnstamped} do not, so they cannot all be from the same save"
+                : missingDataStamp
+                ? $"{unstampedDataFile} has no valid save stamp for the stamped world/char shards"
                 : $"id={reference?.ToString() ?? "-"} ({stamped} stamped, {unstamped} unstamped)";
 
-        bool consistent = conflictFile == null && !mixed;
+        bool consistent = conflictFile == null && !mixed && !missingDataStamp;
         token = consistent ? reference : null;
         return consistent;
     }
 
-    private (int Items, int Chars) Materialize(GameWorld world, GenerationPaths gen, AccountManager? accounts)
+    private (int Items, int Chars) Materialize(GameWorld world, GenerationPaths gen, AccountManager? accounts, bool stamped)
     {
         int itemCount = 0, charCount = 0;
 
@@ -627,6 +605,9 @@ public sealed class WorldLoader
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
+            if (!stamped)
+                RestoreClassicWorldClock(world, gen);
+
             var itemPaths = gen.ItemPaths;
             var charPaths = gen.CharPaths;
             var staticPaths = gen.StaticPaths;
@@ -1197,7 +1178,12 @@ public sealed class WorldLoader
 
             if (!ParseSectionType(section, "WORLDITEM", out string? defname))
             {
-                while (reader.NextProperty(out _, out _)) { /* skip */ }
+                // Source-X's SECTOR reader resolves the header as a world tile point.
+                var sector = !staticOnly && ParseSectionType(section, "SECTOR", out string? point)
+                    && point != null && Point3D.TryParse(point, out var position)
+                    ? world.GetSector(position) : null;
+                while (reader.NextProperty(out string sectorKey, out string sectorValue))
+                    sector?.TrySetProperty(sectorKey, sectorValue);
                 continue;
             }
 
@@ -2203,6 +2189,35 @@ public sealed class WorldLoader
         return true;
     }
 
+    private static void RestoreClassicWorldClock(GameWorld world, GenerationPaths gen)
+    {
+        // Source-X writes the clock header to every save family. A classic
+        // generation can have only a world file, so try that after server data.
+        foreach (string path in gen.DataPaths.Concat(gen.ItemPaths).Concat(gen.CharPaths))
+        {
+            using var reader = SaveIO.OpenReader(path);
+            reader.NextRecord(out _);
+            var header = reader.FileHeader;
+            if (header.TryGetValue("TIMEHIRES", out string? rawTime) &&
+                ScriptNumber.TryParseLong(rawTime, out long milliseconds) && milliseconds >= 0)
+            {
+                world.SetGameClockMs(milliseconds);
+                return;
+            }
+
+            // Sphere 0.5x stored its 10 Hz tick count. Source-X's TIME
+            // fallback reads seconds, and its TIMEHIRES field is milliseconds.
+            long unit = header.TryGetValue("VERSION", out string? version) &&
+                version.StartsWith("0.5", StringComparison.Ordinal) ? 100 : 1000;
+            if (header.TryGetValue("TIME", out rawTime) &&
+                ScriptNumber.TryParseLong(rawTime, out long time) && time >= 0 && time <= long.MaxValue / unit)
+            {
+                world.SetGameClockMs(time * unit);
+                return;
+            }
+        }
+    }
+
     private void LoadDataFile(GameWorld world, string path)
     {
         if (!File.Exists(path)) return;
@@ -2234,14 +2249,17 @@ public sealed class WorldLoader
                 }
                 lists++;
             }
-            else if (upper.StartsWith("GMPAGE", StringComparison.OrdinalIgnoreCase))
+            else if (ParseSectionType(section, "GMPAGE", out string? pageAccount))
             {
-                var page = new SphereNet.Game.World.GmPage();
+                var page = new GmPage { Account = pageAccount ?? "" };
+                bool hasAccountField = false;
+                bool timeIsCreated = false;
+                string? time = null;
                 while (reader.NextProperty(out string key, out string val))
                 {
                     switch (key.ToUpperInvariant())
                     {
-                        case "ACCOUNT": page.Account = val; break;
+                        case "ACCOUNT": page.Account = val; hasAccountField = true; break;
                         case "REASON": page.Reason = val; break;
                         // CHARUID and P arrived later than this section did, so a
                         // page saved before them simply has neither.
@@ -2252,10 +2270,18 @@ public sealed class WorldLoader
                         // old value could not be compared against SRC either.
                         case "HANDLER": page.TrySetProperty("HANDLED", val); break;
                         case "STATUS": page.Status = val; break;
-                        // The absolute stamp the saver writes, not the age the
-                        // script-facing TIME key answers.
-                        case "TIME": case "CREATED": page.TrySetProperty("CREATED", val); break;
+                        case "TIME": time = val; timeIsCreated = false; break;
+                        case "CREATED": time = val; timeIsCreated = true; break;
                     }
+                }
+                // CGMPage::r_Write puts the account in the section name and TIME
+                // is the page's age. SphereNet writes an ACCOUNT line and a date.
+                if (time != null)
+                {
+                    if (hasAccountField || timeIsCreated)
+                        page.TrySetProperty("CREATED", time);
+                    else if (ScriptNumber.TryParseLong(time, out long age) && age >= 0)
+                        page.TrySetProperty("TIME", age.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 }
                 world.AddGmPage(page);
             }
@@ -2334,6 +2360,8 @@ public sealed class WorldLoader
                     else sector.ClearLightOverride();
                     sector.RainChance = sRain;
                     sector.ColdChance = sCold;
+                    if (!legacy && parts.Length >= 10 && uint.TryParse(parts[9], out uint flags))
+                        sector.Flags = (SectorFlag)flags;
                 }
             }
             else if (upper.StartsWith("WORLDSCRIPT ", StringComparison.OrdinalIgnoreCase))

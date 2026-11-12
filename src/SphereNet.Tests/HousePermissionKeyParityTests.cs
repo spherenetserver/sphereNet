@@ -174,10 +174,7 @@ public sealed class HousePermissionKeyParityTests
     public void ALockedDownItemCarriesTheMarkerEventAndLosesItOnRelease()
     {
         // Source-X puts "EVENTS +ei_house_lockdown" on the item (CItemMulti.cpp:1779).
-        // It is not a script the pack defines - it is how the pack RECOGNISES the
-        // item: house_functions.scp asks <isevent.ei_house_lockdown> and then calls
-        // unlockitem on it. Without the marker nothing there can tell a locked item
-        // from a loose one.
+        // house_functions.scp uses <isevent.ei_house_lockdown> before calling unlockitem.
         var (world, _, house) = Setup();
         var owner = Player(world);
         house.Owner = owner;

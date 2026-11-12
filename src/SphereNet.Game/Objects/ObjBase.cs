@@ -1153,7 +1153,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         {
             int dot = key.IndexOf('.');
             string evName = key[(dot + 1)..];
-            var checkRid = ResourceId.FromString(evName, Core.Enums.ResType.Events);
+            var checkRid = ParseEventResourceId(evName);
             bool typed = key.StartsWith("ISTEVENT.", StringComparison.OrdinalIgnoreCase);
             List<ResourceId>? events = null;
             if (typed)

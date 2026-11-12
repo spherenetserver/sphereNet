@@ -223,8 +223,8 @@ public sealed class CustomHousingEngine
             if (begin.Cancel)
                 return null;
             var house = _housing.GetHouse(multi.Uid);
-            if (begin.N1 == 1)
-                RedeedAddons(multi);
+            if (begin.N1 == 1 && house != null)
+                _housing.RedeedAddons(house);
             if (begin.N2 == 1 && house != null)
                 TransferHoldingsToMovingCrate(house);
             if (begin.N3 == 1)
@@ -423,14 +423,6 @@ public sealed class CustomHousingEngine
         }
     }
 
-    /// <summary>Source-X RedeedAddons walks the building's addon list
-    /// (CItemMulti::_lAddons). SphereNet keeps no addon list on a house and has no
-    /// addon redeed, so there is nothing for N1=1 to act on yet.</summary>
-    private static void RedeedAddons(Item multi)
-    {
-        _ = multi;
-    }
-
     /// <summary>Source-X TransferSecuredToMovingCrate + TransferLockdownsToMovingCrate
     /// (CItemMulti.cpp:1445/1471): every secured container and locked-down item
     /// loses its house status and goes into the moving crate.</summary>
@@ -450,12 +442,11 @@ public sealed class CustomHousingEngine
         if (uids.Count == 0) return;
         var crate = house.GetMovingCrate(create: true);
         if (crate == null) return;
-        var rid = ResourceId.FromString(marker, ResType.Events);
         foreach (var uid in uids)
         {
             var item = _world.FindItem(uid);
             if (item == null || item.IsDeleted) continue;
-            item.Events.Remove(rid);
+            House.RemoveMarkerEvent(item, marker);
             var from = item.Position;
             bool onGround = item.IsOnGround;
             if (crate.TryAddItem(item) && onGround)
@@ -937,15 +928,15 @@ public sealed class CustomHousingEngine
     /// ei_house_telepad; an undyed component takes the building's hue.</summary>
     public static void ApplyComponentCreate(Item multi, Item component)
     {
-        AddEvent(component, ComponentEvent);
+        House.AddMarkerEvent(component, ComponentEvent);
         switch (component.ItemType)
         {
             case ItemType.Door:
-                AddEvent(component, DoorEvent);
+                House.AddMarkerEvent(component, DoorEvent);
                 component.ItemType = ItemType.DoorLocked;
                 break;
             case ItemType.Container:
-                AddEvent(component, ContainerEvent);
+                House.AddMarkerEvent(component, ContainerEvent);
                 component.ItemType = ItemType.ContainerLocked;
                 break;
             case ItemType.ShipSide:
@@ -955,18 +946,11 @@ public sealed class CustomHousingEngine
                 component.ItemType = ItemType.ShipHoldLock;
                 break;
             case ItemType.Telepad:
-                AddEvent(component, TelepadEvent);
+                House.AddMarkerEvent(component, TelepadEvent);
                 break;
         }
         if (component.Hue.Equals(Color.Default))
             component.Hue = multi.Hue;
-    }
-
-    internal static void AddEvent(Item item, string name)
-    {
-        var rid = ResourceId.FromString(name, ResType.Events);
-        if (!item.Events.Contains(rid))
-            item.Events.Add(rid);
     }
 
     /// <summary>Source-X AddItem fixture test (CItemMultiCustom.cpp:458): a door

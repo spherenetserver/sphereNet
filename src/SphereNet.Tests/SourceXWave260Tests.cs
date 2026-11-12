@@ -15,15 +15,17 @@ namespace SphereNet.Tests;
 /// raises its own kind). Reuses the summon ownership machinery via a corpse-item
 /// target path in CastDone.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class SourceXWave260Tests
 {
-    private static (GameWorld world, SpellEngine engine, Character caster) Setup()
+    private static (GameWorld world, SpellEngine engine, Character caster) Setup(
+        SpellType spell = SpellType.AnimateDeadAOS)
     {
         var world = TestHarness.CreateWorld();
         var registry = new SpellRegistry();
         registry.Register(new SpellDef
         {
-            Id = SpellType.AnimateDeadAOS,
+            Id = spell,
             Flags = SpellFlag.TargItem,
             ManaCost = 0,
             CastTimeBase = 1,
@@ -95,5 +97,38 @@ public sealed class SourceXWave260Tests
         Assert.True(engine.CastDone(caster));
 
         Assert.DoesNotContain(world.GetCharsInRange(crate.Position, 4), c => c != caster);
+    }
+
+    [Fact]
+    public void SphereAnimateDead_ReequipsGearAndTransfersLootBeforeDeletingCorpse()
+    {
+        var (world, engine, caster) = Setup(SpellType.AnimateDead);
+        engine.OnItemRemoved = world.RemoveItem;
+        var corpse = MakeCorpse(world, 0x0190, 101, 100);
+        var shirt = world.CreateItem();
+        shirt.ItemType = ItemType.Clothing;
+        shirt.SetTag("EQUIPLAYER", ((byte)Layer.Shirt).ToString());
+        var bag = world.CreateItem();
+        bag.ItemType = ItemType.Container;
+        var loot = world.CreateItem();
+        var hair = world.CreateItem();
+        hair.ItemType = ItemType.Hair;
+        Assert.True(bag.TryAddItem(loot));
+        Assert.True(corpse.TryAddItem(shirt));
+        Assert.True(corpse.TryAddItem(bag));
+        Assert.True(corpse.TryAddItem(hair));
+
+        Assert.True(engine.CastStart(caster, SpellType.AnimateDead, corpse.Uid, corpse.Position) >= 0);
+        Assert.True(engine.CastDone(caster));
+
+        var undead = Assert.Single(world.GetCharsInRange(caster.Position, 4), c => c.IsSummoned);
+        Assert.Same(shirt, undead.GetEquippedItem(Layer.Shirt));
+        Assert.NotNull(undead.Backpack);
+        Assert.Same(bag, Assert.Single(undead.Backpack.Contents));
+        Assert.Same(loot, Assert.Single(bag.Contents));
+        Assert.Same(loot, world.FindItem(loot.Uid));
+        Assert.False(shirt.TryGetTag("EQUIPLAYER", out _));
+        Assert.True(corpse.IsDeleted);
+        Assert.True(hair.IsDeleted);
     }
 }

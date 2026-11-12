@@ -169,6 +169,45 @@ public sealed class HouseMovingCrateParityTests
     }
 
     [Fact]
+    public void ReplacingAFullCratePreservesTheTransferredItems()
+    {
+        var (world, multi, house) = Setup();
+        var original = house.GetMovingCrate(create: true)!;
+        var contents = world.CreateItem();
+        Assert.True(original.TryAddItem(contents));
+
+        var replacement = world.CreateItem();
+        replacement.ItemType = ItemType.Container;
+        for (int i = 0; i < Item.MaxContainerItems; i++)
+            Assert.True(replacement.TryAddItem(world.CreateItem()));
+
+        Assert.True(multi.TrySetProperty("MOVINGCRATE", $"0{replacement.Uid.Value:X}"));
+
+        Assert.True(original.IsDeleted);
+        Assert.Same(replacement, house.ResolveMovingCrate());
+        Assert.Equal(Item.MaxContainerItems + 1, replacement.Contents.Count);
+        Assert.Equal(replacement.Uid, contents.ContainedIn);
+        Assert.False(replacement.TryAddItem(world.CreateItem()));
+    }
+
+    [Fact]
+    public void ACrateInsideTheOriginalCannotReplaceIt()
+    {
+        var (world, _, house) = Setup();
+        var original = house.GetMovingCrate(create: true)!;
+        var inner = world.CreateItem();
+        inner.ItemType = ItemType.Container;
+        Assert.True(original.TryAddItem(inner));
+
+        house.AssignMovingCrate(inner);
+
+        Assert.Same(original, house.ResolveMovingCrate());
+        Assert.Contains(inner, original.Contents);
+        Assert.False(original.IsDeleted);
+        Assert.False(inner.IsDeleted);
+    }
+
+    [Fact]
     public void ACrateThatWentAwayIsForgotten()
     {
         var (world, multi, house) = Setup();

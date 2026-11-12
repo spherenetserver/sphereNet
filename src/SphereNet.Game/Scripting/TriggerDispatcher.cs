@@ -676,8 +676,7 @@ public sealed class TriggerDispatcher
         bool createFirst = trigName.Equals("Create", StringComparison.OrdinalIgnoreCase);
         if (createFirst && Resources != null && Runner != null)
         {
-            bool multi = item.ItemType is Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom
-                or Core.Enums.ItemType.Ship;
+            bool multi = Item.IsMultiItemType(item.ItemType);
             RunItemDefStage(item, multi, Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, Resources),
                 trigName, args);
         }
@@ -725,8 +724,7 @@ public sealed class TriggerDispatcher
         ItemDef? graphicDef = null;
         ItemDef? namedDef = null;
         int scriptDefIdx = 0;
-        bool isMulti = item.ItemType is Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom
-            or Core.Enums.ItemType.Ship;
+        bool isMulti = Item.IsMultiItemType(item.ItemType);
 
         // 3. TEVENTS from ITEMDEF definition
         if (Resources != null && Runner != null)

@@ -45,7 +45,7 @@ public sealed partial class PlayerBotEngine
     {
         WindowTargetSwitches = WindowRetreats = WindowTrendRetreats = WindowGuardRuns = WindowEscapeRecalls = 0;
         WindowVanishes = WindowHides = WindowAssists = WindowPreyRefused = 0;
-        WindowCasts = WindowWards = WindowSummons = WindowCombos = WindowManaRests = 0;
+        WindowCasts = WindowWards = WindowSummons = WindowCombos = WindowManaRests = WindowInterrupts = 0;
         WindowWeaponSwaps = WindowShieldsUp = WindowPotions = WindowBandages = 0;
     }
 
@@ -54,7 +54,7 @@ public sealed partial class PlayerBotEngine
         $"fights={WindowFights} switches={WindowTargetSwitches} retreats={WindowRetreats} (trend {WindowTrendRetreats}) " +
         $"guardruns={WindowGuardRuns} escaperecalls={WindowEscapeRecalls} vanishes={WindowVanishes} hides={WindowHides} " +
         $"assists={WindowAssists} preyrefused={WindowPreyRefused} casts={WindowCasts} wards={WindowWards} " +
-        $"summons={WindowSummons} combos={WindowCombos} manarests={WindowManaRests} potions={WindowPotions} " +
+        $"summons={WindowSummons} combos={WindowCombos} interrupts={WindowInterrupts} manarests={WindowManaRests} potions={WindowPotions} " +
         $"bandages={WindowBandages} weaponswaps={WindowWeaponSwaps} shields={WindowShieldsUp}";
 
     private static int Pct(Character c) => c.MaxHits > 0 ? c.Hits * 100 / c.MaxHits : 100;

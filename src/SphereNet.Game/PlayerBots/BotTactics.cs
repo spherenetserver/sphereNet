@@ -62,6 +62,10 @@ public sealed class BotTactics
     /// <summary>The foe a creature was summoned against, and when it was set on it.</summary>
     public uint SummonedFor;
     public long SummonOrderMs;
+    /// <summary>The foe's cast an interrupting spell was last thrown at (the foe and
+    /// its cast timer's end): one try per cast.</summary>
+    public uint InterruptedFoe;
+    public long InterruptedCastEnd;
     public long NextBreakMs;
     /// <summary>Resting for mana in the middle of a fight, until then.</summary>
     public long RestUntilMs;

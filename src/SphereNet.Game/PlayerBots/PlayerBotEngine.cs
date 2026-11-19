@@ -578,6 +578,13 @@ public sealed partial class PlayerBotEngine
         mind.GiveBackTo = null;
         mind.CatchGate = null;
         mind.PendingOnYes = null;
+        // A creature it got off and left standing goes with it: a bot logged out over
+        // the population count may never come back for it.
+        if (OwnMount(mind) is { } horse)
+        {
+            LeaveMount(horse);
+            ch.RemoveTag(MountTag);
+        }
         if (mind.Client != null) DropClient?.Invoke(ch);
         ch.IsOnline = false;
         ch.IsPlayerBot = false;

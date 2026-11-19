@@ -495,6 +495,56 @@ public sealed class PlayerBotCombatTests(Xunit.Abstractions.ITestOutputHelper ou
     }
 
     [Fact]
+    public void AFoeCastingSlowlyIsInterruptedOnceByAQuickSpell()
+    {
+        var r = Make();
+        var (bot, mind) = Bot(r, new Point3D(100, 100, 0, 0), "mage");
+        var lich = Monster(r, new Point3D(105, 100, 0, 0), bot, hits: 500, name: "lich");
+        Assert.Null(r.Engine.InterruptFor(mind, lich));
+
+        lich.BeginCast(SpellType.Flamestrike, bot.Uid, bot.Position);
+        lich.SetCastTimerEnd(Environment.TickCount64 + 4000);
+        Assert.Equal(SpellType.MagicArrow, r.Engine.InterruptFor(mind, lich));
+        // One try per cast.
+        mind.Tac.InterruptedFoe = lich.Uid.Value;
+        mind.Tac.InterruptedCastEnd = lich.CastTimerEnd;
+        Assert.Null(r.Engine.InterruptFor(mind, lich));
+        // A cast about to land is past breaking.
+        lich.SetCastTimerEnd(Environment.TickCount64 + 50);
+        Assert.Null(r.Engine.InterruptFor(mind, lich));
+    }
+
+    [Fact]
+    public void AnInterruptComesBeforeTheWards()
+    {
+        var r = Make();
+        var (bot, _) = Bot(r, new Point3D(100, 100, 0, 0), "mage");
+        var lich = Monster(r, new Point3D(108, 100, 0, 0), bot, hits: 500, name: "lich");
+        lich.SetStatFlag(StatFlag.Freeze);
+        lich.BeginCast(SpellType.Flamestrike, bot.Uid, bot.Position);
+        lich.SetCastTimerEnd(Environment.TickCount64 + 60_000);
+        r.Run(200, () => r.CastsOf(bot).Count >= 2);
+        var casts = r.CastsOf(bot);
+        Assert.True(casts.Count >= 2, r.Trace(bot));
+        Assert.Equal(SpellType.MagicArrow, casts[0]);
+        // The same cast is not thrown at again: the wards follow.
+        Assert.NotEqual(SpellType.MagicArrow, casts[1]);
+    }
+
+    [Fact]
+    public void ABotLoggedOutLeavesNoStandingMountBehind()
+    {
+        var r = Make();
+        var (bot, _) = Bot(r, new Point3D(100, 100, 0, 0), "warrior");
+        var horse = Monster(r, new Point3D(101, 100, 0, 0), null, name: "horse");
+        Assert.True(horse.TryAssignOwnership(bot));
+        bot.SetTag(PlayerBotEngine.MountTag, horse.Uid.Value.ToString());
+        r.Engine.Release(bot);
+        Assert.True(horse.IsDeleted);
+        Assert.False(bot.TryGetTag(PlayerBotEngine.MountTag, out _));
+    }
+
+    [Fact]
     public void ExplosionIsFollowedByEnergyBolt()
     {
         var r = Make(without: [SpellType.Poison]);

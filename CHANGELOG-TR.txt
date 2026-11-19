@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-11-19] - Oyuncu botu buyu bozma ve binek temizligi
+------------------------------------------------------------------------
+EKLEME - Buyucu botlar dusmanin suren buyusunu bozar: hizli bir hasar buyusu
+         (Magic Arrow, yoksa Harm) dusmanin buyu sayaci bitmeden varabiliyorsa
+         once o atilir; dusmanin her buyusune bir kez. Savas telemetrisinde
+         interrupts olarak sayilir.
+DUZELTME - Nufus fazlasi olarak cikis yapan bot, ayakta biraktigi binegini
+           kaldirir (gorulmuyorsa hemen, gorulurken kimse bakmayinca).
+
 [2026-11-13] - Sirali istemci guncellemeleri ve oyuncu botu eylem guvenligi
 ------------------------------------------------------------------------
 DUZELTME - Container, vendor, spellbook, ceset gorunumu ve login/resync paketleri

@@ -270,6 +270,20 @@ public sealed partial class PlayerBotEngine
             if (WallOff(mind, foe, now)) return true;
         }
 
+        // The foe is saying words that will land after a quick spell of its own would:
+        // the quick spell first, since damage can break a cast.
+        if (sight && dist <= 10 && InterruptFor(mind, foe) is { } quick)
+        {
+            tac.InterruptedFoe = foe.Uid.Value;
+            tac.InterruptedCastEnd = foe.CastTimerEnd;
+            if (Cast(mind, quick, foe, now))
+            {
+                WindowInterrupts++;
+                mind.Note(now, $"throws {quick} to break {foe.GetName()}'s cast");
+                return true;
+            }
+        }
+
         // Wards, while the foe is still on its way.
         if (!tac.WardsDone)
         {
@@ -352,6 +366,34 @@ public sealed partial class PlayerBotEngine
         bool dry = known is not { } any || ch.Mana < ManaFor(any);
         return OutOfMana(mind, foe, now, dist, onMe, held, hp, dry);
     }
+
+    /// <summary>A quick damage spell that lands before the foe's cast under way does
+    /// (its cast timer, kept on the engine's tick clock for players and NPCs alike),
+    /// once per cast; null when the foe is not casting, the cast is already too far
+    /// along, or the bot has no such spell to hand.</summary>
+    internal SpellType? InterruptFor(BotMind mind, Character foe)
+    {
+        if (Spells == null || !foe.TryGetCastingSpell(out _)) return null;
+        // The cast timer runs on TickCount64, as the swing timer does (see Kite).
+        long tick = Environment.TickCount64;
+        if (!foe.IsCastTimerActive(tick)) return null;
+        var tac = mind.Tac;
+        if (tac.InterruptedFoe == foe.Uid.Value && tac.InterruptedCastEnd == foe.CastTimerEnd) return null;
+        long left = foe.CastTimerEnd - tick;
+        foreach (var s in InterruptSpells)
+        {
+            if (!CanCast(mind, s) || Spells.GetSpellDef(s) is not { } def) continue;
+            // Its own words, and a moment for the bolt to land.
+            long mine = SpellEngine.CalculateCastTimeTenths(mind.Char, def) * 100L + InterruptMarginMs;
+            if (mine < left) return s;
+        }
+        return null;
+    }
+
+    private const int InterruptMarginMs = 250;
+    private static readonly SpellType[] InterruptSpells = [SpellType.MagicArrow, SpellType.Harm];
+
+    public long WindowInterrupts { get; private set; }
 
     /// <summary>The foe takes more bringing down than the bot's mana pays for.</summary>
     private bool OutlastsItsMana(BotMind mind, Character foe, BotThreat threat, long now)

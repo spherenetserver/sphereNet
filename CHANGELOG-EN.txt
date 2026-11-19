@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-11-19] - Player bot cast interruption and mount cleanup
+------------------------------------------------------------------------
+ADD - Mage bots break a foe's cast under way: when a quick damage spell (Magic
+      Arrow, else Harm) lands before the foe's cast timer runs out, it is cast
+      first, once per foe cast. Combat telemetry counts it as interrupts.
+FIX - A bot logged out over the population count removes the mount it left
+      standing (at once when unseen, else once nobody sees it).
+
 [2026-11-13] - Ordered client updates and player bot action safety
 ------------------------------------------------------------------------
 FIX - Container, vendor, spellbook, corpse-view and login/resync sequences share

@@ -593,18 +593,22 @@ between two casts the bot hesitates 150-650 ms. In order:
    Teleport to a standable spot six to nine tiles away that it can see, else Paralyze.
    A melee foe coming (three to five tiles) with the bot under 60%: a Wall of Stone
    across its way. Once in eight seconds.
-4. **Wards**, while the foe is four tiles or more away and for the first twelve seconds,
+4. **Breaking a cast**: a foe in sight within ten tiles saying words (a player's or a
+   creature's cast timer still running) gets Magic Arrow, else Harm, when that spell's
+   own cast time and a quarter second end before the foe's - damage can break a cast.
+   Once per cast of the foe.
+5. **Wards**, while the foe is four tiles or more away and for the first twelve seconds,
    two at most: Magic Reflection against something that casts, Reactive Armor against
    something that strikes, then Protection, then Bless - whichever it does not already
    wear.
-5. **Something summoned**, out of a guarded region, once per foe, with three tiles of
+6. **Something summoned**, out of a guarded region, once per foe, with three tiles of
    room (or the foe held): when the foe takes more bringing down than its mana pays for,
    or is deadly. An Energy Vortex, else Blade Spirits, else an elemental, cast beside
    the foe; what obeys is then told "all kill" and the foe.
-6. **An opener** on a melee foe that would kill it within twenty seconds, once per foe:
+7. **An opener** on a melee foe that would kill it within twenty seconds, once per foe:
    Paralyze while it is still three tiles off, else Curse, Weaken or Clumsy.
-7. **Poison** on a foe not poisoned and above 35% (two tries per foe, eight seconds apart).
-8. **Damage**: the cheapest spell that finishes a foe nearly down; else Flamestrike with
+8. **Poison** on a foe not poisoned and above 35% (two tries per foe, eight seconds apart).
+9. **Damage**: the cheapest spell that finishes a foe nearly down; else Flamestrike with
    magery 90.0 and half its mana left; Explosion when Energy Bolt can follow it (the
    Energy Bolt is the next cast); Energy Bolt; Lightning; Fireball; Harm at two tiles;
    Magic Arrow; Mind Blast.
@@ -836,7 +840,8 @@ Bots whose stays at one place end together set off 0.6-1.5 seconds apart.
 **Nothing out of nothing.** A mount is made for a rider only where no player sees the
 spot; seen, the rider goes on foot and is asked again later. A creature its rider gives up
 (too far, out of reach, will not be ridden) is removed at once where nobody sees it, else
-left standing and removed once nobody does. A bare bot gets its kit where no player sees
+left standing and removed once nobody does; so is one a bot leaves standing when it
+logs out over `PlayerBotCount`. A bare bot gets its kit where no player sees
 it; seen, it does what a player with nothing does: at a bank it says `bank` to the banker
 and dresses out of its box two seconds later, anywhere else it sets off for the nearest
 bank on its road first.
@@ -1249,7 +1254,7 @@ The end of the line is about getting stuck:
 More lines follow in the same 30 seconds when there is something to count:
 
 ```
-[playerbots] combat fights=60 switches=7 retreats=9 (trend 3) guardruns=2 escaperecalls=1 vanishes=1 hides=0 assists=4 preyrefused=310 casts=212 wards=18 summons=3 combos=11 manarests=5 potions=14 bandages=22 weaponswaps=6 shields=2
+[playerbots] combat fights=60 switches=7 retreats=9 (trend 3) guardruns=2 escaperecalls=1 vanishes=1 hides=0 assists=4 preyrefused=310 casts=212 wards=18 summons=3 combos=11 interrupts=2 manarests=5 potions=14 bandages=22 weaponswaps=6 shields=2
 [playerbots] work: jobs=.. gathers=.. smelts=.. crafts=.. sales=.. (gold ..) givenup=..
 [playerbots] plans made=41 kept=63 urgent=4 interrupted=9 failed=2 mix hunt=22 work=31 sell=12 shop=9 bank=7 rest=5 social=10 wander=8 home=0
 [playerbots] manners turns=.. gestures=.. emotes=.. meals=.. seats=.. practice=.. poiscans=.. thanks=.. theftreacts=.. fightreacts=.. ghostwalks=.. ghostraises=.. corpseruns=.. deathsresumed=.. conjurewaits=.. straymounts=..
@@ -1259,7 +1264,8 @@ More lines follow in the same 30 seconds when there is something to count:
   `retreats` fights broken off (`trend`: on the trend alone, above the hit-point mark),
   `guardruns`, `escaperecalls`, `vanishes` (Invisibility) and `hides` the ways away,
   `assists` other people's fights joined, `preyrefused` monsters looked at and not taken
-  on, `casts`, `wards`, `summons`, `combos` (Explosion then Energy Bolt), `manarests`
+  on, `casts`, `wards`, `summons`, `combos` (Explosion then Energy Bolt), `interrupts`
+  (quick spells thrown to break a foe's cast), `manarests`
   meditations in the middle of a fight, `potions`, `bandages`, `weaponswaps`, `shields`.
 - **work**, while any bot works: `jobs` jobs started, `gathers` swings that put something
   in a pack, `smelts` piles smelted, `crafts` pieces made, `sales` sell lists sold and the
